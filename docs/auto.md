@@ -12,7 +12,7 @@ The first version uses deterministic rules in `src-tauri/src/router.rs`. It does
 | Preferred provider not configured | First configured provider; a single provider cannot cross-review itself |
 | Manual Claude / GPT | Chosen account/model/effort; single stage |
 
-Comparison takes precedence over complex-task review. Codex uses its installed CLI default model unless manually overridden. Claude aliases (`opus`, `sonnet`) delegate concrete version selection to the CLI/provider. There is no unsupported claim that every account has access to these models. A manual model name is validated before process creation. Effort is restricted to low / medium / high for cross-provider compatibility.
+Comparison takes precedence over complex-task review. Codex uses its installed CLI default model unless manually overridden. Claude aliases (`opus`, `sonnet`) delegate concrete version selection to the CLI/provider. There is no unsupported claim that every account has access to these models. A manual model name is validated before process creation. Manual model/effort controls come from the official CLI catalog and are validated against that catalog before execution. Auto requests low/medium/high according to its policy; each stage resolves that request to a supported model effort or the provider default, recording the effective model/effort in activity.
 
 ## Sub-agents, review and pair work
 

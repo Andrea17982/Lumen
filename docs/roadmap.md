@@ -1,6 +1,6 @@
 # MVP → v1 → v2
 
-## MVP / 0.1 alpha — this repository
+## MVP / 0.2 alpha — this repository
 
 | Original requirement | Status |
 | --- | --- |
@@ -26,7 +26,7 @@ Alpha gates: automated frontend/Rust checks, UI behavior/render review, Windows 
 - Acceptance-test two distinct accounts per provider, token refresh, login cancellation, expired login and rate limits without credential leakage.
 - Use provider-native thread resume and context compaction, keeping context transitions visible.
 - Add app-server / supported event transports for richer Codex token streaming and permission approval UX.
-- Validated per-account model catalogs and a fast model choice where available, rather than a universal assumed model ID.
+- Evaluate task-aware fast model selection using the official catalogs implemented in 0.2. Catalog discovery is not proof of per-request entitlement.
 - Paginate messages and virtualize long transcripts; remove unused workspace-lock entries.
 - Versioned database migrations, export/import, encrypted-at-rest option and recovery tooling.
 - Code-signed Windows installer, startup/memory measurements on representative hardware, Linux CI and desktop acceptance.

@@ -1,7 +1,7 @@
 // Windows debug-only test. PATH points to fixtures, app data to a fresh temp directory.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -61,12 +61,22 @@ try {
   });
   assert.equal(await invoke('account_status', { id: gpt.id }), true);
   assert.equal(await invoke('account_status', { id: claude.id }), true);
+  const catalog = await invoke('list_models', { id: gpt.id, refresh: true });
+  assert(catalog.find((m) => m.id === 'gpt-fixture').efforts.includes('ultra'));
+  const claudeCatalog = await invoke('list_models', { id: claude.id, refresh: true });
+  assert(claudeCatalog.find((m) => m.id === 'opus').efforts.includes('max'));
+  await invoke('rename_account', { id: gpt.id, name: 'Renamed GPT fixture' });
+  assert(
+    (await invoke('list_accounts')).some(
+      (a) => a.id === gpt.id && a.name === 'Renamed GPT fixture',
+    ),
+  );
   const options = {
     mode: 'gpt',
     accountId: gpt.id,
     model: null,
     effort: 'low',
-    writeAccess: false,
+    accessMode: 'read-only',
   };
   async function waitSession(id, status) {
     for (let i = 0; i < 200; i++) {
@@ -80,12 +90,42 @@ try {
     throw new Error(`Session did not reach ${status}`);
   }
   const s = await invoke('create_session', { workspace });
+  const named = await invoke('add_workspace', {
+    name: 'Native fixture workspace',
+    folder: workspace,
+  });
+  const subfolder = path.join(workspace, 'subfolder');
+  await mkdir(subfolder);
+  const linked = await invoke('set_session_workspace', {
+    id: s.id,
+    workspaceId: named.id,
+    folder: subfolder,
+  });
+  assert.equal(linked.workspaceId, named.id);
+  assert(linked.workspace.endsWith('subfolder'));
+  await assert.rejects(() =>
+    invoke('send_message', {
+      id: s.id,
+      text: 'Invalid effort fixture',
+      options: { ...options, model: 'gpt-fast-fixture', effort: 'ultra' },
+    }),
+  );
   await invoke('send_message', { id: s.id, text: 'UI fixture: review this sample', options });
   await waitSession(s.id, 'completed');
   const messages = await invoke('get_messages', { id: s.id });
   assert.equal(messages.length, 2);
   assert(messages[1].text.includes('offline UI fixture'));
   assert(messages[1].activity.some((a) => a.kind === 'file'));
+  const cwdEvent = messages[1].activity.find(
+    (a) => a.kind === 'tool' && a.text.startsWith('fixture-only: working directory\n'),
+  );
+  assert(cwdEvent, 'The fixture must report its working directory');
+  const actualFolder = cwdEvent.text.split('\n').slice(1).join('\n');
+  assert.equal(
+    (await realpath(actualFolder)).toLowerCase(),
+    (await realpath(subfolder)).toLowerCase(),
+    'The child must actually run inside the conversation folder (including Windows short/long paths)',
+  );
   await invoke('update_session', { id: s.id, title: 'Offline UI fixture', pinned: true });
   const claudeSession = await invoke('create_session', { workspace });
   await invoke('send_message', {
@@ -132,6 +172,43 @@ try {
   await page.screenshot({ path: '.impeccable/review/native-chat-fixture.png' });
   await page.locator('.activity > summary').click();
   await page.screenshot({ path: '.impeccable/review/native-activity-fixture.png' });
+  await page.getByRole('button', { name: 'GPT', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Model', exact: true }).selectOption('gpt-fast-fixture');
+  assert.deepEqual(
+    await page
+      .getByRole('combobox', { name: 'Reasoning effort' })
+      .locator('option')
+      .evaluateAll((options) => options.map((o) => o.value)),
+    ['', 'low', 'medium'],
+  );
+  await page.getByRole('combobox', { name: 'Permissions' }).selectOption('autopilot');
+  await page.getByRole('button', { name: 'Rename selected account' }).click();
+  await page.getByRole('textbox', { name: 'Account name' }).fill('Composer renamed account');
+  await page.getByRole('button', { name: 'Save account name' }).click();
+  await page
+    .getByRole('combobox', { name: 'Account', exact: true })
+    .getByRole('option', { name: 'Composer renamed account' })
+    .waitFor({ state: 'attached' });
+  await page.screenshot({ path: '.impeccable/review/native-provider-controls.png' });
+  await page.getByRole('button', { name: 'Manage accounts' }).click();
+  await page.getByRole('button', { name: 'Rename Composer renamed account' }).click();
+  await page.getByRole('textbox', { name: 'Account name' }).fill('Settings renamed account');
+  await page.getByRole('button', { name: 'Save account name' }).click();
+  await page.getByRole('button', { name: 'Remove Settings renamed account' }).waitFor();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  assert(
+    (await invoke('list_accounts')).some(
+      (a) => a.id === gpt.id && a.name === 'Settings renamed account',
+    ),
+  );
+  const autopilot = await invoke('create_session', { workspace });
+  await invoke('send_message', {
+    id: autopilot.id,
+    text: 'Offline autopilot flags fixture',
+    options: { ...options, accessMode: 'autopilot' },
+  });
+  await waitSession(autopilot.id, 'completed');
   await writeFile(
     '.impeccable/review/native-results.json',
     JSON.stringify(

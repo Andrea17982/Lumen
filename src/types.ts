@@ -8,6 +8,21 @@ export interface Session {
   status: Status;
   workspace: string;
   updatedAt: number;
+  workspaceId?: string | null;
+}
+export interface Workspace {
+  id: string;
+  name: string;
+  folder: string;
+}
+export type AccessMode = 'read-only' | 'file-edits' | 'autopilot';
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  efforts: string[];
+  defaultEffort: string;
+  isDefault: boolean;
 }
 export interface Account {
   id: string;
@@ -29,7 +44,7 @@ export interface RunOptions {
   accountId: string | null;
   model: string | null;
   effort: string;
-  writeAccess: boolean;
+  accessMode: AccessMode;
 }
 export interface Plan {
   provider: Provider;

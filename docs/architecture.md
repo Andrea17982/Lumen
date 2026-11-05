@@ -10,6 +10,7 @@ src/
   App.tsx              Workspace, session rail, composer, settings, activity
   bridge.ts            Typed IPC, run-event reconciliation, honest UI preview
   types.ts             Frontend data contracts
+  ProviderOptions.tsx  Official model/effort pickers and account renaming
   styles.css           Theme tokens, glass material, layout, motion
   bridge.test.ts       Streaming reconciliation tests
 src-tauri/
@@ -18,6 +19,7 @@ src-tauri/
   src/models.rs        Serializable domain types
   src/store.rs         SQLite schema and persistence operations
   src/router.rs        Pure deterministic Auto planner
+  src/catalog.rs       Official CLI metadata discovery, pagination and validation
   src/providers.rs     CLI discovery, isolation, spawn, JSONL normalization, kill
   capabilities/        Window capabilities, folder picker, URL allowlist
   tauri.conf.json      Window, CSP, build and NSIS bundle settings
@@ -57,3 +59,11 @@ Frontend state is intentionally small: active session, visible messages, account
 ## Extension points
 
 Add providers by extending Provider, command construction, normalization fixtures and routing. Move orchestration behind a trait when adding testable alternate process transports. v1 should split App into independent session/composer/settings components, version the SQLite schema, add message pagination, native provider resumption, account diagnostics and validated model catalogs. v2 can introduce budget-aware scheduling and isolated worktree workers.
+
+## Changes in 0.2
+
+SQLite adds a workspaces table and a nullable sessions.workspace_id through a backward-compatible migration. The existing sessions.workspace field remains the canonical conversation folder, which can differ from the workspace default. Account renaming updates only metadata and preserves its UUID/configuration directory.
+
+The catalog module initializes Codex app-server and pages model/list, or initializes the Claude streaming control protocol and reads models from its initialization response. Both are metadata operations without a user turn. Models/efforts are cached per account for five minutes, can be refreshed, and never require Lumen to inspect credentials. Cancellation/timeout reaps the metadata process tree. CLI catalogs do not guarantee model access for an inference request.
+
+Permissions are typed ReadOnly/FileEdits/Autopilot profiles; old writeAccess IPC input remains compatible. Autopilot applies to writer/synthesis stages. Reviewers and parallel analysis remain read-only. See the dedicated permissions guide for exact flags and OS boundaries.

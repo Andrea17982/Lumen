@@ -12,11 +12,88 @@ test('first run, provider controls and honest browser boundary', async ({ page }
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('browser preview');
   await page.getByRole('button', { name: 'Claude', exact: true }).click();
-  await page.getByRole('button', { name: 'Advanced provider options' }).click();
-  await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Auto', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Model', exact: true })).not.toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).not.toBeVisible();
   expect(errors).toEqual([]);
+  for (const text of [
+    'A quieter kind of intelligence.',
+    'Completely AI Written',
+    'ALPHA',
+    'On your computer. In your control.',
+    'The right model, thoughtfully chosen.',
+  ])
+    await expect(page.getByText(text, { exact: true })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Permissions' }).selectOption('autopilot');
+  await expect(page.getByRole('combobox', { name: 'Permissions' })).toHaveValue('autopilot');
+});
+
+test('workspace and folder stay attached to the selected conversation', async ({ page }) => {
+  await page.addInitScript(
+    () =>
+      !localStorage.getItem('lumen-preview-v1') &&
+      localStorage.setItem(
+        'lumen-preview-v1',
+        JSON.stringify({
+          accounts: [],
+          workspaces: [
+            { id: 'w1', name: 'Design workspace', folder: 'C:/Projects/Design' },
+            { id: 'w2', name: 'Code workspace', folder: 'C:/Projects/Code' },
+          ],
+          sessions: [
+            {
+              id: 's',
+              title: 'Linked conversation',
+              status: 'idle',
+              pinned: false,
+              workspace: 'C:/Original',
+              workspaceId: null,
+              updatedAt: 1,
+            },
+          ],
+        }),
+      ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /Linked conversation/ }).click();
+  await page.getByRole('combobox', { name: 'Workspace', exact: true }).selectOption('w2');
+  await expect(page.locator('.workspace-name')).toHaveText('Code workspace');
+  await expect(page.getByRole('button', { name: 'Choose conversation folder' })).toHaveAttribute(
+    'title',
+    'C:/Projects/Code',
+  );
+  await page.reload();
+  await page.getByRole('button', { name: /Linked conversation/ }).click();
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveValue('w2');
+  await expect(page.getByRole('button', { name: 'Choose conversation folder' })).toHaveAttribute(
+    'title',
+    'C:/Projects/Code',
+  );
+});
+
+test('accounts can be renamed from Settings without changing identity', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({ accounts: [{ id: 'g', name: 'Before', provider: 'gpt' }], sessions: [] }),
+    ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Rename Before' }).click();
+  await page.getByRole('textbox', { name: 'Account name' }).fill('After');
+  await page.getByRole('button', { name: 'Save account name' }).click();
+  await expect(page.getByRole('button', { name: 'Remove After' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'GPT', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Account', exact: true })).toHaveValue('g');
+  await expect(
+    page
+      .getByRole('combobox', { name: 'Account', exact: true })
+      .getByRole('option', { name: 'After' }),
+  ).toHaveCount(1);
 });
 
 test('settings, theme and support information persist across reloads', async ({ page }) => {

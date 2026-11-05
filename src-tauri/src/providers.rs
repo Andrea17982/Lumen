@@ -149,7 +149,7 @@ pub struct Invocation<'a> {
     pub prompt: &'a str,
     pub model: Option<&'a str>,
     pub effort: &'a str,
-    pub write: bool,
+    pub access: AccessMode,
 }
 pub async fn execute(
     input: Invocation<'_>,
@@ -159,61 +159,104 @@ pub async fn execute(
     let p = &input.account.provider;
     let mut c = command(p)?;
     isolate(&mut c, p, input.config);
-    c.current_dir(input.workspace)
+    // Windows batch launchers reject verbatim UNC-style drive prefixes as their cwd.
+    let workspace = dunce::canonicalize(input.workspace)
+        .map_err(|_| "The conversation folder is no longer available")?;
+    c.current_dir(workspace)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    c.args(invocation_args(p, input.access, input.model, input.effort));
+    run_command(c, input.prompt, p, cancel, emit).await
+}
+
+/// Permission profiles are mapped to explicit official CLI flags, never inferred from prompt text.
+pub fn invocation_args(
+    p: &Provider,
+    access: AccessMode,
+    model: Option<&str>,
+    effort: &str,
+) -> Vec<String> {
+    let mut args: Vec<String> = match p {
+        Provider::Gpt => vec![
+            "exec",
+            "--json",
+            "--color",
+            "never",
+            "--skip-git-repo-check",
+        ],
+        Provider::Claude => vec![
+            "--print",
+            "--verbose",
+            "--output-format",
+            "stream-json",
+            "--include-partial-messages",
+        ],
+    }
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
     match p {
         Provider::Gpt => {
-            c.args([
-                "exec",
-                "--json",
-                "--color",
-                "never",
-                "--skip-git-repo-check",
-                "--sandbox",
-                if input.write {
-                    "workspace-write"
-                } else {
-                    "read-only"
-                },
-                "-c",
-                "approval_policy=\"never\"",
-                "-c",
-                &format!("model_reasoning_effort=\"{}\"", input.effort),
-            ]);
-            if let Some(m) = input.model {
-                c.args(["--model", m]);
+            if access == AccessMode::Autopilot {
+                args.push("--dangerously-bypass-approvals-and-sandbox".into());
+            } else {
+                args.extend(
+                    [
+                        "--sandbox",
+                        if access == AccessMode::FileEdits {
+                            "workspace-write"
+                        } else {
+                            "read-only"
+                        },
+                        "-c",
+                        r#"approval_policy="never""#,
+                    ]
+                    .map(str::to_owned),
+                );
             }
-            c.arg("-");
+            if !effort.is_empty() {
+                args.extend(["-c".into(), format!(r#"model_reasoning_effort="{effort}""#)]);
+            }
         }
         Provider::Claude => {
-            c.args([
-                "--print",
-                "--verbose",
-                "--output-format",
-                "stream-json",
-                "--include-partial-messages",
-                "--effort",
-                input.effort,
-                "--permission-mode",
-                "dontAsk",
-                "--strict-mcp-config",
-                "--restricted",
-            ]);
-            let tools = if input.write {
-                "Read,Glob,Grep,Edit,Write"
+            if access == AccessMode::Autopilot {
+                args.extend(
+                    ["--dangerously-skip-permissions", "--tools", "default"].map(str::to_owned),
+                );
             } else {
-                "Read,Glob,Grep"
-            };
-            c.args(["--tools", tools, "--allowedTools", tools]);
-            if let Some(m) = input.model {
-                c.args(["--model", m]);
+                let tools = if access == AccessMode::FileEdits {
+                    "Read,Glob,Grep,Edit,Write"
+                } else {
+                    "Read,Glob,Grep"
+                };
+                args.extend(
+                    [
+                        "--permission-mode",
+                        "dontAsk",
+                        "--strict-mcp-config",
+                        "--restricted",
+                        "--tools",
+                        tools,
+                        "--allowedTools",
+                        tools,
+                    ]
+                    .map(str::to_owned),
+                );
+            }
+            if !effort.is_empty() {
+                args.extend(["--effort".into(), effort.into()]);
             }
         }
     }
-    run_command(c, input.prompt, p, cancel, emit).await
+    if let Some(m) = model {
+        args.extend(["--model".into(), m.into()]);
+    }
+    if *p == Provider::Gpt {
+        args.push("-".into());
+    }
+    args
 }
 
 async fn run_command(
@@ -298,6 +341,32 @@ async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn access_profiles_use_official_flags() {
+        let auto = invocation_args(&Provider::Gpt, AccessMode::Autopilot, None, "");
+        assert!(auto
+            .iter()
+            .any(|a| a == "--dangerously-bypass-approvals-and-sandbox"));
+        assert!(!auto.iter().any(|a| a == "--sandbox"));
+        assert!(!auto.iter().any(|a| a.contains("model_reasoning_effort")));
+        let claude = invocation_args(
+            &Provider::Claude,
+            AccessMode::Autopilot,
+            Some("opus"),
+            "max",
+        );
+        assert!(claude.iter().any(|a| a == "--dangerously-skip-permissions"));
+        assert!(!claude
+            .iter()
+            .any(|a| a == "--restricted" || a == "--strict-mcp-config"));
+        assert!(claude.iter().any(|a| a == "max"));
+        for p in [Provider::Claude, Provider::Gpt] {
+            for access in [AccessMode::ReadOnly, AccessMode::FileEdits] {
+                let args = invocation_args(&p, access, None, "");
+                assert!(!args.iter().any(|a| a.starts_with("--dangerously")));
+            }
+        }
+    }
     #[test]
     fn protocol_fixtures() {
         let a = normalize(

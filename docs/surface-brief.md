@@ -15,3 +15,7 @@ FIRST VIEWPORT: A 256px sidebar contains identity, new chat, search, sessions an
 FORM: Brief-pinned Liquid Glass workspace. seed:8a2ab7494a4ebe81. App screens are code-led. Standard navigation and controls preserve product clarity over decorative challenger forms.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## 0.2 scoped refinement
+
+User-directed cleanup removes ALPHA, promotional footer, local privacy tagline and model tagline from the shell. Composer adds named workspace plus per-conversation folder beside provider; compact layouts group them on a second row while send stays beside permissions. Account rename/manage actions and official catalog-based model/reasoning selects replace free text. Permissions become Read only/File edits on/Autopilot, with amber for explicit full CLI access. No new visual world. Authorship remains in About and repository documentation.

@@ -43,3 +43,7 @@ Keep acceptance evidence redacted and distinguish it from fixtures. This task do
 GitHub Actions runs frontend checks, UI tests and Windows Rust checks on pushes/PRs. Tags beginning with `v` run the installer build and attach the installer plus SHA-256 checksum to a GitHub release. CI never contains real provider credentials. Releases are marked prerelease for alpha tags; code signing remains future work. Local first-release assets can also be uploaded using `gh release create` after the same checks pass.
 
 Before publishing, inspect the exact staged file list and scan for credentials, application databases and CLI homes. Screenshots must show the actual implementation and must not contain private account data. The donation address is intentionally public per the project owner's request.
+
+## 0.2 checks
+
+Official metadata discovery is tested with fixture implementations of the Codex JSON-RPC initialization/model-list protocol and Claude initialization control response. The native harness verifies workspace-folder binding and the actual working directory inside its CLI fixture (including paths containing spaces), model-specific effort choices, both account rename entry points, and an offline Autopilot turn. Rust tests additionally cover legacy database upgrade and explicit permission-profile flag mapping. Short-lived official CLI probes confirmed that both real installed CLIs return model/effort metadata from fresh temporary profiles without submitting a turn. These probes establish protocol compatibility, not account entitlements or paid inference.

@@ -16,7 +16,7 @@ Install the Windows x64 alpha from [Releases](https://github.com/Andrea17982/Lum
 6. Return to the conversation and type a request. Auto is selected. A first-message title is generated locally.
 7. Expand activity to inspect exposed reasoning summaries, tools, edits, planning or errors.
 
-Read only is selected for each app launch. Enabling File edits on allows the provider's configured file tools or workspace-write sandbox. The setting applies to subsequent turns; it does not change an in-flight process. Workers used for review and parallel analysis are read-only. Multi-stage requests can consume several inference calls.
+Read only is selected for each app launch. Enabling File edits on allows the provider's configured file tools or workspace-write sandbox. The Permissions selector also offers Autopilot, which disables CLI restrictions/approval prompts and enables available tools under your OS account. The setting applies to subsequent turns; it does not change an in-flight process. Workers used for review and parallel analysis are read-only. Multi-stage requests can consume several inference calls.
 
 ## Everyday controls
 
@@ -31,7 +31,7 @@ Read only is selected for each app launch. Enabling File edits on allows the pro
 | Manual model/account/effort | Select Claude or GPT, then expand the chevron |
 | Close settings / mobile sidebar | Escape |
 
-Each conversation keeps its original workspace. Selecting a different default folder in Settings affects new conversations. The default folder and appearance live in webview local storage; messages and account metadata live in SQLite.
+Use Workspace and the adjacent folder picker beside the AI selector to bind the selected conversation to a named workspace and a specific working folder. Folder changes are disabled while the conversation has an active/queued turn. Legacy conversations retain their folder after migration. The default folder and appearance live in webview local storage; messages and account metadata live in SQLite.
 
 ## Recovery
 
@@ -39,7 +39,7 @@ Each conversation keeps its original workspace. Selecting a different default fo
 - **Not signed in:** use Sign in for that exact account slot, then check connection. Your pre-existing terminal login is intentionally not imported.
 - **Model not available:** clear a manually set model to use the provider default, or choose a model your account can access. Auto's Claude aliases require matching plan access.
 - **Quota / rate limit:** wait or change provider manually. Lumen does not rotate accounts to evade limits.
-- **Tool denied:** read-only and provider permissions may deny tools. Enable file edits only when appropriate. Shell execution is not enabled for Claude in this alpha.
+- **Tool denied:** read-only and provider permissions may deny tools. Enable file edits only when appropriate. Claude shell tools are enabled only with Autopilot.
 - **Stuck work:** stop the turn. If you restart after a crash, previously running/waiting sessions become interrupted. Partial text is checkpointed roughly every 750ms when events arrive; the latest chunk may be lost.
 - **Linux login:** see [Accounts](accounts.md); the automatic terminal launcher currently targets Windows.
 

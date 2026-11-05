@@ -30,9 +30,12 @@ import {
   Pencil,
   Circle,
 } from 'lucide-react';
+import ProviderOptions, { AccountRename } from './ProviderOptions';
 import { applyEvent, call, desktop, external, subscribe } from './bridge';
 import type {
   Account,
+  AccessMode,
+  Workspace,
   Diagnostics,
   Message,
   Mode,
@@ -74,8 +77,14 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('auto');
   const [accountId, setAccountId] = useState('');
   const [model, setModel] = useState('');
-  const [effort, setEffort] = useState('medium');
-  const [writeAccess, setWriteAccess] = useState(false);
+  const [effort, setEffort] = useState('');
+  const [accessMode, setAccessMode] = useState<AccessMode>('read-only');
+  const [catalogReady, setCatalogReady] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState(
+    () => localStorage.getItem('lumen-workspace-id') || '',
+  );
+  const [folderBusy, setFolderBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [settings, setSettings] = useState(false);
   const [sidebar, setSidebar] = useState(false);
@@ -103,6 +112,13 @@ export default function App() {
   if (session) activeSession.current = session;
   const running = active(session?.status) || busy;
   const currentWorkspace = session?.workspace || workspace;
+  const currentWorkspaceId = session ? session.workspaceId || '' : workspaceId;
+  const namedWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
+  useEffect(() => {
+    void call<Workspace[]>('list_workspaces')
+      .then(setWorkspaces)
+      .catch((e) => setError(errorText(e)));
+  }, []);
   useEffect(() => {
     if (!settings) return;
     setSidebar(false);
@@ -251,26 +267,68 @@ export default function App() {
     return () => window.removeEventListener('keydown', fn);
   }, [settings]);
 
-  async function chooseFolder() {
-    if (!desktop) {
-      setWorkspace('Browser preview');
-      return 'Browser preview';
-    }
+  async function pickFolder() {
+    if (!desktop) return 'Browser preview';
     const { open } = await import('@tauri-apps/plugin-dialog');
     const path = await open({
       directory: true,
       multiple: false,
-      title: 'Choose a trusted workspace',
+      title: 'Choose conversation folder',
+      defaultPath: currentWorkspace || undefined,
     });
-    if (typeof path === 'string') {
-      setWorkspace(path);
-      localStorage.setItem('lumen-workspace', path);
-      return path;
+    return typeof path === 'string' ? path : null;
+  }
+  async function bindFolder(folder: string, wid: string) {
+    if (session) {
+      const updated = await call<Session>('set_session_workspace', {
+        id: session.id,
+        workspaceId: wid || null,
+        folder,
+      });
+      activeSession.current = updated;
+      setSessions((list) => list.map((s) => (s.id === updated.id ? updated : s)));
     }
-    return null;
+    setWorkspace(folder);
+    setWorkspaceId(wid);
+    localStorage.setItem('lumen-workspace', folder);
+    localStorage.setItem('lumen-workspace-id', wid);
+  }
+  async function chooseFolder() {
+    setFolderBusy(true);
+    try {
+      const folder = await pickFolder();
+      if (folder) await bindFolder(folder, currentWorkspaceId);
+      return folder;
+    } finally {
+      setFolderBusy(false);
+    }
+  }
+  async function chooseWorkspace(id: string) {
+    setFolderBusy(true);
+    try {
+      let target = workspaces.find((w) => w.id === id);
+      if (id === '__add') {
+        const folder = await pickFolder();
+        if (!folder) return;
+        target = await call<Workspace>('add_workspace', {
+          name: folder.split(/[\\/]/).filter(Boolean).at(-1) || 'Workspace',
+          folder,
+        });
+        setWorkspaces(await call<Workspace[]>('list_workspaces'));
+      }
+      if (target) await bindFolder(target.folder, target.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setFolderBusy(false);
+    }
   }
   async function send() {
-    if (!draft.trim() || running) return;
+    if (!draft.trim() || running || folderBusy) return;
+    if (mode !== 'auto' && !catalogReady) {
+      setError('Load the official model catalog before sending.');
+      return;
+    }
     setError('');
     if (!desktop) {
       setError(
@@ -289,6 +347,8 @@ export default function App() {
         const folder = workspace || (await chooseFolder());
         if (!folder) return;
         s = await call<Session>('create_session', { workspace: folder });
+        if (workspaceId)
+          s = await call<Session>('set_session_workspace', { id: s.id, workspaceId, folder });
         setSessions((list) => [s!, ...list]);
         setSelected(s.id);
       }
@@ -301,7 +361,7 @@ export default function App() {
           accountId: mode !== 'auto' && accountId ? accountId : null,
           model: model || null,
           effort,
-          writeAccess,
+          accessMode,
         },
       });
       setDraft('');
@@ -369,7 +429,6 @@ export default function App() {
         <div className="brand">
           <Mark small />
           <span>Lumen</span>
-          <span className="alpha">ALPHA</span>
         </div>
         <button className="new-chat" onClick={newChat}>
           <Plus size={17} />
@@ -423,10 +482,6 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-note">
-            <ShieldCheck size={14} />
-            <span>On your computer. In your control.</span>
-          </div>
           <button className="settings-button" onClick={() => setSettings(true)}>
             <span className="avatar">A</span>
             <span>
@@ -452,9 +507,10 @@ export default function App() {
             </button>
             <span className="workspace-name">
               <Folder size={15} />
-              {currentWorkspace
-                ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1)
-                : 'Personal workspace'}
+              {namedWorkspace?.name ||
+                (currentWorkspace
+                  ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1)
+                  : 'Personal workspace')}
             </span>
             <span className="topbar-divider" />
             <span className="conversation-label">{session?.title || 'New conversation'}</span>
@@ -711,48 +767,23 @@ export default function App() {
               }}
               maxLength={100000}
             />
-            {advanced && mode !== 'auto' && (
-              <div className="advanced-controls">
-                <label>
-                  Account
-                  <select
-                    aria-label="Account"
-                    value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
-                  >
-                    <option value="">First {nameOf(mode)} account</option>
-                    {accounts
-                      .filter((a) => a.provider === mode)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label>
-                  Model
-                  <input
-                    aria-label="Model"
-                    placeholder="Provider default"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    maxLength={100}
-                  />
-                </label>
-                <label>
-                  Reasoning
-                  <select
-                    aria-label="Reasoning effort"
-                    value={effort}
-                    onChange={(e) => setEffort(e.target.value)}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-              </div>
+            {mode !== 'auto' && (
+              <ProviderOptions
+                provider={mode}
+                visible={advanced}
+                accounts={accounts}
+                accountId={accountId}
+                setAccountId={setAccountId}
+                model={model}
+                setModel={setModel}
+                effort={effort}
+                setEffort={setEffort}
+                manage={() => setSettings(true)}
+                refreshAccounts={loadAccounts}
+                onError={setError}
+                onReady={setCatalogReady}
+                paused={settings}
+              />
             )}
             <div className="composer-toolbar">
               <div className="mode-control" role="group" aria-label="AI provider">
@@ -765,6 +796,9 @@ export default function App() {
                       setMode(p);
                       setAccountId('');
                       setModel('');
+                      setEffort('');
+                      setCatalogReady(false);
+                      setAdvanced(p !== 'auto');
                     }}
                   >
                     {p === 'auto' && <Sparkles size={13} />}
@@ -782,20 +816,64 @@ export default function App() {
                   <ChevronDown size={15} />
                 </button>
               )}
+              <div className="workspace-controls">
+                <select
+                  aria-label="Workspace"
+                  title={namedWorkspace?.name || 'Choose workspace'}
+                  value={currentWorkspaceId}
+                  disabled={running || folderBusy}
+                  onChange={(e) => void chooseWorkspace(e.target.value)}
+                >
+                  <option value="" disabled>
+                    Workspace
+                  </option>
+                  {workspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                  <option value="__add">Add workspace…</option>
+                </select>
+                <button
+                  className="folder-control"
+                  aria-label="Choose conversation folder"
+                  title={currentWorkspace || 'Choose conversation folder'}
+                  disabled={running || folderBusy}
+                  onClick={() => void chooseFolder().catch((e) => setError(errorText(e)))}
+                >
+                  <Folder size={14} />
+                  <span>
+                    {currentWorkspace
+                      ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1)
+                      : 'Choose folder'}
+                  </span>
+                </button>
+              </div>
               <div className="composer-spacer" />
-              <button
-                className={`access-control ${writeAccess ? 'enabled' : ''}`}
-                aria-pressed={writeAccess}
-                onClick={() => setWriteAccess(!writeAccess)}
-                title="Enable file edits only in a trusted workspace"
-              >
+              <div className={`access-control ${accessMode === 'autopilot' ? 'autopilot' : ''}`}>
                 <ShieldCheck size={13} />
-                <span>{writeAccess ? 'File edits on' : 'Read only'}</span>
-              </button>
+                <select
+                  aria-label="Permissions"
+                  value={accessMode}
+                  title={
+                    accessMode === 'autopilot'
+                      ? 'Full access: commands, network, files and configured automation tools. No CLI approval prompts.'
+                      : 'Conversation permissions'
+                  }
+                  onChange={(e) => setAccessMode(e.target.value as AccessMode)}
+                >
+                  <option value="read-only">Read only</option>
+                  <option value="file-edits">File edits on</option>
+                  <option value="autopilot">Autopilot</option>
+                </select>
+              </div>
               <button
                 className="send-button"
                 aria-label={running ? 'Stop response' : 'Send message'}
-                disabled={!running && !draft.trim()}
+                disabled={
+                  !running &&
+                  (!draft.trim() || folderBusy || (desktop && mode !== 'auto' && !catalogReady))
+                }
                 onClick={() => {
                   if (running && selected)
                     void call('cancel_run', { id: selected }).catch((e) => setError(errorText(e)));
@@ -808,23 +886,10 @@ export default function App() {
           </div>
           <div className="composer-caption">
             <span>
-              {mode === 'auto'
-                ? 'The right model, thoughtfully chosen.'
-                : `${nameOf(mode)} · Your account. Your conversation.`}
-            </span>
-            <span>
               Enter to send <span className="caption-dot">·</span> Shift Enter for a new line
             </span>
           </div>
         </div>
-        <footer className="workspace-footer">
-          <span>
-            <span className="footer-dot" />A quieter kind of intelligence.
-          </span>
-          <button onClick={() => void external(REPO).catch((e) => setError(errorText(e)))}>
-            Completely AI Written <ArrowUpRight size={11} />
-          </button>
-        </footer>
       </main>
 
       <AnimatePresence>
@@ -872,7 +937,12 @@ export default function App() {
               at home.
             </h2>
             <p className="settings-intro">Your accounts. A little less friction.</p>
-            <AccountSettings accounts={accounts} refresh={loadAccounts} onError={setError} />
+            <AccountSettings
+              accounts={accounts}
+              refresh={loadAccounts}
+              onError={setError}
+              initialProvider={mode === 'auto' ? 'claude' : mode}
+            />
             <section className="settings-section">
               <h3>Appearance</h3>
               <div className="theme-switch" role="group" aria-label="Theme">
@@ -894,8 +964,8 @@ export default function App() {
               </div>
             </section>
             <section className="settings-section">
-              <h3>Workspace folder</h3>
-              <p>New conversations start here. Choose a folder you trust.</p>
+              <h3>Conversation folder</h3>
+              <p>Linked to this conversation. New conversations use your last selection.</p>
               <button
                 className="folder-button"
                 onClick={() => void chooseFolder().catch((e) => setError(errorText(e)))}
@@ -932,7 +1002,7 @@ export default function App() {
               </button>
               <small>Optional donations · No features behind a paywall.</small>
             </section>
-            <div className="version">Lumen 0.1.0 · Open source · MIT</div>
+            <div className="version">Lumen 0.2.0 · Open source · MIT</div>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -944,13 +1014,16 @@ function AccountSettings({
   accounts,
   refresh,
   onError,
+  initialProvider,
 }: {
   accounts: Account[];
+  initialProvider: Provider;
   refresh: () => Promise<void>;
   onError: (text: string) => void;
 }) {
   const [name, setName] = useState('');
-  const [provider, setProvider] = useState<Provider>('claude');
+  const [provider, setProvider] = useState<Provider>(initialProvider);
+  const [editing, setEditing] = useState('');
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [adding, setAdding] = useState(false);
@@ -1031,6 +1104,24 @@ function AccountSettings({
           >
             <ShieldCheck size={15} />
           </button>
+          <button
+            className="icon-button"
+            disabled={pending}
+            aria-label={`Rename ${a.name}`}
+            onClick={() => setEditing(editing === a.id ? '' : a.id)}
+          >
+            <Pencil size={14} />
+          </button>
+          {editing === a.id && (
+            <AccountRename
+              account={a}
+              onError={onError}
+              done={async () => {
+                await refresh();
+                setEditing('');
+              }}
+            />
+          )}
           <button
             className="icon-button"
             disabled={pending}

@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.1.0"
+version = "0.2.0"
 description = "A quiet desktop workspace for Claude Code and Codex"
 authors = ["Andrea17982"]
 edition = "2021"
@@ -24,6 +24,7 @@ tokio = { version = "1", features = ["process", "io-util", "sync", "time", "rt-m
 rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 which = "8"
+dunce = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

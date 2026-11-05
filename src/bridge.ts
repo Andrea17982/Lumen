@@ -1,10 +1,10 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Account, Message, RunEvent, Session } from './types';
+import type { Account, Message, RunEvent, Session, Workspace } from './types';
 
 export const desktop = isTauri();
 const key = 'lumen-preview-v1';
-function read(): { sessions: Session[]; accounts: Account[] } {
+function read(): { sessions: Session[]; accounts: Account[]; workspaces?: Workspace[] } {
   try {
     return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
   } catch {
@@ -17,6 +17,32 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
   const data = read();
   let result: unknown;
   switch (command) {
+    case 'list_workspaces':
+      result = data.workspaces || [];
+      break;
+    case 'add_workspace': {
+      const workspace: Workspace = {
+        id: crypto.randomUUID(),
+        name: String(args.name),
+        folder: String(args.folder),
+      };
+      data.workspaces = [...(data.workspaces || []), workspace];
+      result = workspace;
+      break;
+    }
+    case 'set_session_workspace':
+      data.sessions = data.sessions.map((s) =>
+        s.id === args.id
+          ? { ...s, workspace: String(args.folder), workspaceId: args.workspaceId as string | null }
+          : s,
+      );
+      result = data.sessions.find((s) => s.id === args.id);
+      break;
+    case 'rename_account':
+      data.accounts = data.accounts.map((a) =>
+        a.id === args.id ? { ...a, name: String(args.name) } : a,
+      );
+      break;
     case 'list_sessions':
       result = data.sessions
         .filter((s) => s.title.toLowerCase().includes(String(args.search || '').toLowerCase()))

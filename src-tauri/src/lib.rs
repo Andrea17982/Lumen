@@ -1,3 +1,4 @@
+mod catalog;
 mod models;
 mod providers;
 mod router;
@@ -17,6 +18,94 @@ pub struct Core {
     jobs: Mutex<HashMap<String, watch::Sender<bool>>>,
     slots: Arc<Semaphore>,
     workspace_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    catalogs: Mutex<HashMap<String, (std::time::Instant, Vec<ModelInfo>)>>,
+}
+async fn models_for(
+    core: &Core,
+    a: &Account,
+    refresh: bool,
+    cancel: Option<watch::Receiver<bool>>,
+) -> Result<Vec<ModelInfo>, String> {
+    if !refresh {
+        if let Some((at, models)) = core
+            .catalogs
+            .lock()
+            .map_err(|_| "Catalog lock failed")?
+            .get(&a.id)
+        {
+            if at.elapsed().as_secs() < 300 {
+                return Ok(models.clone());
+            }
+        }
+    }
+    let models = catalog::discover(a, &config_dir(core, a), cancel).await?;
+    core.catalogs
+        .lock()
+        .map_err(|_| "Catalog lock failed")?
+        .insert(a.id.clone(), (std::time::Instant::now(), models.clone()));
+    Ok(models)
+}
+#[tauri::command]
+async fn list_models(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+    refresh: Option<bool>,
+) -> Result<Vec<ModelInfo>, String> {
+    let a = account(&core, &id)?;
+    models_for(&core, &a, refresh.unwrap_or(false), None).await
+}
+#[tauri::command]
+fn list_workspaces(core: tauri::State<Arc<Core>>) -> Result<Vec<Workspace>, String> {
+    core.store.workspaces()
+}
+#[tauri::command]
+fn add_workspace(
+    core: tauri::State<Arc<Core>>,
+    name: String,
+    folder: String,
+) -> Result<Workspace, String> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 100 {
+        return Err("Choose a workspace name of 1–100 characters".into());
+    }
+    let path = dunce::canonicalize(folder).map_err(|_| "Choose an existing folder")?;
+    if !path.is_dir() {
+        return Err("Choose a folder".into());
+    }
+    core.store
+        .add_workspace(name.into(), path.to_string_lossy().into())
+}
+#[tauri::command]
+fn set_session_workspace(
+    core: tauri::State<Arc<Core>>,
+    id: String,
+    workspace_id: Option<String>,
+    folder: String,
+) -> Result<Session, String> {
+    let jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+    if jobs.contains_key(&id) {
+        return Err("Stop this conversation before changing its folder".into());
+    }
+    let path = dunce::canonicalize(folder).map_err(|_| "Choose an existing folder")?;
+    if !path.is_dir() {
+        return Err("Choose a folder".into());
+    }
+    if let Some(wid) = &workspace_id {
+        if !core.store.workspaces()?.iter().any(|w| w.id == *wid) {
+            return Err("Workspace not found".into());
+        }
+    }
+    core.store
+        .bind_workspace(&id, workspace_id.as_deref(), &path.to_string_lossy())
+}
+#[tauri::command]
+fn rename_account(core: tauri::State<Arc<Core>>, id: String, name: String) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 80 {
+        return Err("Use an account name of 1–80 characters".into());
+    }
+    account(&core, &id)?;
+    core.store.rename_account(&id, name)
 }
 fn account(core: &Core, id: &str) -> Result<Account, String> {
     core.store
@@ -50,8 +139,7 @@ fn list_sessions(
 }
 #[tauri::command]
 fn create_session(core: tauri::State<Arc<Core>>, workspace: String) -> Result<Session, String> {
-    let path =
-        std::fs::canonicalize(workspace).map_err(|_| "Choose an existing workspace folder")?;
+    let path = dunce::canonicalize(workspace).map_err(|_| "Choose an existing workspace folder")?;
     if !path.is_dir() {
         return Err("Workspace must be a folder".into());
     }
@@ -164,6 +252,10 @@ async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result
 #[tauri::command]
 fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String> {
     let a = account(&core, &id)?;
+    core.catalogs
+        .lock()
+        .map_err(|_| "Catalog lock failed")?
+        .remove(&id);
     let exe = providers::executable(&a.provider)?;
     let dir = config_dir(&core, &a);
     #[cfg(windows)]
@@ -241,6 +333,11 @@ async fn send_message(
     }
     let mut session = core.store.session(&id)?;
     let plan = router::route(&text, &options, &core.store.accounts()?)?;
+    if options.mode != "auto" {
+        let a = account(&core, &plan.account_id)?;
+        let models = models_for(&core, &a, false, None).await?;
+        catalog::validate(&models, plan.model.as_deref(), &plan.effort)?;
+    }
     let (tx, rx) = watch::channel(false);
     {
         let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
@@ -351,22 +448,48 @@ async fn stage(
     prompt: &str,
     model: Option<&str>,
     effort: &str,
-    write: bool,
+    access: AccessMode,
     cancel: watch::Receiver<bool>,
     visible: bool,
 ) -> Result<String, String> {
     let config = config_dir(core, a);
     let workspace = PathBuf::from(&s.workspace);
     let mut checkpoint = std::time::Instant::now();
+    let models = models_for(core, a, false, Some(cancel.clone())).await?;
+    let selected = model
+        .and_then(|id| models.iter().find(|m| m.id == id))
+        .or_else(|| models.iter().find(|m| m.is_default))
+        .or_else(|| models.first())
+        .ok_or("No provider model available")?;
+    let resolved_effort = if selected.efforts.iter().any(|e| e == effort) {
+        effort
+    } else {
+        selected.default_effort.as_str()
+    };
+    let resolved = Activity {
+        kind: "model".into(),
+        text: format!(
+            "{} · {} · {}",
+            a.provider.binary(),
+            selected.name,
+            if resolved_effort.is_empty() {
+                "provider default reasoning"
+            } else {
+                resolved_effort
+            }
+        ),
+    };
+    event(app, &s.id, &out.id, &resolved.kind, &resolved.text);
+    out.activity.push(resolved);
     providers::execute(
         providers::Invocation {
             account: a,
             config: &config,
             workspace: &workspace,
             prompt,
-            model,
-            effort,
-            write,
+            model: Some(&selected.id),
+            effort: resolved_effort,
+            access,
         },
         cancel,
         |activity| {
@@ -412,17 +535,21 @@ async fn run_plan(
             .workspace_locks
             .lock()
             .map_err(|_| "Workspace lock failed")?;
+        let canonical = dunce::canonicalize(&s.workspace)
+            .map_err(|_| "The conversation folder is no longer available")?
+            .to_string_lossy()
+            .into_owned();
         let key = if cfg!(windows) {
-            s.workspace.to_lowercase()
+            canonical.to_lowercase()
         } else {
-            s.workspace.clone()
+            canonical
         };
         locks
             .entry(key)
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
             .clone()
     };
-    let _guard = if options.write_access {
+    let _guard = if options.access() != AccessMode::ReadOnly {
         Some(
             tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),g=lock.lock()=>g},
         )
@@ -445,7 +572,8 @@ async fn run_plan(
         .chars()
         .rev()
         .collect();
-    let prompt=format!("You are working in Lumen. Prior conversation follows as context. Respond to the final user request. {}\n\n{}",if options.write_access{"File edits are enabled in the chosen workspace."}else{"Read-only turn. Do not modify files."},context);
+    let permission=match options.access(){AccessMode::ReadOnly=>"Read-only turn. Do not modify files.",AccessMode::FileEdits=>"File edits are enabled in the chosen workspace.",AccessMode::Autopilot=>"Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Work autonomously on the requested task."};
+    let prompt=format!("You are working in Lumen. Prior conversation follows as context. Respond to the final user request. {permission}\n\n{context}");
     let primary = if plan.strategy == "parallel" {
         let partner = account(
             core,
@@ -467,7 +595,7 @@ async fn run_plan(
                 &prompt,
                 plan.model.as_deref(),
                 &plan.effort,
-                false,
+                AccessMode::ReadOnly,
                 cancel.clone(),
                 false
             ),
@@ -480,7 +608,7 @@ async fn run_plan(
                 &prompt,
                 None,
                 "high",
-                false,
+                AccessMode::ReadOnly,
                 cancel.clone(),
                 false
             )
@@ -503,7 +631,7 @@ async fn run_plan(
             &prompt,
             plan.model.as_deref(),
             &plan.effort,
-            options.write_access,
+            options.access(),
             cancel.clone(),
             true,
         )
@@ -532,7 +660,7 @@ async fn run_plan(
             &review_prompt,
             None,
             "high",
-            false,
+            AccessMode::ReadOnly,
             cancel.clone(),
             false,
         )
@@ -557,7 +685,7 @@ async fn run_plan(
         &primary,
         plan.model.as_deref(),
         &plan.effort,
-        options.write_access,
+        options.access(),
         cancel,
         true,
     )
@@ -614,6 +742,7 @@ pub fn run() {
                 jobs: Mutex::new(HashMap::new()),
                 slots: Arc::new(Semaphore::new(4)),
                 workspace_locks: Mutex::new(HashMap::new()),
+                catalogs: Mutex::new(HashMap::new()),
             }));
             Ok(())
         })
@@ -630,7 +759,12 @@ pub fn run() {
             account_status,
             login_account,
             send_message,
-            cancel_run
+            cancel_run,
+            list_models,
+            rename_account,
+            list_workspaces,
+            add_workspace,
+            set_session_workspace
         ])
         .build(tauri::generate_context!())
         .expect("Could not start Lumen")

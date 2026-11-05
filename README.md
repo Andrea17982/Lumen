@@ -11,11 +11,15 @@
 
 ![Lumen desktop interface](docs/images/desktop.png)
 
-Also see the [dark theme](docs/images/dark.png) and a [native chat capture using explicitly labeled offline fixtures](docs/images/chat-fixture.png).
+Also see the [model, workspace and permission controls](docs/images/provider-controls-fixture.png), [dark theme](docs/images/dark.png) and a [native chat capture using explicitly labeled offline fixtures](docs/images/chat-fixture.png).
 
 Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Write a request, keep working across sessions, and let **Auto** choose an execution plan. Optional controls expose the provider, account, model and reasoning effort when you need them.
 
-**Status: v0.1 alpha.** This is an initial, usable implementation with explicit boundaries. Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+**Status: v0.2 alpha.** This is an initial, usable implementation with explicit boundaries. Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+
+## New in 0.2
+
+A quieter interface with promotional footer labels removed; named workspaces and per-conversation folders beside the AI selector; account renaming in the composer and Settings; official CLI model/effort dropdowns; and an explicit Autopilot permission mode. See [workspace, models and permissions](docs/workspace-models-permissions.md).
 
 ## Completely AI Written
 
@@ -28,12 +32,12 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 ## What works in this alpha
 
 - Persistent SQLite conversations, automatic first-message titles, rename, pin, search, deletion and paginated loading. No hard-coded conversation-count limit.
-- Independent concurrent sessions, with four active orchestration jobs and up to eight provider processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
+- Independent concurrent sessions, with four active orchestration jobs and up to eight inference processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
 - English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
 - Multiple named accounts with isolated `CLAUDE_CONFIG_DIR` / `CODEX_HOME` directories. Official CLI sign-in opens in a terminal. Lumen does not implement its own OAuth flow, inspect tokens, copy existing logins or proxy provider traffic.
 - **Auto** uses local, deterministic task heuristics to choose effort and a provider; complex tasks can use an independent reviewer, and comparison tasks can gather two perspectives in parallel before synthesizing.
-- Read-only by default. Optional file edits are scoped through provider controls. No automatic account rotation, rate-limit bypass or automatic shell-command approval.
+- Read-only by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider’s default tools and configured extensions under your OS account. No automatic account rotation or rate-limit bypass.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.
 
 ## Install and run
@@ -73,7 +77,7 @@ When both providers are configured, complex requests use writer → independent 
 
 - Live paid inference, multi-account OAuth identity isolation and real provider file-edit behavior require user-driven acceptance testing. Local builds, mocked protocols or UI previews do not prove these flows.
 - Conversation context is replayed to the CLI on each turn, capped at the most recent 100,000 characters. No native thread resume, semantic compaction, attachments, worktree management or permission-request UI yet.
-- Claude exposes only the file tools Lumen allows. Codex enforces its own sandbox; a provider refusing a tool reports a failure. Read-only is a provider permission mode, not an OS isolation boundary around Lumen. Use trusted workspaces.
+- Read-only and File edits restrict provider tools; **Autopilot deliberately removes those restrictions**. It permits shell/network/filesystem operations and configured computer-automation tools, but does not supply a GUI automation engine or override OS/UAC/provider policy. Read-only is a provider permission mode, not an independent OS isolation boundary.
 - Account-directory isolation is not proof that every CLI version uses no shared OS credential-store state. Verify with distinct test accounts before relying on it. Account removal deletes the local directory; remote token revocation remains the provider's responsibility.
 - Stored conversations and CLI-owned credentials are local and **not encrypted by Lumen**. No telemetry is implemented in Lumen; the CLIs have their own network and privacy behavior.
 - Instant startup and low memory are design targets, not published benchmark results. Inactive sessions do not keep an AI process alive.
@@ -85,6 +89,7 @@ When both providers are configured, complex requests use writer → independent 
 | [Getting started](docs/getting-started.md) | Setup, first conversation, shortcuts, recovery |
 | [Architecture](docs/architecture.md) | Rust modules, React components, storage, execution lifecycle |
 | [Accounts](docs/accounts.md) | Official authentication, isolation, provider requirements |
+| [Workspace, models & permissions](docs/workspace-models-permissions.md) | Conversation folders, account names, live CLI catalogs and Autopilot |
 | [Auto](docs/auto.md) | Routing rules, review, parallel workers, costs and boundaries |
 | [Design system](DESIGN.md) | Glass material, type, color, motion and accessibility |
 | [Roadmap](docs/roadmap.md) | MVP → v1 → v2 and requirement-by-requirement status |

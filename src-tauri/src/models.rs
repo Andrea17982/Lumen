@@ -36,6 +36,32 @@ pub struct Session {
     pub status: String,
     pub workspace: String,
     pub updated_at: i64,
+    pub workspace_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub folder: String,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AccessMode {
+    #[default]
+    ReadOnly,
+    FileEdits,
+    Autopilot,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub efforts: Vec<String>,
+    pub default_effort: String,
+    pub is_default: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,7 +84,19 @@ pub struct RunOptions {
     pub account_id: Option<String>,
     pub model: Option<String>,
     pub effort: String,
+    #[serde(default)]
     pub write_access: bool,
+    #[serde(default)]
+    pub access_mode: Option<AccessMode>,
+}
+impl RunOptions {
+    pub fn access(&self) -> AccessMode {
+        self.access_mode.unwrap_or(if self.write_access {
+            AccessMode::FileEdits
+        } else {
+            AccessMode::ReadOnly
+        })
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

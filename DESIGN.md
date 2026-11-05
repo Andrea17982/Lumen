@@ -31,6 +31,9 @@ colors:
   ok-dark: "#91cfa5"
   button-dark: "#c4d4e8"
   waiting: "#b5833e"
+  autopilot-light: "#956022"
+  autopilot-dark: "#e4b576"
+  autopilot-background: "rgba(174,123,48,.10)"
 typography:
   headline:
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif'
@@ -113,6 +116,16 @@ components:
     textColor: "{colors.muted-light}"
     rounded: "{rounded.segment}"
     padding: "6px 10px"
+  permission-autopilot:
+    textColor: "{colors.autopilot-light}"
+    backgroundColor: "{colors.autopilot-background}"
+    rounded: "{rounded.segment}"
+    padding: "6px"
+  permission-autopilot-dark:
+    textColor: "{colors.autopilot-dark}"
+    backgroundColor: "{colors.autopilot-background}"
+    rounded: "{rounded.segment}"
+    padding: "6px"
 ---
 
 # Design System: Lumen
@@ -130,7 +143,7 @@ Key characteristics:
 - Compact controls, subtle dividers, muted metadata, and visible focus.
 - Auto routing selected by default, with provider controls disclosed progressively.
 
-This document records `src/styles.css`, `src/App.tsx`, and `src/MessageBody.tsx`. Screenshots `docs/images/desktop.png` and `.impeccable/review/settings-dark.png` corroborate the light empty state and dark settings composition. They are browser captures; they do not establish native Windows, live-provider, high-contrast, or assistive-technology validation. Tokens above are extracted values, not a newly imposed scale. CSS remains the runtime source of truth.
+This document records `src/styles.css`, `src/App.tsx`, `src/ProviderOptions.tsx`, and `src/MessageBody.tsx`, with the 0.2 interaction contract in `docs/workspace-models-permissions.md`. Current captures in `.impeccable/review/` include `desktop.png`, `mobile.png`, `settings-dark.png`, and `native-provider-controls.png`. They corroborate the light desktop, dark narrow/settings composition, and native provider-controls fixture. The native fixture is offline; these captures do not establish live-provider inference, unrestricted computer operations, high-contrast, or assistive-technology validation. Tokens above are extracted values, not a newly imposed scale. CSS remains the runtime source of truth. This refresh changes only 0.2-related documentation and leaves unrelated existing token definitions intact.
 
 ## Colors
 
@@ -138,13 +151,15 @@ The palette is cool neutral with a restrained blue primary accent. Frontmatter s
 
 ### Primary
 
-`accent` is the blue used for selected access controls, leading suggestion icons, links, caret, running indicators, and focus outlines. `button` supplies the contrasting solid send and primary-action fill; its foreground is `surface`. Hovered primary actions use `accent`.
+`accent` is the blue used for leading suggestion icons, links, caret, running indicators, and focus outlines. `button` supplies the contrasting solid send and primary-action fill; its foreground is `surface`. Hovered primary actions use `accent`.
 
 ### Neutral
 
 `surface` is the reading canvas. `glass` is the sidebar material. `panel` is the almost opaque settings and popup material. `input` supports the composer and suggestion controls. `text` carries content; `muted` carries metadata and secondary labels. `line` is a low-contrast separator, while `faint` supports scrollbars and quotation rules. `hover` is a tonal interaction fill; `selected` lifts active navigation and segmented selections.
 
 `error`, `ok`, and the fixed amber `waiting` express status. Session status is also supplied as accessible text; errors have visible text. Theme-specific semantic colors should be used for new controls rather than copying a light value. The CSS also contains fixed decorative colors for the mark, provider avatars, scrim, and selection; those are implementation details rather than a second semantic palette.
+
+Autopilot uses its own amber foreground in each theme and a shared translucent amber background, recorded in the `autopilot-*` tokens. Read only and File edits on retain the muted permission-control treatment; File edits on does not use the former blue toggle emphasis. The visible mode label accompanies the color.
 
 Theme selection offers Light, Dark, and System. It persists locally, and System responds to the OS color-scheme media query.
 
@@ -155,14 +170,14 @@ The shared system stack resolves to Segoe UI Variable or Segoe UI on Windows. Th
 - **Welcome headline:** frontmatter `headline`; 46px at widths of at least 1500px, 37px at 1050px and below, 36px at 800px and below, 30px at 520px and below. Weight 450 preserves the quiet tone.
 - **Settings title:** frontmatter `title`; 30px, weight 450. Section titles are 13px/600; the about heading is 20px/1.3/450.
 - **Conversation body:** 14px/1.8, dropping to 13px at 520px and below. Composer text is 14px/1.6. Markdown headings use 24px, 20px, and 17px at weight 600.
-- **Controls:** chiefly 11–12px. Metadata ranges from 9–10px; ALPHA is 8px with 1px tracking. These intentionally compact desktop sizes are observed values, not evidence that all text meets enlarged-text accessibility needs.
+- **Controls:** chiefly 11-12px. Metadata and composer location/permission controls range from 9-10px. The ALPHA badge has been removed. These intentionally compact desktop sizes are observed values, not evidence that all text meets enlarged-text accessibility needs.
 - **Code:** Cascadia Code, Consolas, monospace; inline code is .9em, fenced blocks are 12px/1.7, activity diagnostics are 11px/1.6.
 
 Body line length is governed by a 760px conversation column rather than a character-count token. Long prose and diagnostics wrap; code blocks and tables scroll horizontally as needed.
 
 ## Layout
 
-The shell is a horizontal flex composition at `100dvh`, with a 480px minimum height and clipped outer overflow. The desktop sidebar is 256px wide with `27px 16px 15px` padding. The workspace owns its independently scrolling conversation; composer and footer remain below it. The header is 77px high with 30px horizontal padding.
+The shell is a horizontal flex composition at `100dvh`, with a 480px minimum height and clipped outer overflow. The desktop sidebar is 256px wide with `27px 16px 15px` padding. The workspace owns its independently scrolling conversation; the composer remains below it, with 24px bottom padding on its region (15px at 520px and below). The header is 77px high with 30px horizontal padding. Shell footer slogans, the AI-written corner link, the rail privacy tagline, and the model tagline have been removed. Authorship, thanks, and support remain in About.
 
 Messages and composer share a 760px maximum width and `calc(100% - 100px)` width. The welcome area is at most 750px wide and vertically centers with automatic margins. Its three suggestions form one row on wide layouts. The composer uses a 59px minimum textarea height, content-based sizing, and a 200px maximum height. Settings overlays the workspace from the right rather than reflowing the conversation.
 
@@ -171,9 +186,9 @@ Responsive states, in CSS cascade order:
 | Condition | Implemented changes |
 | --- | --- |
 | At least 1500px | Sidebar 280px; welcome headline 46px; more welcome bottom space; composer bottom margin 12px. |
-| At most 1050px | Sidebar 225px with 12px inline padding; reading/composer gutters total 55px; denser suggestions; shorter title allowance. |
+| At most 1050px | Sidebar 225px with 12px inline padding; reading/composer gutters total 55px; denser suggestions; shorter title allowance; new-conversation keyboard hint hides; workspace/folder controls move together to a full-width second toolbar row with an 8px top gap and fine divider, preserving provider, permissions, and send on the first row. |
 | At most 800px | Sidebar becomes a 256px sliding overlay with scrim and menu button; header 66px; gutters total 42px; settings 400px. |
-| At most 520px | Suggestions stack at 225px width; gutters total 28px; settings fills width; provider advanced fields stack; some secondary labels and caption hints hide; welcome mark hides; textarea minimum becomes 44px. |
+| At most 520px | Suggestions stack at 225px width; gutters total 28px; settings fills width; provider advanced fields stack; permission shield icon and keyboard caption hide while the permission dropdown remains; welcome mark hides; textarea minimum becomes 44px. |
 
 Spacing uses small 4–16px control gaps, around 22–30px section/frame separation, and larger welcome-state pauses. Exact role-specific values take priority over rounding every measurement to a uniform grid.
 
@@ -208,7 +223,15 @@ Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px p
 
 ### Composer and fields
 
-The composer is an opaque-looking input panel with a soft edge shadow, 17px radius, and toolbar beneath the textarea. Auto/Claude/GPT form a segmented control with `aria-pressed` states. Advanced options appear only for an explicitly selected provider. Read-only access is the default; file-edit access uses blue emphasis when enabled. The 31px circular send button becomes a stop action while a response runs. Enter sends, Shift+Enter adds a line, and IME composition is excluded from the send shortcut.
+The composer is an opaque-looking input panel with a soft edge shadow, 17px radius, and wrapping toolbar beneath the textarea. Auto/Claude/GPT form a segmented control with `aria-pressed` states. Selecting Claude or GPT opens the optional account/model/reasoning controls; the chevron can collapse them. The 31px circular send button becomes a stop action while a response runs. Enter sends, Shift+Enter adds a line, and IME composition is excluded from the send shortcut. Only the right-aligned keyboard hint remains below the composer.
+
+Workspace selection and the conversation folder button sit together immediately after the AI selector and its optional chevron. The workspace select uses 10px type, 5px/2px padding, and a 70–112px width range. The folder control uses a 14px icon, 10px type, 6px padding, and 6px corners; its label truncates at 95px on wide layouts and 170px in the grouped second row at 1050px and below. Tooltips expose the workspace name and full folder path. Named workspace association and conversation folder are separate; location controls disable while queued/running or changing a folder. A long label must not displace send onto the location row.
+
+Permissions is a native dropdown with Read only, File edits on, and Autopilot. Read only is the startup default. Autopilot receives the amber semantic treatment and a tooltip describing available CLI access without approval prompts. This expresses provider permission configuration, not a built-in graphical computer-control engine, administrator privileges, or a guarantee that a provider has a specific tool. Subsequent writer/synthesis turns use the chosen permission mode; review and parallel-analysis workers remain read-only, as described in the 0.2 interaction contract.
+
+Account, Model, and Reasoning use native dropdowns. Model choices come from the selected account's official CLI catalog; reasoning choices follow the selected model, with Provider default available. Model selection is not free text. Loading or unavailable catalogs disable dependent selectors and show explicit placeholders; discovery errors appear as recoverable alert text. A refresh icon requests a new catalog. The send control stays disabled for a desktop explicit-provider conversation until a catalog is ready. Fixture screenshots demonstrate these UI states, not real-account entitlement or successful inference.
+
+The account heading includes a pencil for inline rename and a settings action for account management; settings also offers account rename. Rename is an input with save/cancel icon buttons, an 80-character limit, and a disabled save for blank names or while saving. It updates the display name while preserving account identity, isolation folder, and login state. Field-heading icon controls are 24px square; the heading/reasoning label row is 28px high.
 
 Fields use 7px corners, `surface`, a `line` border, and 8px padding. The search field is an unboxed rail control. Error banners use readable text, an error icon, a dismiss action, and `role="alert"`.
 
@@ -220,7 +243,7 @@ Markdown uses GFM lists and tables. `MessageBody` renders link destinations as v
 
 ### Settings modal side panel
 
-Settings is a right-side `role="dialog"` with `aria-modal="true"`, 420px desktop width, scrollable contents, and 25px/30px padding. Opening focuses its first button. Tab/Shift+Tab wrap through visible enabled controls; closing restores the previously focused element. The sidebar and workspace become `inert` while settings is open. Escape and explicit Workspace/close controls dismiss it. Appearance is a three-way segmented control; accounts, workspace folder, and about/support are separated by fine rules.
+Settings is a right-side `role="dialog"` with `aria-modal="true"`, 420px desktop width, scrollable contents, and 25px/30px padding. Opening focuses its first button. Tab/Shift+Tab wrap through visible enabled controls; closing restores the previously focused element. The sidebar and workspace become `inert` while settings is open. Escape and explicit Workspace/close controls dismiss it. Appearance is a three-way segmented control; accounts, conversation folder, and about/support are separated by fine rules. Account rename is available beside the account's existing sign-in/check/remove actions. Settings errors have a dismissible alert inside the panel. Returning from settings preserves the selected model where still available.
 
 Opening settings closes the navigation sidebar and conversation action menu before focusing the panel. This clears the narrow sidebar and its scrim from the modal path, even though their z-indices are higher than settings. No screen-reader or native-webview focus certification is implied by the implemented focus trap.
 

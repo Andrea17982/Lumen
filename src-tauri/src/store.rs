@@ -11,8 +11,29 @@ impl Store {
           CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,role TEXT NOT NULL,text TEXT NOT NULL,activity TEXT NOT NULL,created_at INTEGER NOT NULL);
           CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id,created_at);
           CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL,provider TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,folder TEXT NOT NULL);
           UPDATE sessions SET status='interrupted' WHERE status IN ('running','waiting');")
           .map_err(|e| e.to_string())?;
+        let has_workspace_id = {
+            let mut q = c
+                .prepare("PRAGMA table_info(sessions)")
+                .map_err(|e| e.to_string())?;
+            let names = q
+                .query_map([], |r| r.get::<_, String>(1))
+                .map_err(|e| e.to_string())?;
+            names
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
+                .iter()
+                .any(|n| n == "workspace_id")
+        };
+        if !has_workspace_id {
+            c.execute(
+                "ALTER TABLE sessions ADD COLUMN workspace_id TEXT REFERENCES workspaces(id)",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
         Ok(Self(Mutex::new(c)))
     }
     fn with<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T, String> {
@@ -21,15 +42,15 @@ impl Store {
     }
     pub fn sessions(&self, search: &str, offset: u32) -> Result<Vec<Session>, String> {
         self.with(|c| {
-            let mut q = c.prepare("SELECT id,title,pinned,status,workspace,updated_at FROM sessions WHERE instr(lower(title),lower(?1))>0 ORDER BY pinned DESC,updated_at DESC LIMIT 100 OFFSET ?2")?;
-            let rows = q.query_map(params![search,offset], |r| Ok(Session{id:r.get(0)?,title:r.get(1)?,pinned:r.get(2)?,status:r.get(3)?,workspace:r.get(4)?,updated_at:r.get(5)?}))?;
+            let mut q = c.prepare("SELECT id,title,pinned,status,workspace,updated_at,workspace_id FROM sessions WHERE instr(lower(title),lower(?1))>0 ORDER BY pinned DESC,updated_at DESC LIMIT 100 OFFSET ?2")?;
+            let rows = q.query_map(params![search,offset], |r| Ok(Session{id:r.get(0)?,title:r.get(1)?,pinned:r.get(2)?,status:r.get(3)?,workspace:r.get(4)?,updated_at:r.get(5)?,workspace_id:r.get(6)?}))?;
             rows.collect()
         })
     }
     pub fn session(&self, id: &str) -> Result<Session, String> {
         self.with(|c| {
             c.query_row(
-                "SELECT id,title,pinned,status,workspace,updated_at FROM sessions WHERE id=?",
+                "SELECT id,title,pinned,status,workspace,updated_at,workspace_id FROM sessions WHERE id=?",
                 [id],
                 |r| {
                     Ok(Session {
@@ -39,6 +60,7 @@ impl Store {
                         status: r.get(3)?,
                         workspace: r.get(4)?,
                         updated_at: r.get(5)?,
+                        workspace_id: r.get(6)?,
                     })
                 },
             )
@@ -52,10 +74,11 @@ impl Store {
             status: "idle".into(),
             workspace,
             updated_at: now(),
+            workspace_id: None,
         };
         self.with(|c| {
             c.execute(
-                "INSERT INTO sessions VALUES(?1,?2,?3,?4,?5,?6)",
+                "INSERT INTO sessions(id,title,pinned,status,workspace,updated_at) VALUES(?1,?2,?3,?4,?5,?6)",
                 params![s.id, s.title, s.pinned, s.status, s.workspace, s.updated_at],
             )
         })?;
@@ -131,6 +154,51 @@ impl Store {
         self.with(|c| c.execute("DELETE FROM accounts WHERE id=?", [id]))?;
         Ok(())
     }
+    pub fn rename_account(&self, id: &str, name: &str) -> Result<(), String> {
+        self.with(|c| c.execute("UPDATE accounts SET name=?2 WHERE id=?1", params![id, name]))?;
+        Ok(())
+    }
+    pub fn workspaces(&self) -> Result<Vec<Workspace>, String> {
+        self.with(|c| {
+            let mut q = c.prepare("SELECT id,name,folder FROM workspaces ORDER BY name")?;
+            let rows = q.query_map([], |r| {
+                Ok(Workspace {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    folder: r.get(2)?,
+                })
+            })?;
+            rows.collect()
+        })
+    }
+    pub fn add_workspace(&self, name: String, folder: String) -> Result<Workspace, String> {
+        let w = Workspace {
+            id: id(),
+            name,
+            folder,
+        };
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO workspaces VALUES(?1,?2,?3)",
+                params![w.id, w.name, w.folder],
+            )
+        })?;
+        Ok(w)
+    }
+    pub fn bind_workspace(
+        &self,
+        id: &str,
+        workspace_id: Option<&str>,
+        folder: &str,
+    ) -> Result<Session, String> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE sessions SET workspace_id=?2,workspace=?3 WHERE id=?1",
+                params![id, workspace_id, folder],
+            )
+        })?;
+        self.session(id)
+    }
 }
 
 #[cfg(test)]
@@ -150,5 +218,31 @@ mod tests {
         assert_eq!(db.messages(&s.id).unwrap().len(), 1);
         db.delete(&s.id).unwrap();
         assert!(db.messages(&s.id).unwrap().is_empty());
+    }
+    #[test]
+    fn upgrades_legacy_sessions_and_preserves_account_identity() {
+        let path = std::env::temp_dir().join(format!("lumen-migration-{}.db", id()));
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch("CREATE TABLE sessions(id TEXT PRIMARY KEY,title TEXT NOT NULL,pinned INTEGER NOT NULL,status TEXT NOT NULL,workspace TEXT NOT NULL,updated_at INTEGER NOT NULL);INSERT INTO sessions VALUES('legacy','Keep me',1,'completed','old-folder',1);").unwrap();
+        }
+        {
+            let db = Store::open(&path).unwrap();
+            assert_eq!(db.session("legacy").unwrap().title, "Keep me");
+            let w = db
+                .add_workspace("Project".into(), "project-folder".into())
+                .unwrap();
+            let s = db
+                .bind_workspace("legacy", Some(&w.id), "project/subfolder")
+                .unwrap();
+            assert_eq!(s.workspace_id.as_deref(), Some(w.id.as_str()));
+            assert_eq!(s.workspace, "project/subfolder");
+            let a = db.add_account("Before".into(), Provider::Gpt).unwrap();
+            db.rename_account(&a.id, "After").unwrap();
+            let updated = db.accounts().unwrap();
+            assert_eq!(updated[0].id, a.id);
+            assert_eq!(updated[0].name, "After");
+        }
+        let _ = std::fs::remove_file(path);
     }
 }

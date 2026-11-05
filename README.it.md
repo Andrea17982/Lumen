@@ -2,7 +2,7 @@
 
 Un’app desktop locale per gestire conversazioni Claude Code e ChatGPT / Codex in un’interfaccia essenziale ispirata ad Apple Liquid Glass. Tauri 2, core Rust, React e TypeScript. L’interfaccia è in inglese, come scelto dal creatore.
 
-**Versione 0.1 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
+**Versione 0.2 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
 
 ![Interfaccia Lumen](docs/images/desktop.png)
 
@@ -13,6 +13,10 @@ Il codice dell’applicazione, l’interfaccia, i test e la documentazione sono 
 > Ringrazio tutti quelli che avranno voglia di provarla e farmi sapere come si trovano. Feedback, segnalazioni e idee sono benvenuti! — Andrea
 
 Lumen è disponibile con licenza MIT: tutti possono scaricarla, utilizzarla e modificarla.
+
+## Novità 0.2
+
+Interfaccia ripulita dalle scritte promozionali, workspace nominati e cartella specifica per conversazione nel composer, rinomina account dalle impostazioni o dal selettore, modelli e reasoning letti dai CLI ufficiali. La nuova modalità **Autopilot** abilita strumenti e comandi senza sandbox o conferme del CLI, entro i permessi del sistema operativo. Il controllo grafico del PC richiede strumenti di automazione disponibili/configurati. [Guida completa](docs/workspace-models-permissions.md).
 
 ## Avvio rapido
 
@@ -33,7 +37,7 @@ npm run tauri dev
 
 Sessioni SQLite persistenti, ricerca, pin, rinomina, stati, attività collassabili, account con directory isolate, tema chiaro/scuro/sistema e selettore Auto / Claude / GPT. Auto usa euristiche locali per scegliere provider, modello, effort e, quando sono disponibili entrambi i provider, review indipendente o prospettive parallele con sintesi.
 
-Nessun limite artificiale al numero di sessioni salvate; massimo quattro lavori attivi e otto processi provider. Le scritture nella stessa cartella vengono serializzate. Accesso in sola lettura predefinito. Il contesto viene ripassato al CLI a ogni turno fino a 100.000 caratteri recenti. Codex aggiorna la chat a messaggi completati; Claude trasmette anche testo parziale.
+Nessun limite artificiale al numero di sessioni salvate; massimo quattro lavori attivi e otto processi di inferenza. Le scritture nella stessa cartella vengono serializzate. Accesso in sola lettura predefinito. Il contesto viene ripassato al CLI a ogni turno fino a 100.000 caratteri recenti. Codex aggiorna la chat a messaggi completati; Claude trasmette anche testo parziale.
 
 L’inferenza reale, l’isolamento OAuth con più account e le modifiche ai file richiedono test di accettazione con account dell’utente. La compatibilità dipende dalle versioni CLI e dai piani dei provider. Non sono implementati proxy, aggiramenti dei limiti o login OAuth proprietari. Le conversazioni e i file credenziali gestiti dai CLI non vengono cifrati da Lumen. Le prestazioni non sono state oggetto di benchmark.
 

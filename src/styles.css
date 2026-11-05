@@ -1313,3 +1313,146 @@ label {
     scroll-behavior: auto !important;
   }
 }
+
+.composer-region {
+  padding-bottom: 24px;
+}
+.composer-toolbar {
+  flex-wrap: wrap;
+}
+.composer-caption {
+  justify-content: flex-end;
+}
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 270px;
+}
+.workspace-controls select {
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font-size: 10px;
+  max-width: 112px;
+  padding: 5px 2px;
+  min-width: 70px;
+}
+.folder-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.folder-control span {
+  max-width: 95px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.access-control select {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  font-size: 10px;
+  max-width: 104px;
+  cursor: pointer;
+}
+.access-control.autopilot {
+  color: #956022;
+  background: rgba(174, 123, 48, 0.1);
+}
+:root[data-theme='dark'] .access-control.autopilot {
+  color: #e4b576;
+}
+.field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+}
+.field-actions {
+  display: flex;
+}
+.field-heading .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.reasoning-field {
+  padding-top: 9px;
+}
+.catalog-status {
+  color: var(--error);
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0 3px 10px;
+}
+.account-rename {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-basis: 100%;
+  margin: 8px 0;
+}
+.account-rename input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px;
+  font-size: 12px;
+}
+@media (max-width: 520px) {
+  .workspace-controls {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .folder-control span {
+    max-width: 170px;
+  }
+  .composer-region {
+    padding-bottom: 15px;
+  }
+  .access-control {
+    padding-inline: 2px;
+  }
+  .access-control > svg {
+    display: none;
+  }
+}
+
+.new-chat > span,
+.new-chat kbd {
+  white-space: nowrap;
+}
+.reasoning-field {
+  padding-top: 0;
+  display: grid;
+  grid-template-rows: 28px auto;
+  align-items: center;
+}
+@media (max-width: 1050px) {
+  .new-chat kbd {
+    display: none;
+  }
+  .workspace-controls {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .folder-control span {
+    max-width: 170px;
+  }
+}

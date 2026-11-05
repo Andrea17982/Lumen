@@ -5,14 +5,14 @@ pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result
     if !["auto", "claude", "gpt"].contains(&options.mode.as_str()) {
         return Err("Unknown provider mode".into());
     }
-    if !["low", "medium", "high"].contains(&options.effort.as_str()) {
+    if options.effort.len() > 32 || !options.effort.chars().all(|c| c.is_ascii_lowercase()) {
         return Err("Unknown effort".into());
     }
     if let Some(m) = &options.model {
         if m.len() > 100
             || !m
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || "-._:/".contains(c))
+                .all(|c| c.is_ascii_alphanumeric() || "-._:/[]".contains(c))
         {
             return Err("Invalid model identifier".into());
         }
@@ -130,6 +130,7 @@ mod tests {
             model: None,
             effort: "medium".into(),
             write_access: false,
+            access_mode: None,
         }
     }
     fn accounts() -> Vec<Account> {
