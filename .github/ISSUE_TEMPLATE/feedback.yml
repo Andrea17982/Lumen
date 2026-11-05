@@ -1,0 +1,9 @@
+name: Feedback or idea
+description: Share how Lumen feels to use
+body:
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What worked, what felt awkward, or what would you change?
+    validations:
+      required: true

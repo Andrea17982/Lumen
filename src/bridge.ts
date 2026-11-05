@@ -1,0 +1,87 @@
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import type { Account, Message, RunEvent, Session } from './types';
+
+export const desktop = isTauri();
+const key = 'lumen-preview-v1';
+function read(): { sessions: Session[]; accounts: Account[] } {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
+  } catch {
+    return { sessions: [], accounts: [] };
+  }
+}
+/** Browser preview never launches a CLI or pretends to generate an AI response. */
+export async function call<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (desktop) return invoke<T>(command, args);
+  const data = read();
+  let result: unknown;
+  switch (command) {
+    case 'list_sessions':
+      result = data.sessions
+        .filter((s) => s.title.toLowerCase().includes(String(args.search || '').toLowerCase()))
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+        .slice(Number(args.offset), Number(args.offset) + 100);
+      break;
+    case 'create_session': {
+      const s: Session = {
+        id: crypto.randomUUID(),
+        title: 'New conversation',
+        pinned: false,
+        status: 'idle',
+        workspace: String(args.workspace),
+        updatedAt: Date.now(),
+      };
+      data.sessions.unshift(s);
+      result = s;
+      break;
+    }
+    case 'update_session':
+      data.sessions = data.sessions.map((s) =>
+        s.id === args.id ? { ...s, title: String(args.title), pinned: Boolean(args.pinned) } : s,
+      );
+      break;
+    case 'delete_session':
+      data.sessions = data.sessions.filter((s) => s.id !== args.id);
+      break;
+    case 'get_messages':
+      result = [];
+      break;
+    case 'list_accounts':
+      result = data.accounts;
+      break;
+    case 'diagnostics':
+      result = { claude: false, gpt: false, dataDir: 'Desktop app required' };
+      break;
+    default:
+      throw new Error(
+        'Open the Lumen desktop app to connect accounts and run AI sessions. This browser is a UI preview.',
+      );
+  }
+  localStorage.setItem(key, JSON.stringify(data));
+  return result as T;
+}
+export function subscribe(handler: (event: RunEvent) => void) {
+  return desktop
+    ? listen<RunEvent>('lumen:run', (e) => handler(e.payload))
+    : Promise.resolve(() => {});
+}
+export function applyEvent(messages: Message[], event: RunEvent): Message[] {
+  const found = messages.some((m) => m.id === event.messageId);
+  const next = found
+    ? messages
+    : [...messages, { id: event.messageId, role: 'assistant' as const, text: '', activity: [] }];
+  return next.map((m) => {
+    if (m.id !== event.messageId) return m;
+    if (event.kind === 'delta') return { ...m, text: m.text + event.text };
+    if (event.kind === 'replace') return { ...m, text: event.text };
+    if (['start', 'done', 'status'].includes(event.kind)) return m;
+    return { ...m, activity: [...m.activity, { kind: event.kind, text: event.text }].slice(-500) };
+  });
+}
+export async function external(url: string) {
+  if (desktop) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+  } else window.open(url, '_blank', 'noopener,noreferrer');
+}

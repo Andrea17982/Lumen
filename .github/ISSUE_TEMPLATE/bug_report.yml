@@ -1,0 +1,35 @@
+name: Bug report
+description: Tell us what happened in Lumen
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for trying Lumen. Do not upload tokens, auth files, private transcripts or unredacted logs. For security issues, read SECURITY.md."
+  - type: input
+    id: versions
+    attributes:
+      label: OS, Lumen version and provider CLI versions
+      placeholder: Windows 11, Lumen 0.1.0, claude --version, codex --version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did this happen?
+      options:
+        - Windows desktop app
+        - Linux desktop app
+        - Browser UI preview
+    validations:
+      required: true
