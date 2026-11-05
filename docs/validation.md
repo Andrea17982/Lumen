@@ -6,12 +6,13 @@ Evidence for the initial alpha is deliberately separated by scope. Provider inte
 | --- | --- | --- |
 | TypeScript and Vite production build | Pass | Frontend type/build correctness |
 | Vitest | 2 passing tests | Stream assembly, authoritative replacement, diagnostic separation |
-| Playwright Chromium | 5 passing tests | First-run/provider UI, preview boundaries, theme persistence, narrow layout, keyboard focus, search preserving active session |
+| Playwright Chromium | 6 passing tests | First-run/provider UI, preview boundaries, theme persistence, narrow layout, keyboard focus, search preserving active session, visible settings errors |
 | Rust unit/process tests on Windows | 7 passing tests | Routing, input checks, protocol fixtures, SQLite cascade, real subprocess stdin/stderr, nonzero exit and cancellation |
 | Rustfmt and Clippy with warnings denied | Pass | Formatting and lint checks |
 | Native Tauri/WebView2 offline harness | Pass | IPC, isolated test storage, account/status adapters, both event formats, writer/reviewer, parallel synthesis, queue/cancellation and populated UI |
 | Independent UI finish review | Ship within reviewed scope | Inspected desktop light, dark settings, settled narrow view, native fixture chat and activity; keyboard findings corrected |
 | Windows x64 NSIS packaging | Pass | Installer generation; not a clean-machine installation test |
+| Production executable UI / IPC smoke | Pass | Bundled frontend loads without the development server; settings and application commands respond. No login or inference performed. |
 
 The native harness substitutes local CLI fixtures before launching the app and uses disposable test data. It never authenticates with a provider or uses paid inference. Its sample text explicitly says it is an offline fixture. The test found and led to correction of a Windows launcher problem with paths containing spaces; the re-run passed.
 

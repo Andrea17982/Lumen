@@ -88,3 +88,12 @@ test('filtering the sidebar preserves the selected running conversation', async 
   await expect(page.getByRole('button', { name: 'Stop response' })).toBeVisible();
   await expect(page.locator('.conversation-label')).toHaveText('Running fixture');
 });
+
+test('account errors remain visible inside settings', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Account name' }).fill('Preview account');
+  await page.getByRole('button', { name: 'Add account', exact: true }).last().click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('desktop app');
+});

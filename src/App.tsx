@@ -853,6 +853,19 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
+            {error && (
+              <div role="alert" className="error-banner">
+                <AlertCircle size={16} />
+                <span>{error}</span>
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss settings error"
+                  onClick={() => setError('')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
             <h2>
               Make yourself
               <br />
