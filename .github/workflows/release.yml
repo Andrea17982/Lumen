@@ -65,8 +65,8 @@ jobs:
           merge-multiple: true
       - name: Checksums
         run: cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # The release is created by hand (author and written notes); CI only attaches
+      # the builds. Without name/body inputs the existing title and notes are kept.
       - uses: softprops/action-gh-release@v2
         with:
-          name: Lumen ${{ github.ref_name }}
-          generate_release_notes: true
           files: artifacts/*
