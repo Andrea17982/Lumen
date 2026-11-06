@@ -5,6 +5,23 @@ param([string]$Provider)
 $promptText = [Console]::In.ReadToEnd()
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
 $reply = "This is an **offline UI fixture**, not a live AI response.`n`n### A small, thoughtful plan`n`n- Keep the conversation clear.`n- Review the changes before applying them.`n- Make room for the next idea.`n`n| Step | State |`n| --- | --- |`n| Understand | Complete |`n| Review | Complete |`n`n" + '```typescript' + "`nconst clarity = true;`n" + '```'
+# Orchestra fixtures: questions, a two-part plan, approvals and one file per subtask.
+if ($promptText.Contains('Before planning, decide what you must clarify')) {
+    $reply = '{"questions":[{"q":"Which file names?","recommended":"orchestra-s1.txt and orchestra-s2.txt"}]}'
+} elseif ($promptText.Contains('Plan the work below')) {
+    $reply = '{"summary":"Two fixture files","subtasks":[{"id":"a","title":"First file","detail":"Write the first file","files":["orchestra-s1.txt"],"difficulty":"normal","writes":true,"dependsOn":[]},{"id":"b","title":"Second file","detail":"Write the second file","files":["orchestra-s2.txt"],"difficulty":"normal","writes":true,"dependsOn":["a"]}]}'
+} elseif ($promptText.Contains('You are auditing')) {
+    $reply = 'APPROVED'
+}
+if ($promptText -match 'Your subtask \((s\d+)\)') {
+    $name = "orchestra-$($Matches[1]).txt"
+    Set-Content -LiteralPath (Join-Path (Get-Location).Path $name) -Value "by $Provider" -Encoding utf8
+    $reply = "Wrote $name"
+}
+if ($Provider -eq 'ollama') {
+    Write-Output "Local fixture reply."
+    exit 0
+}
 function Emit($value) { ConvertTo-Json -InputObject $value -Depth 10 -Compress | Write-Output }
 if ($promptText.Contains('RATE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}

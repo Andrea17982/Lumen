@@ -14,6 +14,16 @@ pub struct AppSettings {
     pub api_enabled: bool,
     pub api_port: u16,
     pub api_token: String,
+    /// Orchestra: complex Auto tasks are planned, split and run by several agents.
+    pub orchestra: bool,
+    /// The window's X hides Lumen to the notification area.
+    pub close_to_tray: bool,
+    /// Start Lumen when the user signs in.
+    pub open_at_login: bool,
+    /// Pinned Ollama model; empty lets Lumen choose the largest installed one.
+    pub ollama_model: String,
+    /// The one-time "still running in the notification area" notice was shown.
+    pub tray_hint_shown: bool,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -24,6 +34,11 @@ impl Default for AppSettings {
             api_enabled: false,
             api_port: 8317,
             api_token: String::new(),
+            orchestra: false,
+            close_to_tray: false,
+            open_at_login: false,
+            ollama_model: String::new(),
+            tray_hint_shown: false,
         }
     }
 }
@@ -54,6 +69,18 @@ impl AppSettings {
         if self.api_token.len() < 16 {
             return Err("The API key must be at least 16 characters".into());
         }
+        self.ollama_model = self.ollama_model.trim().chars().take(120).collect();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn old_settings_files_get_new_defaults() {
+        let s: AppSettings = serde_json::from_str(r#"{"autoFallback":false}"#).unwrap();
+        assert!(!s.auto_fallback && !s.orchestra && !s.close_to_tray && !s.open_at_login);
+        assert!(s.ollama_model.is_empty() && s.self_heal);
     }
 }

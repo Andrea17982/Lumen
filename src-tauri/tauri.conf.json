@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lumen",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "identifier": "io.github.andrea17982.lumen",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{"title": "Lumen", "width": 1240, "height": 820, "minWidth": 720, "minHeight": 540}],
+    "windows": [{"title": "Lumen", "width": 1240, "height": 820, "minWidth": 720, "minHeight": 540, "visible": false}],
     "security": {"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'"}
   },
   "bundle": {"active": true, "targets": ["nsis"], "icon": ["icons/icon.ico", "icons/icon.icns", "icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"]}

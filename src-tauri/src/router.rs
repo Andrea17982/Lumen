@@ -204,35 +204,47 @@ pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result
         },
     })
 }
+/// Model class: 0 Haiku/Luna, 1 Sonnet/Terra (and unknown), 2 Opus/Sol.
+pub fn model_tier(m: &ModelInfo) -> i32 {
+    let name = format!("{} {}", m.id, m.name).to_lowercase();
+    if ["luna", "mini", "nano", "haiku"]
+        .iter()
+        .any(|k| name.contains(k))
+    {
+        0
+    } else if ["astra", "opus", "sol", "pro"]
+        .iter()
+        .any(|k| name.contains(k))
+    {
+        2
+    } else {
+        1
+    }
+}
+/// Closest catalog model to a class; catalog defaults break ties.
+pub fn select_tier(models: &[ModelInfo], target: i32) -> Option<&ModelInfo> {
+    // Terra is also acceptable for small tasks, but prefer Luna when present.
+    models
+        .iter()
+        .min_by_key(|m| ((model_tier(m) - target).abs(), !m.is_default))
+}
 /// Use catalog IDs, never manufacture a model name unavailable to the account.
 pub fn select_model<'a>(
     models: &'a [ModelInfo],
     prompt: &str,
     _policy: &AutoPolicy,
 ) -> Result<&'a ModelInfo, String> {
-    let target = profile(prompt).tier;
-    models
-        .iter()
-        .min_by_key(|m| {
-            let name = format!("{} {}", m.id, m.name).to_lowercase();
-            let tier: i32 = if ["luna", "mini", "nano", "haiku"]
-                .iter()
-                .any(|k| name.contains(k))
-            {
-                0
-            } else if ["astra", "opus", "sol", "pro"]
-                .iter()
-                .any(|k| name.contains(k))
-            {
-                2
-            } else {
-                1
-            };
-            // Terra is also acceptable for small tasks, but prefer Luna when present.
-            // Budget lowers effort, preserving the capability needed by the task.
-            ((tier - target).abs(), !m.is_default)
-        })
-        .ok_or("No provider model available".into())
+    // Budget lowers effort, preserving the capability needed by the task.
+    select_tier(models, profile(prompt).tier).ok_or("No provider model available".into())
+}
+pub fn task_tier(prompt: &str) -> i32 {
+    profile(prompt).tier
+}
+/// Orchestra takes over only for complex work: architecture/security/migration,
+/// or coding that is demanding or long. Simple prompts keep the normal path.
+pub fn complex(prompt: &str) -> bool {
+    let t = profile(prompt);
+    t.tier == 2 || (t.tier == 1 && (t.effort > 0 || prompt.len() > 600))
 }
 /// Quota pressure per time remaining. The tightest active window is the constraint.
 /// Snapshots expire after 15 minutes; exhausted windows never receive reset bonuses.

@@ -1,14 +1,39 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Account, Message, RunEvent, Session, Workspace } from './types';
+import type { Account, AppSettings, Message, RunEvent, Session, Workspace } from './types';
 
 export const desktop = isTauri();
 const key = 'lumen-preview-v1';
-function read(): { sessions: Session[]; accounts: Account[]; workspaces?: Workspace[] } {
+function read(): {
+  sessions: Session[];
+  accounts: Account[];
+  workspaces?: Workspace[];
+  messages?: Record<string, Message[]>;
+} {
   try {
     return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
   } catch {
     return { sessions: [], accounts: [] };
+  }
+}
+const settingsKey = 'lumen-preview-settings';
+function previewSettings(): AppSettings {
+  const base: AppSettings = {
+    autoFallback: true,
+    selfHeal: true,
+    reviewRounds: 1,
+    apiEnabled: false,
+    apiPort: 8317,
+    apiToken: 'preview-key-preview-key',
+    orchestra: false,
+    closeToTray: false,
+    openAtLogin: false,
+    ollamaModel: '',
+  };
+  try {
+    return { ...base, ...JSON.parse(localStorage.getItem(settingsKey) || '{}') };
+  } catch {
+    return base;
   }
 }
 /** Browser preview never launches a CLI or pretends to generate an AI response. */
@@ -71,24 +96,24 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       data.sessions = data.sessions.filter((s) => s.id !== args.id);
       break;
     case 'get_messages':
-      result = [];
+      result = data.messages?.[String(args.id)] || [];
       break;
     case 'list_accounts':
       result = data.accounts;
       break;
     case 'get_settings':
-      result = {
-        autoFallback: true,
-        selfHeal: true,
-        reviewRounds: 1,
-        apiEnabled: false,
-        apiPort: 8317,
-        apiToken: 'preview-key-preview-key',
-      };
+      result = previewSettings();
+      break;
+    case 'save_settings':
+      localStorage.setItem(settingsKey, JSON.stringify(args.value));
+      result = previewSettings();
       break;
     case 'provider_health':
     case 'mcp_health':
       result = [];
+      break;
+    case 'ollama_status':
+      result = { installed: false, running: false, models: [], selected: null };
       break;
     case 'api_status':
       result = { running: false, url: 'http://localhost:8317/v1', log: [] };
@@ -121,6 +146,20 @@ export function applyEvent(messages: Message[], event: RunEvent): Message[] {
     if (m.id !== event.messageId) return m;
     if (event.kind === 'delta') return { ...m, text: m.text + event.text };
     if (event.kind === 'replace') return { ...m, text: event.text };
+    if (event.kind === 'orchestra') {
+      const rest = m.activity.filter((a) => a.kind !== 'orchestra');
+      return { ...m, activity: [{ kind: 'orchestra', text: event.text }, ...rest] };
+    }
+    if (event.kind === 'orchestra-delta') {
+      try {
+        const d = JSON.parse(event.text) as { id: string; kind: string; text: string };
+        const prev = m.live?.[d.id] || '';
+        const next = d.kind === 'replace' ? d.text : prev + d.text;
+        return { ...m, live: { ...m.live, [d.id]: next.slice(-20000) } };
+      } catch {
+        return m;
+      }
+    }
     if (['start', 'done', 'status'].includes(event.kind)) return m;
     return { ...m, activity: [...m.activity, { kind: event.kind, text: event.text }].slice(-500) };
   });

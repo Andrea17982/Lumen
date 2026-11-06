@@ -7,6 +7,7 @@ pub enum Provider {
     Gpt,
     Gemini,
     Antigravity,
+    Ollama,
 }
 impl Provider {
     pub fn binary(&self) -> &str {
@@ -15,6 +16,7 @@ impl Provider {
             Self::Gpt => "codex",
             Self::Gemini => "gemini",
             Self::Antigravity => "agy",
+            Self::Ollama => "ollama",
         }
     }
     pub fn env(&self) -> &str {
@@ -23,6 +25,16 @@ impl Provider {
             Self::Gpt => "CODEX_HOME",
             Self::Gemini => "GEMINI_CLI_HOME",
             Self::Antigravity => "HOME",
+            Self::Ollama => "",
+        }
+    }
+    /// Order for rate-limit and quota fallback: subscriptions first, local last.
+    pub fn fallback_rank(&self) -> u8 {
+        match self {
+            Self::Claude | Self::Gpt => 0,
+            Self::Antigravity => 1,
+            Self::Gemini => 2,
+            Self::Ollama => 3,
         }
     }
 }

@@ -29,6 +29,8 @@ pub fn command(p: &Provider) -> Result<Command, String> {
 pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
     if *p == Provider::Antigravity {
         c.env("HOME", dir).env("USERPROFILE", dir);
+    } else if *p == Provider::Ollama {
+        // Local models live in the user's own Ollama store; nothing to isolate.
     } else {
         c.env(p.env(), dir);
     }
@@ -272,6 +274,8 @@ pub fn invocation_args(
         ],
         Provider::Gemini => vec!["--prompt", "", "--output-format", "stream-json"],
         Provider::Antigravity => vec!["-p", "", "--output-format", "stream-json"],
+        // Prompt-only: Ollama reads stdin and prints plain text, never touching files.
+        Provider::Ollama => vec!["run"],
     }
     .into_iter()
     .map(str::to_owned)
@@ -350,6 +354,11 @@ pub fn invocation_args(
                 args.extend(["--effort".into(), effort.into()]);
             }
         }
+        Provider::Ollama => {
+            args.push(model.unwrap_or_default().into());
+            args.extend(["--hidethinking".into(), "--nowordwrap".into()]);
+            return args;
+        }
     }
     if let Some(m) = model {
         args.extend(["--model".into(), m.into()]);
@@ -413,6 +422,7 @@ async fn run_command(
                 line=lines.next_line()=>{
                     let line=line.map_err(|e|e.to_string())?;
                     let Some(line)=line else{break};
+                    if *p==Provider::Ollama{let chunk=format!("{line}\n");text.push_str(&chunk);emit(Activity{kind:"delta".into(),text:chunk});continue;}
                     if let Ok(v)=serde_json::from_str::<Value>(&line){for a in normalize(p,&v){
                         match a.kind.as_str(){
                             "delta"=>{text.push_str(&a.text);emit(a);},
@@ -493,6 +503,16 @@ mod tests {
                 assert!(!args.iter().any(|a| a.starts_with("--dangerously")));
             }
         }
+    }
+    #[test]
+    fn ollama_is_prompt_only_with_its_model() {
+        let args = invocation_args(
+            &Provider::Ollama,
+            AccessMode::Autopilot,
+            Some("qwen:7b"),
+            "high",
+        );
+        assert_eq!(args, ["run", "qwen:7b", "--hidethinking", "--nowordwrap"]);
     }
     #[test]
     fn protocol_fixtures() {

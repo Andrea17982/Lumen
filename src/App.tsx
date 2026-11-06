@@ -26,10 +26,14 @@ import {
   Repeat2,
   Columns2,
   Shrink,
+  Workflow,
 } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import ProjectPanel from './components/ProjectPanel';
-import SettingsPanel from './settings/SettingsPanel';
+import QuitConfirm from './components/QuitConfirm';
+import OrchestraCard from './components/OrchestraCard';
+import { saveSettings, useAppSettings } from './lib/settings';
+import SettingsPanel, { type SettingsTab } from './settings/SettingsPanel';
 import { applyEvent, call, desktop, subscribe } from './lib/bridge';
 import type {
   Account,
@@ -46,12 +50,31 @@ import type {
   RunEvent,
   Session,
   Status,
+  OrchestraState,
 } from './lib/types';
 import { errorText, Mark, nameOf } from './lib/util';
 
 const MessageBody = lazy(() => import('./components/MessageBody'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
-const HIDDEN = ['checkpoint', 'lane', 'worktree', 'applied', 'discarded', 'attachments'];
+const HIDDEN = [
+  'checkpoint',
+  'lane',
+  'worktree',
+  'applied',
+  'discarded',
+  'attachments',
+  'orchestra',
+  'orchestra-nogit',
+];
+function orchestraOf(m: Message): OrchestraState | null {
+  const a = m.activity.find((x) => x.kind === 'orchestra');
+  if (!a) return null;
+  try {
+    return JSON.parse(a.text) as OrchestraState;
+  } catch {
+    return null;
+  }
+}
 const laneOf = (m: Message) => m.activity.find((a) => a.kind === 'lane')?.text;
 /** Which provider wrote a message, from its lane or the writer's model activity. */
 function providerOf(m: Message): 'claude' | 'gpt' | null {
@@ -122,6 +145,11 @@ export default function App() {
   const [folderBusy, setFolderBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const openSettings = (tab: SettingsTab = 'general') => {
+    setSettingsTab(tab);
+    setSettings(true);
+  };
   const [sidebar, setSidebar] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -137,6 +165,7 @@ export default function App() {
     () => localStorage.getItem('lumen-auto-review') === 'true',
   );
   const [attached, setAttached] = useState<string[]>([]);
+  const appSettings = useAppSettings();
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [projectOpen, setProjectOpen] = useState(false);
   const [health, setHealth] = useState<Health[]>([]);
@@ -449,6 +478,36 @@ export default function App() {
       setError(errorText(e));
     }
   }
+  /** Options shared by a new turn and by Orchestra's follow-up steps. */
+  function runOptions(override?: { mode: Mode; auditOf: string }) {
+    const manual = !override && (mode === 'claude' || mode === 'gpt');
+    return {
+      mode: override?.mode ?? mode,
+      accountId: manual && accountId ? accountId : null,
+      model: manual ? model || null : null,
+      effort: manual ? effort : '',
+      accessMode: override ? 'read-only' : accessMode,
+      autoPolicy,
+      balanceUsage,
+      autoReview: override ? false : autoReview,
+      attachments: override ? [] : attached,
+      auditOf: override?.auditOf ?? null,
+    };
+  }
+  async function orchestra(command: string, args: Record<string, unknown>) {
+    if (!session) return;
+    setBusy(true);
+    setError('');
+    try {
+      await call(command, { id: session.id, options: { ...runOptions(), mode: 'auto' }, ...args });
+      setMessages(await call<Message[]>('get_messages', { id: session.id }));
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function send(override?: { text: string; mode: Mode; auditOf: string }) {
     const text = override?.text ?? draft.trim();
     const runMode = override?.mode ?? mode;
@@ -465,7 +524,7 @@ export default function App() {
       return;
     }
     if (!accounts.length) {
-      setSettings(true);
+      openSettings('accounts');
       return;
     }
     setBusy(true);
@@ -480,22 +539,10 @@ export default function App() {
         setSessions((list) => [s!, ...list]);
         setSelected(s.id);
       }
-      const manual = !override && (mode === 'claude' || mode === 'gpt');
       const result = await call<Plan>('send_message', {
         id: s.id,
         text,
-        options: {
-          mode: runMode,
-          accountId: manual && accountId ? accountId : null,
-          model: manual ? model || null : null,
-          effort: manual ? effort : '',
-          accessMode: override ? 'read-only' : accessMode,
-          autoPolicy,
-          balanceUsage,
-          autoReview: override ? false : autoReview,
-          attachments: override ? [] : attached,
-          auditOf: override?.auditOf ?? null,
-        },
+        options: { ...runOptions(override), mode: runMode },
       });
       if (!override) {
         setDraft('');
@@ -645,6 +692,8 @@ export default function App() {
     const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
     const from = providerOf(m);
     const other = from === 'claude' ? 'gpt' : 'claude';
+    const orchestraState = m.role === 'assistant' ? orchestraOf(m) : null;
+    const nogit = m.activity.some((a) => a.kind === 'orchestra-nogit');
     return (
       <article key={m.id} className={`message ${m.role}`}>
         <div className="message-author">
@@ -723,11 +772,35 @@ export default function App() {
             </div>
           </details>
         )}
-        <div className="prose">
-          <Suspense fallback={<p>{m.text}</p>}>
-            <MessageBody text={m.text} />
-          </Suspense>
-        </div>
+        {orchestraState && (
+          <OrchestraCard
+            key={`${m.id}-${orchestraState.stage}`}
+            message={m}
+            state={orchestraState}
+            accounts={accounts}
+            busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
+            readOnly={accessMode === 'read-only'}
+            run={orchestra}
+          />
+        )}
+        {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
+          <div className="prose">
+            <Suspense fallback={<p>{m.text}</p>}>
+              <MessageBody text={m.text} />
+            </Suspense>
+          </div>
+        )}
+        {nogit && !running && (
+          <p className="orchestra-closed">
+            Orchestra needs git in this folder.{' '}
+            <button
+              className="text-button"
+              onClick={() => void orchestra('orchestra_init_git', {})}
+            >
+              Initialize git
+            </button>
+          </p>
+        )}
         {attachments && (
           <div className="attachment-chips">
             {attachments.map((f) => (
@@ -1171,7 +1244,7 @@ export default function App() {
             >
               <BookOpen size={16} />
             </button>
-            <button className="icon-button" aria-label="Settings" onClick={() => setSettings(true)}>
+            <button className="icon-button" aria-label="Settings" onClick={() => openSettings()}>
               <Settings2 size={17} />
             </button>
           </div>
@@ -1281,7 +1354,9 @@ export default function App() {
                     ? 'Parallel perspectives'
                     : plan.strategy === 'broadcast'
                       ? 'Claude and ChatGPT side by side'
-                      : 'Answer + cross-audit'}{' '}
+                      : plan.strategy === 'orchestra'
+                        ? 'Orchestra'
+                        : 'Answer + cross-audit'}{' '}
                 · {plan.effort} reasoning
               </span>
             </div>
@@ -1312,7 +1387,7 @@ export default function App() {
                 setModel={setModel}
                 effort={effort}
                 setEffort={setEffort}
-                manage={() => setSettings(true)}
+                manage={() => openSettings('accounts')}
                 refreshAccounts={loadAccounts}
                 onError={setError}
                 onReady={setCatalogReady}
@@ -1344,6 +1419,20 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              {mode === 'auto' && appSettings?.orchestra && (
+                <button
+                  className="orchestra-badge"
+                  title="Orchestra is on: complex tasks are planned and split across agents. Click to turn off."
+                  onClick={() =>
+                    void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
+                      setError(errorText(e)),
+                    )
+                  }
+                >
+                  <Workflow size={12} />
+                  Orchestra
+                </button>
+              )}
               {mode !== 'both' && (
                 <button
                   className={`icon-button audit-toggle ${autoReview ? 'on' : ''}`}
@@ -1480,8 +1569,10 @@ export default function App() {
         />
       )}
 
+      <QuitConfirm />
       <SettingsPanel
         open={settings}
+        tab={settingsTab}
         onClose={() => setSettings(false)}
         error={error}
         setError={setError}

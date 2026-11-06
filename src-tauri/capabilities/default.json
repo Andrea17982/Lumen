@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Local Lumen window: events, folder chooser and explicit external links.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", {"identifier":"opener:allow-open-url", "allow":[{"url":"https://github.com/Andrea17982/Lumen*"},{"url":"https://www.paypal.com/*"}]}]
+  "permissions": ["core:default", "core:window:allow-close", "dialog:allow-open", {"identifier":"opener:allow-open-url", "allow":[{"url":"https://github.com/Andrea17982/Lumen*"},{"url":"https://www.paypal.com/*"},{"url":"https://ollama.com/*"}]}]
 }

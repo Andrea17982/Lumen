@@ -1,4 +1,4 @@
-export type Provider = 'claude' | 'gpt' | 'gemini' | 'antigravity';
+export type Provider = 'claude' | 'gpt' | 'gemini' | 'antigravity' | 'ollama';
 export type Mode = Provider | 'auto' | 'both';
 export type Status = 'idle' | 'waiting' | 'running' | 'completed' | 'interrupted' | 'error';
 export interface Session {
@@ -39,6 +39,42 @@ export interface Message {
   role: 'user' | 'assistant';
   text: string;
   activity: Activity[];
+  /** Live output per Orchestra subtask while it runs (not persisted). */
+  live?: Record<string, string>;
+}
+export interface OrchestraSubtask {
+  id: string;
+  title: string;
+  detail: string;
+  files: string[];
+  difficulty: string;
+  writes: boolean;
+  dependsOn: string[];
+  accountId: string;
+  agent: string;
+  model: string;
+  effort: string;
+  status: string;
+  output: string;
+  startedAt: number;
+  endedAt: number;
+}
+export interface OrchestraState {
+  stage: string;
+  task: string;
+  questions: { q: string; recommended: string }[];
+  confirm: string;
+  answers: string;
+  orchestrator: string;
+  orchestratorAgent: string;
+  orchestratorModel: string;
+  effort: string;
+  summary: string;
+  subtasks: OrchestraSubtask[];
+  planReview: string;
+  readOnly: boolean;
+  steps: { name: string; status: string; detail: string }[];
+  lanes: [string, string, string][];
 }
 export interface RunOptions {
   mode: Mode;
@@ -82,7 +118,14 @@ export interface Diagnostics {
   gpt: boolean;
   gemini: boolean;
   antigravity: boolean;
+  ollama?: boolean;
   dataDir: string;
+}
+export interface OllamaStatus {
+  installed: boolean;
+  running: boolean;
+  models: { name: string; size: string; bytes: number }[];
+  selected: string | null;
 }
 export interface AppSettings {
   autoFallback: boolean;
@@ -91,6 +134,10 @@ export interface AppSettings {
   apiEnabled: boolean;
   apiPort: number;
   apiToken: string;
+  orchestra: boolean;
+  closeToTray: boolean;
+  openAtLogin: boolean;
+  ollamaModel: string;
 }
 export interface Health {
   accountId: string;

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Circle, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { AccountRename } from '../components/ProviderOptions';
 import { call, external } from '../lib/bridge';
-import type { Account, Diagnostics, Provider } from '../lib/types';
+import { saveSettings, useAppSettings } from '../lib/settings';
+import type { Account, Diagnostics, OllamaStatus, Provider } from '../lib/types';
 import { errorText, nameOf, REPO } from '../lib/util';
 
 export default function AccountSettings({
@@ -10,7 +11,9 @@ export default function AccountSettings({
   refresh,
   onError,
   initialProvider,
+  advanced = false,
 }: {
+  advanced?: boolean;
   accounts: Account[];
   initialProvider: Provider;
   refresh: () => Promise<void>;
@@ -24,11 +27,35 @@ export default function AccountSettings({
   const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState('');
+  const [ollama, setOllama] = useState<OllamaStatus | null>(null);
+  const settings = useAppSettings(onError);
+  const hasOllama = accounts.some((a) => a.provider === 'ollama');
+  const checkOllama = () =>
+    call<OllamaStatus>('ollama_status')
+      .then(setOllama)
+      .catch((e) => onError(errorText(e)));
   useEffect(() => {
     void call<Diagnostics>('diagnostics')
       .then(setDiag)
       .catch((e) => onError(errorText(e)));
   }, [onError]);
+  useEffect(() => {
+    if (hasOllama) void checkOllama();
+  }, [hasOllama]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ollamaText = !ollama
+    ? 'Checking…'
+    : !ollama.installed
+      ? 'Not installed'
+      : !ollama.running
+        ? 'Not running · open the Ollama app'
+        : !ollama.models.length
+          ? 'No models · run ollama pull llama3.2'
+          : `${ollama.models.length} model${ollama.models.length === 1 ? '' : 's'} · ${ollama.selected}`;
+  const ollamaState = !ollama?.installed
+    ? ''
+    : ollama.running && ollama.models.length
+      ? 'active'
+      : 'near';
   async function action(fn: () => Promise<unknown>) {
     setPending(true);
     try {
@@ -62,9 +89,9 @@ export default function AccountSettings({
         </button>
       </div>
       <p>
-        Sign in through the official CLI. Each account gets its own configuration folder. Gemini CLI
-        and Antigravity are emergency fallbacks in Auto, used only after fresh quota data confirms
-        Claude and GPT are exhausted.
+        Sign in through the official CLI. Each account gets its own configuration folder.
+        Antigravity, Gemini CLI and Ollama (local) are emergency fallbacks in Auto, used only after
+        Claude and GPT are rate limited or out of quota.
       </p>
       {diag && (
         <div className="cli-status">
@@ -84,6 +111,10 @@ export default function AccountSettings({
             <Circle size={7} fill="currentColor" />
             Antigravity CLI {diag.antigravity ? 'found' : 'not found'}
           </span>
+          <span className={diag.ollama ? 'available' : ''}>
+            <Circle size={7} fill="currentColor" />
+            Ollama {diag.ollama ? 'found' : 'not found'}
+          </span>
         </div>
       )}
       {accounts.length === 0 && (
@@ -98,32 +129,58 @@ export default function AccountSettings({
                 ? 'G'
                 : a.provider === 'gemini'
                   ? 'Gm'
-                  : 'Ag'}
+                  : a.provider === 'ollama'
+                    ? 'Ol'
+                    : 'Ag'}
           </div>
           <div className="account-info">
             <strong>{a.name}</strong>
             <small>
-              {nameOf(a.provider)} · {statuses[a.id] || 'Connection unchecked'}
+              {a.provider === 'ollama' ? (
+                <>
+                  <span className={`health-dot ${ollamaState}`} aria-hidden="true" /> Ollama ·{' '}
+                  {ollamaText}
+                </>
+              ) : (
+                <>
+                  {nameOf(a.provider)} · {statuses[a.id] || 'Connection unchecked'}
+                </>
+              )}
             </small>
           </div>
-          <button
-            className="text-button"
-            disabled={pending}
-            onClick={() =>
-              void action(async () => {
-                await call('login_account', { id: a.id });
-                setStatuses((s) => ({ ...s, [a.id]: 'Finish login in terminal' }));
-              })
-            }
-          >
-            Sign in
-          </button>
+          {a.provider !== 'ollama' ? (
+            <button
+              className="text-button"
+              disabled={pending}
+              onClick={() =>
+                void action(async () => {
+                  await call('login_account', { id: a.id });
+                  setStatuses((s) => ({ ...s, [a.id]: 'Finish login in terminal' }));
+                })
+              }
+            >
+              Sign in
+            </button>
+          ) : (
+            ollama &&
+            !ollama.installed && (
+              <button
+                className="text-button"
+                onClick={() =>
+                  void external('https://ollama.com/download').catch((e) => onError(errorText(e)))
+                }
+              >
+                Install Ollama
+              </button>
+            )
+          )}
           <button
             className="icon-button"
             disabled={pending}
             aria-label={`Check ${a.name}`}
             onClick={() =>
               void action(async () => {
+                if (a.provider === 'ollama') return checkOllama();
                 const ready = await call<boolean>('account_status', { id: a.id });
                 setStatuses((s) => ({ ...s, [a.id]: ready ? 'Connected' : 'Sign-in required' }));
               })
@@ -157,6 +214,29 @@ export default function AccountSettings({
           >
             <Trash2 size={14} />
           </button>
+          {a.provider === 'ollama' && advanced && settings && ollama?.models.length ? (
+            <label className="ollama-model">
+              Model
+              <select
+                aria-label="Ollama model"
+                value={settings.ollamaModel}
+                disabled={pending}
+                onChange={(e) =>
+                  void action(async () => {
+                    await saveSettings({ ...settings, ollamaModel: e.target.value });
+                    await checkOllama();
+                  })
+                }
+              >
+                <option value="">Automatic (largest)</option>
+                {ollama.models.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name} · {m.size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {confirm === a.id && (
             <div className="account-confirm">
               <span>Remove this account and its local login files?</span>
@@ -211,6 +291,7 @@ export default function AccountSettings({
               <option value="gpt">ChatGPT / Codex</option>
               <option value="gemini">Gemini CLI (emergency)</option>
               <option value="antigravity">Antigravity CLI (emergency)</option>
+              <option value="ollama">Ollama (local, emergency)</option>
             </select>
           </label>
           <button className="primary-button" disabled={pending || !name.trim()} type="submit">

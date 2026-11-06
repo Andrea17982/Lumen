@@ -1,6 +1,48 @@
-# Teamwork features (0.3)
+# Teamwork features
 
-Lumen 0.3 lets Claude Code and Codex work together. Every feature is one click or on by default, and runs through the official CLIs. Lumen never calls provider APIs or reads credentials.
+Lumen lets Claude Code, Codex and the other connected CLIs work together. Every feature is one click or on by default, and runs through the official CLIs. Lumen never calls provider APIs or reads credentials.
+
+## New in 0.4
+
+### Orchestra
+
+Settings → Teamwork → **Orchestra** is a set-and-forget switch that works with **Auto**. When it is on, a small **Orchestra** badge appears next to Auto in the composer; clicking it turns Orchestra off.
+
+Orchestra takes over only when Auto scores a request as complex: architecture, security or migration work, or coding that is demanding or long. Simple prompts take the normal path.
+
+1. **Questions.** One orchestrator model reads the request (and the project, read-only) and asks what it needs to know. Each question comes with its recommended answer already filled in. **Continue** sends your answers, **Skip questions** accepts the recommendations. When the request is already clear, it asks a single "I'd do X, Y, Z — agree?" with **Agree** or **Change**.
+2. **Plan.** The orchestrator splits the work into subtasks, each with the files it owns, a difficulty and any dependency. Lumen assigns every subtask to an agent from all connected accounts, with the same model tiers Auto uses. Trivial work (messages, text, tiny edits) may go to Antigravity, Gemini CLI or Ollama even when Claude and ChatGPT have quota; Ollama only takes subtasks that write no files. The plan card lets you reassign an agent or remove a subtask, then **Approve** or **Cancel**. Nothing runs before you approve.
+3. **Run.** Subtasks run in parallel, up to six at a time, each in its own git worktree seeded with your uncommitted work. Every agent receives the team manifest (who owns which files), so it stays aware of the others. A subtask that depends on another starts from that subtask's changes. The card shows each subtask's agent, status and elapsed time, with its live output in a disclosure. The stop button stops everything.
+4. **Integrate.** Lumen applies each subtask's changes to your folder. If a patch no longer applies cleanly, the orchestrator merges it by hand. The orchestrator then checks the combined diff for inconsistencies, fixes them and writes the final answer. Self-healing runs on the integrated result and the worktrees are removed.
+
+The orchestrator model follows the Auto preference: **Budget** and **Default** use Auto's tier for the task, never below Sonnet/Terra; **Quality** uses the strongest model (Opus/Sol).
+
+With **Cross-audit** on, the provider opposite the orchestrator validates its decisions: the integration only with Budget; the plan (once, then the orchestrator revises it) and the integration with Default and Quality. Integration audits use the configured number of rounds.
+
+If a subtask fails or hits a rate limit, Lumen retries it once on another provider. If that also fails, the rest is still integrated and the final answer lists what failed. If integration itself fails, the work is kept in `lumen/orchestra-*` branches: **Keep branches** leaves them for a manual merge, **Discard** deletes them.
+
+Orchestra needs a git repository to isolate the subtasks. In a folder without git, the request runs normally and the answer offers **Initialize git**. In **Ask** (read-only) mode the agents only analyze: the plan card says so, and the orchestrator combines their findings. One Rewind checkpoint is taken before the run, on the "Approved the plan." message.
+
+### Ollama
+
+Add **Ollama (local, emergency)** in Settings → Accounts. Lumen uses only the official `ollama` CLI (`ollama list`, `ollama run`): there is no sign-in and nothing is isolated, because models live in your own Ollama store. The account row shows a status dot and the model count; **Install Ollama** appears when the CLI is missing, and an empty store suggests `ollama pull llama3.2`. Lumen uses the largest installed model; in Advanced mode a **Model** menu pins another one.
+
+Ollama never edits files: it receives the prompt and returns text. It is the last emergency fallback, after Antigravity and Gemini CLI, and an Orchestra agent for trivial text subtasks.
+
+### Settings: Simple and Advanced
+
+Settings is split into sections — **General · Accounts · Auto · Teamwork · Tools · About** — shown one at a time between a fixed header and footer. The **Simple | Advanced** switch in the header hides expert options. Simple keeps appearance, folder, window behavior, accounts, the Auto preference, Orchestra and Switch on rate limit. Advanced adds usage balancing and Claude quota snapshots, Self-healing, Cross-audit rounds, the Ollama model and the **Tools** section (MCP, skills, local API). Hiding an option never changes its behavior; when Advanced options are on, Simple mode says how many with a **Show** link.
+
+### Notification area and login
+
+Settings → General → **Window**:
+
+- **Keep Lumen in the notification area when closed.** The X hides the window and running responses continue. Left-click the tray icon to open Lumen; its menu has **Open Lumen** and **Quit**. The first time, a notification says Lumen is still running.
+- **Open Lumen at login.** Registers a login item (Windows Run key, macOS login item). With the tray option on, Lumen starts hidden in the notification area.
+
+With the tray option off, closing the window while a response runs asks "A response is still running. Quit anyway?". Quit cancels running CLI processes as before.
+
+## 0.3
 
 ## Both: one prompt, two answers side by side
 
@@ -24,7 +66,7 @@ Each turn replays the conversation, including turns from the other provider and 
 
 ## Rate-limit fallback and status
 
-Lumen recognizes rate-limit and quota errors in CLI output, for example `429`, usage limit or `try again in 2h`. It marks that account as cooling down until the parsed reset time, or for 15 minutes if no time is given. The same message then continues on the other provider without being lost, and the activity records the switch. Settings → Teamwork → **Switch on rate limit** turns this off.
+Lumen recognizes rate-limit and quota errors in CLI output, for example `429`, usage limit or `try again in 2h`. It marks that account as cooling down until the parsed reset time, or for 15 minutes if no time is given. The same message then continues on the other provider without being lost, and the activity records the switch. Since 0.4, when the other subscription is cooling down too, the message continues on the emergency providers in order: Antigravity, Gemini CLI, then Ollama. Settings → Teamwork → **Switch on rate limit** turns this off.
 
 The top bar shows a dot for each provider. Green means ready, amber means close to the quota and red means cooling down. Red includes a countdown. The tooltip shows the local 5-hour turn count.
 

@@ -157,6 +157,7 @@ impl Store {
                         "gpt" => Provider::Gpt,
                         "gemini" => Provider::Gemini,
                         "antigravity" => Provider::Antigravity,
+                        "ollama" => Provider::Ollama,
                         _ => Provider::Gpt,
                     },
                 })
@@ -175,6 +176,7 @@ impl Store {
             Provider::Gpt => "gpt",
             Provider::Gemini => "gemini",
             Provider::Antigravity => "antigravity",
+            Provider::Ollama => "ollama",
         };
         self.with(|c| {
             c.execute(

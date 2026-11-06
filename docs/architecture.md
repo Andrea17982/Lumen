@@ -83,7 +83,14 @@ New UI goes in `components/` (conversation surface) or `settings/` (one file per
 
 ## Extension points
 
-Add providers by extending `Provider`, command construction, normalization fixtures and routing (see `providers.rs`, `catalog.rs`, `router.rs`). Planned 0.4 additions (Orchestra planner, Ollama provider, tray/autostart) are described in the [roadmap](roadmap.md).
+Add providers by extending `Provider` (and its `fallback_rank`), command construction, normalization fixtures and routing (see `providers.rs`, `catalog.rs`, `router.rs`; `ollama.rs` is the smallest example).
+
+## Changes in 0.4
+
+- `orchestra.rs` runs Orchestra. Its state is one `orchestra` activity (JSON) on each assistant message, replaced in place and mirrored by `orchestra` events; subtask output streams as `orchestra-delta` events that the UI keeps out of the saved transcript. Follow-up steps (`orchestra_answer`, `orchestra_approve`) run through `turns::spawn_turn`, so they use the same job slots, cancellation and status as ordinary turns. Subtask worktrees live under `<app-data>/worktrees/<id>/<subtask>` on `lumen/orchestra-*` branches.
+- `ollama.rs` lists local models and exposes a one-model catalog; `providers.rs` runs `ollama run` and reads plain text.
+- `tray.rs` owns the tray icon, close-to-tray, the quit confirmation event and the login item (`tauri-plugin-autostart`, `tauri-plugin-notification`). The main window starts hidden and is shown in `setup` unless Lumen was started at login with the tray on.
+- Settings fields: `orchestra`, `closeToTray`, `openAtLogin`, `ollamaModel`, `trayHintShown`. `src/lib/settings.ts` shares one copy between Settings and the composer.
 
 ## Changes in 0.2
 

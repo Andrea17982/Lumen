@@ -21,4 +21,17 @@ describe('stream reconciliation', () => {
     expect(m[0].text).toBe('');
     expect(m[0].activity[0].text).toBe('Sign-in required');
   });
+  it('replaces the Orchestra state in place and keeps live subtask output apart', () => {
+    let m = applyEvent([], e('orchestra', '{"stage":"plan"}'));
+    m = applyEvent(m, e('tool', 'Read a.rs'));
+    m = applyEvent(m, e('orchestra', '{"stage":"running"}'));
+    m = applyEvent(m, e('orchestra-delta', '{"id":"s1","kind":"delta","text":"Hel"}'));
+    m = applyEvent(m, e('orchestra-delta', '{"id":"s1","kind":"delta","text":"lo"}'));
+    m = applyEvent(m, e('orchestra-delta', 'not json'));
+    expect(m[0].activity.filter((a) => a.kind === 'orchestra')).toEqual([
+      { kind: 'orchestra', text: '{"stage":"running"}' },
+    ]);
+    expect(m[0].live).toEqual({ s1: 'Hello' });
+    expect(m[0].text).toBe('');
+  });
 });

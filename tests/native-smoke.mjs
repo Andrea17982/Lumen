@@ -345,6 +345,74 @@ try {
   assert(stream.includes('chat.completion.chunk') && stream.trim().endsWith('data: [DONE]'));
   await invoke('save_settings', { value: { ...prefs, apiEnabled: false } });
 
+  // 0.4: Ollama through its official CLI, then Orchestra end to end on fixtures.
+  const local = await invoke('add_account', { name: 'Local fixture', provider: 'ollama' });
+  const ollama = await invoke('ollama_status');
+  assert(ollama.installed && ollama.running && ollama.models.length === 2, JSON.stringify(ollama));
+  assert.equal(ollama.selected, 'qwen-fixture:7b', 'the largest model is chosen');
+  assert.equal(await invoke('account_status', { id: local.id }), true);
+  const localModels = await invoke('list_models', { id: local.id, refresh: true });
+  assert.deepEqual(
+    localModels.map((m) => m.id),
+    ['qwen-fixture:7b'],
+  );
+  await invoke('save_settings', { value: { ...prefs, apiEnabled: false, orchestra: true } });
+  const orc = await invoke('create_session', { workspace: repo });
+  const orcPlan = await invoke('send_message', {
+    id: orc.id,
+    text: 'Implement the authentication architecture for the API and the settings UI',
+    options: { ...edits, mode: 'auto', accountId: null, model: null, effort: '' },
+  });
+  assert.equal(orcPlan.strategy, 'orchestra');
+  await waitSession(orc.id, 'completed');
+  const lastState = async () => {
+    const all = await invoke('get_messages', { id: orc.id });
+    const m = all.at(-1);
+    return [m, JSON.parse(m.activity.find((a) => a.kind === 'orchestra').text)];
+  };
+  let [asked, askedState] = await lastState();
+  assert.equal(askedState.stage, 'questions');
+  assert.equal(askedState.questions[0].recommended, 'orchestra-s1.txt and orchestra-s2.txt');
+  const orcOptions = { ...edits, mode: 'auto', accountId: null, model: null, effort: '' };
+  await invoke('orchestra_answer', {
+    id: orc.id,
+    message: asked.id,
+    answers: [],
+    skip: true,
+    options: orcOptions,
+  });
+  await waitSession(orc.id, 'completed');
+  let [planned, plannedState] = await lastState();
+  assert.equal(plannedState.stage, 'plan', JSON.stringify(plannedState));
+  assert.equal(plannedState.subtasks.length, 2);
+  assert.deepEqual(plannedState.subtasks[1].dependsOn, ['s1']);
+  assert(plannedState.subtasks.every((t) => t.accountId && t.accountId !== local.id));
+  await invoke('orchestra_approve', {
+    id: orc.id,
+    message: planned.id,
+    edits: [],
+    options: orcOptions,
+  });
+  await waitSession(orc.id, 'completed');
+  const [, doneState] = await lastState();
+  assert.equal(doneState.stage, 'done', JSON.stringify(doneState));
+  assert(doneState.subtasks.every((t) => t.status === 'done'));
+  assert.match(await readFile(path.join(repo, 'orchestra-s1.txt'), 'utf8'), /by /);
+  assert.match(await readFile(path.join(repo, 'orchestra-s2.txt'), 'utf8'), /by /);
+  assert.equal(
+    git('worktree', 'list').trim().split(/\r?\n/).length,
+    1,
+    'Orchestra lanes are removed',
+  );
+  const approvedUser = (await invoke('get_messages', { id: orc.id })).find(
+    (m) => m.role === 'user' && m.text === 'Approved the plan.',
+  );
+  assert(
+    approvedUser.activity.some((a) => a.kind === 'checkpoint'),
+    'Orchestra is rewindable',
+  );
+  await invoke('save_settings', { value: { ...prefs, apiEnabled: false, orchestra: false } });
+
   await writeFile(
     '.impeccable/review/native-results.json',
     JSON.stringify(
@@ -360,6 +428,8 @@ try {
           'parallel synthesis',
           'queue and cancellation',
           'native chat rendering',
+          'ollama local provider',
+          'orchestra questions, plan, parallel worktrees and integration',
         ],
         note: 'Offline CLI fixtures only; no provider accounts or inference were used.',
       },
@@ -367,8 +437,26 @@ try {
       2,
     ),
   );
+  // Tray: with the setting on, closing hides the window and Lumen keeps running;
+  // Quit from the tray menu exits. The one-time notice is pre-acknowledged here.
+  const trayPrefs = await invoke('get_settings');
+  await invoke('save_settings', {
+    value: { ...trayPrefs, closeToTray: true, trayHintShown: true },
+  });
+  await invoke('plugin:window|close', { label: 'main' });
+  await sleep(1500);
+  assert.equal(child.exitCode, null, 'closing with the tray on keeps Lumen running');
+  assert.equal(
+    await invoke('plugin:window|is_visible', { label: 'main' }),
+    false,
+    'the window is hidden',
+  );
+  const exited = new Promise((resolve) => child.once('exit', resolve));
+  // The page goes away while the call is in flight, which rejects it: expected.
+  await invoke('quit_app').catch(() => {});
+  await Promise.race([exited, sleep(10000)]);
+  assert.notEqual(child.exitCode, null, 'Quit exits Lumen');
   console.log('Native offline checks passed. Temporary test data: ' + testData);
-  await page.evaluate(() => window.close());
 } finally {
   if (browser) await browser.close().catch(() => {});
   if (!child.killed) child.kill();

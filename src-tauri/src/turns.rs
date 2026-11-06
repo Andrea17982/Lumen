@@ -5,12 +5,13 @@ use crate::{
     providers, resolve_effort, router, Core,
 };
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::sync::watch;
 
-fn note(app: &tauri::AppHandle, s: &str, out: &mut Message, kind: &str, text: String) {
+pub(crate) fn note(app: &tauri::AppHandle, s: &str, out: &mut Message, kind: &str, text: String) {
     event(app, s, &out.id, kind, &text);
     out.activity.push(Activity {
         kind: kind.into(),
@@ -60,6 +61,25 @@ pub async fn send_message(
     }
     for f in &options.attachments {
         context::jail(Path::new(&session.workspace), f)?;
+    }
+    // Orchestra: complex Auto work is planned and split across agents.
+    let mut orchestra_nogit = false;
+    if options.mode == "auto"
+        && options.audit_of.is_none()
+        && plan.strategy != "broadcast"
+        && core.settings.lock().map(|s| s.orchestra).unwrap_or(false)
+        && router::complex(&text)
+    {
+        if options.access() != AccessMode::ReadOnly
+            && gitops::toplevel(Path::new(&session.workspace))
+                .await
+                .is_none()
+        {
+            orchestra_nogit = true;
+        } else {
+            plan.strategy = "orchestra".into();
+            plan.reason = "Complex task: Orchestra plans, splits and integrates the work".into();
+        }
     }
     let (tx, rx) = watch::channel(false);
     {
@@ -153,7 +173,30 @@ pub async fn send_message(
             } else {
                 let _ = core.store.status(&id, "running");
                 event(&app, &id, &mid, "status", "running");
-                run_plan(&app, &core, &session, &mut output, &plan, &options, rx).await
+                if plan.strategy == "orchestra" {
+                    crate::orchestra::ask(
+                        &app,
+                        &core,
+                        &session,
+                        &mut output,
+                        &plan,
+                        &options,
+                        &text,
+                        rx,
+                    )
+                    .await
+                } else {
+                    if orchestra_nogit {
+                        note(
+                            &app,
+                            &id,
+                            &mut output,
+                            "orchestra-nogit",
+                            "Orchestra needs a git repository in this folder.".into(),
+                        );
+                    }
+                    run_plan(&app, &core, &session, &mut output, &plan, &options, rx).await
+                }
             };
             if let Err(e) = &r {
                 note(&app, &id, &mut output, "error", friendly(e));
@@ -184,7 +227,7 @@ pub async fn send_message(
     Ok(returned)
 }
 
-fn friendly(e: &str) -> String {
+pub(crate) fn friendly(e: &str) -> String {
     e.strip_prefix(limits::RATE_LIMIT)
         .map(|m| format!("Rate limit reached: {m}"))
         .unwrap_or_else(|| e.to_string())
@@ -272,6 +315,75 @@ pub async fn stage(
     result
 }
 
+/// Run follow-up work (Orchestra steps) as this conversation's job: saves the
+/// user message, creates the assistant message and tracks status like a turn.
+pub(crate) async fn spawn_turn<F, Fut>(
+    app: tauri::AppHandle,
+    core: Arc<Core>,
+    id: String,
+    user: Message,
+    work: F,
+) -> Result<(), String>
+where
+    F: FnOnce(tauri::AppHandle, Arc<Core>, Session, Message, watch::Receiver<bool>) -> Fut
+        + Send
+        + 'static,
+    Fut: Future<Output = (Message, Result<(), String>)> + Send + 'static,
+{
+    let session = core.store.session(&id)?;
+    let (tx, rx) = watch::channel(false);
+    {
+        let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+        if jobs.contains_key(&id) {
+            return Err("This conversation already has a running turn".into());
+        }
+        jobs.insert(id.clone(), tx);
+    }
+    if let Err(e) = core.store.save_message(&id, &user) {
+        if let Ok(mut j) = core.jobs.lock() {
+            j.remove(&id);
+        }
+        return Err(e);
+    }
+    let _ = core.store.status(&id, "waiting");
+    tauri::async_runtime::spawn(async move {
+        let mut cancelled = rx.clone();
+        let permit = tokio::select! {biased;_=cancelled.changed()=>None,p=core.slots.clone().acquire_owned()=>p.ok()};
+        let mid = crate::models::id();
+        let output = Message {
+            id: mid.clone(),
+            role: "assistant".into(),
+            text: String::new(),
+            activity: vec![],
+        };
+        let _ = core.store.save_message(&id, &output);
+        event(&app, &id, &mid, "start", "");
+        let (mut output, result) = if permit.is_none() {
+            (output, Err("Cancelled".to_string()))
+        } else {
+            let _ = core.store.status(&id, "running");
+            event(&app, &id, &mid, "status", "running");
+            work(app.clone(), core.clone(), session, output, rx).await
+        };
+        drop(permit);
+        if let Err(e) = &result {
+            note(&app, &id, &mut output, "error", friendly(e));
+        }
+        let _ = core.store.save_message(&id, &output);
+        let status = match &result {
+            Ok(()) => "completed",
+            Err(e) if e == "Cancelled" => "interrupted",
+            Err(_) => "error",
+        };
+        let _ = core.store.status(&id, status);
+        if let Ok(mut j) = core.jobs.lock() {
+            j.remove(&id);
+        }
+        event(&app, &id, &mid, "done", status);
+    });
+    Ok(())
+}
+
 /// Runs a stage; on a rate limit, cools the account and continues on another one.
 #[allow(clippy::too_many_arguments)]
 async fn stage_fallback(
@@ -315,13 +427,10 @@ async fn stage_fallback(
                 .store
                 .accounts()?
                 .into_iter()
-                .filter(|b| {
-                    b.id != a.id
-                        && matches!(b.provider, Provider::Claude | Provider::Gpt)
-                        && !core.limits.cooling(&b.id, now())
-                })
+                .filter(|b| b.id != a.id && !core.limits.cooling(&b.id, now()))
                 .collect();
-            alternatives.sort_by_key(|b| b.provider == a.provider);
+            // Other subscription first, then the emergency providers, local Ollama last.
+            alternatives.sort_by_key(|b| (b.provider.fallback_rank(), b.provider == a.provider));
             let Some(b) = alternatives.into_iter().next().filter(|_| enabled) else {
                 return Err(e);
             };
@@ -355,7 +464,7 @@ async fn stage_fallback(
     }
 }
 
-fn checkpoint_of(m: &Message) -> Option<String> {
+pub(crate) fn checkpoint_of(m: &Message) -> Option<String> {
     m.activity
         .iter()
         .find(|a| a.kind == "checkpoint")
@@ -363,7 +472,7 @@ fn checkpoint_of(m: &Message) -> Option<String> {
 }
 
 /// Shared prompt: skills, LUMEN.md, compact history with file-change notes, attachments, audit diff.
-async fn build_prompt(
+pub(crate) async fn build_prompt(
     core: &Core,
     s: &Session,
     exclude: &[&str],
@@ -460,7 +569,10 @@ async fn build_prompt(
     Ok((prompt, history))
 }
 
-fn workspace_lock(core: &Core, s: &Session) -> Result<Arc<tokio::sync::Mutex<()>>, String> {
+pub(crate) fn workspace_lock(
+    core: &Core,
+    s: &Session,
+) -> Result<Arc<tokio::sync::Mutex<()>>, String> {
     let mut locks = core
         .workspace_locks
         .lock()
@@ -480,7 +592,7 @@ fn workspace_lock(core: &Core, s: &Session) -> Result<Arc<tokio::sync::Mutex<()>
         .clone())
 }
 
-fn approved(review: &str) -> bool {
+pub(crate) fn approved(review: &str) -> bool {
     review.trim_start().lines().next().is_some_and(|l| {
         l.trim()
             .trim_matches('*')
@@ -722,7 +834,7 @@ async fn run_plan(
 
 /// After file edits: run the project check and send failures back to the writer (max 3 attempts).
 #[allow(clippy::too_many_arguments)]
-async fn self_heal(
+pub(crate) async fn self_heal(
     app: &tauri::AppHandle,
     core: &Core,
     s: &Session,

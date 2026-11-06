@@ -5,10 +5,13 @@ mod gitops;
 mod integrations;
 mod limits;
 mod models;
+mod ollama;
+mod orchestra;
 mod providers;
 mod router;
 mod settings;
 mod store;
+mod tray;
 mod turns;
 mod usage;
 use models::*;
@@ -33,6 +36,23 @@ pub struct Core {
     api: tokio::sync::Mutex<Option<api::Running>>,
     api_log: Mutex<VecDeque<api::ApiLog>>,
 }
+impl Core {
+    /// Signal every running job to stop; true when some were running.
+    pub(crate) fn cancel_all(&self) -> bool {
+        self.jobs
+            .lock()
+            .map(|jobs| {
+                for tx in jobs.values() {
+                    let _ = tx.send(true);
+                }
+                !jobs.is_empty()
+            })
+            .unwrap_or(false)
+    }
+    pub(crate) fn jobs_idle(&self) -> bool {
+        self.jobs.lock().map(|jobs| jobs.is_empty()).unwrap_or(true)
+    }
+}
 async fn models_for(
     core: &Core,
     a: &Account,
@@ -51,7 +71,16 @@ async fn models_for(
             }
         }
     }
-    let models = catalog::discover(a, &config_dir(core, a), cancel).await?;
+    let models = if a.provider == Provider::Ollama {
+        let pinned = core
+            .settings
+            .lock()
+            .map(|s| s.ollama_model.clone())
+            .unwrap_or_default();
+        ollama::catalog(&pinned).await?
+    } else {
+        catalog::discover(a, &config_dir(core, a), cancel).await?
+    };
     core.catalogs
         .lock()
         .map_err(|_| "Catalog lock failed")?
@@ -247,6 +276,7 @@ struct Diagnostics {
     gpt: bool,
     gemini: bool,
     antigravity: bool,
+    ollama: bool,
     data_dir: String,
 }
 #[tauri::command]
@@ -256,6 +286,7 @@ fn diagnostics(core: tauri::State<Arc<Core>>) -> Diagnostics {
         gpt: providers::executable(&Provider::Gpt).is_ok(),
         gemini: providers::executable(&Provider::Gemini).is_ok(),
         antigravity: providers::executable(&Provider::Antigravity).is_ok(),
+        ollama: providers::executable(&Provider::Ollama).is_ok(),
         data_dir: core.root.to_string_lossy().into(),
     }
 }
@@ -263,6 +294,9 @@ fn diagnostics(core: tauri::State<Arc<Core>>) -> Diagnostics {
 #[tauri::command]
 async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result<bool, String> {
     let a = account(&core, &id)?;
+    if a.provider == Provider::Ollama {
+        return Ok(ollama::list().await.map(|m| !m.is_empty()).unwrap_or(false));
+    }
     let mut c = providers::command(&a.provider)?;
     providers::isolate(&mut c, &a.provider, &config_dir(&core, &a));
     c.kill_on_drop(true);
@@ -279,6 +313,7 @@ async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result
         Provider::Antigravity => {
             c.args(["models"]);
         }
+        Provider::Ollama => unreachable!(),
     }
     let out = tokio::time::timeout(std::time::Duration::from_secs(15), c.output())
         .await
@@ -289,6 +324,9 @@ async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result
 #[tauri::command]
 fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String> {
     let a = account(&core, &id)?;
+    if a.provider == Provider::Ollama {
+        return Err("Ollama runs locally and has no sign-in. Install it from ollama.com.".into());
+    }
     core.catalogs
         .lock()
         .map_err(|_| "Catalog lock failed")?
@@ -303,8 +341,7 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
         let action = match a.provider {
             Provider::Claude => "auth login",
             Provider::Gpt => "login",
-            Provider::Gemini => "",
-            Provider::Antigravity => "",
+            Provider::Gemini | Provider::Antigravity | Provider::Ollama => "",
         };
         let user_profile = if a.provider == Provider::Antigravity {
             format!("$env:USERPROFILE = {}\n", quote(&dir.to_string_lossy()))
@@ -449,10 +486,18 @@ fn get_settings(core: tauri::State<Arc<Core>>) -> Result<settings::AppSettings, 
 }
 #[tauri::command]
 async fn save_settings(
+    app: tauri::AppHandle,
     core: tauri::State<'_, Arc<Core>>,
     mut value: settings::AppSettings,
 ) -> Result<settings::AppSettings, String> {
     value.validate()?;
+    value.tray_hint_shown |= core
+        .settings
+        .lock()
+        .map(|s| s.tray_hint_shown)
+        .unwrap_or(false);
+    tray::sync_tray(&app, value.close_to_tray)?;
+    tray::sync_autostart(&app, value.open_at_login)?;
     let mut api = core.api.lock().await;
     let restart = api.as_ref().map(|r| r.port) != Some(value.api_port) || !value.api_enabled;
     if restart {
@@ -653,31 +698,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![tray::AUTOSTART_ARG]),
+        ))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let app = window.app_handle().clone();
-                let core = app.state::<Arc<Core>>().inner().clone();
-                let pending = if let Ok(jobs) = core.jobs.lock() {
-                    for tx in jobs.values() {
-                        let _ = tx.send(true);
-                    }
-                    !jobs.is_empty()
-                } else {
-                    false
-                };
-                if pending {
-                    api.prevent_close();
-                    tauri::async_runtime::spawn(async move {
-                        // Let cancellation reap all provider trees before closing the runtime.
-                        for _ in 0..300 {
-                            if core.jobs.lock().map(|jobs| jobs.is_empty()).unwrap_or(true) {
-                                break;
-                            }
-                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        }
-                        app.exit(0);
-                    });
-                }
+                tray::on_close_requested(window, api);
             }
         })
         .setup(|app| {
@@ -706,6 +734,13 @@ pub fn run() {
                 api_log: Mutex::new(VecDeque::new()),
             });
             app.manage(core.clone());
+            let handle = app.handle().clone();
+            let _ = tray::sync_tray(&handle, prefs.close_to_tray);
+            let _ = tray::sync_autostart(&handle, prefs.open_at_login);
+            let at_login = std::env::args().any(|a| a == tray::AUTOSTART_ARG);
+            if !(at_login && prefs.close_to_tray) {
+                tray::show_main(&handle);
+            }
             if prefs.api_enabled {
                 tauri::async_runtime::spawn(async move {
                     if let Ok(r) = api::start(core.clone(), prefs.api_port).await {
@@ -739,6 +774,13 @@ pub fn run() {
             save_project_context,
             get_settings,
             save_settings,
+            tray::quit_app,
+            ollama_status,
+            orchestra::orchestra_answer,
+            orchestra::orchestra_approve,
+            orchestra::orchestra_cancel,
+            orchestra::orchestra_lanes,
+            orchestra::orchestra_init_git,
             api_status,
             provider_health,
             mcp_health,
@@ -761,12 +803,7 @@ pub fn run() {
         .expect("Could not start Lumen")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                let core = app.state::<Arc<Core>>();
-                if let Ok(jobs) = core.jobs.lock() {
-                    for tx in jobs.values() {
-                        let _ = tx.send(true);
-                    }
-                };
+                app.state::<Arc<Core>>().cancel_all();
             }
         });
 }
@@ -846,6 +883,15 @@ fn integration_status(core: tauri::State<Arc<Core>>) -> Result<serde_json::Value
     integrations::status(&core.root)
 }
 #[tauri::command]
+async fn ollama_status(core: tauri::State<'_, Arc<Core>>) -> Result<ollama::OllamaStatus, String> {
+    let pinned = core
+        .settings
+        .lock()
+        .map(|s| s.ollama_model.clone())
+        .unwrap_or_default();
+    Ok(ollama::status(&pinned).await)
+}
+#[tauri::command]
 fn install_skill(core: tauri::State<Arc<Core>>, path: String) -> Result<(), String> {
     integrations::install_skill(&core.root, &PathBuf::from(path))
 }
@@ -861,11 +907,7 @@ async fn balance(
     accounts: &[Account],
     plan: &mut Plan,
 ) -> Result<(), String> {
-    if options.balance_usage
-        || accounts
-            .iter()
-            .any(|a| matches!(a.provider, Provider::Gemini | Provider::Antigravity))
-    {
+    if options.balance_usage || accounts.iter().any(|a| a.provider.fallback_rank() > 0) {
         let mut usage = read_usage(core)?;
         for a in accounts.iter().filter(|a| a.provider == Provider::Gpt) {
             let fresh = usage
@@ -875,9 +917,7 @@ async fn balance(
                 .is_some();
             if !fresh
                 && (options.balance_usage
-                    || accounts
-                        .iter()
-                        .any(|x| matches!(x.provider, Provider::Gemini | Provider::Antigravity)))
+                    || accounts.iter().any(|x| x.provider.fallback_rank() > 0))
             {
                 if let Ok(snapshot) = usage::read(a, &config_dir(core, a)).await {
                     write_usage(core, snapshot.clone())?;
@@ -911,18 +951,19 @@ async fn balance(
             {
                 if let Some(google) = accounts
                     .iter()
-                    .find(|a| a.provider == Provider::Antigravity)
-                    .or_else(|| accounts.iter().find(|a| a.provider == Provider::Gemini))
+                    .filter(|a| a.provider.fallback_rank() > 0)
+                    .min_by_key(|a| a.provider.fallback_rank())
                 {
                     plan.provider = google.provider.clone();
                     plan.account_id = google.id.clone();
                     plan.strategy = "single".into();
                     plan.partner_account = None;
-                    plan.reason =
-                        "Claude and GPT quotas confirmed exhausted; emergency Google fallback"
-                            .into();
+                    plan.reason = format!(
+                        "Claude and GPT quotas confirmed exhausted; emergency fallback to {}",
+                        google.provider.binary()
+                    );
                 } else {
-                    return Err("Claude and GPT quotas are exhausted. Add a Gemini CLI or Antigravity account for emergency fallback.".into());
+                    return Err("Claude and GPT quotas are exhausted. Add an Antigravity, Gemini CLI or Ollama account for emergency fallback.".into());
                 }
             } else if options.balance_usage {
                 if let Some((a, _)) = scores

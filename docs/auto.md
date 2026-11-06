@@ -1,4 +1,4 @@
-# Auto execution policy · 0.3
+# Auto execution policy · 0.4
 
 Auto routes locally without a classifier request. It selects an actual model ID from the selected account's official CLI catalog, including for reviewers and parallel workers. Unavailable model names are never manufactured. These are explainable heuristics calibrated against the user's examples.
 
@@ -18,6 +18,10 @@ The three policies persist locally:
 - **Quality:** one effort step higher; adds an independent reviewer for coding and advanced tasks when another provider is configured. Simple messages stay single-stage.
 
 Comparisons with both providers and Default/Quality gather two independent perspectives, then synthesize. Manual provider/model/effort selection uses a single stage, validated against official metadata. Each stage resolves effort to the nearest supported level or provider default and records the effective model/effort in activity.
+
+## Orchestra
+
+With Settings → Teamwork → **Orchestra** on, Auto hands complex requests to an orchestrator instead of a single writer. "Complex" uses the same local profile: the Opus/Sol class (architecture, security, migration), or the Sonnet/Terra class when the request is demanding or longer than about 600 characters. The orchestrator's model class is the task's class with a Sonnet/Terra floor under Budget and Default, and the strongest class under Quality. Each subtask gets a class from its difficulty (trivial → Haiku/Luna, normal → Sonnet/Terra, complex → Opus/Sol) and an effort of low, or medium for complex work, moved one step by Budget or Quality. Subtasks alternate between Claude and ChatGPT, starting with the provider that is not orchestrating; trivial ones prefer the emergency providers. See [Teamwork features](features.md#orchestra).
 
 ## Quota balancing
 

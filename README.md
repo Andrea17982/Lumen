@@ -15,7 +15,16 @@ Also see the [model, workspace and permission controls](docs/images/provider-con
 
 Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Write a request, keep working across sessions, and let **Auto** choose an execution plan. Optional controls expose the provider, account, model and reasoning effort when you need them.
 
-**Status: v0.3 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+**Status: v0.4 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+
+## New in 0.4: Orchestra
+
+- **Orchestra**: for complex tasks in Auto, one orchestrator asks clarifying questions, shows a plan with the agent assigned to each subtask, runs the subtasks in parallel git worktrees across every connected provider and integrates the result, with optional cross-audit.
+- **Ollama**: a local provider for emergency fallback and trivial Orchestra subtasks, through the official `ollama` CLI.
+- **Simpler Settings**: one section at a time, with a Simple/Advanced switch.
+- **Notification area and login**: keep Lumen running when the window is closed, and open it at login.
+
+Details: [Teamwork features](docs/features.md#new-in-04).
 
 ## New in 0.3: Claude and ChatGPT as a team
 
@@ -45,9 +54,9 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 - Independent concurrent sessions, with four active orchestration jobs and up to eight inference processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
 - English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
-- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI and Antigravity are supported through their official local tools; Google providers are Auto's emergency fallback only.
+- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI, Antigravity and Ollama are supported through their official local tools; Google providers and Ollama are Auto's emergency fallback and Orchestra helpers only.
 - **Auto** uses local, deterministic task heuristics to choose effort and a provider; complex tasks can use an independent reviewer, and comparison tasks can gather two perspectives in parallel before synthesizing.
-- **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Gemini CLI and Antigravity run in Auto only when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows; missing/stale quota data does not trigger fallback.
+- **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Emergency providers run in Auto when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows, or when a rate limit hits while the other subscription is cooling down; in Orchestra they may also take trivial subtasks.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.
 
 ## Install and run

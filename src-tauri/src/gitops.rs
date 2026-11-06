@@ -39,6 +39,11 @@ async fn run(dir: &Path, args: &[&str], index: Option<&Path>) -> Result<String, 
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// `git init` in a folder so Orchestra can use worktrees there.
+pub async fn init(dir: &Path) -> Result<(), String> {
+    run(dir, &["init", "-q"], None).await.map(|_| ())
+}
+
 /// Repository root for a workspace folder, if it is inside a git work tree.
 pub async fn toplevel(dir: &Path) -> Option<PathBuf> {
     run(dir, &["rev-parse", "--show-toplevel"], None)

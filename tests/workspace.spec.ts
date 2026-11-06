@@ -87,6 +87,7 @@ test('accounts can be renamed from Settings without changing identity', async ({
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Accounts' }).click();
   await page.getByRole('button', { name: 'Rename Before' }).click();
   await page.getByRole('textbox', { name: 'Account name' }).fill('After');
   await page.getByRole('button', { name: 'Save account name' }).click();
@@ -106,9 +107,10 @@ test('accounts can be renamed from Settings without changing identity', async ({
 test('settings, theme and support information persist across reloads', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Connected accounts' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('tab', { name: 'About' }).click();
   await expect(page.getByRole('button', { name: 'Support Lumen on PayPal' })).toBeVisible();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -177,6 +179,7 @@ test('filtering the sidebar preserves the selected running conversation', async 
 test('account errors remain visible inside settings', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Accounts' }).click();
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name' }).fill('Preview account');
   await page.getByRole('button', { name: 'Add account', exact: true }).last().click();
@@ -248,10 +251,13 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
     'C:/Work',
   );
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
+  await page.getByRole('tab', { name: 'Auto' }).click();
   await page.getByRole('button', { name: 'Budget', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Balance usage' }).check();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Auto' }).click();
   await expect(page.getByRole('button', { name: 'Budget', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -266,4 +272,167 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.getByRole('button', { name: 'Delete conversation', exact: true }).click();
   await expect(row).toHaveCount(0);
+});
+
+test('settings sections and Simple/Advanced mode hide expert options', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const tabs = page.getByRole('tablist', { name: 'Settings sections' });
+  await expect(page.getByRole('button', { name: 'Simple', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(tabs.getByRole('tab')).toHaveText([
+    'General',
+    'Accounts',
+    'Auto',
+    'Teamwork',
+    'About',
+  ]);
+  await page.getByRole('tab', { name: 'Teamwork' }).click();
+  await expect(page.getByRole('switch', { name: /Orchestra/ })).toBeVisible();
+  await expect(page.getByRole('switch', { name: /Self-healing/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
+  await page.getByRole('switch', { name: /Self-healing/ }).uncheck();
+  await expect(tabs.getByRole('tab', { name: 'Tools' })).toBeVisible();
+  await page.getByRole('button', { name: 'Simple', exact: true }).click();
+  await expect(page.getByText('1 advanced option is on')).toBeVisible();
+  await page.getByRole('tab', { name: 'General' }).click();
+  await page.getByRole('switch', { name: /^Keep Lumen/ }).check();
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('switch', { name: /^Keep Lumen/ })).toBeChecked();
+  await expect(page.getByText('Starts quietly in the notification area.')).toBeVisible();
+  await page.getByRole('button', { name: 'Show', exact: true }).click();
+  await page.getByRole('tab', { name: 'Teamwork' }).click();
+  await expect(page.getByRole('switch', { name: /Self-healing/ })).not.toBeChecked();
+});
+
+test('Orchestra cards show questions, an editable plan and live progress', async ({ page }) => {
+  const sub = (id: string, title: string, accountId: string, extra = {}) => ({
+    id,
+    title,
+    detail: 'Do it',
+    files: [`${id}.ts`],
+    difficulty: 'normal',
+    writes: true,
+    dependsOn: [],
+    accountId,
+    agent: accountId === 'c' ? 'Claude · Sonnet' : 'ChatGPT · Terra',
+    model: '',
+    effort: 'low',
+    status: 'pending',
+    output: '',
+    startedAt: 0,
+    endedAt: 0,
+    ...extra,
+  });
+  const state = (stage: string, more = {}) => ({
+    stage,
+    task: 'Build the feature',
+    questions: [],
+    confirm: '',
+    answers: '',
+    orchestrator: 'c',
+    orchestratorAgent: 'Claude · Opus',
+    orchestratorModel: 'opus',
+    effort: 'medium',
+    summary: 'Split API and UI',
+    subtasks: [],
+    planReview: '',
+    readOnly: false,
+    steps: [],
+    lanes: [],
+    ...more,
+  });
+  const msg = (id: string, st: object, text = '') => ({
+    id,
+    role: 'assistant',
+    text,
+    activity: [{ kind: 'orchestra', text: JSON.stringify(st) }],
+  });
+  await page.addInitScript(
+    ([q, p, r]) =>
+      localStorage.setItem(
+        'lumen-preview-v1',
+        JSON.stringify({
+          accounts: [
+            { id: 'c', name: 'Personal', provider: 'claude' },
+            { id: 'g', name: 'Work', provider: 'gpt' },
+            { id: 'o', name: 'Local', provider: 'ollama' },
+          ],
+          sessions: [
+            {
+              id: 'orc',
+              title: 'Orchestra fixture',
+              status: 'completed',
+              pinned: false,
+              workspace: 'C:/Work',
+              updatedAt: 1,
+            },
+          ],
+          messages: { orc: [q, p, r] },
+        }),
+      ),
+    [
+      msg(
+        'q',
+        state('questions', { questions: [{ q: 'Which database?', recommended: 'SQLite' }] }),
+      ),
+      msg('p', state('plan', { subtasks: [sub('s1', 'API', 'c'), sub('s2', 'UI', 'g')] })),
+      msg(
+        'r',
+        state('running', {
+          subtasks: [
+            sub('s1', 'API', 'c', {
+              status: 'done',
+              output: 'API ready',
+              startedAt: 1,
+              endedAt: 2001,
+            }),
+            sub('s2', 'UI', 'g', { status: 'failed', output: 'Rate limit reached' }),
+          ],
+          steps: [{ name: 'Integration', status: 'running', detail: '' }],
+        }),
+        'Final summary',
+      ),
+    ],
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /Orchestra fixture/ }).click();
+  const questions = page.getByRole('region', { name: 'Orchestra questions' });
+  await expect(questions.getByRole('textbox', { name: /Which database/ })).toHaveValue('SQLite');
+  await expect(questions.getByRole('button', { name: 'Skip questions' })).toBeVisible();
+  const plan = page.getByRole('region', { name: 'Orchestra plan' });
+  await expect(plan.getByText('Split API and UI')).toBeVisible();
+  const agent = plan.getByRole('combobox', { name: 'Agent for API' });
+  await expect(agent.locator('option[value="o"]')).toBeDisabled();
+  await plan.getByRole('button', { name: 'Remove UI' }).click();
+  await expect(plan.getByText('UI', { exact: true })).toHaveCount(0);
+  await expect(plan.getByRole('button', { name: 'Remove API' })).toBeDisabled();
+  await plan.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByRole('alert')).toContainText('desktop app');
+  const progress = page.getByRole('region', { name: 'Orchestra progress' });
+  await expect(progress.getByText('2s')).toBeVisible();
+  await expect(progress.getByLabel('Failed')).toBeVisible();
+  await progress.getByText('API', { exact: true }).click();
+  await expect(progress.getByText('API ready')).toBeVisible();
+  await expect(page.getByText('Final summary')).toBeVisible();
+});
+
+test('the Orchestra switch shows a composer badge that turns it off', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('lumen-preview-settings', JSON.stringify({ orchestra: true })),
+  );
+  await page.goto('/');
+  const badge = page.getByRole('button', { name: 'Orchestra', exact: true });
+  await expect(badge).toBeVisible();
+  await page.getByRole('button', { name: 'Claude', exact: true }).click();
+  await expect(badge).toHaveCount(0);
+  await page.getByRole('button', { name: 'Auto', exact: true }).click();
+  await badge.click();
+  await expect(badge).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Teamwork' }).click();
+  await expect(page.getByRole('switch', { name: /Orchestra/ })).not.toBeChecked();
 });
