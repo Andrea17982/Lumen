@@ -279,20 +279,44 @@ async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), 
         return Err("Every account is cooling down after a rate limit. Try again later.".into());
     }
     let orchestrator = account(core, &st.orchestrator)?.provider;
-    choose_accounts(&mut st.subtasks, &accounts, &orchestrator);
-    for t in st.subtasks.iter_mut() {
-        let Some(a) = accounts.iter().find(|a| a.id == t.account_id) else {
-            continue;
-        };
-        let tier = tier_of(&t.difficulty);
-        if t.model.is_empty() {
-            if let Ok(models) = models_for(core, a, false, None).await {
-                if let Some(m) = router::select_tier(&models, tier) {
-                    t.model = m.id.clone();
-                    t.agent = format!("{} · {}", display(&a.provider), m.name);
+    // Accounts whose catalog cannot load (signed out, CLI missing) are skipped,
+    // and their subtasks go to the next agent instead of failing at run time.
+    let mut usable = accounts;
+    for _ in 0..4 {
+        choose_accounts(&mut st.subtasks, &usable, &orchestrator);
+        let mut broken = vec![];
+        for t in st.subtasks.iter_mut().filter(|t| t.model.is_empty()) {
+            let Some(a) = usable.iter().find(|a| a.id == t.account_id) else {
+                continue;
+            };
+            match models_for(core, a, false, None).await {
+                Ok(models) => {
+                    if let Some(m) = router::select_tier(&models, tier_of(&t.difficulty)) {
+                        t.model = m.id.clone();
+                        t.agent = format!("{} · {}", display(&a.provider), m.name);
+                    }
+                }
+                Err(_) => {
+                    broken.push(a.id.clone());
+                    t.account_id.clear();
                 }
             }
         }
+        if broken.is_empty() {
+            break;
+        }
+        usable.retain(|a| !broken.contains(&a.id));
+        if usable.is_empty() {
+            return Err(
+                "No connected account can load its models. Check the accounts in Settings.".into(),
+            );
+        }
+    }
+    for t in st.subtasks.iter_mut() {
+        let Some(a) = usable.iter().find(|a| a.id == t.account_id) else {
+            continue;
+        };
+        let tier = tier_of(&t.difficulty);
         if t.agent.is_empty() || !t.agent.starts_with(display(&a.provider)) {
             t.agent = display(&a.provider).into();
         }

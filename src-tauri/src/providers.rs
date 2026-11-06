@@ -298,6 +298,11 @@ pub fn invocation_args(
                     ]
                     .map(str::to_owned),
                 );
+                // Isolated CODEX_HOMEs have no [windows] sandbox setting, and without
+                // one Codex blocks every write. The unelevated sandbox needs no admin prompt.
+                if cfg!(windows) {
+                    args.extend(["-c".into(), r#"windows.sandbox="unelevated""#.into()]);
+                }
             }
             if !effort.is_empty() {
                 args.extend(["-c".into(), format!(r#"model_reasoning_effort="{effort}""#)]);

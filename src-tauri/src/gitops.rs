@@ -214,7 +214,23 @@ pub async fn add_lane(top: &Path, base: &str, path: &Path, branch: &str) -> Resu
         )
         .await?;
     }
-    run(path, &["read-tree", "-u", "--reset", base], None).await?;
+    // Byte-exact checkout: with core.autocrlf the lane would get CRLF files and its
+    // patch would rewrite every line, so it could no longer apply to the user's folder.
+    run(
+        path,
+        &[
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            "core.safecrlf=false",
+            "read-tree",
+            "-u",
+            "--reset",
+            base,
+        ],
+        None,
+    )
+    .await?;
     Ok(())
 }
 
