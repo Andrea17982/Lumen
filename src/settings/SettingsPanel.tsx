@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { AlertCircle, ArrowUpRight, Heart, X } from 'lucide-react';
 import { version } from '../../package.json';
-import { external } from '../lib/bridge';
+import { call, external } from '../lib/bridge';
 import { advancedActive, useAppSettings } from '../lib/settings';
-import type { Account, Provider } from '../lib/types';
+import type { Account, McpServer, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
 import ApiSettings from './ApiSettings';
@@ -63,12 +63,20 @@ export default function SettingsPanel({
   const [advanced, setAdvanced] = useState(() => localStorage.getItem(MODE_KEY) === 'advanced');
   const [tab, setTab] = useState<SettingsTab>(requestedTab || 'general');
   const settings = useAppSettings(setError);
+  const [mcpOn, setMcpOn] = useState(0);
   useEffect(() => {
     if (open) setTab(requestedTab || 'general');
   }, [open, requestedTab]);
+  // Enabled MCP servers live in the Advanced-only Tools tab, so Simple mode counts them.
+  useEffect(() => {
+    if (!open || advanced) return;
+    void call<McpServer[]>('mcp_health')
+      .then((list) => setMcpOn(list.filter((m) => m.enabled).length))
+      .catch(() => setMcpOn(0));
+  }, [open, advanced]);
   const visible = TABS.filter((t) => advanced || !t.advanced);
   const current = visible.some((t) => t.id === tab) ? tab : 'general';
-  const hidden = advanced ? 0 : advancedActive(settings, balanceUsage);
+  const hidden = advanced ? 0 : advancedActive(settings, balanceUsage, mcpOn);
   function mode(next: boolean) {
     setAdvanced(next);
     localStorage.setItem(MODE_KEY, next ? 'advanced' : 'simple');
@@ -109,7 +117,10 @@ export default function SettingsPanel({
                   id={`settings-tab-${t.id}`}
                   aria-selected={current === t.id}
                   aria-controls="settings-body"
-                  onClick={() => setTab(t.id)}
+                  onClick={(e) => {
+                    setTab(t.id);
+                    e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                  }}
                 >
                   {t.label}
                 </button>

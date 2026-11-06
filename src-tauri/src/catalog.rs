@@ -55,7 +55,7 @@ pub async fn discover(
         let mut c = providers::command(&account.provider)?;
         providers::isolate(&mut c, &account.provider, dir);
         let args: &[&str] = if account.provider == Provider::Antigravity {
-            &["models", "--output-format", "json"]
+            &["models"]
         } else {
             &["--list-models"]
         };
@@ -81,10 +81,13 @@ pub async fn discover(
         };
         let mut models = parse_models(&account.provider, &Value::Array(rows));
         if models.is_empty() {
+            // agy prints "id<TAB>display name" rows after a progress line.
+            let tabbed = text.lines().any(|l| l.contains('\t'));
             models = text
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .filter(|line| !tabbed || line.contains('\t'))
                 .map(|line| ModelInfo {
                     id: line
                         .split_whitespace()
@@ -92,7 +95,7 @@ pub async fn discover(
                         .unwrap_or(line)
                         .trim_matches('*')
                         .to_string(),
-                    name: line.to_string(),
+                    name: line.split('\t').nth(1).unwrap_or(line).trim().to_string(),
                     description: String::new(),
                     efforts: vec![],
                     default_effort: String::new(),

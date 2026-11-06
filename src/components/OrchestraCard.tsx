@@ -239,7 +239,9 @@ export default function OrchestraCard({
     );
   }
 
-  if (['answered', 'approved', 'cancelled', 'kept', 'discarded'].includes(state.stage))
+  if (
+    ['answered', 'approved', 'cancelled', 'kept', 'discarded', 'superseded'].includes(state.stage)
+  )
     return (
       <p className="orchestra-closed">
         <Workflow size={12} /> Orchestra ·{' '}
@@ -250,6 +252,7 @@ export default function OrchestraCard({
             cancelled: 'cancelled',
             kept: 'branches kept for manual merging',
             discarded: 'branches discarded',
+            superseded: 'replaced by a newer message',
           }[state.stage]
         }
       </p>
@@ -259,6 +262,11 @@ export default function OrchestraCard({
   return (
     <section className="orchestra-card" aria-label="Orchestra progress">
       {header}
+      {state.stage === 'interrupted' && (
+        <p className="orchestra-warning">
+          Interrupted before it finished. Its temporary worktrees were removed.
+        </p>
+      )}
       {state.subtasks.map((t) => {
         const text = message.live?.[t.id] || t.output;
         return (

@@ -24,7 +24,9 @@ Lumen brings separate AI conversations into one restrained, glass-inspired deskt
 - **Simpler Settings**: one section at a time, with a Simple/Advanced switch.
 - **Notification area and login**: keep Lumen running when the window is closed, and open it at login.
 
-Details: [Teamwork features](docs/features.md#new-in-04).
+Details: [Teamwork features](docs/features.md#new-in-04) and the [0.4.0 release notes](docs/release-notes/0.4.0.md). Screenshots: [Orchestra plan](docs/images/orchestra-plan.png), [Orchestra run](docs/images/orchestra-progress.png), [Settings in Simple mode](docs/images/settings-simple.png) and [Advanced mode](docs/images/settings-advanced.png).
+
+**Important fix:** on Windows, Codex in File edits could not write files; 0.4 fixes it. Antigravity now works too; in File edits it may run any command (Lumen tells you once).
 
 ## New in 0.3: Claude and ChatGPT as a team
 

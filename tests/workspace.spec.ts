@@ -436,3 +436,28 @@ test('the Orchestra switch shows a composer badge that turns it off', async ({ p
   await page.getByRole('tab', { name: 'Teamwork' }).click();
   await expect(page.getByRole('switch', { name: /Orchestra/ })).not.toBeChecked();
 });
+
+test('choosing File edits with Antigravity connected warns once, unless hidden', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [{ id: 'a', name: 'Antigravity', provider: 'antigravity' }],
+        sessions: [],
+      }),
+    ),
+  );
+  await page.goto('/');
+  const access = page.getByRole('combobox', { name: 'Permissions' });
+  await access.selectOption('file-edits');
+  const notice = page.getByRole('dialog', { name: 'Antigravity in File edits' });
+  await expect(notice).toBeVisible();
+  await notice.getByRole('checkbox', { name: "Don't show again" }).check();
+  await notice.getByRole('button', { name: 'OK' }).click();
+  await expect(notice).toHaveCount(0);
+  await access.selectOption('read-only');
+  await access.selectOption('file-edits');
+  await expect(notice).toHaveCount(0);
+});

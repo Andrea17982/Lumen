@@ -129,6 +129,25 @@ impl Store {
         self.with(|c| c.execute("INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity",params![m.id,s,m.role,m.text,activity,now()]))?;
         Ok(())
     }
+    /// Every message that carries Orchestra state, with its session id.
+    pub fn orchestra_messages(&self) -> Result<Vec<(String, Message)>, String> {
+        self.with(|c| {
+            let mut q = c.prepare(r#"SELECT session_id,id,role,text,activity FROM messages WHERE activity LIKE '%"kind":"orchestra"%'"#)?;
+            let rows = q.query_map([], |r| {
+                let a: String = r.get(4)?;
+                Ok((
+                    r.get(0)?,
+                    Message {
+                        id: r.get(1)?,
+                        role: r.get(2)?,
+                        text: r.get(3)?,
+                        activity: serde_json::from_str(&a).unwrap_or_default(),
+                    },
+                ))
+            })?;
+            rows.collect()
+        })
+    }
     /// Removes a message and everything after it (Rewind).
     pub fn truncate_from(&self, session: &str, message: &str) -> Result<(), String> {
         self.with(|c| {

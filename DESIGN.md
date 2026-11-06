@@ -247,15 +247,21 @@ Settings is a right-side `role="dialog"` with `aria-modal="true"` and 420px desk
 
 Opening settings closes the navigation sidebar and conversation action menu before focusing the panel. This clears the narrow sidebar and its scrim from the modal path, even though their z-indices are higher than settings. No screen-reader or native-webview focus certification is implied by the implemented focus trap.
 
+### Notices
+
+One-time notices (for example Antigravity in File edits) use the centered dialog: a 13px bold title, muted 12px explanation, a **Don't show again** checkbox and a single OK button. They never block work beyond one click.
+
+Controls draw no focus ring, at the owner's request; hover and selected fills carry the state instead. Popovers open beside the control that opened them (Usage beside its button, Rename beside the conversation), over an invisible click-catcher that never changes color.
+
 ### Orchestra card
 
-Orchestra steps render as a card inside the assistant message: `input` fill, 1px `line` border, 12px radius, 14/16px padding, 12px text. The header pairs an accent workflow icon with **Orchestra** and the orchestrator model in muted 10px type. Questions use stacked labels with `surface` inputs prefilled with the recommendation; the plan uses rows separated by `line`, each with title, muted difficulty/files/dependency metadata, an agent dropdown and a remove icon. Progress rows are disclosures with a status icon (spinner, `ok` check, `error` alert, muted dot), the agent and tabular elapsed time; output opens in 11px monospace, at most 240px high. Primary actions (Continue, Approve, Keep branches) use the primary button; secondary ones are text buttons. The read-only notice uses the amber `waiting` color. Closed steps collapse to a single muted line. The composer shows a small accent **Orchestra** badge next to Auto while the setting is on.
+Orchestra steps render as a card inside the assistant message: `input` fill, 1px `line` border, 12px radius, 14/16px padding, 12px text. The header pairs an accent workflow icon with **Orchestra** and the orchestrator model in muted 10px type. Questions use stacked labels with `surface` inputs prefilled with the recommendation; the plan uses rows separated by `line`, each with title, muted difficulty/files/dependency metadata, an agent dropdown and a remove icon. Progress rows are disclosures with a status icon (spinner, `ok` check, `error` alert, muted dot), the agent and tabular elapsed time; output opens in 11px monospace, at most 240px high. Interrupted runs show an amber note under the header; superseded steps collapse to a muted line. Primary actions (Continue, Approve, Keep branches) use the primary button; secondary ones are text buttons. The read-only notice uses the amber `waiting` color. Closed steps collapse to a single muted line. The composer shows a small accent **Orchestra** badge next to Auto while the setting is on.
 
 ## Do's and Don'ts
 
 - **Do** keep the user's Liquid Glass identity, English copy, system typography, and light/dark semantic pairing.
 - **Do** keep the transcript dominant and the composer aligned with its 760px reading column.
-- **Do** preserve visible focus, inert modal background, status text, disclosure controls, and reduced-motion preferences.
+- **Do** preserve inert modal background, status text, disclosure controls, and reduced-motion preferences.
 - **Do** use subdued tonal fills and fine dividers for ordinary reading and writing surfaces.
 - **Don't** spread heavy transparency or blur across message content or the composer.
 - **Don't** turn every secondary action into a prominent card or primary button.

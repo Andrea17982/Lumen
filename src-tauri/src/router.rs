@@ -221,12 +221,16 @@ pub fn model_tier(m: &ModelInfo) -> i32 {
         1
     }
 }
-/// Closest catalog model to a class; catalog defaults break ties.
+/// Catalog aliases ("default", "auto") hide which model actually runs.
+fn is_alias(m: &ModelInfo) -> bool {
+    matches!(m.id.as_str(), "default" | "auto")
+}
+/// Closest catalog model to a class; named models beat aliases, then catalog defaults break ties.
 pub fn select_tier(models: &[ModelInfo], target: i32) -> Option<&ModelInfo> {
     // Terra is also acceptable for small tasks, but prefer Luna when present.
     models
         .iter()
-        .min_by_key(|m| ((model_tier(m) - target).abs(), !m.is_default))
+        .min_by_key(|m| ((model_tier(m) - target).abs(), is_alias(m), !m.is_default))
 }
 /// Use catalog IDs, never manufacture a model name unavailable to the account.
 pub fn select_model<'a>(
@@ -427,5 +431,24 @@ mod tests {
         assert_eq!(usage_pressure(&near_reset, at + 900_001), None);
         assert_eq!(usage_pressure(&near_reset, at - 1), None);
         assert_eq!(usage_pressure(&usage(20.0, 300, 0), at), None);
+    }
+    #[test]
+    fn named_models_beat_catalog_aliases() {
+        let m = |id: &str, name: &str, default: bool| ModelInfo {
+            id: id.into(),
+            name: name.into(),
+            description: String::new(),
+            efforts: vec![],
+            default_effort: String::new(),
+            is_default: default,
+        };
+        let models = vec![
+            m("default", "Default (recommended)", true),
+            m("sonnet", "Sonnet 5.5", false),
+            m("opus", "Opus 5.5", false),
+        ];
+        assert_eq!(select_tier(&models, 1).unwrap().id, "sonnet");
+        assert_eq!(select_tier(&models, 2).unwrap().id, "opus");
+        assert_eq!(select_tier(&models[..1], 1).unwrap().id, "default");
     }
 }

@@ -14,6 +14,17 @@ Il codice dell’applicazione, l’interfaccia, i test e la documentazione sono 
 
 Lumen è disponibile con licenza MIT: tutti possono scaricarla, utilizzarla e modificarla.
 
+## Novità 0.4: Orchestra
+
+- **Orchestra** (Settings → Teamwork, insieme ad Auto): per i compiti complessi un modello orchestratore fa le domande necessarie con le risposte consigliate, mostra il piano con l'agente assegnato a ogni sotto-attività da approvare, esegue le sotto-attività in parallelo in `git worktree` separati su tutti i provider collegati e integra il risultato, con Cross-Audit opzionale.
+- **Ollama**: provider locale tramite la CLI ufficiale `ollama`, usato come ultimo fallback di emergenza e per le sotto-attività di solo testo più semplici.
+- **Impostazioni a sezioni** con l'interruttore **Simple / Advanced**.
+- **Area di notifica e avvio all'accesso**: Lumen resta attiva quando chiudi la finestra e può aprirsi al login.
+
+**Correzione importante:** su Windows, Codex in modalità File edits non riusciva a scrivere file; la 0.4 lo corregge. Ora funziona anche Antigravity; in File edits può eseguire qualsiasi comando (Lumen lo segnala una volta).
+
+Dettagli nelle [note di rilascio 0.4.0](docs/release-notes/0.4.0.md).
+
 ## Novità 0.3: Claude e ChatGPT lavorano in squadra
 
 - **Both**: lo stesso prompt a entrambi, con le risposte affiancate. Con le modifiche abilitate ognuno lavora in un proprio `git worktree` e applichi la versione migliore con un clic.

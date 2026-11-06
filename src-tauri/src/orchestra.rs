@@ -699,6 +699,12 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
         .or_else(|| models.first())
         .ok_or("No provider model available")?;
     let effort = resolve_effort(selected, &job.effort);
+    let mut waiting = job.cancel.clone();
+    let _permit = tokio::select! {
+        biased;
+        _ = waiting.changed() => return Err("Cancelled".into()),
+        p = core.inference.clone().acquire_owned() => p.map_err(|e| e.to_string())?,
+    };
     let config = config_dir(core, a);
     let (app, session, message, id) = (&job.app, &job.session, &job.message, &job.id);
     let r = providers::execute(
@@ -881,6 +887,11 @@ pub async fn execute(
                 }
                 let start = gitops::write_tree(&path).await?;
                 job_dir = path.join(&rel);
+                st.lanes.push((
+                    top.to_string_lossy().into_owned(),
+                    path.to_string_lossy().into_owned(),
+                    branch.clone(),
+                ));
                 lanes.insert(
                     t.id.clone(),
                     Lane {
@@ -936,6 +947,9 @@ pub async fn execute(
                 for l in lanes.values() {
                     if let Some(top) = &top { gitops::remove_lane(top, &l.path, &l.branch).await; }
                 }
+                st.lanes.clear();
+                st.stage = "interrupted".into();
+                publish(app, core, s, out, &st);
                 return Err("Cancelled".into());
             }
             j = set.join_next() => j,
@@ -979,6 +993,7 @@ pub async fn execute(
         .collect();
     if failed.len() == st.subtasks.len() {
         cleanup(&top, &lanes).await;
+        st.lanes.clear();
         st.stage = "failed".into();
         publish(app, core, s, out, &st);
         return Err("Every subtask failed. See the Orchestra card for details.".into());
@@ -1094,6 +1109,7 @@ pub async fn execute(
         });
     }
     cleanup(&top, &lanes).await;
+    st.lanes.clear();
 
     // The orchestrator checks the combined result and writes the final answer.
     let diff = match (&top, base.is_empty()) {
@@ -1405,6 +1421,87 @@ mod tests {
         assert!(t.contains("→ yes") && t.contains("→ maybe"));
         assert!(answers_text(&st, &[], "", true).starts_with("Skip"));
     }
+}
+
+// ---------------------------------------------------------------- lifecycle
+
+/// At startup: an Orchestra step that was running when Lumen closed can never
+/// finish, so mark it interrupted and remove the worktrees it left behind.
+pub fn recover(core: &Core) {
+    let Ok(rows) = core.store.orchestra_messages() else {
+        return;
+    };
+    for (session, mut m) in rows {
+        let Some(mut st) = state_of(&m) else {
+            continue;
+        };
+        if !["asking", "planning", "running"].contains(&st.stage.as_str()) {
+            continue;
+        }
+        st.stage = "interrupted".into();
+        for t in st.subtasks.iter_mut().filter(|t| t.status == "running") {
+            t.status = "failed".into();
+            t.output = "Interrupted: Lumen was closed.".into();
+        }
+        for x in st.steps.iter_mut().filter(|x| x.status == "running") {
+            x.status = "failed".into();
+        }
+        let lanes = std::mem::take(&mut st.lanes);
+        tauri::async_runtime::spawn(async move {
+            for (top, path, branch) in lanes {
+                gitops::remove_lane(Path::new(&top), Path::new(&path), &branch).await;
+            }
+        });
+        if let (Some(a), Ok(text)) = (
+            m.activity.iter_mut().find(|a| a.kind == "orchestra"),
+            serde_json::to_string(&st),
+        ) {
+            a.text = text;
+        }
+        let _ = core.store.save_message(&session, &m);
+    }
+}
+
+/// A new message replaces any question or plan still waiting for an answer.
+pub fn supersede(app: &tauri::AppHandle, core: &Core, session: &str) {
+    let Ok(messages) = core.store.messages(session) else {
+        return;
+    };
+    for mut m in messages {
+        if let Some(mut st) = state_of(&m) {
+            if ["questions", "plan"].contains(&st.stage.as_str()) {
+                st.stage = "superseded".into();
+                let _ = save_state(app, core, session, &mut m, &st);
+            }
+        }
+    }
+}
+
+/// After Rewind: if the conversation now ends on an answered question or an
+/// approved plan, open it again so it can be changed and approved anew.
+pub fn reopen(core: &Core, session: &str) -> bool {
+    let Ok(messages) = core.store.messages(session) else {
+        return false;
+    };
+    let Some(mut m) = messages.into_iter().last() else {
+        return false;
+    };
+    let Some(mut st) = state_of(&m) else {
+        return false;
+    };
+    st.stage = match st.stage.as_str() {
+        "answered" => "questions",
+        "approved" => "plan",
+        _ => return false,
+    }
+    .into();
+    if let (Some(a), Ok(text)) = (
+        m.activity.iter_mut().find(|a| a.kind == "orchestra"),
+        serde_json::to_string(&st),
+    ) {
+        a.text = text;
+    }
+    core.store.save_message(session, &m).is_ok()
 }
 
 // ---------------------------------------------------------------- commands

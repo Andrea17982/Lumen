@@ -28,6 +28,8 @@ pub struct Core {
     root: PathBuf,
     jobs: Mutex<HashMap<String, watch::Sender<bool>>>,
     slots: Arc<Semaphore>,
+    /// At most eight CLI inference processes at once, Orchestra subtasks included.
+    inference: Arc<Semaphore>,
     workspace_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     catalogs: Mutex<HashMap<String, (std::time::Instant, Vec<ModelInfo>)>>,
     usage_lock: Mutex<()>,
@@ -725,6 +727,7 @@ pub fn run() {
                 root,
                 jobs: Mutex::new(HashMap::new()),
                 slots: Arc::new(Semaphore::new(4)),
+                inference: Arc::new(Semaphore::new(8)),
                 workspace_locks: Mutex::new(HashMap::new()),
                 catalogs: Mutex::new(HashMap::new()),
                 usage_lock: Mutex::new(()),
@@ -734,6 +737,7 @@ pub fn run() {
                 api_log: Mutex::new(VecDeque::new()),
             });
             app.manage(core.clone());
+            orchestra::recover(&core);
             let handle = app.handle().clone();
             let _ = tray::sync_tray(&handle, prefs.close_to_tray);
             let _ = tray::sync_autostart(&handle, prefs.open_at_login);

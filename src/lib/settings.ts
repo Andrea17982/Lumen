@@ -35,13 +35,12 @@ export function useAppSettings(onError?: (s: string) => void) {
 }
 
 /** Advanced options that differ from their defaults; Simple mode mentions them. */
-export function advancedActive(s: AppSettings | null, balanceUsage: boolean) {
-  if (!s) return 0;
-  return [
-    balanceUsage,
-    !s.selfHeal,
-    s.reviewRounds !== 1,
-    s.apiEnabled,
-    Boolean(s.ollamaModel),
-  ].filter(Boolean).length;
+export function advancedActive(s: AppSettings | null, balanceUsage: boolean, mcpOn = 0) {
+  if (!s) return mcpOn;
+  return (
+    mcpOn +
+    [balanceUsage, !s.selfHeal, s.reviewRounds !== 1, s.apiEnabled, Boolean(s.ollamaModel)].filter(
+      Boolean,
+    ).length
+  );
 }

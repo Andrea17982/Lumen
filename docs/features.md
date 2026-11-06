@@ -21,13 +21,19 @@ With **Cross-audit** on, the provider opposite the orchestrator validates its de
 
 If a subtask fails or hits a rate limit, Lumen retries it once on another provider. If that also fails, the rest is still integrated and the final answer lists what failed. If integration itself fails, the work is kept in `lumen/orchestra-*` branches: **Keep branches** leaves them for a manual merge, **Discard** deletes them.
 
+If you write a new message while questions or a plan are waiting, the waiting card is marked as replaced and can no longer be used. A run interrupted by closing Lumen is marked **Interrupted** at the next start, and its temporary worktrees are removed. Rewind on "Approved the plan." restores your files and reopens the plan, so you can change it and approve it again.
+
 Orchestra needs a git repository to isolate the subtasks. In a folder without git, the request runs normally and the answer offers **Initialize git**. In **Ask** (read-only) mode the agents only analyze: the plan card says so, and the orchestrator combines their findings. One Rewind checkpoint is taken before the run, on the "Approved the plan." message.
 
 ### Ollama
 
 Add **Ollama (local, emergency)** in Settings → Accounts. Lumen uses only the official `ollama` CLI (`ollama list`, `ollama run`): there is no sign-in and nothing is isolated, because models live in your own Ollama store. The account row shows a status dot and the model count; **Install Ollama** appears when the CLI is missing, and an empty store suggests `ollama pull llama3.2`. Lumen uses the largest installed model; in Advanced mode a **Model** menu pins another one.
 
-Ollama never edits files: it receives the prompt and returns text. It is the last emergency fallback, after Antigravity and Gemini CLI, and an Orchestra agent for trivial text subtasks.
+Ollama never edits files: it receives the prompt and returns text.
+
+### Antigravity in File edits
+
+Antigravity's command line, run without a terminal, refuses every shell command it would need to look around a project, even `dir`, and its allow rules cannot permit read-only commands alone. In **File edits**, Lumen therefore allows Antigravity to run **any command** without asking (Claude and ChatGPT can only edit files there). Choosing File edits while an Antigravity account is connected shows a one-time notice with **Don't show again**. Antigravity only runs as an emergency fallback or for Orchestra subtasks assigned to it. It is the last emergency fallback, after Antigravity and Gemini CLI, and an Orchestra agent for trivial text subtasks.
 
 ### Settings: Simple and Advanced
 

@@ -121,6 +121,7 @@ pub async fn send_message(
         release(&core);
         return Err(e);
     }
+    crate::orchestra::supersede(&app, &core, &id);
     if session.title == "New conversation" {
         session.title = text
             .split_whitespace()
@@ -258,6 +259,12 @@ pub async fn stage(
         .or_else(|| models.first())
         .ok_or("No provider model available")?;
     let resolved_effort = resolve_effort(selected, effort);
+    let mut waiting = cancel.clone();
+    let _permit = tokio::select! {
+        biased;
+        _ = waiting.changed() => return Err("Cancelled".into()),
+        p = core.inference.clone().acquire_owned() => p.map_err(|e| e.to_string())?,
+    };
     note(
         app,
         &s.id,
@@ -1190,6 +1197,9 @@ pub async fn rewind(
     }
     core.store.truncate_from(&session, &message)?;
     core.store.status(&session, "idle")?;
+    if crate::orchestra::reopen(&core, &session) {
+        return Ok(String::new());
+    }
     Ok(messages[pos].text.clone())
 }
 

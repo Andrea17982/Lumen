@@ -130,7 +130,11 @@ export default function App() {
   const [projectFilter, setProjectFilter] = useState('*');
   const [context, setContext] = useState<{ session: Session; x: number; y: number } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Session | null>(null);
+  const [renamePos, setRenamePos] = useState({ x: 0, y: 0 });
+  const [usagePos, setUsagePos] = useState({ left: 276, bottom: 74 });
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
+  const [agyNotice, setAgyNotice] = useState(false);
+  const [agyHide, setAgyHide] = useState(false);
   const [mode, setMode] = useState<Mode>('auto');
   const [accountId, setAccountId] = useState('');
   const [model, setModel] = useState('');
@@ -573,6 +577,12 @@ export default function App() {
   }
   async function changeAccessMode(next: AccessMode) {
     setAccessMode(next);
+    if (
+      next === 'file-edits' &&
+      accounts.some((a) => a.provider === 'antigravity') &&
+      localStorage.getItem('lumen-agy-file-edits-notice') !== 'hidden'
+    )
+      setAgyNotice(true);
     if (next !== 'read-only' && mode === 'both') setMode('auto');
     if (!session) return;
     try {
@@ -1002,7 +1012,15 @@ export default function App() {
           <div className="sidebar-footer-actions">
             <button
               className="usage-button"
-              onClick={() => setUsageOpen((open) => !open)}
+              onClick={(e) => {
+                // Open beside the button, whatever the sidebar width.
+                const r = e.currentTarget.getBoundingClientRect();
+                setUsagePos({
+                  left: Math.max(12, Math.min(r.right + 10, window.innerWidth - 352)),
+                  bottom: Math.max(12, window.innerHeight - r.bottom),
+                });
+                setUsageOpen((open) => !open);
+              }}
               aria-expanded={usageOpen}
             >
               <Circle size={8} fill="currentColor" />
@@ -1019,7 +1037,12 @@ export default function App() {
             aria-label="Close usage"
             onClick={() => setUsageOpen(false)}
           />
-          <section className="usage-popover" role="dialog" aria-label="Provider usage">
+          <section
+            className="usage-popover"
+            role="dialog"
+            aria-label="Provider usage"
+            style={{ left: usagePos.left, bottom: usagePos.bottom }}
+          >
             <header>
               <strong>Usage</strong>
               <button
@@ -1076,6 +1099,10 @@ export default function App() {
               onClick={() => {
                 setRenameTarget(context.session);
                 setRenameValue(context.session.title);
+                setRenamePos({
+                  x: Math.min(context.x, window.innerWidth - 272),
+                  y: Math.min(context.y, window.innerHeight - 150),
+                });
                 setContext(null);
               }}
             >
@@ -1121,11 +1148,18 @@ export default function App() {
         </>
       )}
       {renameTarget && (
-        <div className="dialog-scrim">
+        <>
+          <button
+            className="context-scrim"
+            aria-label="Close rename"
+            onClick={() => setRenameTarget(null)}
+          />
           <form
-            className="popup conversation-dialog"
+            className="popup conversation-dialog rename-popover"
             role="dialog"
             aria-label="Rename conversation"
+            style={{ left: renamePos.x, top: renamePos.y }}
+            onKeyDown={(e) => e.key === 'Escape' && setRenameTarget(null)}
             onSubmit={(e) => {
               e.preventDefault();
               void update(renameTarget, renameValue).then(() => setRenameTarget(null));
@@ -1141,11 +1175,46 @@ export default function App() {
                 onChange={(e) => setRenameValue(e.target.value)}
               />
             </label>
-            <button disabled={!renameValue.trim()}>Save</button>
-            <button type="button" onClick={() => setRenameTarget(null)}>
-              Cancel
-            </button>
+            <div className="rename-actions">
+              <button type="button" onClick={() => setRenameTarget(null)}>
+                Cancel
+              </button>
+              <button disabled={!renameValue.trim()}>Save</button>
+            </div>
           </form>
+        </>
+      )}
+      {agyNotice && (
+        <div className="dialog-scrim">
+          <div
+            className="popup conversation-dialog notice-dialog"
+            role="dialog"
+            aria-label="Antigravity in File edits"
+          >
+            <strong>Antigravity can run any command</strong>
+            <p>
+              In File edits, Claude and ChatGPT can only edit files. Antigravity's command line
+              can't run even read-only commands without permission, so Lumen lets it run every
+              command without asking. It only runs as a fallback or for Orchestra subtasks.
+            </p>
+            <label className="notice-check">
+              <input
+                type="checkbox"
+                checked={agyHide}
+                onChange={(e) => setAgyHide(e.target.checked)}
+              />
+              Don't show again
+            </label>
+            <button
+              autoFocus
+              onClick={() => {
+                if (agyHide) localStorage.setItem('lumen-agy-file-edits-notice', 'hidden');
+                setAgyNotice(false);
+              }}
+            >
+              OK
+            </button>
+          </div>
         </div>
       )}
       {deleteTarget && (

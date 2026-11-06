@@ -157,6 +157,27 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                 push("final", t.into());
             }
         }
+    } else {
+        // Google CLIs. Antigravity print mode: step_update text deltas, then one result event.
+        if v["event"] == "step_update" && v["step_update"]["step_type"] == "agent_response" {
+            if let Some(t) = v["step_update"]["text_delta"].as_str() {
+                push("delta", t.into());
+            }
+        }
+        if v["event"] == "result" && v["result"]["status"] == "SUCCESS" {
+            if let Some(t) = v["result"]["response"].as_str() {
+                push("final", t.into());
+            }
+        }
+        if v["event"] == "result" && v["result"]["status"] == "ERROR" {
+            push(
+                "error",
+                v["result"]["error"]
+                    .as_str()
+                    .unwrap_or("Antigravity turn failed")
+                    .into(),
+            );
+        }
         if v["type"] == "message" && v["role"] == "assistant" {
             if let Some(t) = v["content"].as_str() {
                 push("delta", t.into());
@@ -235,7 +256,15 @@ pub async fn execute(
         }
     }
     c.args(args);
-    run_command(c, input.prompt, p, cancel, emit).await
+    let prompt = if *p == Provider::Antigravity {
+        format!(
+            "{}\n",
+            serde_json::json!({"event": "user", "message": {"content": input.prompt}})
+        )
+    } else {
+        input.prompt.to_owned()
+    };
+    run_command(c, &prompt, p, cancel, emit).await
 }
 
 const DENY: [&str; 9] = [
@@ -273,7 +302,15 @@ pub fn invocation_args(
             "--include-partial-messages",
         ],
         Provider::Gemini => vec!["--prompt", "", "--output-format", "stream-json"],
-        Provider::Antigravity => vec!["-p", "", "--output-format", "stream-json"],
+        // agy ignores stdin in plain print mode; stream-json input reads the prompt
+        // as one NDJSON message, so long prompts never hit the command-line limit.
+        Provider::Antigravity => vec![
+            "--print=",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+        ],
         // Prompt-only: Ollama reads stdin and prints plain text, never touching files.
         Provider::Ollama => vec!["run"],
     }
@@ -350,10 +387,19 @@ pub fn invocation_args(
             } else {
                 let permission = match access {
                     AccessMode::ReadOnly => "--mode=plan",
-                    AccessMode::FileEdits => "--mode=auto",
+                    AccessMode::FileEdits => "--mode=accept-edits",
                     AccessMode::Autopilot => "--dangerously-skip-permissions",
                 };
                 args.push(permission.into());
+                // Headless agy denies every shell command, even `dir`, and its allow
+                // rules only match command(*). In File edits it therefore gets all
+                // commands; the interface warns about this when File edits is chosen.
+                if access == AccessMode::FileEdits {
+                    args.extend([
+                        "--settings".into(),
+                        r#"{"permissions":{"allow":["command(*)"]}}"#.into(),
+                    ]);
+                }
             }
             if *p == Provider::Antigravity && !effort.is_empty() {
                 args.extend(["--effort".into(), effort.into()]);
@@ -368,7 +414,7 @@ pub fn invocation_args(
     if let Some(m) = model {
         args.extend(["--model".into(), m.into()]);
     }
-    if matches!(p, Provider::Gemini | Provider::Antigravity) && args.len() > 1 {
+    if *p == Provider::Gemini && args.len() > 1 {
         args[1] = "".into();
     }
     if *p == Provider::Gpt {
@@ -508,6 +554,38 @@ mod tests {
                 assert!(!args.iter().any(|a| a.starts_with("--dangerously")));
             }
         }
+    }
+    #[test]
+    fn antigravity_reads_the_prompt_as_stream_json() {
+        let args = invocation_args(
+            &Provider::Antigravity,
+            AccessMode::FileEdits,
+            Some("gemini-3.8-flash-low"),
+            "",
+        );
+        assert_eq!(
+            args,
+            [
+                "--print=",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--mode=accept-edits",
+                "--settings",
+                r#"{"permissions":{"allow":["command(*)"]}}"#,
+                "--model",
+                "gemini-3.8-flash-low"
+            ]
+        );
+        let delta = json!({"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hi"}});
+        assert_eq!(normalize(&Provider::Antigravity, &delta)[0].text, "hi");
+        let err = json!({"event":"result","result":{"status":"ERROR","error":"empty prompt"}});
+        let a = normalize(&Provider::Antigravity, &err);
+        assert_eq!(
+            (a[0].kind.as_str(), a[0].text.as_str()),
+            ("error", "empty prompt")
+        );
     }
     #[test]
     fn ollama_is_prompt_only_with_its_model() {

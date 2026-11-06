@@ -77,12 +77,10 @@ textarea,
 select {
   outline: none;
 }
-button:focus-visible,
-a:focus-visible,
-select:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+/* No focus rings: the user prefers a clean look; hover and selection states remain. */
+:focus,
+:focus-visible {
+  outline: none;
 }
 button {
   transition:
@@ -919,13 +917,18 @@ label {
 }
 .settings-tabs {
   display: flex;
-  gap: 2px;
+  justify-content: space-between;
+  gap: 0;
   margin-top: 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
+.settings-tabs::-webkit-scrollbar {
+  display: none;
+}
 .settings-tabs button {
-  padding: 7px 9px 9px;
+  flex: 0 0 auto;
+  padding: 7px 5px 9px;
   font-size: 11px;
   color: var(--muted);
   border-bottom: 2px solid transparent;
@@ -1642,6 +1645,31 @@ label {
   width: min(360px, 90vw);
   padding: 22px;
 }
+.dialog-scrim > .popup {
+  position: static;
+}
+.rename-popover {
+  position: fixed;
+  right: auto;
+  z-index: 81;
+  width: 260px;
+  padding: 12px;
+  font-size: 11px;
+}
+.rename-popover input {
+  margin: 8px 0 10px;
+  font-size: 12px;
+}
+.rename-popover .rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.rename-popover button {
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+}
 .conversation-dialog input {
   display: block;
   background: var(--input);
@@ -1679,7 +1707,12 @@ label {
   inset: 0;
   z-index: 45;
   cursor: default;
-  background: #0002;
+}
+.usage-scrim,
+.usage-scrim:hover:enabled,
+.context-scrim,
+.context-scrim:hover:enabled {
+  background: transparent;
 }
 .usage-popover {
   position: fixed;
@@ -1756,8 +1789,8 @@ label {
 }
 @media (max-width: 700px) {
   .usage-popover {
-    left: 12px;
-    bottom: 72px;
+    left: 12px !important;
+    bottom: 72px !important;
   }
 }
 .auto-controls {
@@ -2506,4 +2539,27 @@ footer.about .version {
   font-size: 10px;
   color: var(--accent);
   background: var(--hover);
+}
+
+.notice-dialog strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.notice-dialog p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.notice-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 12px;
+  font-size: 11px;
+}
+.notice-check input {
+  display: inline;
+  width: auto;
+  margin: 0;
 }
