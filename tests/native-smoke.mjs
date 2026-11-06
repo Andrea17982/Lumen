@@ -213,6 +213,7 @@ try {
   await page.locator('.activity > summary').click();
   await page.screenshot({ path: '.impeccable/review/native-activity-fixture.png' });
   await page.getByRole('button', { name: 'GPT', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced provider options' }).click();
   await page.getByRole('combobox', { name: 'Model', exact: true }).selectOption('gpt-fast-fixture');
   assert.deepEqual(
     await page

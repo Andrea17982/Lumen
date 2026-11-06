@@ -7,11 +7,13 @@ test('first run, provider controls and honest browser boundary', async ({ page }
   await expect(
     page.getByRole('heading', { name: 'A clear space for a brighter idea.' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Build something' }).click();
-  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).not.toBeEmpty();
+  await expect(page.getByRole('button', { name: 'Build something' })).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Plan my project');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('browser preview');
   await page.getByRole('button', { name: 'Claude', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).not.toBeVisible();
+  await page.getByRole('button', { name: 'Advanced provider options' }).click();
   await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Auto', exact: true }).click();
@@ -25,8 +27,10 @@ test('first run, provider controls and honest browser boundary', async ({ page }
     'The right model, thoughtfully chosen.',
   ])
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Both', exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'Permissions' }).selectOption('autopilot');
   await expect(page.getByRole('combobox', { name: 'Permissions' })).toHaveValue('autopilot');
+  await expect(page.getByRole('button', { name: 'Both', exact: true })).toHaveCount(0);
 });
 
 test('moving between projects preserves the conversation folder across reloads', async ({
@@ -90,6 +94,7 @@ test('accounts can be renamed from Settings without changing identity', async ({
   await page.getByRole('button', { name: 'Close settings' }).click();
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: 'GPT', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced provider options' }).click();
   await expect(page.getByRole('combobox', { name: 'Account', exact: true })).toHaveValue('g');
   await expect(
     page
@@ -115,7 +120,6 @@ test('keyboard navigation and narrow layout stay usable', async ({ page }) => {
   await page.getByRole('button', { name: 'Open sidebar' }).click();
   await expect(page.getByRole('textbox', { name: 'Search conversations' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Explore an idea' }).click();
   await page.keyboard.press('Control+n');
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

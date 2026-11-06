@@ -29,11 +29,11 @@ Sources: [OpenAI app-server model/list](https://learn.chatgpt.com/docs/app-serve
 
 | Mode | Claude Code | Codex |
 | --- | --- | --- |
-| Read only | Restricted Read/Glob/Grep; no Bash; strict MCP override | Read-only sandbox, approvals never |
+| Ask (read-only) | Restricted Read/Glob/Grep; no Bash; strict MCP override | Read-only sandbox, approvals never |
 | File edits on | Restricted Read/Glob/Grep/Edit/Write; no Bash; strict MCP override | Workspace-write sandbox, approvals never |
 | Autopilot | `--dangerously-skip-permissions --tools default`; no restricted/strict-MCP override | `--dangerously-bypass-approvals-and-sandbox`; no sandbox override |
 
-Autopilot grants full access to the CLI's available tools, including filesystem changes, commands, network and configured computer-automation extensions, without CLI approval prompts. It applies to subsequent writer/synthesis turns. Review and parallel-analysis workers remain read-only. Read only remains the startup default.
+Autopilot grants full access to the CLI's available tools, including filesystem changes, commands, network and configured computer-automation extensions, without CLI approval prompts. It applies to subsequent writer/synthesis turns. Review and parallel-analysis workers remain read-only. Ask (read-only) remains the startup default.
 
 Autopilot does not install a GUI automation engine or grant administrator privileges. Operating-system ACLs, UAC, provider-managed policy and tool availability still apply. Actual screen/mouse interaction requires a compatible automation tool, MCP extension or executable available to the provider. A failed capability is reported as a provider failure rather than claimed as successful PC control.
 

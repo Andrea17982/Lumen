@@ -4,9 +4,9 @@ Lumen 0.3 lets Claude Code and Codex work together. Every feature is one click o
 
 ## Both: one prompt, two answers side by side
 
-Choose **Both** in the composer. Claude and ChatGPT get the same prompt in parallel. Each answer streams into its own column, and each column receives its own events.
+Choose **Both** in the composer (available in **Ask** mode). Claude and ChatGPT get the same prompt in parallel. Each answer streams into its own column, and each column receives its own events.
 
-With **File edits** or **Autopilot** in a git repository, each assistant works in its own `git worktree`. The worktrees use the branches `lumen/claude-<id>` and `lumen/chatgpt-<id>`. Your working copy stays untouched. Under each answer, **Apply Claude version** or **Apply ChatGPT version** applies that diff to your folder, and **Discard both versions** applies neither. Afterwards the worktrees and branches are removed. Outside a git repository, Both runs read-only.
+Both is a read-only comparison in the interface. The backend can still isolate edits in `git worktree` lanes (`lumen/claude-<id>`, `lumen/chatgpt-<id>`) with one-click apply, kept for a future interface.
 
 ## Cross-audit
 

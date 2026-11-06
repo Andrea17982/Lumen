@@ -16,7 +16,7 @@ Install the Windows x64 alpha from [Releases](https://github.com/Andrea17982/Lum
 6. Return to the conversation and type a request. Auto is selected. A first-message title is generated locally.
 7. Expand activity to inspect exposed reasoning summaries, tools, edits, planning or errors.
 
-Read only is selected for each app launch. Enabling File edits on allows the provider's configured file tools or workspace-write sandbox. The Permissions selector also offers Autopilot, which disables CLI restrictions/approval prompts and enables available tools under your OS account. The setting applies to subsequent turns; it does not change an in-flight process. Workers used for review and parallel analysis are read-only. Multi-stage requests can consume several inference calls.
+**Ask** (read-only) is selected for each app launch. Both mode is available only in Ask. Enabling File edits on allows the provider's configured file tools or workspace-write sandbox. The Permissions selector also offers Autopilot, which disables CLI restrictions/approval prompts and enables available tools under your OS account. The setting applies to subsequent turns; it does not change an in-flight process. Workers used for review and parallel analysis are read-only. Multi-stage requests can consume several inference calls.
 
 ## Everyday controls
 

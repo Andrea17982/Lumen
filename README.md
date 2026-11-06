@@ -19,7 +19,7 @@ Lumen brings separate AI conversations into one restrained, glass-inspired deskt
 
 ## New in 0.3: Claude and ChatGPT as a team
 
-- **Both**: one prompt, two answers side by side. With edits enabled, each model works in its own git worktree, and you apply the version you prefer with one click.
+- **Both**: one prompt, two answers side by side (in Ask mode).
 - **Cross-audit**: **Audit with ChatGPT/Claude** on any answer, or an always-on toggle, so the other model reviews the turn's diff with up to 3 review rounds.
 - **Shared project notes** (`LUMEN.md`) and **file attachments** with token weights, read by both models every turn.
 - **Rate-limit fallback**: when one provider hits a limit, the same message continues on the other one. Status dots and cooldown countdowns appear in the top bar.
@@ -47,7 +47,7 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
 - Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI and Antigravity are supported through their official local tools; Google providers are Auto's emergency fallback only.
 - **Auto** uses local, deterministic task heuristics to choose effort and a provider; complex tasks can use an independent reviewer, and comparison tasks can gather two perspectives in parallel before synthesizing.
-- Read-only by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Gemini CLI and Antigravity run in Auto only when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows; missing/stale quota data does not trigger fallback.
+- **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Gemini CLI and Antigravity run in Auto only when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows; missing/stale quota data does not trigger fallback.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.
 
 ## Install and run

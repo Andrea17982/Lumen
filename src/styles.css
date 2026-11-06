@@ -145,6 +145,7 @@ kbd {
 }
 .app-shell {
   display: flex;
+  position: relative;
   height: 100dvh;
   min-height: 480px;
   overflow: hidden;
@@ -877,9 +878,11 @@ label {
   font-size: 13px;
 }
 .settings-panel {
-  position: relative;
-  inset: auto;
-  flex: 0 0 420px;
+  /* Floats above the conversation so nothing underneath reflows. */
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   height: 100%;
   width: 420px;
   max-width: 42vw;
@@ -1120,6 +1123,17 @@ label {
   font-size: 9px;
   color: var(--muted);
   padding-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.about .version .text-button {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
 }
 .load-more {
   margin: 12px;
@@ -1474,15 +1488,25 @@ label {
   gap: 5px;
 }
 .new-actions .new-chat {
-  flex: 1;
+  flex: 1 1 auto;
+  width: auto;
   min-width: 0;
-  padding: 9px 5px;
-  font-size: 10px;
-  gap: 4px;
-  flex-wrap: wrap;
+  justify-content: center;
+  padding: 10px 4px;
+  font-size: 10.5px;
+  letter-spacing: -0.1px;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+.new-actions .new-chat > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.new-actions .new-chat > svg {
+  flex-shrink: 0;
 }
 .new-actions kbd {
-  font-size: 8px;
+  display: none;
 }
 .project-list {
   display: grid;
@@ -1578,10 +1602,14 @@ label {
 .sidebar-footer-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 .usage-button {
-  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1930,7 +1958,11 @@ footer.about .version {
   background: color-mix(in srgb, var(--error) 10%, transparent);
 }
 .project-panel {
-  flex: 0 0 340px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 25;
+  box-shadow: -20px 0 70px -35px #263b5545;
   width: 340px;
   max-width: 40vw;
   height: 100%;

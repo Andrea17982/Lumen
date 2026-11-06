@@ -4,7 +4,7 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  Code2,
+  ChevronUp,
   Copy,
   Folder,
   Heart,
@@ -553,6 +553,7 @@ export default function App() {
   }
   async function changeAccessMode(next: AccessMode) {
     setAccessMode(next);
+    if (next !== 'read-only' && mode === 'both') setMode('auto');
     if (!session) return;
     try {
       const updated = await call<Session>('set_session_access_mode', {
@@ -805,13 +806,17 @@ export default function App() {
           <span>Lumen</span>
         </div>
         <div className="new-actions">
-          <button className="new-chat" onClick={newChat}>
-            <Plus size={17} />
+          <button className="new-chat" onClick={newChat} title="New conversation (Ctrl N)">
+            <Plus size={15} />
             <span>New conversation</span>
             <kbd>Ctrl N</kbd>
           </button>
-          <button className="new-chat" onClick={() => setProjectForm(true)}>
-            <Folder size={16} />
+          <button
+            className="new-chat"
+            onClick={() => setProjectForm(true)}
+            title="New project (Ctrl P)"
+          >
+            <Folder size={15} />
             <span>New project</span>
             <kbd>Ctrl P</kbd>
           </button>
@@ -1244,39 +1249,6 @@ export default function App() {
                 <br />
                 for a brighter idea.
               </h1>
-              <p>Bring your thoughts. Let the right intelligence find you.</p>
-              <div className="suggestions">
-                <button
-                  onClick={() => {
-                    setDraft('Help me build a thoughtful plan for my next project.');
-                    input.current?.focus();
-                  }}
-                >
-                  <Code2 size={17} />
-                  <span>Build something</span>
-                  <ArrowUpRight size={14} />
-                </button>
-                <button
-                  onClick={() => {
-                    setDraft('Compare alternatives for my project. Ask me what you need to know.');
-                    input.current?.focus();
-                  }}
-                >
-                  <Sparkles size={17} />
-                  <span>Explore an idea</span>
-                  <ArrowUpRight size={14} />
-                </button>
-                <button
-                  onClick={() => {
-                    setDraft('Review the code in this workspace for bugs and security risks.');
-                    input.current?.focus();
-                  }}
-                >
-                  <ShieldCheck size={17} />
-                  <span>A fresh perspective</span>
-                  <ArrowUpRight size={14} />
-                </button>
-              </div>
             </div>
           ) : (
             <div className="message-list">
@@ -1376,7 +1348,10 @@ export default function App() {
             )}
             <div className="composer-toolbar">
               <div className="mode-control" role="group" aria-label="AI provider">
-                {(['auto', 'claude', 'gpt', 'both'] as const).map((p) => (
+                {(accessMode === 'read-only'
+                  ? (['auto', 'claude', 'gpt', 'both'] as const)
+                  : (['auto', 'claude', 'gpt'] as const)
+                ).map((p) => (
                   <button
                     key={p}
                     aria-pressed={mode === p}
@@ -1387,7 +1362,7 @@ export default function App() {
                       setModel('');
                       setEffort('');
                       setCatalogReady(false);
-                      setAdvanced(p === 'claude' || p === 'gpt');
+                      setAdvanced(false);
                     }}
                   >
                     {p === 'auto' && <Sparkles size={13} />}
@@ -1412,16 +1387,6 @@ export default function App() {
                   }}
                 >
                   <Repeat2 size={15} />
-                </button>
-              )}
-              {(mode === 'claude' || mode === 'gpt') && (
-                <button
-                  className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
-                  aria-label="Advanced provider options"
-                  aria-expanded={advanced}
-                  onClick={() => setAdvanced(!advanced)}
-                >
-                  <ChevronDown size={15} />
                 </button>
               )}
               <div className="workspace-controls">
@@ -1463,6 +1428,16 @@ export default function App() {
                 <Paperclip size={15} />
                 {attached.length > 0 && <small>{attached.length}</small>}
               </button>
+              {(mode === 'claude' || mode === 'gpt') && (
+                <button
+                  className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
+                  aria-label="Advanced provider options"
+                  aria-expanded={advanced}
+                  onClick={() => setAdvanced(!advanced)}
+                >
+                  {advanced ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                </button>
+              )}
               <div className="composer-spacer" />
               <div className={`access-control ${accessMode === 'autopilot' ? 'autopilot' : ''}`}>
                 <ShieldCheck size={13} />
@@ -1476,7 +1451,7 @@ export default function App() {
                   }
                   onChange={(e) => void changeAccessMode(e.target.value as AccessMode)}
                 >
-                  <option value="read-only">Read only</option>
+                  <option value="read-only">Ask</option>
                   <option value="file-edits">File edits on</option>
                   <option value="autopilot">Autopilot</option>
                 </select>
@@ -1567,11 +1542,7 @@ export default function App() {
                 </button>
               </div>
             )}
-            <h2>
-              Make yourself
-              <br />
-              at home.
-            </h2>
+            <h2>Settings</h2>
 
             <AccountSettings
               accounts={accounts}
@@ -1655,12 +1626,6 @@ export default function App() {
                 everyone who tries it and shares how it feels.
               </p>
               <button
-                className="text-button"
-                onClick={() => void external(`${REPO}/issues`).catch((e) => setError(errorText(e)))}
-              >
-                Share your feedback <ArrowUpRight size={14} />
-              </button>
-              <button
                 className="donate-button"
                 onClick={() => void external(PAYPAL).catch((e) => setError(errorText(e)))}
               >
@@ -1670,7 +1635,17 @@ export default function App() {
               </button>
               <small>Optional donations · No features behind a paywall.</small>
 
-              <div className="version">Lumen 0.3.0 · Open source · MIT</div>
+              <div className="version">
+                <span>Lumen 0.3.1 · Open source · MIT</span>
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    void external(`${REPO}/issues`).catch((e) => setError(errorText(e)))
+                  }
+                >
+                  Share your feedback <ArrowUpRight size={12} />
+                </button>
+              </div>
             </footer>
           </motion.aside>
         )}
