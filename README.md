@@ -57,7 +57,7 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 From [Releases](https://github.com/Andrea17982/Lumen/releases):
 
 - **Windows x64**: `Lumen_0.3.0_x64-setup.exe` (installer) or `Lumen_0.3.0_x64-portable.exe` (no installation). Lumen uses Microsoft Edge WebView2.
-- **macOS (Apple silicon and Intel)**: `Lumen_0.3.0_universal.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
+- **macOS (Apple silicon)**: `Lumen_0.3.x_aarch64.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
 
 Alpha builds are unsigned, so the OS may show a publisher warning. Provider CLIs are installed separately and are never modified.
 
