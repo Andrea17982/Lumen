@@ -15,11 +15,21 @@ Also see the [model, workspace and permission controls](docs/images/provider-con
 
 Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Write a request, keep working across sessions, and let **Auto** choose an execution plan. Optional controls expose the provider, account, model and reasoning effort when you need them.
 
-**Status: v0.2 alpha.** This is an initial, usable implementation with explicit boundaries. Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+**Status: v0.3 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
 
-## New in 0.2
+## New in 0.3: Claude and ChatGPT as a team
 
-A quieter interface with promotional footer labels removed; named workspaces and per-conversation folders beside the AI selector; account renaming in the composer and Settings; official CLI model/effort dropdowns; and an explicit Autopilot permission mode. See [workspace, models and permissions](docs/workspace-models-permissions.md).
+- **Both**: one prompt, two answers side by side. With edits enabled, each model works in its own git worktree, and you apply the version you prefer with one click.
+- **Cross-audit**: **Audit with ChatGPT/Claude** on any answer, or an always-on toggle, so the other model reviews the turn's diff with up to 3 review rounds.
+- **Shared project notes** (`LUMEN.md`) and **file attachments** with token weights, read by both models every turn.
+- **Rate-limit fallback**: when one provider hits a limit, the same message continues on the other one. Status dots and cooldown countdowns appear in the top bar.
+- **Rewind**: invisible git checkpoints before every writing turn. Restore files and the conversation to any of your messages, after previewing the changes.
+- **Self-healing**: after edits, Lumen runs the project check and sends failures back for a fix, at most 3 times.
+- **Token savings**: a live token estimate, long logs reduced to their errors (the full log is saved to `.lumen/spill`), **Compact and continue** for long conversations, and lockfiles and secrets blocked.
+- **Tools (MCP) hub** with on/off switches for both CLIs, plus a **local OpenAI-compatible API** at `localhost:8317/v1`.
+- **macOS build** available alongside the Windows installer and the portable version.
+
+Also included: calibrated Auto selection from live CLI catalogs, Budget/Default/Quality preferences, quota balancing and projects independent of folders. Details: [Teamwork features](docs/features.md), [Auto policy](docs/auto.md), [projects, models and permissions](docs/workspace-models-permissions.md).
 
 ## Completely AI Written
 
@@ -35,18 +45,23 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 - Independent concurrent sessions, with four active orchestration jobs and up to eight inference processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
 - English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
-- Multiple named accounts with isolated `CLAUDE_CONFIG_DIR` / `CODEX_HOME` directories. Official CLI sign-in opens in a terminal. Lumen does not implement its own OAuth flow, inspect tokens, copy existing logins or proxy provider traffic.
+- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI and Antigravity are supported through their official local tools; Google providers are Auto's emergency fallback only.
 - **Auto** uses local, deterministic task heuristics to choose effort and a provider; complex tasks can use an independent reviewer, and comparison tasks can gather two perspectives in parallel before synthesizing.
-- Read-only by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider’s default tools and configured extensions under your OS account. No automatic account rotation or rate-limit bypass.
+- Read-only by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Gemini CLI and Antigravity run in Auto only when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows; missing/stale quota data does not trigger fallback.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.
 
 ## Install and run
 
-### Windows download
+### Download
 
-Get the Windows x64 installer from [Releases](https://github.com/Andrea17982/Lumen/releases). The alpha installer is unsigned; Windows may show a publisher warning. Lumen uses Microsoft Edge WebView2. The two provider CLIs are installed separately and remain unmodified.
+From [Releases](https://github.com/Andrea17982/Lumen/releases):
 
-1. Install [Claude Code](https://code.claude.com/docs/en/setup) and/or [Codex CLI](https://developers.openai.com/codex/cli).
+- **Windows x64**: `Lumen_0.3.0_x64-setup.exe` (installer) or `Lumen_0.3.0_x64-portable.exe` (no installation). Lumen uses Microsoft Edge WebView2.
+- **macOS (Apple silicon and Intel)**: `Lumen_0.3.0_universal.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
+
+Alpha builds are unsigned, so the OS may show a publisher warning. Provider CLIs are installed separately and are never modified.
+
+1. Install [Claude Code](https://code.claude.com/docs/en/setup), [Codex CLI](https://developers.openai.com/codex/cli), [Gemini CLI](https://github.com/google-gemini/gemini-cli) or [Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli).
 2. Open Lumen → **Settings** → **Connected accounts** → **+**.
 3. Add a name and provider, then choose **Sign in**. Complete the provider's login in its own terminal/browser flow.
 4. Return to Lumen and choose the shield button to check the connection.
@@ -65,18 +80,20 @@ npm ci
 npm run tauri dev
 ```
 
-Create an installer with `npm run tauri build`. A browser-only UI preview is available with `npm run dev`; **it does not connect accounts or generate AI responses**. Linux needs Tauri's system dependencies and `npm run tauri build -- --bundles deb,appimage`; terminal login launching is Windows-only in this alpha.
+Create an installer with `npm run build:release`. It copies the latest local installer to `builds/latest/`; Tauri's original output remains under `src-tauri/target/release/bundle/nsis/`. A browser-only UI preview is available with `npm run dev`; **it does not connect accounts or generate AI responses**. macOS builds with `npm run tauri build -- --bundles dmg`; Linux needs Tauri's system dependencies and `npm run tauri build -- --bundles deb,appimage`. On both, **Sign in** opens a terminal with the isolated account folder.
 
 ## Auto, honestly
 
-Auto is an explainable local router, not a trained task classifier. Small requests prefer Codex with low reasoning; medium requests use medium reasoning; long requests and coding/security/architecture keywords prefer Claude Opus with high reasoning. Claude otherwise uses its `sonnet` alias; Codex uses the installed CLI's default model. If only one provider is configured, it uses that provider and a single-stage plan.
+Auto is an explainable local router calibrated against concrete examples. Small text/translation requests prefer Haiku/Luna, coding and concurrency prefer Sonnet/Terra, and migration/security/architecture prefer Opus/Sol. Actual model IDs come from each account's official CLI catalog. Default effort is low or medium; Budget/Quality shift it by one step. A single provider uses a single-stage plan.
 
-When both providers are configured, complex requests use writer → independent read-only reviewer → final answer. Comparison requests use two read-only perspectives in parallel → synthesis. These worker calls act as bounded sub-agents; they are **not** arbitrary recursive or native provider sub-agent spawning. Extra stages consume provider usage. Routing considers configured accounts, not live quotas or whether login has completed. See [Auto policy](docs/auto.md).
+With both providers configured, demanding advanced requests or Quality coding requests can use writer → read-only reviewer → final answer. Comparison requests can use two read-only perspectives → synthesis. These are bounded worker calls, not recursive/native subagent spawning. Optional balancing compares fresh quota snapshots against reset times: Codex can refresh automatically; Claude currently requires manual values from `/usage`. Extra stages consume quota. See [Auto policy](docs/auto.md) for the formula, data freshness and integration limits.
 
 ## Current limits
 
 - Live paid inference, multi-account OAuth identity isolation and real provider file-edit behavior require user-driven acceptance testing. Local builds, mocked protocols or UI previews do not prove these flows.
-- Conversation context is replayed to the CLI on each turn, capped at the most recent 100,000 characters. No native thread resume, semantic compaction, attachments, worktree management or permission-request UI yet.
+- Conversation context is replayed to the CLI on each turn, capped at the most recent 100,000 characters. **Compact and continue** creates a deterministic handoff; there is no native thread resume or interactive per-command approval UI (CLIs run headless with explicit permission profiles).
+- Rewind, worktrees and audit diffs need a git repository. Snapshots honor `.gitignore`, so ignored files are neither saved nor restored.
+- The local API runs every request read-only and counts against your CLI subscription like any other turn.
 - Read-only and File edits restrict provider tools; **Autopilot deliberately removes those restrictions**. It permits shell/network/filesystem operations and configured computer-automation tools, but does not supply a GUI automation engine or override OS/UAC/provider policy. Read-only is a provider permission mode, not an independent OS isolation boundary.
 - Account-directory isolation is not proof that every CLI version uses no shared OS credential-store state. Verify with distinct test accounts before relying on it. Account removal deletes the local directory; remote token revocation remains the provider's responsibility.
 - Stored conversations and CLI-owned credentials are local and **not encrypted by Lumen**. No telemetry is implemented in Lumen; the CLIs have their own network and privacy behavior.
@@ -87,6 +104,7 @@ When both providers are configured, complex requests use writer → independent 
 | Guide | Contents |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Setup, first conversation, shortcuts, recovery |
+| [Teamwork features](docs/features.md) | Both, cross-audit, LUMEN.md, fallback, Rewind, self-healing, MCP, local API |
 | [Architecture](docs/architecture.md) | Rust modules, React components, storage, execution lifecycle |
 | [Accounts](docs/accounts.md) | Official authentication, isolation, provider requirements |
 | [Workspace, models & permissions](docs/workspace-models-permissions.md) | Conversation folders, account names, live CLI catalogs and Autopilot |

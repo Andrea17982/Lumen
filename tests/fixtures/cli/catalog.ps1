@@ -9,14 +9,20 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
         if ($request.method -eq 'initialize') { Emit @{id=$request.id;result=@{userAgent='offline-fixture'}} }
         if ($request.method -eq 'model/list') {
             Emit @{id=$request.id;result=@{data=@(
-                @{id='gpt-fixture';model='gpt-fixture';displayName='GPT fixture';isDefault=$true;defaultReasoningEffort='medium';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'},@{reasoningEffort='xhigh'},@{reasoningEffort='ultra'})},
+                @{id='gpt-fixture';model='gpt-fixture';displayName='GPT Sol fixture';isDefault=$true;defaultReasoningEffort='medium';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'},@{reasoningEffort='xhigh'},@{reasoningEffort='ultra'})},
+                @{id='gpt-luna-fixture';model='gpt-luna-fixture';displayName='GPT Luna fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'})},
+                @{id='gpt-terra-fixture';model='gpt-terra-fixture';displayName='GPT Terra fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'})},
                 @{id='gpt-fast-fixture';model='gpt-fast-fixture';displayName='GPT fast fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'})}
             );nextCursor=$null}}
+        }
+        if ($request.method -eq 'account/rateLimits/read') {
+            Emit @{id=$request.id;result=@{rateLimits=@{primary=@{usedPercent=25;resetsAt=[DateTimeOffset]::UtcNow.AddHours(3).ToUnixTimeSeconds();windowDurationMins=300};secondary=@{usedPercent=40;resetsAt=[DateTimeOffset]::UtcNow.AddDays(5).ToUnixTimeSeconds();windowDurationMins=10080}}}}
         }
     } elseif ($request.request.subtype -eq 'initialize') {
         Emit @{type='control_response';response=@{subtype='success';request_id=$request.request_id;response=@{models=@(
             @{value='opus';displayName='Opus fixture';supportedEffortLevels=@('low','medium','high','xhigh','max')},
-            @{value='sonnet';displayName='Sonnet fixture';supportedEffortLevels=@('low','medium','high')}
+            @{value='sonnet';displayName='Sonnet fixture';supportedEffortLevels=@('low','medium','high')},
+            @{value='haiku';displayName='Haiku fixture';supportedEffortLevels=@('low','medium','high')}
         )}}}
     }
 }

@@ -14,7 +14,7 @@ impl Store {
           CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,folder TEXT NOT NULL);
           UPDATE sessions SET status='interrupted' WHERE status IN ('running','waiting');")
           .map_err(|e| e.to_string())?;
-        let has_workspace_id = {
+        let columns = {
             let mut q = c
                 .prepare("PRAGMA table_info(sessions)")
                 .map_err(|e| e.to_string())?;
@@ -24,15 +24,29 @@ impl Store {
             names
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?
-                .iter()
-                .any(|n| n == "workspace_id")
         };
-        if !has_workspace_id {
+        if !columns.iter().any(|n| n == "workspace_id") {
             c.execute(
                 "ALTER TABLE sessions ADD COLUMN workspace_id TEXT REFERENCES workspaces(id)",
                 [],
             )
             .map_err(|e| e.to_string())?;
+        }
+        if !columns.iter().any(|n| n == "access_mode") {
+            c.execute(
+                "ALTER TABLE sessions ADD COLUMN access_mode TEXT NOT NULL DEFAULT 'read-only'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !columns.iter().any(|n| n == "sort_order") {
+            c.execute(
+                "ALTER TABLE sessions ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            c.execute("UPDATE sessions SET sort_order=updated_at", [])
+                .map_err(|e| e.to_string())?;
         }
         Ok(Self(Mutex::new(c)))
     }
@@ -42,15 +56,15 @@ impl Store {
     }
     pub fn sessions(&self, search: &str, offset: u32) -> Result<Vec<Session>, String> {
         self.with(|c| {
-            let mut q = c.prepare("SELECT id,title,pinned,status,workspace,updated_at,workspace_id FROM sessions WHERE instr(lower(title),lower(?1))>0 ORDER BY pinned DESC,updated_at DESC LIMIT 100 OFFSET ?2")?;
-            let rows = q.query_map(params![search,offset], |r| Ok(Session{id:r.get(0)?,title:r.get(1)?,pinned:r.get(2)?,status:r.get(3)?,workspace:r.get(4)?,updated_at:r.get(5)?,workspace_id:r.get(6)?}))?;
+            let mut q = c.prepare("SELECT id,title,pinned,status,workspace,updated_at,workspace_id,access_mode FROM sessions WHERE instr(lower(title),lower(?1))>0 ORDER BY pinned DESC,sort_order DESC,updated_at DESC LIMIT 100 OFFSET ?2")?;
+            let rows = q.query_map(params![search,offset], |r| Ok(Session{id:r.get(0)?,title:r.get(1)?,pinned:r.get(2)?,status:r.get(3)?,workspace:r.get(4)?,updated_at:r.get(5)?,workspace_id:r.get(6)?,access_mode: serde_json::from_str(&format!("\"{}\"", r.get::<_, String>(7)?)).unwrap_or_default()}))?;
             rows.collect()
         })
     }
     pub fn session(&self, id: &str) -> Result<Session, String> {
         self.with(|c| {
             c.query_row(
-                "SELECT id,title,pinned,status,workspace,updated_at,workspace_id FROM sessions WHERE id=?",
+                "SELECT id,title,pinned,status,workspace,updated_at,workspace_id,access_mode FROM sessions WHERE id=?",
                 [id],
                 |r| {
                     Ok(Session {
@@ -61,6 +75,7 @@ impl Store {
                         workspace: r.get(4)?,
                         updated_at: r.get(5)?,
                         workspace_id: r.get(6)?,
+                        access_mode: serde_json::from_str(&format!("\"{}\"", r.get::<_, String>(7)?)).unwrap_or_default(),
                     })
                 },
             )
@@ -75,17 +90,18 @@ impl Store {
             workspace,
             updated_at: now(),
             workspace_id: None,
+            access_mode: AccessMode::ReadOnly,
         };
         self.with(|c| {
             c.execute(
-                "INSERT INTO sessions(id,title,pinned,status,workspace,updated_at) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![s.id, s.title, s.pinned, s.status, s.workspace, s.updated_at],
+                "INSERT INTO sessions(id,title,pinned,status,workspace,updated_at,access_mode,sort_order) VALUES(?1,?2,?3,?4,?5,?6,?7,?6)",
+                params![s.id, s.title, s.pinned, s.status, s.workspace, s.updated_at, "read-only"],
             )
         })?;
         Ok(s)
     }
     pub fn update(&self, s: &Session) -> Result<(), String> {
-        self.with(|c| c.execute("UPDATE sessions SET title=?2,pinned=?3,status=?4,workspace=?5,updated_at=?6 WHERE id=?1",params![s.id,s.title,s.pinned,s.status,s.workspace,s.updated_at]))?;
+        self.with(|c| c.execute("UPDATE sessions SET title=?2,pinned=?3,status=?4,workspace=?5,updated_at=?6,access_mode=?7 WHERE id=?1",params![s.id,s.title,s.pinned,s.status,s.workspace,s.updated_at,serde_json::to_value(s.access_mode).unwrap().as_str().unwrap_or("read-only")]))?;
         Ok(())
     }
     pub fn delete(&self, id: &str) -> Result<(), String> {
@@ -113,6 +129,21 @@ impl Store {
         self.with(|c| c.execute("INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity",params![m.id,s,m.role,m.text,activity,now()]))?;
         Ok(())
     }
+    /// Removes a message and everything after it (Rewind).
+    pub fn truncate_from(&self, session: &str, message: &str) -> Result<(), String> {
+        self.with(|c| {
+            let (at, row): (i64, i64) = c.query_row(
+                "SELECT created_at,rowid FROM messages WHERE id=?1 AND session_id=?2",
+                params![message, session],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            c.execute(
+                "DELETE FROM messages WHERE session_id=?1 AND (created_at>?2 OR (created_at=?2 AND rowid>=?3))",
+                params![session, at, row],
+            )
+        })?;
+        Ok(())
+    }
     pub fn accounts(&self) -> Result<Vec<Account>, String> {
         self.with(|c| {
             let mut q = c.prepare("SELECT id,name,provider FROM accounts ORDER BY rowid")?;
@@ -121,10 +152,12 @@ impl Store {
                 Ok(Account {
                     id: r.get(0)?,
                     name: r.get(1)?,
-                    provider: if p == "claude" {
-                        Provider::Claude
-                    } else {
-                        Provider::Gpt
+                    provider: match p.as_str() {
+                        "claude" => Provider::Claude,
+                        "gpt" => Provider::Gpt,
+                        "gemini" => Provider::Gemini,
+                        "antigravity" => Provider::Antigravity,
+                        _ => Provider::Gpt,
                     },
                 })
             })?;
@@ -137,10 +170,11 @@ impl Store {
             name,
             provider,
         };
-        let p = if a.provider == Provider::Claude {
-            "claude"
-        } else {
-            "gpt"
+        let p = match &a.provider {
+            Provider::Claude => "claude",
+            Provider::Gpt => "gpt",
+            Provider::Gemini => "gemini",
+            Provider::Antigravity => "antigravity",
         };
         self.with(|c| {
             c.execute(
@@ -198,6 +232,43 @@ impl Store {
             )
         })?;
         self.session(id)
+    }
+    pub fn set_access_mode(&self, id: &str, mode: AccessMode) -> Result<Session, String> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE sessions SET access_mode=?2 WHERE id=?1",
+                params![
+                    id,
+                    serde_json::to_value(mode)
+                        .unwrap()
+                        .as_str()
+                        .unwrap_or("read-only")
+                ],
+            )
+        })?;
+        self.session(id)
+    }
+    pub fn reorder(&self, id: &str, before_id: Option<&str>) -> Result<(), String> {
+        self.with(|c| {
+            let order: i64 = if let Some(before) = before_id {
+                c.query_row(
+                    "SELECT sort_order FROM sessions WHERE id=?1",
+                    [before],
+                    |r| r.get::<_, i64>(0),
+                )? - 1
+            } else {
+                c.query_row(
+                    "SELECT COALESCE(MAX(sort_order),0)+1 FROM sessions",
+                    [],
+                    |r| r.get(0),
+                )?
+            };
+            c.execute(
+                "UPDATE sessions SET sort_order=?2 WHERE id=?1",
+                params![id, order],
+            )
+        })?;
+        Ok(())
     }
 }
 

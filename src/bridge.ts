@@ -76,6 +76,26 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'list_accounts':
       result = data.accounts;
       break;
+    case 'get_settings':
+      result = {
+        autoFallback: true,
+        selfHeal: true,
+        reviewRounds: 1,
+        apiEnabled: false,
+        apiPort: 8317,
+        apiToken: 'preview-key-preview-key',
+      };
+      break;
+    case 'provider_health':
+    case 'mcp_health':
+      result = [];
+      break;
+    case 'api_status':
+      result = { running: false, url: 'http://localhost:8317/v1', log: [] };
+      break;
+    case 'project_context':
+      result = { notes: '', files: [], verify: null, git: false };
+      break;
     case 'diagnostics':
       result = { claude: false, gpt: false, dataDir: 'Desktop app required' };
       break;

@@ -5,18 +5,24 @@ use serde::{Deserialize, Serialize};
 pub enum Provider {
     Claude,
     Gpt,
+    Gemini,
+    Antigravity,
 }
 impl Provider {
     pub fn binary(&self) -> &str {
         match self {
             Self::Claude => "claude",
             Self::Gpt => "codex",
+            Self::Gemini => "gemini",
+            Self::Antigravity => "agy",
         }
     }
     pub fn env(&self) -> &str {
         match self {
             Self::Claude => "CLAUDE_CONFIG_DIR",
             Self::Gpt => "CODEX_HOME",
+            Self::Gemini => "GEMINI_CLI_HOME",
+            Self::Antigravity => "HOME",
         }
     }
 }
@@ -37,6 +43,7 @@ pub struct Session {
     pub workspace: String,
     pub updated_at: i64,
     pub workspace_id: Option<String>,
+    pub access_mode: AccessMode,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,7 +94,20 @@ pub struct RunOptions {
     #[serde(default)]
     pub write_access: bool,
     #[serde(default)]
+    pub auto_policy: AutoPolicy,
+    #[serde(default)]
+    pub balance_usage: bool,
+    #[serde(default)]
     pub access_mode: Option<AccessMode>,
+    /// Cross-audit the answer with the other provider.
+    #[serde(default)]
+    pub auto_review: bool,
+    /// Workspace-relative files to include in the prompt.
+    #[serde(default)]
+    pub attachments: Vec<String>,
+    /// Assistant message being audited; its turn's diff is attached.
+    #[serde(default)]
+    pub audit_of: Option<String>,
 }
 impl RunOptions {
     pub fn access(&self) -> AccessMode {
@@ -125,4 +145,28 @@ pub fn now() -> i64 {
 }
 pub fn id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoPolicy {
+    Budget,
+    #[default]
+    Default,
+    Quality,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWindow {
+    pub used_percent: f64,
+    pub resets_at: i64,
+    pub window_minutes: i64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUsage {
+    pub account_id: String,
+    pub windows: Vec<UsageWindow>,
+    pub updated_at: i64,
+    pub source: String,
 }

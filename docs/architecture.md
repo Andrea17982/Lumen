@@ -11,19 +11,32 @@ src/
   bridge.ts            Typed IPC, run-event reconciliation, honest UI preview
   types.ts             Frontend data contracts
   ProviderOptions.tsx  Official model/effort pickers and account renaming
+  ProjectPanel.tsx     LUMEN.md notes and file attachments
+  AutomationSettings.tsx  Teamwork switches and local API panel
+  IntegrationSettings.tsx MCP hub and shared skills
+  AutoSettings.tsx     Manual Claude quota snapshot
   styles.css           Theme tokens, glass material, layout, motion
   bridge.test.ts       Streaming reconciliation tests
 src-tauri/
-  src/main.rs          Windows desktop entry
-  src/lib.rs           Tauri commands, job lifecycle, stage orchestration
+  src/main.rs          Desktop entry
+  src/lib.rs           Tauri commands, settings, headless API turns, PATH fix
+  src/turns.rs         Turn orchestration: single, cross-audit, parallel, Both,
+                       rate-limit fallback, self-healing, Rewind, handoff
+  src/gitops.rs        Private-index checkpoints, restores and lane worktrees
+  src/context.rs       LUMEN.md, file walker, attachments, log spill, verify
+  src/limits.rs        Rate-limit detection, cooldowns, turn counters
+  src/api.rs           OpenAI-compatible localhost server (axum)
+  src/settings.rs      Persisted backend preferences
+  src/integrations.rs  Shared skills and MCP hub adapters
+  src/usage.rs         Codex quota query
   src/models.rs        Serializable domain types
   src/store.rs         SQLite schema and persistence operations
   src/router.rs        Pure deterministic Auto planner
   src/catalog.rs       Official CLI metadata discovery, pagination and validation
   src/providers.rs     CLI discovery, isolation, spawn, JSONL normalization, kill
   capabilities/        Window capabilities, folder picker, URL allowlist
-  tauri.conf.json      Window, CSP, build and NSIS bundle settings
-tests/                 Playwright UI behavior tests
+  tauri.conf.json      Window, CSP, build and bundle settings
+tests/                 Playwright UI tests, native offline smoke test, CLI fixtures
 docs/                  Setup, accounts, policy, roadmap and development
 ```
 

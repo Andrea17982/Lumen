@@ -1,10 +1,10 @@
-# Workspace, models and permissions — 0.2
+# Projects, models and permissions — 0.3
 
 ## Conversation location
 
-The composer contains a Workspace selector and an adjacent folder button beside Auto / Claude / GPT. Choose Add workspace to select a folder and create a named workspace (initially named after that folder). Select an existing workspace to bind the conversation to its default folder. Use the folder button to select a different working folder for that conversation while keeping the workspace association.
+The sidebar has New conversation (Ctrl N) and New project (Ctrl P). A project is a named container, independent of working folders. The composer contains a Project selector and an adjacent conversation-folder button. Moving a conversation between projects preserves its actual folder. Existing named workspaces become project containers with their IDs and associations preserved.
 
-The header shows the named workspace; the folder control exposes the full path in its tooltip. Each conversation persists both association and folder independently. Changing one conversation does not move another conversation. The last selected location is used for new conversations. Queued/running turns disable location changes; the backend also rejects them. Existing 0.1 conversations retain their folders and messages through a SQLite migration.
+The header shows the project; the folder control exposes the full path in its tooltip. Each conversation persists both association and folder independently. Use the sidebar's project filters to browse, right-click a conversation to rename/delete/move, or drag a conversation onto a project (or Unsorted). Deletion asks for confirmation. Running conversations may be regrouped, but changing their working folder or deleting them requires stopping first. Old conversations retain their folders and messages through the existing SQLite migration.
 
 ## Accounts
 

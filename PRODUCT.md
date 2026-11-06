@@ -8,7 +8,7 @@ web
 Desktop Windows application using a local Tauri webview. Linux is a secondary target.
 
 ## Stack
-Required by Istruzioni.md: Tauri 2, Rust core, React + TypeScript, Tailwind CSS, Framer Motion.
+Stack: Tauri 2, Rust core, React + TypeScript, Tailwind CSS, Framer Motion.
 
 ## Users
 People working with concurrent Claude Code and Codex sessions on their own computer.
@@ -23,7 +23,7 @@ Persistent searchable sessions, pins, streaming, collapsible activity, isolated 
 Lumen. Apple Liquid Glass, restrained controls, system typography, light and dark themes. Public GitHub repository under Andrea17982. Completely AI Written, with thanks to testers and optional PayPal support.
 
 ## Evidence on Hand
-Istruzioni.md is the original brief. No existing implementation, benchmarks or testimonials.
+The original human brief defined the product; no benchmarks or testimonials are claimed.
 
 ## Product Principles
 - Make the next action obvious.

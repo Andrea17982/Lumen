@@ -27,7 +27,11 @@ pub fn command(p: &Provider) -> Result<Command, String> {
     Ok(c)
 }
 pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
-    c.env(p.env(), dir);
+    if *p == Provider::Antigravity {
+        c.env("HOME", dir).env("USERPROFILE", dir);
+    } else {
+        c.env(p.env(), dir);
+    }
     // Prevent inherited API credentials from silently selecting a different identity/billing path.
     for key in [
         "ANTHROPIC_API_KEY",
@@ -36,6 +40,8 @@ pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
         "OPENAI_API_KEY",
         "CODEX_API_KEY",
         "CODEX_ACCESS_TOKEN",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
     ] {
         c.env_remove(key);
     }
@@ -50,8 +56,19 @@ pub async fn terminate(child: &mut tokio::process::Child) {
             let _ = c.output().await;
         }
         #[cfg(unix)]
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGKILL);
+        {
+            // Graceful first, so CLIs can flush their session files.
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGTERM);
+            }
+            if tokio::time::timeout(std::time::Duration::from_millis(1500), child.wait())
+                .await
+                .is_err()
+            {
+                unsafe {
+                    libc::kill(-(pid as i32), libc::SIGKILL);
+                }
+            }
         }
     }
     let _ = child.kill().await;
@@ -101,7 +118,7 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                     .into(),
             );
         }
-    } else {
+    } else if *p == Provider::Claude {
         if v["type"] == "stream_event" {
             let delta = &v["event"]["delta"];
             if let Some(t) = delta["text"].as_str() {
@@ -138,6 +155,31 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                 push("final", t.into());
             }
         }
+        if v["type"] == "message" && v["role"] == "assistant" {
+            if let Some(t) = v["content"].as_str() {
+                push("delta", t.into());
+            }
+        }
+        if v["type"] == "result" {
+            if let Some(t) = v["response"].as_str() {
+                push("final", t.into());
+            }
+        }
+        if v["type"] == "event" && v["event"] == "result" {
+            if let Some(t) = v["result"]["response"].as_str() {
+                push("final", t.into());
+            }
+        }
+        if v["type"] == "error" || v["event"] == "error" {
+            push(
+                "error",
+                v["message"]
+                    .as_str()
+                    .or_else(|| v["error"].as_str())
+                    .unwrap_or("Google CLI turn failed")
+                    .into(),
+            );
+        }
     }
     out
 }
@@ -167,9 +209,44 @@ pub async fn execute(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    c.args(invocation_args(p, input.access, input.model, input.effort));
+    let mut args = invocation_args(p, input.access, input.model, input.effort);
+    if input.access != AccessMode::ReadOnly && matches!(p, Provider::Claude | Provider::Gpt) {
+        let data = input
+            .config
+            .parent()
+            .and_then(|p| p.parent())
+            .ok_or("Invalid account directory")?;
+        let (shared, names) = crate::integrations::args(data, p)?;
+        if *p == Provider::Gpt {
+            args.pop();
+            args.extend(shared);
+            args.push("-".into());
+        } else {
+            args.extend(shared);
+            if input.access == AccessMode::FileEdits && !names.is_empty() {
+                // MCP tools are opt-in per server; built-in tools stay restricted.
+                if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
+                    let extra: Vec<String> = names.iter().map(|n| format!("mcp__{n}")).collect();
+                    args[i + 1] = format!("{},{}", args[i + 1], extra.join(","));
+                }
+            }
+        }
+    }
+    c.args(args);
     run_command(c, input.prompt, p, cancel, emit).await
 }
+
+const DENY: [&str; 9] = [
+    "Read(**/.env)",
+    "Read(**/.env.*)",
+    "Read(**/package-lock.json)",
+    "Read(**/Cargo.lock)",
+    "Read(**/yarn.lock)",
+    "Read(**/pnpm-lock.yaml)",
+    "Read(~/.ssh/**)",
+    "Read(~/.aws/**)",
+    "Edit(**/.env)",
+];
 
 /// Permission profiles are mapped to explicit official CLI flags, never inferred from prompt text.
 pub fn invocation_args(
@@ -193,6 +270,8 @@ pub fn invocation_args(
             "stream-json",
             "--include-partial-messages",
         ],
+        Provider::Gemini => vec!["--prompt", "", "--output-format", "stream-json"],
+        Provider::Antigravity => vec!["-p", "", "--output-format", "stream-json"],
     }
     .into_iter()
     .map(str::to_owned)
@@ -245,13 +324,38 @@ pub fn invocation_args(
                     .map(str::to_owned),
                 );
             }
+            // Secrets and lockfiles are denied even in Autopilot: they burn context or leak keys.
+            args.extend(["--disallowedTools".into(), DENY.join(",")]);
             if !effort.is_empty() {
+                args.extend(["--effort".into(), effort.into()]);
+            }
+        }
+        Provider::Gemini | Provider::Antigravity => {
+            if *p == Provider::Gemini {
+                let permission = match access {
+                    AccessMode::ReadOnly => "--approval-mode=plan",
+                    AccessMode::FileEdits => "--approval-mode=auto_edit",
+                    AccessMode::Autopilot => "--approval-mode=yolo",
+                };
+                args.push(permission.into());
+            } else {
+                let permission = match access {
+                    AccessMode::ReadOnly => "--mode=plan",
+                    AccessMode::FileEdits => "--mode=auto",
+                    AccessMode::Autopilot => "--dangerously-skip-permissions",
+                };
+                args.push(permission.into());
+            }
+            if *p == Provider::Antigravity && !effort.is_empty() {
                 args.extend(["--effort".into(), effort.into()]);
             }
         }
     }
     if let Some(m) = model {
         args.extend(["--model".into(), m.into()]);
+    }
+    if matches!(p, Provider::Gemini | Provider::Antigravity) && args.len() > 1 {
+        args[1] = "".into();
     }
     if *p == Provider::Gpt {
         args.push("-".into());
@@ -285,9 +389,17 @@ async fn run_command(
     });
     let stderr = child.stderr.take().ok_or("CLI stderr unavailable")?;
     // Drain diagnostics to prevent pipe deadlocks, but don't send raw auth logs to the UI.
+    // Only a short tail is kept, in memory, to classify rate-limit failures.
     let diagnostics = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(_)) = lines.next_line().await {}
+        let mut tail: std::collections::VecDeque<String> = Default::default();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tail.push_back(line.chars().take(400).collect());
+            if tail.len() > 40 {
+                tail.pop_front();
+            }
+        }
+        tail.into_iter().collect::<Vec<_>>().join("\n")
     });
     let stdout = child.stdout.take().ok_or("CLI stdout unavailable")?;
     let mut lines = BufReader::new(stdout).lines();
@@ -321,9 +433,24 @@ async fn run_command(
     }
     let status = tokio::select! { biased; _=cancel.changed()=>{terminate(&mut child).await;writer.abort();diagnostics.abort();return Err("Cancelled".into());}, r=child.wait()=>r.map_err(|e|e.to_string())? };
     let _ = writer.await;
-    let _ = diagnostics.await;
+    let stderr_tail = diagnostics.await.unwrap_or_default();
     if let Some(e) = error {
+        if crate::limits::is_rate_limit(&e) {
+            return Err(format!("{}{e}", crate::limits::RATE_LIMIT));
+        }
         return Err(e);
+    }
+    if !status.success() && crate::limits::is_rate_limit(&stderr_tail) {
+        let line = stderr_tail
+            .lines()
+            .rev()
+            .find(|l| crate::limits::is_rate_limit(l))
+            .unwrap_or("Rate limit reached");
+        return Err(format!(
+            "{}{} {line}",
+            crate::limits::RATE_LIMIT,
+            p.binary()
+        ));
     }
     if !status.success() {
         return Err(format!("{} exited with {}. Check official CLI login, model access, quota and workspace permissions. No automatic account rotation is performed.",p.binary(),status));

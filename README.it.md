@@ -2,7 +2,7 @@
 
 Un’app desktop locale per gestire conversazioni Claude Code e ChatGPT / Codex in un’interfaccia essenziale ispirata ad Apple Liquid Glass. Tauri 2, core Rust, React e TypeScript. L’interfaccia è in inglese, come scelto dal creatore.
 
-**Versione 0.2 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
+**Versione 0.3 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
 
 ![Interfaccia Lumen](docs/images/desktop.png)
 
@@ -14,15 +14,25 @@ Il codice dell’applicazione, l’interfaccia, i test e la documentazione sono 
 
 Lumen è disponibile con licenza MIT: tutti possono scaricarla, utilizzarla e modificarla.
 
-## Novità 0.2
+## Novità 0.3: Claude e ChatGPT lavorano in squadra
 
-Interfaccia ripulita dalle scritte promozionali, workspace nominati e cartella specifica per conversazione nel composer, rinomina account dalle impostazioni o dal selettore, modelli e reasoning letti dai CLI ufficiali. La nuova modalità **Autopilot** abilita strumenti e comandi senza sandbox o conferme del CLI, entro i permessi del sistema operativo. Il controllo grafico del PC richiede strumenti di automazione disponibili/configurati. [Guida completa](docs/workspace-models-permissions.md).
+- **Both**: lo stesso prompt a entrambi, con le risposte affiancate. Con le modifiche abilitate ognuno lavora in un proprio `git worktree` e applichi la versione migliore con un clic.
+- **Cross-Audit**: «Audit with…» su ogni risposta, oppure un interruttore sempre attivo. L'altro modello revisiona il diff del turno, per un massimo di 3 cicli.
+- **Note di progetto condivise** (`LUMEN.md`) e **file allegati** con il loro peso in token, letti da entrambi a ogni turno.
+- **Fallback sui rate limit**: se un provider raggiunge il limite, lo stesso messaggio prosegue sull'altro. Indicatori di stato e conto alla rovescia nell'header.
+- **Rewind**: snapshot git invisibili prima di ogni turno che modifica file. Con un'anteprima, riporti file e conversazione a qualsiasi tuo messaggio.
+- **Self-healing**: dopo le modifiche Lumen esegue il controllo del progetto e rimanda gli errori all'assistente perché li corregga (al massimo 3 volte).
+- **Risparmio token**: stima live dei token, log lunghi compressi agli errori (log completo in `.lumen/spill`), «Compact and continue» per le conversazioni lunghe, lockfile e segreti bloccati.
+- **Hub MCP** con interruttori ON/OFF per entrambe le CLI e **API locale compatibile OpenAI** su `localhost:8317/v1`.
+- Build **macOS** oltre all'installer e alla versione portable per Windows.
+
+Dettagli in [Teamwork features](docs/features.md).
 
 ## Avvio rapido
 
 Installa separatamente i CLI ufficiali di [Claude Code](https://code.claude.com/docs/en/setup) e/o [Codex](https://developers.openai.com/codex/cli). In Lumen apri Settings, aggiungi un account e premi Sign in: l’autenticazione avviene nel terminale e nel browser ufficiali del provider. Verifica la connessione con il pulsante a scudo, scegli una cartella di lavoro fidata e avvia la conversazione.
 
-Per compilare servono Node.js, Rust stable, C++ Build Tools, Windows SDK e WebView2:
+Per compilare servono Node.js, Rust stable, C++ Build Tools, Windows SDK e WebView2. Dopo `npm run build:release`, l'installer più recente è in `builds/latest/`; l'output originale di Tauri resta in `src-tauri/target/release/bundle/nsis/`.
 
 ```powershell
 git clone https://github.com/Andrea17982/Lumen.git
@@ -31,7 +41,7 @@ npm ci
 npm run tauri dev
 ```
 
-`npm run tauri build` genera l’installer. `npm run dev` apre soltanto un’anteprima UI nel browser, senza inferenza AI o login.
+`npm run build:release` genera l'installer e lo copia in `builds/latest/`. `npm run dev` apre soltanto un'anteprima UI nel browser, senza inferenza AI o login.
 
 ## Funzioni e limiti
 

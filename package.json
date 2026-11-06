@@ -1,13 +1,14 @@
 {
   "name": "lumen-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "format": "prettier --write src tests vite.config.ts playwright.config.ts",
     "format:check": "prettier --check src tests vite.config.ts playwright.config.ts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "build:release": "tauri build && node scripts/copy-release.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "test": "vitest run src",

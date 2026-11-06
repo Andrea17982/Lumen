@@ -1,5 +1,6 @@
 node_modules/
 dist/
+notes/
 src-tauri/target/
 src-tauri/gen/
 .env
@@ -18,3 +19,5 @@ playwright-report/
 *.tsbuildinfo
 SHA256SUMS.txt
 .DS_Store
+
+builds/

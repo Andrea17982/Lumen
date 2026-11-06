@@ -1,7 +1,8 @@
 // Windows debug-only test. PATH points to fixtures, app data to a fresh temp directory.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, realpath } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -17,6 +18,7 @@ const child = spawn(path.join(root, 'src-tauri/target/debug/lumen.exe'), [], {
   env: {
     ...process.env,
     LUMEN_TEST_DATA_DIR: testData,
+    WEBVIEW2_USER_DATA_FOLDER: path.join(testData, 'webview'),
     PATH: `${path.join(root, 'tests/fixtures/cli')};${process.env.PATH}`,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9224',
   },
@@ -78,6 +80,17 @@ try {
     effort: 'low',
     accessMode: 'read-only',
   };
+  const officialQuota = await invoke('refresh_usage', { id: gpt.id });
+  assert.equal(officialQuota.source, 'codex-cli');
+  assert.equal(officialQuota.windows.length, 2);
+  await invoke('save_usage', {
+    usage: {
+      accountId: claude.id,
+      updatedAt: Date.now(),
+      source: 'manual',
+      windows: [{ usedPercent: 90, windowMinutes: 10080, resetsAt: Date.now() + 2 * 3600000 }],
+    },
+  });
   async function waitSession(id, status) {
     for (let i = 0; i < 200; i++) {
       const rows = await invoke('list_sessions', { search: '', offset: 0 });
@@ -136,8 +149,35 @@ try {
   await waitSession(claudeSession.id, 'completed');
   const streamed = await invoke('get_messages', { id: claudeSession.id });
   assert.equal(streamed[1].text, messages[1].text);
+  for (const [text, model, effort] of [
+    ['Test', 'gpt-luna-fixture', 'low'],
+    ['Traduci questa email', 'gpt-luna-fixture', 'low'],
+    ['Correggi un errore CSS', 'gpt-terra-fixture', 'low'],
+    ['Trova un bug intermittente di concorrenza', 'gpt-terra-fixture', 'medium'],
+    ['Progetta una migrazione del database', 'opus', 'low'],
+    ["Controlla la sicurezza dell'autenticazione", 'opus', 'low'],
+  ]) {
+    const run = await invoke('create_session', { workspace });
+    const plan = await invoke('send_message', {
+      id: run.id,
+      text,
+      options: { ...options, mode: 'auto', accountId: null },
+    });
+    assert.equal(plan.model, model, text);
+    assert.equal(plan.effort, effort, text);
+    await waitSession(run.id, 'completed');
+  }
+  const balanced = await invoke('create_session', { workspace });
+  const balancedPlan = await invoke('send_message', {
+    id: balanced.id,
+    text: 'Test',
+    options: { ...options, mode: 'auto', accountId: null, balanceUsage: true },
+  });
+  assert.equal(balancedPlan.accountId, claude.id, 'Weekly quota near reset should be used first');
+  assert.equal(balancedPlan.model, 'haiku');
+  await waitSession(balanced.id, 'completed');
   for (const [text, strategy] of [
-    ['Refactor security architecture', 'review'],
+    ['Refactor security architecture in production', 'review'],
     ['Compare alternatives', 'parallel'],
   ]) {
     const run = await invoke('create_session', { workspace });
@@ -209,6 +249,101 @@ try {
     options: { ...options, accessMode: 'autopilot' },
   });
   await waitSession(autopilot.id, 'completed');
+
+  // 0.3: checkpoints + Rewind, Both mode in isolated worktrees, rate-limit fallback,
+  // project context, compact handoff, settings and the local API.
+  const repo = path.join(testData, 'repo with spaces');
+  await mkdir(repo);
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+  git('init', '-q');
+  await writeFile(path.join(repo, 'shared.txt'), 'original\n');
+  git('add', '.');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init');
+  const edits = { ...options, accessMode: 'file-edits' };
+  const rw = await invoke('create_session', { workspace: repo });
+  await invoke('send_message', { id: rw.id, text: 'WRITE_FIXTURE first turn', options: edits });
+  await waitSession(rw.id, 'completed');
+  assert.match(await readFile(path.join(repo, 'shared.txt'), 'utf8'), /edited by/);
+  const firstUser = (await invoke('get_messages', { id: rw.id }))[0];
+  assert(
+    firstUser.activity.some((a) => a.kind === 'checkpoint'),
+    'write turns are checkpointed',
+  );
+  const preview = await invoke('rewind_preview', { session: rw.id, message: firstUser.id });
+  assert(preview.restorable && preview.files.length === 2, JSON.stringify(preview));
+  assert.equal(await invoke('rewind', { session: rw.id, message: firstUser.id }), firstUser.text);
+  assert.equal(await readFile(path.join(repo, 'shared.txt'), 'utf8'), 'original\n');
+  assert.equal((await invoke('get_messages', { id: rw.id })).length, 0);
+  assert.equal(git('status', '--porcelain').trim(), '', 'rewind leaves the repo clean');
+
+  const both = await invoke('create_session', { workspace: repo });
+  const bothPlan = await invoke('send_message', {
+    id: both.id,
+    text: 'WRITE_FIXTURE in both lanes',
+    options: { ...edits, mode: 'both' },
+  });
+  assert.equal(bothPlan.strategy, 'broadcast');
+  await waitSession(both.id, 'completed');
+  const lanes = (await invoke('get_messages', { id: both.id })).filter(
+    (m) => m.role === 'assistant',
+  );
+  assert.equal(lanes.length, 2);
+  assert(lanes.every((m) => m.activity.some((a) => a.kind === 'worktree')));
+  assert.equal(await readFile(path.join(repo, 'shared.txt'), 'utf8'), 'original\n');
+  const gptLane = lanes.find((m) =>
+    m.activity.some((a) => a.kind === 'lane' && a.text === 'codex'),
+  );
+  await invoke('resolve_lanes', { session: both.id, message: gptLane.id, apply: true });
+  assert.match(await readFile(path.join(repo, 'shared.txt'), 'utf8'), /edited by gpt/);
+  assert.equal(git('worktree', 'list').trim().split('\n').length, 1, 'lanes are removed');
+
+  const limited = await invoke('create_session', { workspace });
+  await invoke('send_message', {
+    id: limited.id,
+    text: 'RATE_FIXTURE please',
+    options: { ...options, mode: 'claude', accountId: claude.id },
+  });
+  await waitSession(limited.id, 'completed');
+  const fell = (await invoke('get_messages', { id: limited.id }))[1];
+  assert(
+    fell.activity.some((a) => a.kind === 'fallback'),
+    JSON.stringify(fell.activity),
+  );
+  assert(fell.text.includes('offline UI fixture'));
+  const health = await invoke('provider_health');
+  assert.equal(health.find((h) => h.accountId === claude.id).state, 'cooldown');
+
+  await invoke('save_project_context', { folder: repo, notes: 'Use tabs.\nverify: off' });
+  const ctx = await invoke('project_context', { folder: repo });
+  assert(ctx.git && ctx.notes.includes('Use tabs') && ctx.files.some((f) => f.path === 'LUMEN.md'));
+  const compacted = await invoke('compact_session', { id: both.id });
+  const handoff = await invoke('get_messages', { id: compacted.id });
+  assert(handoff[0].text.includes('Handoff') && handoff[0].text.includes('Goal'));
+
+  const prefs = await invoke('get_settings');
+  const apiPort = 18317;
+  await invoke('save_settings', { value: { ...prefs, apiEnabled: true, apiPort } });
+  const unauthorized = await fetch(`http://127.0.0.1:${apiPort}/v1/models`);
+  assert.equal(unauthorized.status, 401);
+  const completion = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${prefs.apiToken}` },
+    body: JSON.stringify({ model: 'lumen-chatgpt', messages: [{ role: 'user', content: 'Hi' }] }),
+  }).then((r) => r.json());
+  assert.equal(completion.object, 'chat.completion');
+  assert(completion.choices[0].message.content.includes('offline UI fixture'));
+  const stream = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${prefs.apiToken}` },
+    body: JSON.stringify({
+      model: 'lumen-chatgpt',
+      stream: true,
+      messages: [{ role: 'user', content: 'Hi' }],
+    }),
+  }).then((r) => r.text());
+  assert(stream.includes('chat.completion.chunk') && stream.trim().endsWith('data: [DONE]'));
+  await invoke('save_settings', { value: { ...prefs, apiEnabled: false } });
+
   await writeFile(
     '.impeccable/review/native-results.json',
     JSON.stringify(

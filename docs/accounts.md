@@ -2,14 +2,16 @@
 
 ## What Lumen does
 
-You install the official, unmodified `claude` / `codex` CLI. An account slot gives it a separate application-owned configuration directory. Choosing Sign in opens the CLI's official login command in a visible Windows PowerShell terminal with that directory set. The CLI owns its browser, callbacks, tokens and refresh logic. Lumen neither implements OAuth endpoints nor reads token files.
+You install the official, unmodified provider CLI. An account slot gives it a separate application-owned configuration directory. Choosing Sign in opens the CLI's official login command in a visible Windows PowerShell terminal with that directory set. The CLI owns its browser, callbacks, tokens and refresh logic. Lumen neither implements OAuth endpoints nor reads token files.
 
 | Provider | Environment | Official login | Connection check |
 | --- | --- | --- | --- |
 | Claude Code | `CLAUDE_CONFIG_DIR=<app-data>/accounts/<id>` | `claude auth login` | `claude auth status` |
 | Codex | `CODEX_HOME=<app-data>/accounts/<id>` | `codex login` | `codex login status` |
+| Gemini CLI | `GEMINI_CLI_HOME=<app-data>/accounts/<id>` | `gemini` | `gemini --list-models` |
+| Antigravity CLI | isolated `HOME` / `USERPROFILE` | `agy` | `agy models` |
 
-There is no application-set account count cap. This does not increase a provider's allowance, guarantee every authentication store is independent, or authorize credential sharing. One slot per identity is recommended; duplicate slots for the same identity still share provider-side limits. Auto never cycles accounts after a quota error.
+There is no application-set account count cap. This does not increase a provider's allowance, guarantee every authentication store is independent, or authorize credential sharing. One slot per identity is recommended; duplicate slots for the same identity still share provider-side limits. Auto uses Gemini CLI or Antigravity only when fresh quota snapshots explicitly show every configured Claude and Codex account exhausted. Missing or stale quota information never triggers Google fallback. Claude quota snapshots must be entered from `/usage`; Codex snapshots can be refreshed through its CLI.
 
 ## Provider rules matter
 
@@ -22,6 +24,7 @@ Codex CLI supports official ChatGPT sign-in, and its exec mode reuses CLI-manage
 - Names are labels only. IDs are generated UUIDs; user names never become paths.
 - Common inherited API credentials are removed from provider children. Existing home-directory logins are not imported.
 - Codex account creation writes `cli_auth_credentials_store = "file"` in that isolated home. The CLI may store plaintext tokens there; protect the directory as you would a password.
+- Gemini CLI uses its documented `GEMINI_CLI_HOME`. Antigravity uses a separate home directory. Google CLIs are not included in quota balancing; once the primary accounts are confirmed exhausted, Auto prefers Antigravity when both Google tools are connected.
 - `CLAUDE_CONFIG_DIR` isolates Claude settings/history as documented in [Claude settings](https://code.claude.com/docs/en/settings). OS keychain behavior may vary. Distinct directories alone do not prove independent keychain identities; acceptance-test with two accounts on your OS.
 - Account directories use the current user's standard application-data permissions; Lumen does not create an additional encrypted credential vault or hardened ACL.
 - Removing an account deletes that Lumen-owned directory and metadata after user confirmation, while no jobs are active. It does not revoke remote authorizations or remove a possible shared OS-keychain item.

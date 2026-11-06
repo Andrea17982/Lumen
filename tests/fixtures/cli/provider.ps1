@@ -6,6 +6,15 @@ $promptText = [Console]::In.ReadToEnd()
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
 $reply = "This is an **offline UI fixture**, not a live AI response.`n`n### A small, thoughtful plan`n`n- Keep the conversation clear.`n- Review the changes before applying them.`n- Make room for the next idea.`n`n| Step | State |`n| --- | --- |`n| Understand | Complete |`n| Review | Complete |`n`n" + '```typescript' + "`nconst clarity = true;`n" + '```'
 function Emit($value) { ConvertTo-Json -InputObject $value -Depth 10 -Compress | Write-Output }
+if ($promptText.Contains('RATE_FIXTURE') -and $Provider -eq 'claude') {
+    Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    exit 1
+}
+if ($promptText.Contains('WRITE_FIXTURE')) {
+    # Writes only inside the working directory the app chose (a temp test workspace or worktree).
+    Set-Content -LiteralPath (Join-Path (Get-Location).Path "fixture-$Provider.txt") -Value "written by $Provider" -Encoding utf8
+    Set-Content -LiteralPath (Join-Path (Get-Location).Path 'shared.txt') -Value "edited by $Provider" -Encoding utf8
+}
 if ($Provider -eq 'gpt') {
     Emit @{type='item.completed';item=@{type='command_execution';command='fixture-only: working directory';aggregated_output=(Get-Location).Path}}
     Emit @{type='item.completed';item=@{type='reasoning';text='Fixture reasoning summary: inspect the sample and form a concise response.'}}

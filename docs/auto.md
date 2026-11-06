@@ -1,29 +1,44 @@
-# Auto execution policy
+# Auto execution policy · 0.3
 
-The first version uses deterministic rules in `src-tauri/src/router.rs`. It does not send a preliminary classifier request, inspect your credentials, discover plan quotas or infer that more accounts mean more allowed usage.
+Auto routes locally without a classifier request. It selects an actual model ID from the selected account's official CLI catalog, including for reviewers and parallel workers. Unavailable model names are never manufactured. These are explainable heuristics calibrated against the user's examples.
 
-| Signal | Result |
-| --- | --- |
-| Request under 240 bytes, no complex keyword | Prefer Codex, low effort, single call |
-| Other ordinary request | Prefer Codex, medium effort, single call |
-| More than 1,800 bytes or architecture/refactor/security/migration keywords (plus selected Italian forms) | Prefer Claude `opus`, high effort |
-| Comparison/alternatives keywords, with both providers configured | Two read-only independent perspectives, followed by synthesis |
-| Complex request, with both providers configured | Writer, other-provider read-only reviewer, final writer pass |
-| Preferred provider not configured | First configured provider; a single provider cannot cross-review itself |
-| Manual Claude / GPT | Chosen account/model/effort; single stage |
+| Request | Preferred model class | Default effort |
+| --- | --- | --- |
+| Test, short text, translation/email | Haiku / Luna; Terra if no smaller model is available | Low |
+| CSS fix, coding, ordinary debugging | Sonnet / Terra | Low, or medium for longer requests |
+| Intermittent concurrency bug | Sonnet / Terra | Medium |
+| Database migration, architecture, authentication/security review | Opus / Sol | Low, or medium for complexity/production signals |
 
-Comparison takes precedence over complex-task review. Codex uses its installed CLI default model unless manually overridden. Claude aliases (`opus`, `sonnet`) delegate concrete version selection to the CLI/provider. There is no unsupported claim that every account has access to these models. A manual model name is validated before process creation. Manual model/effort controls come from the official CLI catalog and are validated against that catalog before execution. Auto requests low/medium/high according to its policy; each stage resolves that request to a supported model effort or the provider default, recording the effective model/effort in activity.
+Version numbers come from the account catalog. A long email can raise effort without automatically requiring a flagship. Unrecognized models fall into the middle class; catalog defaults break ties. Routing can misinterpret wording. Follow-ups are classified from the latest request; use manual controls when continuity requires a particular model.
 
-## Sub-agents, review and pair work
+The three policies persist locally:
 
-Workers are separate official CLI calls, bounded to at most two in parallel per orchestration. Reviewers cannot edit files. Parallel perspectives cannot edit files; the final synthesis may edit only when the user enabled file edits. Workers receive the relevant transcript and drafts, so both configured providers can receive task content in Auto. Manual provider selection prevents the cross-provider stages.
+- **Budget:** one effort step lower, clamped at low; suppresses extra review/parallel stages.
+- **Default:** calibrated effort and independent review for demanding architecture/security/migration work or explicit validator requests.
+- **Quality:** one effort step higher; adds an independent reviewer for coding and advanced tasks when another provider is configured. Simple messages stay single-stage.
 
-This is a bounded form of autonomous delegation and pair/review. Recursive delegation, a dedicated multi-agent protocol, provider-native subagent spawning, dynamic agent counts and worktree-isolated parallel writers are roadmap work. Lumen does not silently pretend those exist.
+Comparisons with both providers and Default/Quality gather two independent perspectives, then synthesize. Manual provider/model/effort selection uses a single stage, validated against official metadata. Each stage resolves effort to the nearest supported level or provider default and records the effective model/effort in activity.
 
-Each job holds a semaphore permit. Four jobs can be active; parallel jobs can each start two provider processes, so eight is the maximum inference-process fanout. A job waiting for a workspace lock still holds its job permit. This favors simple correctness over optimal throughput.
+## Quota balancing
 
-## Costs, failures and transparency
+Enable **Balance usage** in Auto and manage snapshots in Settings. Codex uses official `account/rateLimits/read`, refreshing missing/stale snapshots before routing. Claude percentages/reset times must currently be copied from `/usage`. Snapshots expire after 15 minutes. Balancing runs only when all candidates have fresh usable data; otherwise activity explains why ordinary routing was used. Missing usage never counts as free capacity.
 
-Review and parallel plans can make three calls instead of one. They consume normal account quotas and may take longer. Account labels do not imply successful login, and the router does not rotate after failure. A failed reviewer/synthesis marks the turn as failed and retains any already-produced draft and activity. Model access, quotas and authentication errors require user recovery.
+For each active reported window:
 
-The UI displays the selected provider, effort and strategy; the plan also lives in persisted activity. No hidden background classifier or telemetry is implemented. More sophisticated complexity estimation, configurable budgets, live model discovery and measured routing quality belong to v1/v2 and need evaluations before becoming defaults.
+`pressure = fraction_of_window_time_remaining / fraction_of_quota_remaining`
+
+An account's pressure is its tightest window (maximum); lower pressure is preferred. Thus 90% weekly usage with two hours until reset can be preferable to 40% usage with days remaining, unless the shorter window is tighter. Exhausted active windows block selection, including as reviewer, when all accounts have known usage. Expired windows are ignored rather than assumed reset. This balances subscription quota percentages, not currency or exact tokens; model-specific buckets and task cost prediction are not inferred.
+
+This is a Lumen heuristic inspired by remaining-budget pacing, not an implementation of Envoy or a proven cost optimizer. Existing global-quota systems regulate throughput; they do not directly solve subscription selection across providers with independent five-hour and weekly resets. See [Envoy global rate limiting](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting.html) and [official Codex App Server quota protocol](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt).
+
+## Workers and permissions
+
+Writer → read-only reviewer → final writer and two read-only perspectives → synthesis are bounded worker workflows. They use separate official CLI calls, at most two simultaneously per job. Only the writer/final pass may edit, according to the permission profile. Another provider is required for independent review; a single provider uses one stage. Recursive/native subagent spawning and concurrent writers with isolated worktrees are not implemented.
+
+Four orchestration jobs can be active, with at most eight inference processes. Writing jobs sharing a canonical folder are serialized. Extra stages consume quota and receive task context. Reviewer/synthesis failure retains available draft/activity and marks the turn failed. There is no automatic retry/account rotation after inference errors. Selected model, effort, strategy and balancing reason appear in activity.
+
+## Shared skills and MCP
+
+Settings imports complete skill folders containing `SKILL.md` into `<Lumen data>/shared/skills`, including scripts/resources. Every model receives an inventory with descriptions/paths and instructions to read relevant skills. Shared MCP configuration lives in `<Lumen data>/shared/mcp.json`: Claude receives `--mcp-config`; Codex receives converted TOML `mcp_servers` entries. Stdio commands/args/env and HTTP URLs/headers are supported. Shared MCP runs in Autopilot; other permission modes keep restricted tools. Authentication may require separate provider setup.
+
+This shares portable skills and MCP definitions. Provider-specific plugin hooks, interfaces, OAuth storage and unsupported transports require adapters; they are not converted automatically. See [Claude MCP configuration](https://code.claude.com/docs/en/mcp).

@@ -4,14 +4,12 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  ChevronLeft,
   Code2,
   Copy,
   Folder,
   Heart,
   Menu,
   MessageSquare,
-  MoreHorizontal,
   Pin,
   Plus,
   Search,
@@ -29,8 +27,18 @@ import {
   LoaderCircle,
   Pencil,
   Circle,
+  RotateCcw,
+  Paperclip,
+  BookOpen,
+  Repeat2,
+  Columns2,
+  Shrink,
 } from 'lucide-react';
 import ProviderOptions, { AccountRename } from './ProviderOptions';
+import ProjectPanel from './ProjectPanel';
+import AutomationSettings from './AutomationSettings';
+import IntegrationSettings from './IntegrationSettings';
+import AutoSettings from './AutoSettings';
 import { applyEvent, call, desktop, external, subscribe } from './bridge';
 import type {
   Account,
@@ -40,6 +48,11 @@ import type {
   Message,
   Mode,
   Plan,
+  AccountUsage,
+  UsageWindow,
+  FileEntry,
+  Health,
+  RewindPreview,
   Provider,
   RunEvent,
   Session,
@@ -51,9 +64,28 @@ const MessageBody = lazy(() => import('./MessageBody'));
 const PAYPAL =
   'https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen';
 const active = (s?: Status) => s === 'running' || s === 'waiting';
-const nameOf = (p: Provider) => (p === 'claude' ? 'Claude' : 'GPT');
+const nameOf = (p: Provider) =>
+  ({ claude: 'Claude', gpt: 'GPT', gemini: 'Gemini CLI', antigravity: 'Antigravity' })[p];
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+const HIDDEN = ['checkpoint', 'lane', 'worktree', 'applied', 'discarded', 'attachments'];
+const laneOf = (m: Message) => m.activity.find((a) => a.kind === 'lane')?.text;
+/** Which provider wrote a message, from its lane or the writer's model activity. */
+function providerOf(m: Message): 'claude' | 'gpt' | null {
+  const lane = laneOf(m);
+  const models = m.activity.filter((a) => a.kind === 'model').map((a) => a.text);
+  const fell = m.activity.some((a) => a.kind === 'fallback');
+  const src = lane || (fell ? models.at(-1) : models[0]) || '';
+  if (src.startsWith('claude')) return 'claude';
+  if (src.startsWith('codex')) return 'gpt';
+  return null;
+}
+const tokens = (text: string) => Math.ceil(text.length / 4);
+const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+function countdown(until: number) {
+  const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -62,6 +94,23 @@ function Mark({ small = false }: { small?: boolean }) {
       <span />
       <span />
     </span>
+  );
+}
+function usageBar(label: string, window?: UsageWindow) {
+  return (
+    <div className="usage-meter">
+      <span>{label}</span>
+      {window ? (
+        <>
+          <div className="usage-track">
+            <i style={{ width: `${window.usedPercent}%` }} />
+          </div>
+          <strong>{Math.round(window.usedPercent)}%</strong>
+        </>
+      ) : (
+        <small>Unavailable</small>
+      )}
+    </div>
   );
 }
 
@@ -74,11 +123,24 @@ export default function App() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [draft, setDraft] = useState('');
+  const [autoPolicy, setAutoPolicy] = useState(
+    () => localStorage.getItem('lumen-auto-policy') || 'default',
+  );
+  const [balanceUsage, setBalanceUsage] = useState(
+    () => localStorage.getItem('lumen-balance-usage') === 'true',
+  );
+  const [projectForm, setProjectForm] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [projectFilter, setProjectFilter] = useState('*');
+  const [context, setContext] = useState<{ session: Session; x: number; y: number } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Session | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [mode, setMode] = useState<Mode>('auto');
   const [accountId, setAccountId] = useState('');
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
   const [accessMode, setAccessMode] = useState<AccessMode>('read-only');
+  const [draggedSession, setDraggedSession] = useState<string | null>(null);
   const [catalogReady, setCatalogReady] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState(
@@ -90,19 +152,30 @@ export default function App() {
   const [sidebar, setSidebar] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [usage, setUsage] = useState<AccountUsage[]>([]);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
   const [copyState, setCopyState] = useState('');
+  const [autoReview, setAutoReview] = useState(
+    () => localStorage.getItem('lumen-auto-review') === 'true',
+  );
+  const [attached, setAttached] = useState<string[]>([]);
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [health, setHealth] = useState<Health[]>([]);
+  const [rewindTarget, setRewindTarget] = useState<{ id: string; preview: RewindPreview } | null>(
+    null,
+  );
+  const [, setTick] = useState(0);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const settingsPanel = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
   // Filtering the sidebar must not discard the active conversation's workspace or run state.
   const activeSession = useRef<Session | undefined>(undefined);
@@ -119,41 +192,17 @@ export default function App() {
       .then(setWorkspaces)
       .catch((e) => setError(errorText(e)));
   }, []);
+  // Settings behaves like a modal for the keyboard: focus moves in, stays in, and returns.
+  const settingsOpener = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (!settings) return;
-    setSidebar(false);
-    setMenu(false);
-    const previous = document.activeElement as HTMLElement | null;
-    const panel = settingsPanel.current;
-    panel?.querySelector<HTMLElement>('button')?.focus();
-    const trap = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !panel) return;
-      const controls = Array.from(
-        panel.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
-        ),
-      ).filter((el) => el.getClientRects().length > 0);
-      const first = controls[0],
-        last = controls.at(-1);
-      if (
-        e.shiftKey &&
-        (document.activeElement === first || !panel.contains(document.activeElement))
-      ) {
-        e.preventDefault();
-        last?.focus();
-      } else if (
-        !e.shiftKey &&
-        (document.activeElement === last || !panel.contains(document.activeElement))
-      ) {
-        e.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener('keydown', trap);
-    return () => {
-      document.removeEventListener('keydown', trap);
-      previous?.focus();
-    };
+    if (!settings) {
+      settingsOpener.current?.focus();
+      return;
+    }
+    settingsOpener.current = document.activeElement as HTMLElement | null;
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('.settings-panel button:not(:disabled)')?.focus(),
+    );
   }, [settings]);
 
   const refresh = useCallback(async () => {
@@ -168,9 +217,58 @@ export default function App() {
     async () => setAccounts(await call<Account[]>('list_accounts')),
     [],
   );
+  const loadUsage = useCallback(async () => {
+    setUsage(await call<AccountUsage[]>('get_usage'));
+    for (const a of accounts.filter((account) => account.provider === 'gpt')) {
+      try {
+        const row = await call<AccountUsage>('refresh_usage', { id: a.id });
+        setUsage((old) => [...old.filter((x) => x.accountId !== row.accountId), row]);
+      } catch {
+        /* Keep any saved snapshot when the CLI cannot refresh. */
+      }
+    }
+  }, [accounts]);
+  useEffect(() => {
+    let stopped = false;
+    const refresh = async () => {
+      try {
+        const rows = await call<AccountUsage[]>('get_usage');
+        if (!stopped) setUsage(rows);
+        for (const a of accounts.filter((account) => account.provider === 'gpt')) {
+          try {
+            const row = await call<AccountUsage>('refresh_usage', { id: a.id });
+            if (!stopped)
+              setUsage((old) => [...old.filter((x) => x.accountId !== row.accountId), row]);
+          } catch {
+            /* Keep the most recent saved snapshot when the CLI is unavailable. */
+          }
+        }
+      } catch {
+        /* Usage is optional when running in browser preview. */
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [accounts]);
   useEffect(() => {
     void refresh().catch((e) => setError(errorText(e)));
   }, [refresh]);
+  useEffect(() => {
+    const load = () =>
+      void call<Health[]>('provider_health')
+        .then(setHealth)
+        .catch(() => {});
+    load();
+    const t = window.setInterval(() => {
+      load();
+      setTick((n) => n + 1);
+    }, 15_000);
+    return () => window.clearInterval(t);
+  }, [accounts, sessions]);
   useEffect(() => {
     void loadAccounts().catch((e) => setError(errorText(e)));
   }, [loadAccounts]);
@@ -178,7 +276,6 @@ export default function App() {
     let gone = false;
     setMessages([]);
     setPlan(null);
-    setMenu(false);
     setRenaming(false);
     if (selected)
       void call<Message[]>('get_messages', { id: selected })
@@ -192,6 +289,9 @@ export default function App() {
       gone = true;
     };
   }, [selected]);
+  useEffect(() => {
+    if (session?.accessMode) setAccessMode(session.accessMode);
+  }, [selected, session?.accessMode]);
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
@@ -237,8 +337,30 @@ export default function App() {
   }, [messages, reduced]);
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setSidebar(true);
+        setProjectForm(true);
+        return;
+      }
       if (settings) {
         if (e.key === 'Escape') setSettings(false);
+        if (e.key === 'Tab') {
+          const items = [
+            ...document.querySelectorAll<HTMLElement>(
+              '.settings-panel button:not(:disabled), .settings-panel input:not(:disabled), .settings-panel select:not(:disabled), .settings-panel textarea, .settings-panel summary',
+            ),
+          ].filter((el) => el.offsetParent !== null);
+          const first = items[0];
+          const last = items.at(-1);
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last?.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
@@ -259,7 +381,8 @@ export default function App() {
         requestAnimationFrame(() => searchInput.current?.focus());
       }
       if (e.key === 'Escape') {
-        setMenu(false);
+        setContext(null);
+        setProjectForm(false);
         setSidebar(false);
       }
     };
@@ -306,26 +429,58 @@ export default function App() {
   async function chooseWorkspace(id: string) {
     setFolderBusy(true);
     try {
-      let target = workspaces.find((w) => w.id === id);
       if (id === '__add') {
-        const folder = await pickFolder();
-        if (!folder) return;
-        target = await call<Workspace>('add_workspace', {
-          name: folder.split(/[\\/]/).filter(Boolean).at(-1) || 'Workspace',
-          folder,
-        });
-        setWorkspaces(await call<Workspace[]>('list_workspaces'));
+        setProjectForm(true);
+        setSidebar(true);
+        return;
       }
-      if (target) await bindFolder(target.folder, target.id);
+      if (session) await moveSession(session, id);
+      else {
+        setWorkspaceId(id);
+        localStorage.setItem('lumen-workspace-id', id);
+      }
     } catch (e) {
       setError(errorText(e));
     } finally {
       setFolderBusy(false);
     }
   }
-  async function send() {
-    if (!draft.trim() || running || folderBusy) return;
-    if (mode !== 'auto' && !catalogReady) {
+  async function createProject() {
+    try {
+      const project = await call<Workspace>('add_workspace', {
+        name: projectName.trim(),
+        folder: '',
+      });
+      setWorkspaces(await call<Workspace[]>('list_workspaces'));
+      setWorkspaceId(project.id);
+      localStorage.setItem('lumen-workspace-id', project.id);
+      setProjectFilter(project.id);
+      setSelected(null);
+      setProjectName('');
+      setProjectForm(false);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function moveSession(s: Session, id: string) {
+    try {
+      const updated = await call<Session>('set_session_workspace', {
+        id: s.id,
+        workspaceId: id || null,
+        folder: s.workspace,
+      });
+      if (activeSession.current?.id === s.id) activeSession.current = updated;
+      await refresh();
+      setContext(null);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function send(override?: { text: string; mode: Mode; auditOf: string }) {
+    const text = override?.text ?? draft.trim();
+    const runMode = override?.mode ?? mode;
+    if (!text || running || folderBusy) return;
+    if (!override && (mode === 'claude' || mode === 'gpt') && !catalogReady) {
       setError('Load the official model catalog before sending.');
       return;
     }
@@ -352,19 +507,27 @@ export default function App() {
         setSessions((list) => [s!, ...list]);
         setSelected(s.id);
       }
-      const text = draft.trim();
+      const manual = !override && (mode === 'claude' || mode === 'gpt');
       const result = await call<Plan>('send_message', {
         id: s.id,
         text,
         options: {
-          mode,
-          accountId: mode !== 'auto' && accountId ? accountId : null,
-          model: model || null,
-          effort,
-          accessMode,
+          mode: runMode,
+          accountId: manual && accountId ? accountId : null,
+          model: manual ? model || null : null,
+          effort: manual ? effort : '',
+          accessMode: override ? 'read-only' : accessMode,
+          autoPolicy,
+          balanceUsage,
+          autoReview: override ? false : autoReview,
+          attachments: override ? [] : attached,
+          auditOf: override?.auditOf ?? null,
         },
       });
-      setDraft('');
+      if (!override) {
+        setDraft('');
+        setAttached([]);
+      }
       const snapshot = await call<Message[]>('get_messages', { id: s.id });
       if (selectedRef.current === s.id) {
         setPlan(result);
@@ -388,10 +551,25 @@ export default function App() {
       setError(errorText(e));
     }
   }
+  async function changeAccessMode(next: AccessMode) {
+    setAccessMode(next);
+    if (!session) return;
+    try {
+      const updated = await call<Session>('set_session_access_mode', {
+        id: session.id,
+        mode: next,
+      });
+      activeSession.current = updated;
+      setSessions((list) => list.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
   async function remove(s: Session) {
     try {
       await call('delete_session', { id: s.id });
-      setSelected(null);
+      if (selected === s.id) setSelected(null);
+      setDeleteTarget(null);
       await refresh();
     } catch (e) {
       setError(errorText(e));
@@ -408,6 +586,202 @@ export default function App() {
       setError(errorText(e));
     }
   }
+  function audit(m: Message) {
+    const from = providerOf(m);
+    const to = from === 'claude' ? 'gpt' : 'claude';
+    if (!accounts.some((a) => a.provider === to)) {
+      setError(`Add a ${nameOf(to)} account in Settings to audit this answer.`);
+      return;
+    }
+    void send({
+      mode: to,
+      auditOf: m.id,
+      text: `Audit the previous answer${from ? ` from ${nameOf(from)}` : ''}: find bugs, architectural problems and missing requirements, then propose a corrected version.`,
+    });
+  }
+  async function askRewind(m: Message) {
+    if (!session) return;
+    try {
+      const preview = await call<RewindPreview>('rewind_preview', {
+        session: session.id,
+        message: m.id,
+      });
+      setRewindTarget({ id: m.id, preview });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function doRewind() {
+    if (!session || !rewindTarget) return;
+    try {
+      const text = await call<string>('rewind', { session: session.id, message: rewindTarget.id });
+      setRewindTarget(null);
+      setMessages(await call<Message[]>('get_messages', { id: session.id }));
+      setDraft(text);
+      await refresh();
+      input.current?.focus();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function resolveLanes(m: Message, apply: boolean) {
+    if (!session) return;
+    try {
+      await call('resolve_lanes', { session: session.id, message: m.id, apply });
+      setMessages(await call<Message[]>('get_messages', { id: session.id }));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function compact() {
+    if (!session) return;
+    try {
+      const next = await call<Session>('compact_session', { id: session.id });
+      await refresh();
+      setSelected(next.id);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  const historyTokens = messages.reduce((n, m) => n + tokens(m.text), 0);
+  const attachedTokens = attached.reduce(
+    (n, p) => n + (files.find((f) => f.path === p)?.tokens || 0),
+    0,
+  );
+  const draftTokens = tokens(draft) + attachedTokens;
+  const heaviest = attached
+    .map((p) => files.find((f) => f.path === p))
+    .filter((f): f is FileEntry => !!f)
+    .sort((a, b) => b.tokens - a.tokens)[0];
+  const heavyFile = !!heaviest && draftTokens > 2000 && heaviest.tokens > draftTokens * 0.8;
+  const blob = /[A-Za-z0-9+/=]{4000,}/.test(draft);
+  const impact =
+    draftTokens + historyTokens > 60_000 ? 'High' : draftTokens > 8000 ? 'Medium' : 'Low';
+  const groups: (Message | Message[])[] = [];
+  for (const m of messages) {
+    const last = groups.at(-1);
+    if (laneOf(m)) {
+      if (Array.isArray(last)) last.push(m);
+      else groups.push([m]);
+    } else groups.push(m);
+  }
+  const renderMessage = (m: Message, inLane = false) => {
+    const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
+    const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
+    const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
+    const from = providerOf(m);
+    const other = from === 'claude' ? 'gpt' : 'claude';
+    return (
+      <article key={m.id} className={`message ${m.role}`}>
+        <div className="message-author">
+          {m.role === 'assistant' ? (
+            <>
+              <Mark small />
+              <span>{inLane && from ? nameOf(from) : 'Lumen'}</span>
+            </>
+          ) : (
+            <span className="user-mark">You</span>
+          )}
+          <span className="message-actions">
+            {m.role === 'user' && session && !running && (
+              <button
+                className="icon-button"
+                aria-label="Rewind to here"
+                title="Rewind to here"
+                onClick={() => void askRewind(m)}
+              >
+                <RotateCcw size={13} />
+              </button>
+            )}
+            {m.role === 'assistant' && m.text && !running && from && (
+              <button
+                className="text-button audit-button"
+                title={`Send to ${nameOf(other)} for audit`}
+                onClick={() => audit(m)}
+              >
+                <Repeat2 size={13} />
+                Audit with {nameOf(other)}
+              </button>
+            )}
+            {m.role === 'assistant' && m.text && (
+              <button
+                className="icon-button"
+                aria-label="Copy response"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(m.text)
+                    .then(() => {
+                      setCopyState(m.id);
+                      setTimeout(() => setCopyState(''), 1800);
+                    })
+                    .catch((e) => setError(errorText(e)));
+                }}
+              >
+                {copyState === m.id ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+          </span>
+        </div>
+        {visible.length > 0 && (
+          <details className="activity">
+            <summary>
+              <span className="activity-indicator" />
+              {visible.some((a) => a.kind === 'error')
+                ? 'Activity & diagnostics'
+                : visible.some((a) => a.kind === 'fallback')
+                  ? 'Switched provider · activity'
+                  : `${visible.length} activity ${visible.length === 1 ? 'event' : 'events'}`}
+              <ChevronDown size={13} />
+            </summary>
+            <div className="activity-content">
+              {visible.map((a, i) => (
+                <details key={i}>
+                  <summary>
+                    {a.kind === 'thinking'
+                      ? 'Reasoning summary'
+                      : a.kind === 'file'
+                        ? 'File changes'
+                        : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
+                  </summary>
+                  <pre>{a.text}</pre>
+                </details>
+              ))}
+            </div>
+          </details>
+        )}
+        <div className="prose">
+          <Suspense fallback={<p>{m.text}</p>}>
+            <MessageBody text={m.text} />
+          </Suspense>
+        </div>
+        {attachments && (
+          <div className="attachment-chips">
+            {attachments.map((f) => (
+              <span key={f}>
+                <Paperclip size={11} /> {f}
+              </span>
+            ))}
+          </div>
+        )}
+        {lane?.kind === 'worktree' && !running && (
+          <button className="primary-button lane-apply" onClick={() => void resolveLanes(m, true)}>
+            Apply {from ? nameOf(from) : 'this'} version
+          </button>
+        )}
+        {lane && lane.kind !== 'worktree' && (
+          <small className="lane-state">
+            {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
+          </small>
+        )}
+        {!m.text && m.role === 'assistant' && running && (
+          <span className="working">
+            <LoaderCircle size={14} className="spin" />
+            Working on it…
+          </span>
+        )}
+      </article>
+    );
+  };
   const newChat = () => {
     setSelected(null);
     setMessages([]);
@@ -425,16 +799,51 @@ export default function App() {
           onClick={() => setSidebar(false)}
         />
       )}
-      <aside inert={settings} className={`sidebar ${sidebar ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="brand">
           <Mark small />
           <span>Lumen</span>
         </div>
-        <button className="new-chat" onClick={newChat}>
-          <Plus size={17} />
-          <span>New conversation</span>
-          <kbd>Ctrl N</kbd>
-        </button>
+        <div className="new-actions">
+          <button className="new-chat" onClick={newChat}>
+            <Plus size={17} />
+            <span>New conversation</span>
+            <kbd>Ctrl N</kbd>
+          </button>
+          <button className="new-chat" onClick={() => setProjectForm(true)}>
+            <Folder size={16} />
+            <span>New project</span>
+            <kbd>Ctrl P</kbd>
+          </button>
+        </div>
+        {projectForm && (
+          <form
+            className="project-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createProject();
+            }}
+          >
+            <input
+              autoFocus
+              aria-label="Project name"
+              placeholder="Project name"
+              maxLength={100}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+            />
+            <button type="submit" disabled={!projectName.trim()}>
+              Create
+            </button>
+            <button
+              type="button"
+              aria-label="Cancel new project"
+              onClick={() => setProjectForm(false)}
+            >
+              <X size={14} />
+            </button>
+          </form>
+        )}
         <label className="search">
           <Search size={15} />
           <input
@@ -446,6 +855,36 @@ export default function App() {
           />
           <kbd>/</kbd>
         </label>
+        <div className="project-list" aria-label="Projects">
+          {[
+            { id: '*', name: 'All conversations' },
+            ...(workspaces.length ? [{ id: '', name: 'Unsorted' }] : []),
+            ...workspaces,
+          ].map((w) => (
+            <button
+              key={w.id}
+              className={projectFilter === w.id ? 'selected' : ''}
+              onClick={() => {
+                setProjectFilter(w.id);
+                if (w.id !== '*') {
+                  setWorkspaceId(w.id);
+                  localStorage.setItem('lumen-workspace-id', w.id);
+                }
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const s = sessions.find(
+                  (s) => s.id === e.dataTransfer.getData('text/lumen-session'),
+                );
+                if (s && w.id !== '*') void moveSession(s, w.id);
+              }}
+            >
+              <Folder size={13} />
+              {w.name}
+            </button>
+          ))}
+        </div>
         <div className="session-heading">
           <span>Your conversations</span>
           <span>
@@ -460,21 +899,48 @@ export default function App() {
               <p>{search ? 'No conversations found.' : 'A little room for your next big idea.'}</p>
             </div>
           )}
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`session-row ${selected === s.id ? 'selected' : ''}`}
-              onClick={() => {
-                setSelected(s.id);
-                setSidebar(false);
-              }}
-            >
-              <span className={`status-dot ${s.status}`} title={s.status} />
-              <span className="session-title">{s.title}</span>
-              {s.pinned && <Pin size={12} />}
-              <span className="sr-only">{s.status}</span>
-            </button>
-          ))}
+          {sessions
+            .filter((s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter)
+            .map((s) => (
+              <button
+                key={s.id}
+                draggable
+                onDragStart={(e) => {
+                  setDraggedSession(s.id);
+                  e.dataTransfer.setData('text/lumen-session', s.id);
+                }}
+                onDragEnd={() => setDraggedSession(null)}
+                onDragOver={(e) => {
+                  if (draggedSession) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = e.dataTransfer.getData('text/lumen-session');
+                  if (id && id !== s.id)
+                    void call('reorder_session', { id, beforeId: s.id })
+                      .then(refresh)
+                      .catch((err) => setError(errorText(err)));
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContext({
+                    session: s,
+                    x: Math.min(e.clientX, window.innerWidth - 245),
+                    y: Math.min(e.clientY, window.innerHeight - 130),
+                  });
+                }}
+                className={`session-row ${selected === s.id ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelected(s.id);
+                  setSidebar(false);
+                }}
+              >
+                <span className={`status-dot ${s.status}`} title={s.status} />
+                <span className="session-title">{s.title}</span>
+                {s.pinned && <Pin size={12} />}
+                <span className="sr-only">{s.status}</span>
+              </button>
+            ))}
           {hasMore && (
             <button className="text-button load-more" onClick={() => void loadMore()}>
               Load more conversations
@@ -482,20 +948,192 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-bottom">
-          <button className="settings-button" onClick={() => setSettings(true)}>
-            <span className="avatar">A</span>
-            <span>
-              My workspace
-              <small>
-                {accounts.length} connected {accounts.length === 1 ? 'account' : 'accounts'}
-              </small>
-            </span>
-            <Settings2 size={17} />
-          </button>
+          <div className="sidebar-footer-actions">
+            <button
+              className="usage-button"
+              onClick={() => setUsageOpen((open) => !open)}
+              aria-expanded={usageOpen}
+            >
+              <Circle size={8} fill="currentColor" />
+              Usage
+            </button>
+          </div>
         </div>
       </aside>
 
-      <main inert={settings} className="workspace">
+      {usageOpen && (
+        <>
+          <button
+            className="usage-scrim"
+            aria-label="Close usage"
+            onClick={() => setUsageOpen(false)}
+          />
+          <section className="usage-popover" role="dialog" aria-label="Provider usage">
+            <header>
+              <strong>Usage</strong>
+              <button
+                className="icon-button"
+                aria-label="Refresh usage"
+                onClick={() => void loadUsage()}
+              >
+                <Circle size={14} />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Close usage"
+                onClick={() => setUsageOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </header>
+            {accounts.length === 0 && <p>No connected providers.</p>}
+            {accounts.map((a) => {
+              const row = usage.find((u) => u.accountId === a.id);
+              const fiveHour = row?.windows.find((w) => w.windowMinutes <= 300);
+              const weekly = row?.windows.find((w) => w.windowMinutes >= 10080);
+              return (
+                <div className="usage-provider" key={a.id}>
+                  <strong>
+                    {nameOf(a.provider)} <small>{a.name}</small>
+                  </strong>
+                  <div>{usageBar('5 hour', fiveHour)}</div>
+                  <div>{usageBar('Weekly', weekly)}</div>
+                </div>
+              );
+            })}
+            <small className="usage-updated">
+              Updates every 30 seconds. Unsupported provider quotas show as unavailable.
+            </small>
+          </section>
+        </>
+      )}
+
+      {context && (
+        <>
+          <button
+            className="context-scrim"
+            aria-label="Close conversation menu"
+            onClick={() => setContext(null)}
+          />
+          <div
+            className="popup context-menu"
+            role="menu"
+            style={{ left: context.x, top: context.y }}
+          >
+            <button
+              role="menuitem"
+              onClick={() => {
+                setRenameTarget(context.session);
+                setRenameValue(context.session.title);
+                setContext(null);
+              }}
+            >
+              Rename
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                void update(context.session, context.session.title, !context.session.pinned);
+                setContext(null);
+              }}
+            >
+              {context.session.pinned ? 'Unpin' : 'Pin conversation'}
+            </button>
+            {workspaces.length > 0 && (
+              <label className="menu-select">
+                Move to
+                <select
+                  aria-label="Move conversation to project"
+                  value={context.session.workspaceId || ''}
+                  onChange={(e) => void moveSession(context.session, e.target.value)}
+                >
+                  <option value="">Unsorted</option>
+                  {workspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              role="menuitem"
+              disabled={active(context.session.status)}
+              onClick={() => {
+                setDeleteTarget(context.session);
+                setContext(null);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+      {renameTarget && (
+        <div className="dialog-scrim">
+          <form
+            className="popup conversation-dialog"
+            role="dialog"
+            aria-label="Rename conversation"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void update(renameTarget, renameValue).then(() => setRenameTarget(null));
+            }}
+          >
+            <label>
+              Conversation title
+              <input
+                autoFocus
+                aria-label="Conversation title"
+                value={renameValue}
+                maxLength={100}
+                onChange={(e) => setRenameValue(e.target.value)}
+              />
+            </label>
+            <button disabled={!renameValue.trim()}>Save</button>
+            <button type="button" onClick={() => setRenameTarget(null)}>
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
+      {deleteTarget && (
+        <div className="dialog-scrim">
+          <div className="popup conversation-dialog" role="dialog" aria-label="Delete conversation">
+            <p>Delete "{deleteTarget.title}" and its messages?</p>
+            <button onClick={() => void remove(deleteTarget)}>Delete conversation</button>
+            <button onClick={() => setDeleteTarget(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {rewindTarget && (
+        <div className="dialog-scrim">
+          <div className="popup conversation-dialog" role="dialog" aria-label="Rewind">
+            <p>
+              <strong>Rewind to this message?</strong>
+              <br />
+              {rewindTarget.preview.laterMessages} message
+              {rewindTarget.preview.laterMessages === 1 ? '' : 's'} will be removed
+              {rewindTarget.preview.restorable
+                ? ` and ${rewindTarget.preview.files.length} file${rewindTarget.preview.files.length === 1 ? '' : 's'} restored:`
+                : '. No file changes to restore.'}
+            </p>
+            {rewindTarget.preview.restorable && (
+              <ul className="rewind-files">
+                {rewindTarget.preview.files.slice(0, 12).map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+                {rewindTarget.preview.files.length > 12 && (
+                  <li>…and {rewindTarget.preview.files.length - 12} more</li>
+                )}
+              </ul>
+            )}
+            <button onClick={() => void doRewind()}>Rewind</button>
+            <button onClick={() => setRewindTarget(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      <main className="workspace">
         <header className="topbar">
           <div className="topbar-left">
             <button
@@ -517,55 +1155,47 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             {!desktop && <span className="preview-label">Browser preview</span>}
+            {(['claude', 'gpt'] as const)
+              .filter((p) => accounts.some((a) => a.provider === p))
+              .map((p) => {
+                const rows = health.filter((h) =>
+                  accounts.some((a) => a.id === h.accountId && a.provider === p),
+                );
+                const best =
+                  rows.find((h) => h.state === 'active') ||
+                  rows.find((h) => h.state === 'near') ||
+                  rows[0];
+                const state = best?.state || 'active';
+                return (
+                  <span
+                    key={p}
+                    className={`health-pill ${state}`}
+                    title={
+                      state === 'cooldown'
+                        ? `${nameOf(p)} is cooling down after a rate limit`
+                        : state === 'near'
+                          ? `${nameOf(p)} is close to its usage limit`
+                          : `${nameOf(p)} is ready · ${best?.turns || 0} turns in the last 5 hours`
+                    }
+                  >
+                    <span className={`health-dot ${state}`} />
+                    {nameOf(p)}
+                    {state === 'cooldown' && best?.until ? ` · ${countdown(best.until)}` : ''}
+                  </span>
+                );
+              })}
+            <button
+              className={`icon-button ${projectOpen ? 'on' : ''}`}
+              aria-label="Project context"
+              title="Project context: shared notes and files"
+              aria-pressed={projectOpen}
+              onClick={() => setProjectOpen(!projectOpen)}
+            >
+              <BookOpen size={16} />
+            </button>
             <button className="icon-button" aria-label="Settings" onClick={() => setSettings(true)}>
               <Settings2 size={17} />
             </button>
-            {session && (
-              <div className="menu-anchor">
-                <button
-                  className="icon-button"
-                  aria-label="Conversation actions"
-                  aria-expanded={menu}
-                  onClick={() => setMenu(!menu)}
-                >
-                  <MoreHorizontal size={20} />
-                </button>
-                {menu && (
-                  <div className="popup action-menu">
-                    <button
-                      onClick={() => {
-                        setRenameValue(session.title);
-                        setRenaming(true);
-                        setMenu(false);
-                      }}
-                    >
-                      <Pencil size={14} />
-                      Rename
-                    </button>
-                    <button
-                      onClick={() => {
-                        void update(session, session.title, !session.pinned);
-                        setMenu(false);
-                      }}
-                    >
-                      <Pin size={14} />
-                      {session.pinned ? 'Unpin' : 'Pin conversation'}
-                    </button>
-                    <button
-                      className="danger"
-                      disabled={running}
-                      onClick={() => {
-                        void remove(session);
-                        setMenu(false);
-                      }}
-                    >
-                      <Trash2 size={14} />
-                      Delete conversation
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </header>
         {renaming && session && (
@@ -650,75 +1280,26 @@ export default function App() {
             </div>
           ) : (
             <div className="message-list">
-              {messages.map((m) => (
-                <article key={m.id} className={`message ${m.role}`}>
-                  <div className="message-author">
-                    {m.role === 'assistant' ? (
-                      <>
-                        <Mark small />
-                        <span>Lumen</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="user-mark">You</span>
-                      </>
-                    )}
-                    {m.role === 'assistant' && m.text && (
+              {groups.map((g) =>
+                Array.isArray(g) ? (
+                  <div className="lanes" key={g[0].id}>
+                    <div className="lane-grid">{g.map((m) => renderMessage(m, true))}</div>
+                    {g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && !running && (
                       <button
-                        className="icon-button copy-button"
-                        aria-label="Copy response"
+                        className="text-button lane-discard"
                         onClick={() => {
-                          void navigator.clipboard
-                            .writeText(m.text)
-                            .then(() => {
-                              setCopyState(m.id);
-                              setTimeout(() => setCopyState(''), 1800);
-                            })
-                            .catch((e) => setError(errorText(e)));
+                          const m = g.find((x) => x.activity.some((a) => a.kind === 'worktree'));
+                          if (m) void resolveLanes(m, false);
                         }}
                       >
-                        {copyState === m.id ? <Check size={14} /> : <Copy size={14} />}
+                        Discard both versions
                       </button>
                     )}
                   </div>
-                  {m.activity.length > 0 && (
-                    <details className="activity">
-                      <summary>
-                        <span className="activity-indicator" />
-                        {m.activity.some((a) => a.kind === 'error')
-                          ? 'Activity & diagnostics'
-                          : `${m.activity.length} activity ${m.activity.length === 1 ? 'event' : 'events'}`}
-                        <ChevronDown size={13} />
-                      </summary>
-                      <div className="activity-content">
-                        {m.activity.map((a, i) => (
-                          <details key={i}>
-                            <summary>
-                              {a.kind === 'thinking'
-                                ? 'Reasoning summary'
-                                : a.kind === 'file'
-                                  ? 'File changes'
-                                  : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
-                            </summary>
-                            <pre>{a.text}</pre>
-                          </details>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                  <div className="prose">
-                    <Suspense fallback={<p>{m.text}</p>}>
-                      <MessageBody text={m.text} />
-                    </Suspense>
-                  </div>
-                  {!m.text && m.role === 'assistant' && running && (
-                    <span className="working">
-                      <LoaderCircle size={14} className="spin" />
-                      Working on it…
-                    </span>
-                  )}
-                </article>
-              ))}
+                ) : (
+                  renderMessage(g)
+                ),
+              )}
               <div ref={bottom} />
             </div>
           )}
@@ -738,6 +1319,12 @@ export default function App() {
               </button>
             </div>
           )}
+          {session && historyTokens > 40_000 && !running && (
+            <button className="compact-chip" onClick={() => void compact()}>
+              <Shrink size={13} />
+              Long conversation · Compact and continue in a fresh session
+            </button>
+          )}
           {plan && (
             <div className="plan-line">
               <Sparkles size={13} />
@@ -747,7 +1334,9 @@ export default function App() {
                   ? 'Direct'
                   : plan.strategy === 'parallel'
                     ? 'Parallel perspectives'
-                    : 'Writer + reviewer'}{' '}
+                    : plan.strategy === 'broadcast'
+                      ? 'Claude and ChatGPT side by side'
+                      : 'Answer + cross-audit'}{' '}
                 · {plan.effort} reasoning
               </span>
             </div>
@@ -767,7 +1356,7 @@ export default function App() {
               }}
               maxLength={100000}
             />
-            {mode !== 'auto' && (
+            {(mode === 'claude' || mode === 'gpt') && (
               <ProviderOptions
                 provider={mode}
                 visible={advanced}
@@ -787,7 +1376,7 @@ export default function App() {
             )}
             <div className="composer-toolbar">
               <div className="mode-control" role="group" aria-label="AI provider">
-                {(['auto', 'claude', 'gpt'] as const).map((p) => (
+                {(['auto', 'claude', 'gpt', 'both'] as const).map((p) => (
                   <button
                     key={p}
                     aria-pressed={mode === p}
@@ -798,15 +1387,34 @@ export default function App() {
                       setModel('');
                       setEffort('');
                       setCatalogReady(false);
-                      setAdvanced(p !== 'auto');
+                      setAdvanced(p === 'claude' || p === 'gpt');
                     }}
                   >
                     {p === 'auto' && <Sparkles size={13} />}
-                    <span>{p === 'auto' ? 'Auto' : nameOf(p)}</span>
+                    {p === 'both' && <Columns2 size={13} />}
+                    <span>{p === 'auto' ? 'Auto' : p === 'both' ? 'Both' : nameOf(p)}</span>
                   </button>
                 ))}
               </div>
-              {mode !== 'auto' && (
+              {mode !== 'both' && (
+                <button
+                  className={`icon-button audit-toggle ${autoReview ? 'on' : ''}`}
+                  aria-label="Cross-audit"
+                  aria-pressed={autoReview}
+                  title={
+                    autoReview
+                      ? 'Cross-audit on: the other model reviews every answer'
+                      : 'Cross-audit off'
+                  }
+                  onClick={() => {
+                    setAutoReview(!autoReview);
+                    localStorage.setItem('lumen-auto-review', String(!autoReview));
+                  }}
+                >
+                  <Repeat2 size={15} />
+                </button>
+              )}
+              {(mode === 'claude' || mode === 'gpt') && (
                 <button
                   className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
                   aria-label="Advanced provider options"
@@ -818,21 +1426,18 @@ export default function App() {
               )}
               <div className="workspace-controls">
                 <select
-                  aria-label="Workspace"
-                  title={namedWorkspace?.name || 'Choose workspace'}
+                  aria-label="Project"
+                  title={namedWorkspace?.name || 'Choose project'}
                   value={currentWorkspaceId}
                   disabled={running || folderBusy}
                   onChange={(e) => void chooseWorkspace(e.target.value)}
                 >
-                  <option value="" disabled>
-                    Workspace
-                  </option>
                   {workspaces.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
                     </option>
                   ))}
-                  <option value="__add">Add workspace…</option>
+                  <option value="__add">New project…</option>
                 </select>
                 <button
                   className="folder-control"
@@ -849,6 +1454,15 @@ export default function App() {
                   </span>
                 </button>
               </div>
+              <button
+                className={`icon-button attach-button ${attached.length ? 'on' : ''}`}
+                aria-label="Attach files"
+                title={attached.length ? `${attached.length} files attached` : 'Attach files'}
+                onClick={() => setProjectOpen(true)}
+              >
+                <Paperclip size={15} />
+                {attached.length > 0 && <small>{attached.length}</small>}
+              </button>
               <div className="composer-spacer" />
               <div className={`access-control ${accessMode === 'autopilot' ? 'autopilot' : ''}`}>
                 <ShieldCheck size={13} />
@@ -860,7 +1474,7 @@ export default function App() {
                       ? 'Full access: commands, network, files and configured automation tools. No CLI approval prompts.'
                       : 'Conversation permissions'
                   }
-                  onChange={(e) => setAccessMode(e.target.value as AccessMode)}
+                  onChange={(e) => void changeAccessMode(e.target.value as AccessMode)}
                 >
                   <option value="read-only">Read only</option>
                   <option value="file-edits">File edits on</option>
@@ -872,7 +1486,9 @@ export default function App() {
                 aria-label={running ? 'Stop response' : 'Send message'}
                 disabled={
                   !running &&
-                  (!draft.trim() || folderBusy || (desktop && mode !== 'auto' && !catalogReady))
+                  (!draft.trim() ||
+                    folderBusy ||
+                    (desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady))
                 }
                 onClick={() => {
                   if (running && selected)
@@ -885,19 +1501,42 @@ export default function App() {
             </div>
           </div>
           <div className="composer-caption">
+            {draft.trim() && (
+              <span
+                className={`token-badge ${heavyFile || blob ? 'warn' : impact.toLowerCase()}`}
+                title={
+                  heavyFile
+                    ? `${heaviest.path} is more than 80% of this prompt`
+                    : blob
+                      ? 'This message contains a large encoded blob'
+                      : `Estimated prompt size · quota impact ${impact}`
+                }
+              >
+                ~{compactTokens(draftTokens)} tokens · {heavyFile || blob ? 'Heavy' : impact}
+              </span>
+            )}
             <span>
               Enter to send <span className="caption-dot">·</span> Shift Enter for a new line
             </span>
           </div>
         </div>
       </main>
+      {projectOpen && (
+        <ProjectPanel
+          folder={currentWorkspace}
+          attached={attached}
+          setAttached={setAttached}
+          onFiles={setFiles}
+          onClose={() => setProjectOpen(false)}
+          onError={setError}
+        />
+      )}
 
       <AnimatePresence>
         {settings && (
           <motion.aside
-            ref={settingsPanel}
             role="dialog"
-            aria-modal="true"
+            aria-modal="false"
             className="settings-panel"
             initial={reduced ? false : { x: 35, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -906,10 +1545,7 @@ export default function App() {
             aria-label="Settings panel"
           >
             <div className="settings-header">
-              <button className="text-button" onClick={() => setSettings(false)}>
-                <ChevronLeft size={16} />
-                Workspace
-              </button>
+              <span />
               <button
                 className="icon-button"
                 aria-label="Close settings"
@@ -936,13 +1572,50 @@ export default function App() {
               <br />
               at home.
             </h2>
-            <p className="settings-intro">Your accounts. A little less friction.</p>
+
             <AccountSettings
               accounts={accounts}
               refresh={loadAccounts}
               onError={setError}
-              initialProvider={mode === 'auto' ? 'claude' : mode}
+              initialProvider={mode === 'gpt' ? 'gpt' : 'claude'}
             />
+            <section className="settings-section">
+              <h3>Auto preferences</h3>
+              <p>Choose how Auto weighs speed, quality and the remaining provider quota.</p>
+              <div className="auto-controls settings-auto-controls">
+                <div className="auto-policy" role="group" aria-label="Auto policy">
+                  {['budget', 'default', 'quality'].map((p) => (
+                    <button
+                      key={p}
+                      aria-pressed={autoPolicy === p}
+                      onClick={() => {
+                        setAutoPolicy(p);
+                        localStorage.setItem('lumen-auto-policy', p);
+                      }}
+                    >
+                      {p[0].toUpperCase() + p.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={balanceUsage}
+                    onChange={(e) => {
+                      setBalanceUsage(e.target.checked);
+                      localStorage.setItem('lumen-balance-usage', String(e.target.checked));
+                    }}
+                  />{' '}
+                  Balance usage
+                </label>
+              </div>
+              <details className="raw-config">
+                <summary>Claude quota (manual)</summary>
+                <AutoSettings accounts={accounts} onError={setError} />
+              </details>
+            </section>
+            <AutomationSettings onError={setError} />
+            <IntegrationSettings onError={setError} />
             <section className="settings-section">
               <h3>Appearance</h3>
               <div className="theme-switch" role="group" aria-label="Theme">
@@ -975,13 +1648,8 @@ export default function App() {
                 <ArrowUpRight size={14} />
               </button>
             </section>
-            <section className="settings-section about">
+            <footer className="settings-section about">
               <Mark small />
-              <h3>
-                Built with AI.
-                <br />
-                Shared with everyone.
-              </h3>
               <p>
                 Lumen is completely AI Written, created at the direction of Andrea. Thank you to
                 everyone who tries it and shares how it feels.
@@ -1001,8 +1669,9 @@ export default function App() {
                 <ArrowUpRight size={14} />
               </button>
               <small>Optional donations · No features behind a paywall.</small>
-            </section>
-            <div className="version">Lumen 0.2.0 · Open source · MIT</div>
+
+              <div className="version">Lumen 0.3.0 · Open source · MIT</div>
+            </footer>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -1047,12 +1716,30 @@ function AccountSettings({
   return (
     <section className="settings-section">
       <div className="section-title">
-        <h3>Connected accounts</h3>
+        <h3>
+          Connected accounts{' '}
+          <button
+            className="help-button"
+            aria-label="Account setup and provider requirements"
+            title="Account setup and provider requirements"
+            onClick={() =>
+              void external(`${REPO}/blob/main/docs/accounts.md`).catch((e) =>
+                onError(errorText(e)),
+              )
+            }
+          >
+            ?
+          </button>
+        </h3>
         <button className="icon-button" aria-label="Add account" onClick={() => setAdding(!adding)}>
           <Plus size={17} />
         </button>
       </div>
-      <p>Sign in through the official CLI. Each account gets its own configuration folder.</p>
+      <p>
+        Sign in through the official CLI. Each account gets its own configuration folder. Gemini CLI
+        and Antigravity are emergency fallbacks in Auto, used only after fresh quota data confirms
+        Claude and GPT are exhausted.
+      </p>
       {diag && (
         <div className="cli-status">
           <span className={diag.claude ? 'available' : ''}>
@@ -1063,6 +1750,14 @@ function AccountSettings({
             <Circle size={7} fill="currentColor" />
             Codex CLI {diag.gpt ? 'found' : 'not found'}
           </span>
+          <span className={diag.gemini ? 'available' : ''}>
+            <Circle size={7} fill="currentColor" />
+            Gemini CLI {diag.gemini ? 'found' : 'not found'}
+          </span>
+          <span className={diag.antigravity ? 'available' : ''}>
+            <Circle size={7} fill="currentColor" />
+            Antigravity CLI {diag.antigravity ? 'found' : 'not found'}
+          </span>
         </div>
       )}
       {accounts.length === 0 && (
@@ -1071,7 +1766,13 @@ function AccountSettings({
       {accounts.map((a) => (
         <div className="account-row" key={a.id}>
           <div className={`provider-avatar ${a.provider}`}>
-            {a.provider === 'claude' ? 'C' : 'G'}
+            {a.provider === 'claude'
+              ? 'C'
+              : a.provider === 'gpt'
+                ? 'G'
+                : a.provider === 'gemini'
+                  ? 'Gm'
+                  : 'Ag'}
           </div>
           <div className="account-info">
             <strong>{a.name}</strong>
@@ -1182,6 +1883,8 @@ function AccountSettings({
             <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
               <option value="claude">Claude Code</option>
               <option value="gpt">ChatGPT / Codex</option>
+              <option value="gemini">Gemini CLI (emergency)</option>
+              <option value="antigravity">Antigravity CLI (emergency)</option>
             </select>
           </label>
           <button className="primary-button" disabled={pending || !name.trim()} type="submit">
@@ -1189,21 +1892,6 @@ function AccountSettings({
           </button>
         </form>
       )}
-      <a
-        className="docs-link"
-        href={`${REPO}/blob/main/docs/accounts.md`}
-        target="_blank"
-        rel="noreferrer"
-        onClick={(e) => {
-          e.preventDefault();
-          void external(`${REPO}/blob/main/docs/accounts.md`).catch((err) =>
-            onError(errorText(err)),
-          );
-        }}
-      >
-        Account setup & provider requirements
-        <ArrowUpRight size={12} />
-      </a>
     </section>
   );
 }

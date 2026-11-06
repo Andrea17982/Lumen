@@ -1,5 +1,5 @@
-export type Provider = 'claude' | 'gpt';
-export type Mode = Provider | 'auto';
+export type Provider = 'claude' | 'gpt' | 'gemini' | 'antigravity';
+export type Mode = Provider | 'auto' | 'both';
 export type Status = 'idle' | 'waiting' | 'running' | 'completed' | 'interrupted' | 'error';
 export interface Session {
   id: string;
@@ -9,6 +9,7 @@ export interface Session {
   workspace: string;
   updatedAt: number;
   workspaceId?: string | null;
+  accessMode?: AccessMode;
 }
 export interface Workspace {
   id: string;
@@ -45,6 +46,11 @@ export interface RunOptions {
   model: string | null;
   effort: string;
   accessMode: AccessMode;
+  autoPolicy?: 'budget' | 'default' | 'quality';
+  balanceUsage?: boolean;
+  autoReview?: boolean;
+  attachments?: string[];
+  auditOf?: string | null;
 }
 export interface Plan {
   provider: Provider;
@@ -53,6 +59,17 @@ export interface Plan {
   effort: string;
   strategy: string;
   reason: string;
+}
+export interface UsageWindow {
+  usedPercent: number;
+  resetsAt: number;
+  windowMinutes: number;
+}
+export interface AccountUsage {
+  accountId: string;
+  windows: UsageWindow[];
+  updatedAt: number;
+  source: string;
 }
 export interface RunEvent {
   sessionId: string;
@@ -63,5 +80,49 @@ export interface RunEvent {
 export interface Diagnostics {
   claude: boolean;
   gpt: boolean;
+  gemini: boolean;
+  antigravity: boolean;
   dataDir: string;
+}
+export interface AppSettings {
+  autoFallback: boolean;
+  selfHeal: boolean;
+  reviewRounds: number;
+  apiEnabled: boolean;
+  apiPort: number;
+  apiToken: string;
+}
+export interface Health {
+  accountId: string;
+  state: 'active' | 'near' | 'cooldown';
+  until: number | null;
+  turns: number;
+}
+export interface FileEntry {
+  path: string;
+  size: number;
+  tokens: number;
+  noise: boolean;
+}
+export interface ProjectContext {
+  notes: string;
+  files: FileEntry[];
+  verify: string | null;
+  git: boolean;
+}
+export interface McpServer {
+  name: string;
+  enabled: boolean;
+  healthy: boolean;
+  target: string;
+}
+export interface ApiStatus {
+  running: boolean;
+  url: string;
+  log: { at: number; model: string; status: string; stream: boolean; millis: number }[];
+}
+export interface RewindPreview {
+  files: string[];
+  restorable: boolean;
+  laterMessages: number;
 }

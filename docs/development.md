@@ -9,7 +9,7 @@ npm ci
 npm run tauri dev
 ```
 
-Use `npm run dev` for the honest browser UI preview; it never performs inference. For an installer run `npm run tauri build`. The default Windows target is NSIS, output under `src-tauri/target/release/bundle/nsis/`. Signing and automatic updates are not configured.
+Use `npm run dev` for the honest browser UI preview; it never performs inference. For an installer run `npm run build:release`. The default Windows target is NSIS; the script copies the newest installer to `builds/latest/`. Tauri's original output is under `src-tauri/target/release/bundle/nsis/`. Signing and automatic updates are not configured.
 
 ## Checks
 

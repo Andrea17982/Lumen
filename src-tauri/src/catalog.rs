@@ -12,7 +12,9 @@ pub fn parse_models(provider: &Provider, rows: &Value) -> Vec<ModelInfo> {
             if v["hidden"] == true {
                 return None;
             }
-            let id = if *provider == Provider::Gpt {
+            let id = if *provider == Provider::Gpt
+                || matches!(provider, Provider::Gemini | Provider::Antigravity)
+            {
                 v["model"].as_str().or_else(|| v["id"].as_str())
             } else {
                 v["value"].as_str()
@@ -49,6 +51,64 @@ pub async fn discover(
     dir: &Path,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<Vec<ModelInfo>, String> {
+    if matches!(account.provider, Provider::Gemini | Provider::Antigravity) {
+        let mut c = providers::command(&account.provider)?;
+        providers::isolate(&mut c, &account.provider, dir);
+        let args: &[&str] = if account.provider == Provider::Antigravity {
+            &["models", "--output-format", "json"]
+        } else {
+            &["--list-models"]
+        };
+        let output =
+            tokio::time::timeout(std::time::Duration::from_secs(30), c.args(args).output())
+                .await
+                .map_err(|_| "Google model list timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(format!(
+                "{} could not list models. Complete official CLI login and try again.",
+                account.provider.binary()
+            ));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let parsed: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+        let rows = if parsed.is_array() {
+            parsed.as_array().cloned().unwrap_or_default()
+        } else if parsed["models"].is_array() {
+            parsed["models"].as_array().cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let mut models = parse_models(&account.provider, &Value::Array(rows));
+        if models.is_empty() {
+            models = text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(|line| ModelInfo {
+                    id: line
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(line)
+                        .trim_matches('*')
+                        .to_string(),
+                    name: line.to_string(),
+                    description: String::new(),
+                    efforts: vec![],
+                    default_effort: String::new(),
+                    is_default: false,
+                })
+                .collect();
+        }
+        if models.is_empty() {
+            return Err(
+                "Google CLI returned no selectable models. Update the CLI or complete sign-in."
+                    .into(),
+            );
+        }
+        models[0].is_default = true;
+        return Ok(models);
+    }
     let mut c = providers::command(&account.provider)?;
     providers::isolate(&mut c, &account.provider, dir);
     c.current_dir(dir)
