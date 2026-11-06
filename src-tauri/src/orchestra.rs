@@ -1848,7 +1848,7 @@ async fn process_start(pid: u32) -> Result<Option<i64>, String> {
     #[cfg(unix)]
     {
         let o = tokio::process::Command::new("ps")
-            .args(["-o", "etime=", "-p", &pid.to_string()])
+            .args(["-o", "stat=,etime=", "-p", &pid.to_string()])
             .kill_on_drop(true)
             .output()
             .await
@@ -1857,7 +1857,13 @@ async fn process_start(pid: u32) -> Result<Option<i64>, String> {
         if text.is_empty() {
             return Ok(None);
         }
-        let secs = parse_etime(&text).ok_or("cannot inspect processes")?;
+        let (status, elapsed) = text
+            .split_once(char::is_whitespace)
+            .ok_or("cannot inspect processes")?;
+        if status.starts_with('Z') {
+            return Ok(None);
+        }
+        let secs = parse_etime(elapsed.trim()).ok_or("cannot inspect processes")?;
         Ok(Some(now() - secs * 1000))
     }
 }
