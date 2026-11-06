@@ -1721,11 +1721,24 @@ mod tests {
             .process_group(0)
             .spawn()
             .unwrap();
+        #[cfg(unix)]
+        let child_pid = child.id().unwrap();
+        #[cfg(unix)]
+        assert_eq!(unsafe { libc::getpgid(child_pid as i32) }, child_pid as i32);
         let st = State {
             subtasks: vec![Subtask {
                 id: "a".into(),
                 status: "interrupted".into(),
-                pid: child.id().unwrap(),
+                pid: {
+                    #[cfg(unix)]
+                    {
+                        child_pid
+                    }
+                    #[cfg(windows)]
+                    {
+                        child.id().unwrap()
+                    }
+                },
                 started_at: started,
                 ..Default::default()
             }],
@@ -1878,8 +1891,15 @@ async fn kill_tree(pid: u32) {
     }
     #[cfg(unix)]
     unsafe {
-        // Provider CLIs lead their own process group.
-        libc::kill(-(pid as i32), libc::SIGKILL);
+        // The PID has just been verified against the recorded start time.
+        // Kill its process group when it leads one; otherwise kill the process
+        // itself (the test and some wrappers may not create a new group).
+        let group = libc::getpgid(pid as i32);
+        if group == pid as i32 {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        } else {
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
     }
 }
 
