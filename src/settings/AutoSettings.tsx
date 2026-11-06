@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { call, desktop } from './bridge';
-import type { Account } from './types';
+import { call, desktop } from '../lib/bridge';
+import type { Account } from '../lib/types';
 interface Usage {
   accountId: string;
   windows: { usedPercent: number; resetsAt: number; windowMinutes: number }[];

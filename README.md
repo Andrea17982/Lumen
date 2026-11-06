@@ -56,8 +56,8 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 
 From [Releases](https://github.com/Andrea17982/Lumen/releases):
 
-- **Windows x64**: `Lumen_0.3.0_x64-setup.exe` (installer) or `Lumen_0.3.0_x64-portable.exe` (no installation). Lumen uses Microsoft Edge WebView2.
-- **macOS (Apple silicon)**: `Lumen_0.3.x_aarch64.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
+- **Windows x64**: `Lumen_<version>_x64-setup.exe` (installer) or `Lumen_<version>_x64-portable.exe` (no installation). Lumen uses Microsoft Edge WebView2.
+- **macOS (Apple silicon)**: `Lumen_<version>_aarch64.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
 
 Alpha builds are unsigned, so the OS may show a publisher warning. Provider CLIs are installed separately and are never modified.
 
@@ -110,7 +110,7 @@ With both providers configured, demanding advanced requests or Quality coding re
 | [Workspace, models & permissions](docs/workspace-models-permissions.md) | Conversation folders, account names, live CLI catalogs and Autopilot |
 | [Auto](docs/auto.md) | Routing rules, review, parallel workers, costs and boundaries |
 | [Design system](DESIGN.md) | Glass material, type, color, motion and accessibility |
-| [Roadmap](docs/roadmap.md) | MVP → v1 → v2 and requirement-by-requirement status |
+| [Roadmap](docs/roadmap.md) | Released work, the 0.4 plan and later ideas |
 | [Development](docs/development.md) | Building, tests, release process, protocol fixtures |
 | [Validation](docs/validation.md) | Observed checks and what remains unverified |
 | [Security](SECURITY.md) | Data storage, trust boundaries and vulnerability reporting |

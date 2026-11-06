@@ -5,7 +5,7 @@
 ## Platform
 web
 
-Desktop Windows application using a local Tauri webview. Linux is a secondary target.
+Desktop application using a local Tauri webview: Windows and macOS (Apple silicon); Linux builds from source.
 
 ## Stack
 Stack: Tauri 2, Rust core, React + TypeScript, Tailwind CSS, Framer Motion.

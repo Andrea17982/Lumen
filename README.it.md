@@ -51,7 +51,7 @@ Nessun limite artificiale al numero di sessioni salvate; massimo quattro lavori 
 
 L’inferenza reale, l’isolamento OAuth con più account e le modifiche ai file richiedono test di accettazione con account dell’utente. La compatibilità dipende dalle versioni CLI e dai piani dei provider. Non sono implementati proxy, aggiramenti dei limiti o login OAuth proprietari. Le conversazioni e i file credenziali gestiti dai CLI non vengono cifrati da Lumen. Le prestazioni non sono state oggetto di benchmark.
 
-Leggi il [README completo](README.md), la [documentazione](docs/getting-started.md), l’[architettura](docs/architecture.md), le [regole account](docs/accounts.md) e la [roadmap MVP → v1 → v2](docs/roadmap.md).
+Leggi il [README completo](README.md), la [documentazione](docs/getting-started.md), l’[architettura](docs/architecture.md), le [regole account](docs/accounts.md) e la [roadmap (0.4 e oltre)](docs/roadmap.md).
 
 ## Donazioni facoltative
 

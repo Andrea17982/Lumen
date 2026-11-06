@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { call, desktop } from './bridge';
-import type { ApiStatus, AppSettings } from './types';
+import { call, desktop } from '../lib/bridge';
+import type { ApiStatus, AppSettings } from '../lib/types';
 
 function Switch({
   label,

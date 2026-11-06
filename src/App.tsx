@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowUp,
   Check,
@@ -7,7 +7,6 @@ import {
   ChevronUp,
   Copy,
   Folder,
-  Heart,
   Menu,
   MessageSquare,
   Pin,
@@ -17,15 +16,9 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
-  Sun,
-  Moon,
-  Monitor,
-  Trash2,
   X,
-  ArrowUpRight,
   AlertCircle,
   LoaderCircle,
-  Pencil,
   Circle,
   RotateCcw,
   Paperclip,
@@ -34,17 +27,14 @@ import {
   Columns2,
   Shrink,
 } from 'lucide-react';
-import ProviderOptions, { AccountRename } from './ProviderOptions';
-import ProjectPanel from './ProjectPanel';
-import AutomationSettings from './AutomationSettings';
-import IntegrationSettings from './IntegrationSettings';
-import AutoSettings from './AutoSettings';
-import { applyEvent, call, desktop, external, subscribe } from './bridge';
+import ProviderOptions from './components/ProviderOptions';
+import ProjectPanel from './components/ProjectPanel';
+import SettingsPanel from './settings/SettingsPanel';
+import { applyEvent, call, desktop, subscribe } from './lib/bridge';
 import type {
   Account,
   AccessMode,
   Workspace,
-  Diagnostics,
   Message,
   Mode,
   Plan,
@@ -53,22 +43,14 @@ import type {
   FileEntry,
   Health,
   RewindPreview,
-  Provider,
   RunEvent,
   Session,
   Status,
-} from './types';
+} from './lib/types';
+import { errorText, Mark, nameOf } from './lib/util';
 
-const REPO = 'https://github.com/Andrea17982/Lumen';
-const MessageBody = lazy(() => import('./MessageBody'));
-const PAYPAL =
-  'https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen';
+const MessageBody = lazy(() => import('./components/MessageBody'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
-const nameOf = (p: Provider) =>
-  ({ claude: 'Claude', gpt: 'GPT', gemini: 'Gemini CLI', antigravity: 'Antigravity' })[p];
-function errorText(e: unknown) {
-  return e instanceof Error ? e.message : String(e);
-}
 const HIDDEN = ['checkpoint', 'lane', 'worktree', 'applied', 'discarded', 'attachments'];
 const laneOf = (m: Message) => m.activity.find((a) => a.kind === 'lane')?.text;
 /** Which provider wrote a message, from its lane or the writer's model activity. */
@@ -86,15 +68,6 @@ const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : 
 function countdown(until: number) {
   const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
-}
-function Mark({ small = false }: { small?: boolean }) {
-  return (
-    <span className={`lumen-mark ${small ? 'small' : ''}`} aria-hidden="true">
-      <span />
-      <span />
-      <span />
-    </span>
-  );
 }
 function usageBar(label: string, window?: UsageWindow) {
   return (
@@ -1507,366 +1480,23 @@ export default function App() {
         />
       )}
 
-      <AnimatePresence>
-        {settings && (
-          <motion.aside
-            role="dialog"
-            aria-modal="false"
-            className="settings-panel"
-            initial={reduced ? false : { x: 35, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={reduced ? { x: 0, opacity: 1 } : { x: 35, opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.2 }}
-            aria-label="Settings panel"
-          >
-            <div className="settings-header">
-              <span />
-              <button
-                className="icon-button"
-                aria-label="Close settings"
-                onClick={() => setSettings(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            {error && (
-              <div role="alert" className="error-banner">
-                <AlertCircle size={16} />
-                <span>{error}</span>
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss settings error"
-                  onClick={() => setError('')}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-            <h2>Settings</h2>
-
-            <AccountSettings
-              accounts={accounts}
-              refresh={loadAccounts}
-              onError={setError}
-              initialProvider={mode === 'gpt' ? 'gpt' : 'claude'}
-            />
-            <section className="settings-section">
-              <h3>Auto preferences</h3>
-              <p>Choose how Auto weighs speed, quality and the remaining provider quota.</p>
-              <div className="auto-controls settings-auto-controls">
-                <div className="auto-policy" role="group" aria-label="Auto policy">
-                  {['budget', 'default', 'quality'].map((p) => (
-                    <button
-                      key={p}
-                      aria-pressed={autoPolicy === p}
-                      onClick={() => {
-                        setAutoPolicy(p);
-                        localStorage.setItem('lumen-auto-policy', p);
-                      }}
-                    >
-                      {p[0].toUpperCase() + p.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={balanceUsage}
-                    onChange={(e) => {
-                      setBalanceUsage(e.target.checked);
-                      localStorage.setItem('lumen-balance-usage', String(e.target.checked));
-                    }}
-                  />{' '}
-                  Balance usage
-                </label>
-              </div>
-              <details className="raw-config">
-                <summary>Claude quota (manual)</summary>
-                <AutoSettings accounts={accounts} onError={setError} />
-              </details>
-            </section>
-            <AutomationSettings onError={setError} />
-            <IntegrationSettings onError={setError} />
-            <section className="settings-section">
-              <h3>Appearance</h3>
-              <div className="theme-switch" role="group" aria-label="Theme">
-                {[
-                  { id: 'light', Icon: Sun },
-                  { id: 'dark', Icon: Moon },
-                  { id: 'system', Icon: Monitor },
-                ].map(({ id, Icon }) => (
-                  <button
-                    key={id}
-                    aria-pressed={theme === id}
-                    className={theme === id ? 'active' : ''}
-                    onClick={() => setTheme(id)}
-                  >
-                    <Icon size={16} />
-                    {id.charAt(0).toUpperCase() + id.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section className="settings-section">
-              <h3>Conversation folder</h3>
-              <p>Linked to this conversation. New conversations use your last selection.</p>
-              <button
-                className="folder-button"
-                onClick={() => void chooseFolder().catch((e) => setError(errorText(e)))}
-              >
-                <Folder size={16} />
-                <span>{workspace || 'Choose a folder'}</span>
-                <ArrowUpRight size={14} />
-              </button>
-            </section>
-            <footer className="settings-section about">
-              <Mark small />
-              <p>
-                Lumen is completely AI Written, created at the direction of Andrea. Thank you to
-                everyone who tries it and shares how it feels.
-              </p>
-              <button
-                className="donate-button"
-                onClick={() => void external(PAYPAL).catch((e) => setError(errorText(e)))}
-              >
-                <Heart size={15} />
-                Support Lumen on PayPal
-                <ArrowUpRight size={14} />
-              </button>
-              <small>Optional donations · No features behind a paywall.</small>
-
-              <div className="version">
-                <span>Lumen 0.3.1 · Open source · MIT</span>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    void external(`${REPO}/issues`).catch((e) => setError(errorText(e)))
-                  }
-                >
-                  Share your feedback <ArrowUpRight size={12} />
-                </button>
-              </div>
-            </footer>
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      <SettingsPanel
+        open={settings}
+        onClose={() => setSettings(false)}
+        error={error}
+        setError={setError}
+        accounts={accounts}
+        refreshAccounts={loadAccounts}
+        initialProvider={mode === 'gpt' ? 'gpt' : 'claude'}
+        autoPolicy={autoPolicy}
+        setAutoPolicy={setAutoPolicy}
+        balanceUsage={balanceUsage}
+        setBalanceUsage={setBalanceUsage}
+        theme={theme}
+        setTheme={setTheme}
+        workspace={workspace}
+        chooseFolder={chooseFolder}
+      />
     </div>
-  );
-}
-
-function AccountSettings({
-  accounts,
-  refresh,
-  onError,
-  initialProvider,
-}: {
-  accounts: Account[];
-  initialProvider: Provider;
-  refresh: () => Promise<void>;
-  onError: (text: string) => void;
-}) {
-  const [name, setName] = useState('');
-  const [provider, setProvider] = useState<Provider>(initialProvider);
-  const [editing, setEditing] = useState('');
-  const [statuses, setStatuses] = useState<Record<string, string>>({});
-  const [diag, setDiag] = useState<Diagnostics | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [confirm, setConfirm] = useState('');
-  useEffect(() => {
-    void call<Diagnostics>('diagnostics')
-      .then(setDiag)
-      .catch((e) => onError(errorText(e)));
-  }, [onError]);
-  async function action(fn: () => Promise<unknown>) {
-    setPending(true);
-    try {
-      await fn();
-    } catch (e) {
-      onError(errorText(e));
-    } finally {
-      setPending(false);
-    }
-  }
-  return (
-    <section className="settings-section">
-      <div className="section-title">
-        <h3>
-          Connected accounts{' '}
-          <button
-            className="help-button"
-            aria-label="Account setup and provider requirements"
-            title="Account setup and provider requirements"
-            onClick={() =>
-              void external(`${REPO}/blob/main/docs/accounts.md`).catch((e) =>
-                onError(errorText(e)),
-              )
-            }
-          >
-            ?
-          </button>
-        </h3>
-        <button className="icon-button" aria-label="Add account" onClick={() => setAdding(!adding)}>
-          <Plus size={17} />
-        </button>
-      </div>
-      <p>
-        Sign in through the official CLI. Each account gets its own configuration folder. Gemini CLI
-        and Antigravity are emergency fallbacks in Auto, used only after fresh quota data confirms
-        Claude and GPT are exhausted.
-      </p>
-      {diag && (
-        <div className="cli-status">
-          <span className={diag.claude ? 'available' : ''}>
-            <Circle size={7} fill="currentColor" />
-            Claude CLI {diag.claude ? 'found' : 'not found'}
-          </span>
-          <span className={diag.gpt ? 'available' : ''}>
-            <Circle size={7} fill="currentColor" />
-            Codex CLI {diag.gpt ? 'found' : 'not found'}
-          </span>
-          <span className={diag.gemini ? 'available' : ''}>
-            <Circle size={7} fill="currentColor" />
-            Gemini CLI {diag.gemini ? 'found' : 'not found'}
-          </span>
-          <span className={diag.antigravity ? 'available' : ''}>
-            <Circle size={7} fill="currentColor" />
-            Antigravity CLI {diag.antigravity ? 'found' : 'not found'}
-          </span>
-        </div>
-      )}
-      {accounts.length === 0 && (
-        <div className="account-empty">Connect an account to start your first conversation.</div>
-      )}
-      {accounts.map((a) => (
-        <div className="account-row" key={a.id}>
-          <div className={`provider-avatar ${a.provider}`}>
-            {a.provider === 'claude'
-              ? 'C'
-              : a.provider === 'gpt'
-                ? 'G'
-                : a.provider === 'gemini'
-                  ? 'Gm'
-                  : 'Ag'}
-          </div>
-          <div className="account-info">
-            <strong>{a.name}</strong>
-            <small>
-              {nameOf(a.provider)} · {statuses[a.id] || 'Connection unchecked'}
-            </small>
-          </div>
-          <button
-            className="text-button"
-            disabled={pending}
-            onClick={() =>
-              void action(async () => {
-                await call('login_account', { id: a.id });
-                setStatuses((s) => ({ ...s, [a.id]: 'Finish login in terminal' }));
-              })
-            }
-          >
-            Sign in
-          </button>
-          <button
-            className="icon-button"
-            disabled={pending}
-            aria-label={`Check ${a.name}`}
-            onClick={() =>
-              void action(async () => {
-                const ready = await call<boolean>('account_status', { id: a.id });
-                setStatuses((s) => ({ ...s, [a.id]: ready ? 'Connected' : 'Sign-in required' }));
-              })
-            }
-          >
-            <ShieldCheck size={15} />
-          </button>
-          <button
-            className="icon-button"
-            disabled={pending}
-            aria-label={`Rename ${a.name}`}
-            onClick={() => setEditing(editing === a.id ? '' : a.id)}
-          >
-            <Pencil size={14} />
-          </button>
-          {editing === a.id && (
-            <AccountRename
-              account={a}
-              onError={onError}
-              done={async () => {
-                await refresh();
-                setEditing('');
-              }}
-            />
-          )}
-          <button
-            className="icon-button"
-            disabled={pending}
-            aria-label={`Remove ${a.name}`}
-            onClick={() => setConfirm(a.id)}
-          >
-            <Trash2 size={14} />
-          </button>
-          {confirm === a.id && (
-            <div className="account-confirm">
-              <span>Remove this account and its local login files?</span>
-              <button
-                className="text-button danger"
-                disabled={pending}
-                onClick={() =>
-                  void action(async () => {
-                    await call('remove_account', { id: a.id });
-                    await refresh();
-                    setConfirm('');
-                  })
-                }
-              >
-                Remove
-              </button>
-              <button className="text-button" onClick={() => setConfirm('')}>
-                Keep
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
-      {adding && (
-        <form
-          className="account-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void action(async () => {
-              await call('add_account', { name, provider });
-              setName('');
-              setAdding(false);
-              await refresh();
-            });
-          }}
-        >
-          <label>
-            Account name
-            <input
-              required
-              maxLength={80}
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Personal"
-            />
-          </label>
-          <label>
-            Provider
-            <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
-              <option value="claude">Claude Code</option>
-              <option value="gpt">ChatGPT / Codex</option>
-              <option value="gemini">Gemini CLI (emergency)</option>
-              <option value="antigravity">Antigravity CLI (emergency)</option>
-            </select>
-          </label>
-          <button className="primary-button" disabled={pending || !name.trim()} type="submit">
-            {pending ? 'Adding…' : 'Add account'}
-          </button>
-        </form>
-      )}
-    </section>
   );
 }

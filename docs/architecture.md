@@ -6,17 +6,24 @@ Tauri 2 owns the desktop shell and command boundary. Rust owns session storage, 
 
 ```text
 src/
-  main.tsx             React entry
-  App.tsx              Workspace, session rail, composer, settings, activity
-  bridge.ts            Typed IPC, run-event reconciliation, honest UI preview
-  types.ts             Frontend data contracts
-  ProviderOptions.tsx  Official model/effort pickers and account renaming
-  ProjectPanel.tsx     LUMEN.md notes and file attachments
-  AutomationSettings.tsx  Teamwork switches and local API panel
-  IntegrationSettings.tsx MCP hub and shared skills
-  AutoSettings.tsx     Manual Claude quota snapshot
-  styles.css           Theme tokens, glass material, layout, motion
-  bridge.test.ts       Streaming reconciliation tests
+  main.tsx                     React entry
+  App.tsx                      Workspace shell: session rail, top bar, transcript, composer
+  styles.css                   Theme tokens, glass material, layout, motion
+  lib/
+    bridge.ts                  Typed IPC, run-event reconciliation, honest UI preview
+    bridge.test.ts             Streaming reconciliation tests
+    types.ts                   Frontend data contracts
+    util.tsx                   Shared constants and helpers (links, provider names, mark)
+  components/
+    MessageBody.tsx            Safe markdown rendering (lazy loaded)
+    ProviderOptions.tsx        Official model/effort pickers and account renaming
+    ProjectPanel.tsx           LUMEN.md notes and file attachments
+  settings/
+    SettingsPanel.tsx          Settings overlay: layout, appearance, folder, about
+    AccountSettings.tsx        Connected accounts, sign-in, CLI detection
+    AutoSettings.tsx           Manual Claude quota snapshot
+    AutomationSettings.tsx     Teamwork switches and local API panel
+    IntegrationSettings.tsx    MCP hub and shared skills
 src-tauri/
   src/main.rs          Desktop entry
   src/lib.rs           Tauri commands, settings, headless API turns, PATH fix
@@ -37,7 +44,8 @@ src-tauri/
   capabilities/        Window capabilities, folder picker, URL allowlist
   tauri.conf.json      Window, CSP, build and bundle settings
 tests/                 Playwright UI tests, native offline smoke test, CLI fixtures
-docs/                  Setup, accounts, policy, roadmap and development
+docs/                  Setup, accounts, features, policy, roadmap and development
+.github/workflows/      ci.yml (checks on Windows, macOS, Ubuntu) · release.yml (Windows + macOS builds)
 ```
 
 ## Storage
@@ -69,9 +77,13 @@ Events distinguish start, status, delta, replace, thinking, tool, file, review, 
 
 Frontend state is intentionally small: active session, visible messages, account metadata, mode, optional overrides and settings state. Auth material never crosses IPC. Settings use a right-side dialog with keyboard focus containment/restoration and inert background controls. Theme follows the system unless explicitly overridden.
 
+## Conventions
+
+New UI goes in `components/` (conversation surface) or `settings/` (one file per Settings section); shared helpers in `lib/`. New backend features get their own Rust module wired from `lib.rs` (commands) and `turns.rs` (turn stages). Keep `App.tsx` as the shell: state and layout, not feature logic.
+
 ## Extension points
 
-Add providers by extending Provider, command construction, normalization fixtures and routing. Move orchestration behind a trait when adding testable alternate process transports. v1 should split App into independent session/composer/settings components, version the SQLite schema, add message pagination, native provider resumption, account diagnostics and validated model catalogs. v2 can introduce budget-aware scheduling and isolated worktree workers.
+Add providers by extending `Provider`, command construction, normalization fixtures and routing (see `providers.rs`, `catalog.rs`, `router.rs`). Planned 0.4 additions (Orchestra planner, Ollama provider, tray/autostart) are described in the [roadmap](roadmap.md).
 
 ## Changes in 0.2
 

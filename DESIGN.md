@@ -143,7 +143,7 @@ Key characteristics:
 - Compact controls, subtle dividers, muted metadata, and visible focus.
 - Auto routing selected by default, with provider controls disclosed progressively.
 
-This document records `src/styles.css`, `src/App.tsx`, `src/ProviderOptions.tsx`, and `src/MessageBody.tsx`, with the 0.2 interaction contract in `docs/workspace-models-permissions.md`. Current captures in `.impeccable/review/` include `desktop.png`, `mobile.png`, `settings-dark.png`, and `native-provider-controls.png`. They corroborate the light desktop, dark narrow/settings composition, and native provider-controls fixture. The native fixture is offline; these captures do not establish live-provider inference, unrestricted computer operations, high-contrast, or assistive-technology validation. Tokens above are extracted values, not a newly imposed scale. CSS remains the runtime source of truth. This refresh changes only 0.2-related documentation and leaves unrelated existing token definitions intact.
+This document records `src/styles.css` and the components in `src/App.tsx`, `src/components/` and `src/settings/`. Tokens above are extracted values; CSS remains the runtime source of truth. Screenshots of the current implementation are in `docs/images/`.
 
 ## Colors
 

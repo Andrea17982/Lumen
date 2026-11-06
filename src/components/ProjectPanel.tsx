@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Search, X } from 'lucide-react';
-import { call } from './bridge';
-import type { FileEntry, ProjectContext } from './types';
+import { call } from '../lib/bridge';
+import type { FileEntry, ProjectContext } from '../lib/types';
 
 const formatTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 

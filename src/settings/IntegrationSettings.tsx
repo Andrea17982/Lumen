@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { call, desktop } from './bridge';
-import type { McpServer } from './types';
+import { call, desktop } from '../lib/bridge';
+import type { McpServer } from '../lib/types';
 interface Inventory {
   path: string;
   skills: string[];

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Pencil, RefreshCw, Settings2, X } from 'lucide-react';
-import { call } from './bridge';
-import type { Account, ModelInfo, Provider } from './types';
+import { call } from '../lib/bridge';
+import type { Account, ModelInfo, Provider } from '../lib/types';
 
 export function AccountRename({
   account,
