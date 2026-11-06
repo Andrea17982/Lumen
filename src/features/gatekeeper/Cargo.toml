@@ -1,0 +1,20 @@
+[package]
+name = "lumen-gatekeeper"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[[bin]]
+name = "lumen-gatekeeper-mcp"
+path = "bridge_main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+tokio = { version = "1", features = ["io-util", "io-std", "sync", "time", "rt-multi-thread", "macros", "net", "process"] }

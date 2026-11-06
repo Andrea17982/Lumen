@@ -413,6 +413,7 @@ mod tests {
             updated_at: at,
             source: "test".into(),
             windows: vec![UsageWindow {
+                group: None,
                 used_percent: used,
                 window_minutes: minutes,
                 resets_at: at + remaining * 60_000,
@@ -423,6 +424,7 @@ mod tests {
         assert!(usage_pressure(&near_reset, at).unwrap() < usage_pressure(&other, at).unwrap());
         let mut constrained = near_reset.clone();
         constrained.windows.push(UsageWindow {
+            group: None,
             used_percent: 100.0,
             window_minutes: 300,
             resets_at: at + 60_000,

@@ -7,7 +7,10 @@
 //! activity with the JSON [`State`], replaced in place as the run advances, so
 //! the interface can redraw the card and the history survives restarts.
 use crate::{
-    account, config_dir, event, gitops, models::*, models_for, providers, resolve_effort, router,
+    account, config_dir, event, gitops,
+    models::*,
+    models_for, providers, resolve_effort, router,
+    scheduling::{self, Outcome, Scheduler, Wait},
     turns, Core,
 };
 use serde::{Deserialize, Serialize};
@@ -19,8 +22,8 @@ use std::{
 };
 use tokio::sync::watch;
 
-/// Subtasks that run at the same time; the rest queue.
-const PARALLEL: usize = 6;
+/// How often a run with queued work re-reads quotas, cooldowns and raised limits.
+const TICK_MS: u64 = 30_000;
 const MAX_SUBTASKS: usize = 12;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -45,11 +48,19 @@ pub struct Subtask {
     pub agent: String,
     pub model: String,
     pub effort: String,
-    /// pending · running · done · failed
+    /// Chosen by the user in the plan editor: the scheduler never moves it.
+    pub pinned: bool,
+    /// pending · queued · running · done · failed · skipped
     pub status: String,
     pub output: String,
     pub started_at: i64,
     pub ended_at: i64,
+    /// Attempts started so far, kept across a restart.
+    pub attempts: u32,
+    /// Process of the running attempt, checked before a resume.
+    pub pid: u32,
+    /// Changes of a finished writing subtask, kept so a resume need not rerun it.
+    pub patch: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -81,6 +92,35 @@ pub struct State {
     pub steps: Vec<Step>,
     /// Worktrees kept after a failed integration: (top, path, branch).
     pub lanes: Vec<(String, String, String)>,
+    /// Why queued subtasks wait, while the run is in progress.
+    pub queue: Option<Queue>,
+    /// Tree the subtask lanes start from; a resume reuses it.
+    pub base: String,
+    /// Options of the approved run, so it can be resumed after a restart.
+    pub options: Option<RunOptions>,
+    /// Interrupted while subtasks ran: completed work is kept and the rest can resume.
+    pub resumable: bool,
+    /// Why the last resume was refused, shown on the card.
+    pub notice: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Waiting {
+    pub id: String,
+    /// concurrency · total-cap · probe · cooldown · quota
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Queue {
+    pub running: usize,
+    pub admitted: usize,
+    pub concurrent: usize,
+    pub total: Option<usize>,
+    pub waiting: Vec<Waiting>,
+    pub wake_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -616,6 +656,7 @@ pub fn apply_edits(st: &mut State, edits: &[Edit], accounts: &[Account]) -> Resu
                     t.model.clear();
                     t.agent.clear();
                 }
+                t.pinned = true;
             }
         }
     }
@@ -676,6 +717,7 @@ fn subtask_prompt(st: &State, t: &Subtask, deps: &str, text_only: bool) -> Strin
 }
 
 struct Job {
+    pids: tokio::sync::mpsc::UnboundedSender<(String, u32)>,
     app: tauri::AppHandle,
     core: Arc<Core>,
     session: String,
@@ -716,9 +758,20 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
             model: Some(&selected.id),
             effort: &effort,
             access: job.access,
+            approvals: None,
         },
         job.cancel.clone(),
         |activity| {
+            if activity.kind == "quota" {
+                crate::record_claude_usage(core, app, &a.id, &activity.text);
+                return;
+            }
+            if activity.kind == "pid" {
+                if let Ok(pid) = activity.text.parse() {
+                    let _ = job.pids.send((id.clone(), pid));
+                }
+                return;
+            }
             if activity.kind == "delta" || activity.kind == "replace" {
                 let payload =
                     serde_json::json!({"id": id, "kind": activity.kind, "text": activity.text});
@@ -739,57 +792,123 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
     r
 }
 
-/// Run one subtask; on any failure retry once on another provider.
-async fn run_job(job: Job) -> (String, Result<(String, String), String>) {
-    let first = attempt(
-        &job,
-        &job.account,
-        Some(job.model.as_str()).filter(|m| !m.is_empty()),
-    )
-    .await;
-    let err = match first {
-        Ok(t) => return (job.id.clone(), Ok((t, String::new()))),
-        Err(e) if e == "Cancelled" => return (job.id.clone(), Err(e)),
-        Err(e) => e,
-    };
-    if err.starts_with(crate::limits::RATE_LIMIT) {
-        let msg = err.trim_start_matches(crate::limits::RATE_LIMIT);
-        job.core
-            .limits
-            .cool(&job.account.id, crate::limits::unlock_at(msg, now()));
-    }
-    let writes = job.access != AccessMode::ReadOnly;
-    let mut alternatives: Vec<Account> = job
-        .core
-        .store
-        .accounts()
+fn provider_id(p: &Provider) -> String {
+    serde_json::to_value(p)
+        .ok()
+        .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_default()
+}
+
+/// Accounts with their catalogs, for the scheduler; an account whose catalog
+/// cannot load keeps only the work already planned on it.
+async fn sched_accounts(
+    core: &Core,
+    accounts: &[Account],
+    cancel: &watch::Receiver<bool>,
+) -> Vec<scheduling::SchedAccount> {
+    let mut out = vec![];
+    for a in accounts {
+        let models = models_for(core, a, false, Some(cancel.clone()))
+            .await
+            .ok()
+            .map(|list| {
+                list.iter()
+                    .map(|m| scheduling::Model {
+                        id: m.id.clone(),
+                        tier: router::model_tier(m),
+                        is_default: m.is_default,
+                    })
+                    .collect()
+            });
+        out.push(scheduling::SchedAccount {
+            id: a.id.clone(),
+            provider: provider_id(&a.provider),
+            rank: a.provider.fallback_rank(),
+            can_write: a.provider != Provider::Ollama,
+            models,
+        });
+    }
+    out
+}
+
+/// Feed the scheduler the latest quota snapshots and rate-limit cooldowns.
+fn refresh_quota(core: &Core, sched: &mut Scheduler, accounts: &[Account]) {
+    let t = now();
+    for u in crate::read_usage(core).unwrap_or_default() {
+        sched.set_usage(
+            &u.account_id,
+            scheduling::Usage {
+                updated_at: u.updated_at,
+                windows: u
+                    .windows
+                    .iter()
+                    .map(|w| scheduling::Window {
+                        used_percent: w.used_percent,
+                        resets_at: w.resets_at,
+                        window_minutes: w.window_minutes,
+                    })
+                    .collect(),
+            },
+        );
+    }
+    for a in accounts {
+        if core.limits.cooling(&a.id, t) {
+            sched.cool_down(&a.id, t + TICK_MS as i64);
+        }
+    }
+}
+
+fn wait_name(w: Wait) -> &'static str {
+    match w {
+        Wait::Dependencies => "dependencies",
+        Wait::Concurrency => "concurrency",
+        Wait::TotalCap => "total-cap",
+        Wait::Probe => "probe",
+        Wait::Cooldown => "cooldown",
+        Wait::Quota => "quota",
+    }
+}
+
+fn queue_of(sched: &Scheduler, t: i64) -> Option<Queue> {
+    let (waits, wake_at) = sched.waiting(t);
+    let waiting: Vec<Waiting> = waits
         .into_iter()
-        .filter(|b| {
-            b.id != job.account.id
-                && !job.core.limits.cooling(&b.id, now())
-                && !(writes && b.provider == Provider::Ollama)
+        .filter(|(_, w)| *w != Wait::Dependencies)
+        .map(|(id, w)| Waiting {
+            id,
+            reason: wait_name(w).into(),
         })
         .collect();
-    alternatives.sort_by_key(|b| {
-        (
-            b.provider == job.account.provider,
-            b.provider.fallback_rank(),
-        )
-    });
-    let Some(b) = alternatives.into_iter().next() else {
-        return (job.id.clone(), Err(err));
-    };
-    let note = format!(
-        "{} failed ({}). Retried on {}.",
-        display(&job.account.provider),
-        err.chars().take(160).collect::<String>(),
-        display(&b.provider)
-    );
-    match attempt(&job, &b, None).await {
-        Ok(t) => (job.id.clone(), Ok((t, note))),
-        Err(e) => (job.id.clone(), Err(format!("{note} That also failed: {e}"))),
+    (!waiting.is_empty()).then(|| Queue {
+        running: sched.running(),
+        admitted: sched.admitted(),
+        concurrent: sched.limits.concurrent(),
+        total: sched.limits.max_subtasks,
+        waiting,
+        wake_at,
+    })
+}
+
+/// Classify a finished attempt for the scheduler, which owns every retry.
+fn outcome_of(core: &Core, account: &str, r: &Result<String, String>) -> Outcome {
+    match r {
+        Ok(_) => Outcome::Done,
+        Err(e) if e == "Cancelled" => Outcome::Cancelled,
+        Err(e) if e.starts_with(crate::limits::RATE_LIMIT) => {
+            let msg = e.trim_start_matches(crate::limits::RATE_LIMIT);
+            let until = crate::limits::unlock_at(msg, now());
+            core.limits.cool(account, until);
+            Outcome::RateLimited(Some(until))
+        }
+        Err(e) => Outcome::Failed(e.clone()),
     }
+}
+
+/// One attempt; the scheduler decides whether and where to retry.
+async fn run_job(job: Job) -> (String, String, Result<String, String>) {
+    let model = Some(job.model.as_str()).filter(|m| !m.is_empty());
+    let r = attempt(&job, &job.account, model).await;
+    (job.id.clone(), job.account.id.clone(), r)
 }
 
 struct Lane {
@@ -808,6 +927,7 @@ pub async fn execute(
     mut st: State,
     options: &RunOptions,
     checkpoint: Option<String>,
+    resume: bool,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
     let orch = account(core, &st.orchestrator)?;
@@ -823,6 +943,7 @@ pub async fn execute(
         )
     };
     let base = match (&top, checkpoint) {
+        _ if resume && !st.base.is_empty() => st.base.clone(),
         (_, Some(t)) => t,
         (Some(top), None) if !st.read_only => gitops::write_tree(top).await?,
         _ => String::new(),
@@ -834,48 +955,127 @@ pub async fn execute(
         .to_path_buf();
     let short: String = out.id.chars().take(8).collect();
     st.stage = "running".into();
+    st.base = base.clone();
+    st.options = Some(options.clone());
+    st.resumable = false;
+    st.notice.clear();
     st.steps.clear();
+    // A resume keeps finished work; everything else starts over.
     for t in st.subtasks.iter_mut() {
+        if resume && matches!(t.status.as_str(), "done" | "failed") {
+            continue;
+        }
         t.status = "pending".into();
         t.output.clear();
+        t.patch.clear();
+        t.pid = 0;
+        if !resume {
+            t.attempts = 0;
+        }
     }
     publish(app, core, s, out, &st);
 
+    let accounts = core.store.accounts().unwrap_or_default();
+    let limits = core
+        .settings
+        .lock()
+        .map(|s| s.orchestra_limits.clone())
+        .unwrap_or_default();
+    let inputs = st
+        .subtasks
+        .iter()
+        .map(|t| scheduling::SubtaskInput {
+            id: t.id.clone(),
+            tier: tier_of(&t.difficulty),
+            writes: t.writes,
+            depends_on: t.depends_on.clone(),
+            account_id: t.account_id.clone(),
+            model: t.model.clone(),
+            effort: t.effort.clone(),
+            pinned: t.pinned,
+            status: if resume {
+                t.status.clone()
+            } else {
+                String::new()
+            },
+            attempts: t.attempts,
+        })
+        .collect();
+    let mut sched = Scheduler::new(
+        inputs,
+        sched_accounts(core, &accounts, &cancel).await,
+        scheduling::Limits {
+            max_concurrent: limits.max_concurrent,
+            max_subtasks: limits.max_subtasks,
+            quota_thresholds: limits.quota_thresholds,
+        },
+        scheduling::Options {
+            read_only: st.read_only,
+            ..Default::default()
+        },
+    );
+    if let Ok(mut r) = core.orchestra_raises.lock() {
+        r.remove(&out.id);
+    }
+
     let mut lanes: HashMap<String, Lane> = HashMap::new();
-    let mut patches: HashMap<String, String> = HashMap::new();
+    let mut patches: HashMap<String, String> = st
+        .subtasks
+        .iter()
+        .filter(|t| t.status == "done" && !t.patch.is_empty())
+        .map(|t| (t.id.clone(), t.patch.clone()))
+        .collect();
+    let (pid_tx, mut pid_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
+    let mut notes: HashMap<String, String> = HashMap::new();
     let mut set = tokio::task::JoinSet::new();
     loop {
-        // Start every subtask whose dependencies have finished, up to the parallel limit.
-        let finished: Vec<String> = st
-            .subtasks
-            .iter()
-            .filter(|t| t.status == "done" || t.status == "failed")
-            .map(|t| t.id.clone())
-            .collect();
-        let ready: Vec<usize> = st
-            .subtasks
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| {
-                t.status == "pending" && t.depends_on.iter().all(|d| finished.contains(d))
-            })
-            .map(|(i, _)| i)
-            .collect();
-        for i in ready {
-            if set.len() >= PARALLEL {
-                break;
-            }
-            let t = st.subtasks[i].clone();
-            let Ok(a) = account(core, &t.account_id) else {
+        refresh_quota(core, &mut sched, &accounts);
+        let extra = core
+            .orchestra_raises
+            .lock()
+            .ok()
+            .and_then(|mut r| r.remove(&out.id))
+            .unwrap_or(0);
+        if extra > 0 {
+            let admitted = sched.admitted();
+            sched.limits.raise_total(admitted, extra);
+        }
+        // Start whatever the scheduler admits: dependencies done, under the caps and quotas.
+        for start in sched.next(now()) {
+            let Some(i) = st.subtasks.iter().position(|t| t.id == start.id) else {
+                continue;
+            };
+            let Ok(a) = account(core, &start.account_id) else {
+                let gone = Outcome::Failed("The assigned account no longer exists.".into());
+                sched.finish(&start.id, gone, now());
                 st.subtasks[i].status = "failed".into();
                 st.subtasks[i].output = "The assigned account no longer exists.".into();
                 continue;
             };
+            if start.account_id != st.subtasks[i].account_id {
+                let from = st.subtasks[i].agent.clone();
+                st.subtasks[i].agent = display(&a.provider).into();
+                notes.insert(
+                    start.id.clone(),
+                    format!(
+                        "Moved from {from} to {} by the scheduler.",
+                        display(&a.provider)
+                    ),
+                );
+            }
+            st.subtasks[i].account_id = a.id.clone();
+            st.subtasks[i].model = start.model.clone();
+            let t = st.subtasks[i].clone();
             let text_only = a.provider == Provider::Ollama;
             let writes = t.writes && !st.read_only && !text_only;
             let mut job_dir = workspace.clone();
             if writes {
                 let top = top.as_ref().ok_or("Git repository required")?;
+                // A retry starts again from a clean lane.
+                if let Some(old) = lanes.remove(&t.id) {
+                    gitops::remove_lane(top, &old.path, &old.branch).await;
+                    st.lanes.retain(|(_, _, b)| *b != old.branch);
+                }
                 let path = core.root.join("worktrees").join(&short).join(&t.id);
                 let branch = format!("lumen/orchestra-{short}-{}", t.id);
                 gitops::add_lane(top, &base, &path, &branch).await?;
@@ -916,6 +1116,7 @@ pub async fn execute(
                 .collect();
             let prompt = subtask_prompt(&st, &t, &deps, text_only);
             set.spawn(run_job(Job {
+                pids: pid_tx.clone(),
                 app: app.clone(),
                 core: core.clone(),
                 session: s.id.clone(),
@@ -934,12 +1135,40 @@ pub async fn execute(
                 cancel: cancel.clone(),
             }));
             st.subtasks[i].status = "running".into();
+            st.subtasks[i].attempts += 1;
+            st.subtasks[i].pid = 0;
             st.subtasks[i].started_at = now();
+            st.subtasks[i].ended_at = 0;
+        }
+        st.queue = queue_of(&sched, now());
+        for t in st.subtasks.iter_mut() {
+            let queued = st
+                .queue
+                .as_ref()
+                .is_some_and(|q| q.waiting.iter().any(|w| w.id == t.id));
+            if t.status == "pending" && queued {
+                t.status = "queued".into();
+            } else if t.status == "queued" && !queued {
+                t.status = "pending".into();
+            }
         }
         publish(app, core, s, out, &st);
         if set.is_empty() {
-            break;
+            if sched.complete() {
+                break;
+            }
+            // Suspended. Work held only by the total cap cannot start by itself
+            // once nothing runs, so it is skipped; cooldowns and quotas wait.
+            let (waits, _) = sched.waiting(now());
+            if waits
+                .iter()
+                .all(|(_, w)| matches!(w, Wait::TotalCap | Wait::Dependencies))
+            {
+                sched.cancel_pending();
+                break;
+            }
         }
+        let tick = tokio::time::sleep(std::time::Duration::from_millis(TICK_MS));
         let joined = tokio::select! {
             biased;
             _ = cancel.changed() => {
@@ -948,41 +1177,79 @@ pub async fn execute(
                     if let Some(top) = &top { gitops::remove_lane(top, &l.path, &l.branch).await; }
                 }
                 st.lanes.clear();
+                st.queue = None;
                 st.stage = "interrupted".into();
                 publish(app, core, s, out, &st);
                 return Err("Cancelled".into());
             }
-            j = set.join_next() => j,
+            Some((id, pid)) = pid_rx.recv() => {
+                // Saved at once: after a crash this is how a resume finds the process.
+                if let Some(t) = st.subtasks.iter_mut().find(|t| t.id == id && t.status == "running") {
+                    t.pid = pid;
+                    publish(app, core, s, out, &st);
+                }
+                continue;
+            }
+            j = set.join_next(), if !set.is_empty() => j,
+            _ = tick => continue,
         };
-        let Some(Ok((id, result))) = joined else {
+        let Some(Ok((id, acc, result))) = joined else {
             continue;
         };
+        sched.finish(&id, outcome_of(core, &acc, &result), now());
         let Some(t) = st.subtasks.iter_mut().find(|t| t.id == id) else {
             continue;
         };
         t.ended_at = now();
-        match result {
-            Ok((text, retried)) => {
+        t.pid = 0;
+        match (sched.state(&id), result) {
+            (Some(scheduling::State::Done), Ok(text)) => {
                 t.status = "done".into();
-                t.output = if retried.is_empty() {
-                    text
-                } else {
-                    format!("{retried}\n\n{text}")
+                t.output = match notes.get(&id) {
+                    Some(n) => format!("{n}\n\n{text}"),
+                    None => text,
                 };
                 if let Some(l) = lanes.get(&id) {
                     if let Ok(p) = gitops::lane_patch(&l.path, &l.start).await {
                         if !p.trim().is_empty() {
+                            t.patch = p.clone();
                             patches.insert(id.clone(), p);
                         }
                     }
                 }
             }
-            Err(e) => {
+            (Some(scheduling::State::Pending), Err(e)) => {
+                t.status = "pending".into();
+                t.output = format!("{} Waiting to retry.", turns::friendly(&e));
+            }
+            (_, r) => {
+                let e = sched
+                    .error(&id)
+                    .map(String::from)
+                    .or(r.err())
+                    .unwrap_or_default();
                 t.status = "failed".into();
                 t.output = turns::friendly(&e);
             }
         }
         t.output = t.output.chars().take(16_000).collect();
+    }
+    st.queue = None;
+    for t in st
+        .subtasks
+        .iter_mut()
+        .filter(|t| matches!(t.status.as_str(), "pending" | "queued"))
+    {
+        if let Some(e) = sched
+            .error(&t.id)
+            .filter(|_| sched.state(&t.id) == Some(scheduling::State::Failed))
+        {
+            t.status = "failed".into();
+            t.output = turns::friendly(e);
+        } else {
+            t.status = "skipped".into();
+            t.output = "Not run: the subtask limit for this run was reached.".into();
+        }
     }
 
     let failed: Vec<String> = st
@@ -991,7 +1258,7 @@ pub async fn execute(
         .filter(|t| t.status == "failed")
         .map(|t| format!("{} ({})", t.title, t.id))
         .collect();
-    if failed.len() == st.subtasks.len() {
+    if !st.subtasks.iter().any(|t| t.status == "done") {
         cleanup(&top, &lanes).await;
         st.lanes.clear();
         st.stage = "failed".into();
@@ -1110,6 +1377,9 @@ pub async fn execute(
     }
     cleanup(&top, &lanes).await;
     st.lanes.clear();
+    for t in st.subtasks.iter_mut() {
+        t.patch.clear();
+    }
 
     // The orchestrator checks the combined result and writes the final answer.
     let diff = match (&top, base.is_empty()) {
@@ -1403,6 +1673,70 @@ mod tests {
     }
 
     #[test]
+    fn ps_elapsed_times_parse() {
+        assert_eq!(parse_etime("05:07"), Some(307));
+        assert_eq!(parse_etime("01:00:00"), Some(3600));
+        assert_eq!(parse_etime("2-00:00:01"), Some(172_801));
+        assert_eq!(parse_etime("garbage"), None);
+    }
+
+    #[tokio::test]
+    async fn orphans_are_checked_only_for_started_interrupted_work() {
+        let mut st = State {
+            subtasks: vec![
+                Subtask {
+                    id: "a".into(),
+                    status: "done".into(),
+                    pid: std::process::id(),
+                    ..Default::default()
+                },
+                Subtask {
+                    id: "b".into(),
+                    status: "interrupted".into(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        // A finished task and one that never started a CLI need no check.
+        assert!(stop_orphans(&st).await.is_ok());
+        // A recorded PID that belongs to a process started much earlier is a reused PID.
+        st.subtasks[1].pid = std::process::id();
+        st.subtasks[1].started_at = now() + 3_600_000;
+        assert!(stop_orphans(&st).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn an_orphaned_cli_is_stopped_before_resuming() {
+        let started = now();
+        #[cfg(windows)]
+        let mut child = tokio::process::Command::new("ping")
+            .args(["-n", "60", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        #[cfg(unix)]
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let st = State {
+            subtasks: vec![Subtask {
+                id: "a".into(),
+                status: "interrupted".into(),
+                pid: child.id().unwrap(),
+                started_at: started,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(stop_orphans(&st).await.is_ok());
+        let exited = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
+        assert!(exited.is_ok(), "the orphan should have been stopped");
+    }
+
+    #[test]
     fn answers_fall_back_to_recommendations() {
         let st = State {
             questions: vec![
@@ -1426,7 +1760,9 @@ mod tests {
 // ---------------------------------------------------------------- lifecycle
 
 /// At startup: an Orchestra step that was running when Lumen closed can never
-/// finish, so mark it interrupted and remove the worktrees it left behind.
+/// finish by itself. Nothing is rerun here: a run interrupted while its subtasks
+/// worked keeps its results and lanes and waits for an explicit Resume. Anything
+/// later (integration, final check) or earlier (questions, plan) is closed.
 pub fn recover(core: &Core) {
     let Ok(rows) = core.store.orchestra_messages() else {
         return;
@@ -1438,20 +1774,30 @@ pub fn recover(core: &Core) {
         if !["asking", "planning", "running"].contains(&st.stage.as_str()) {
             continue;
         }
+        st.resumable = st.stage == "running" && st.steps.is_empty() && st.options.is_some();
         st.stage = "interrupted".into();
-        for t in st.subtasks.iter_mut().filter(|t| t.status == "running") {
-            t.status = "failed".into();
-            t.output = "Interrupted: Lumen was closed.".into();
+        st.queue = None;
+        for t in st.subtasks.iter_mut() {
+            match t.status.as_str() {
+                "running" => {
+                    t.status = "interrupted".into();
+                    t.output = "Interrupted: Lumen was closed.".into();
+                }
+                "queued" => t.status = "pending".into(),
+                _ => {}
+            }
         }
         for x in st.steps.iter_mut().filter(|x| x.status == "running") {
             x.status = "failed".into();
         }
-        let lanes = std::mem::take(&mut st.lanes);
-        tauri::async_runtime::spawn(async move {
-            for (top, path, branch) in lanes {
-                gitops::remove_lane(Path::new(&top), Path::new(&path), &branch).await;
-            }
-        });
+        if !st.resumable {
+            let lanes = std::mem::take(&mut st.lanes);
+            tauri::async_runtime::spawn(async move {
+                for (top, path, branch) in lanes {
+                    gitops::remove_lane(Path::new(&top), Path::new(&path), &branch).await;
+                }
+            });
+        }
         if let (Some(a), Ok(text)) = (
             m.activity.iter_mut().find(|a| a.kind == "orchestra"),
             serde_json::to_string(&st),
@@ -1459,6 +1805,113 @@ pub fn recover(core: &Core) {
             a.text = text;
         }
         let _ = core.store.save_message(&session, &m);
+    }
+}
+
+/// Start time (ms) of a live process, `None` when it no longer runs.
+/// `Err` when the system cannot tell.
+async fn process_start(pid: u32) -> Result<Option<i64>, String> {
+    #[cfg(windows)]
+    {
+        let script = format!(
+            "$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; if ($p) {{ [DateTimeOffset]::new($p.StartTime).ToUnixTimeMilliseconds() }} else {{ 'none' }}"
+        );
+        let mut c = tokio::process::Command::new("powershell.exe");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(0x08000000)
+            .kill_on_drop(true);
+        let o = c.output().await.map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
+        if !o.status.success() {
+            return Err("cannot inspect processes".into());
+        }
+        if text == "none" {
+            return Ok(None);
+        }
+        text.parse()
+            .map(Some)
+            .map_err(|_| "cannot inspect processes".into())
+    }
+    #[cfg(unix)]
+    {
+        let o = tokio::process::Command::new("ps")
+            .args(["-o", "etime=", "-p", &pid.to_string()])
+            .kill_on_drop(true)
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let secs = parse_etime(&text).ok_or("cannot inspect processes")?;
+        Ok(Some(now() - secs * 1000))
+    }
+}
+
+/// `ps` elapsed time: `[[dd-]hh:]mm:ss`.
+#[cfg_attr(windows, allow(dead_code))]
+fn parse_etime(text: &str) -> Option<i64> {
+    let (days, rest) = match text.split_once('-') {
+        Some((d, r)) => (d.parse::<i64>().ok()?, r),
+        None => (0, text),
+    };
+    let parts: Vec<i64> = rest
+        .split(':')
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
+    let (h, m, s) = match parts[..] {
+        [m, s] => (0, m, s),
+        [h, m, s] => (h, m, s),
+        _ => return None,
+    };
+    Some(((days * 24 + h) * 60 + m) * 60 + s)
+}
+
+async fn kill_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        let mut c = tokio::process::Command::new("taskkill.exe");
+        c.args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(0x08000000);
+        let _ = c.output().await;
+    }
+    #[cfg(unix)]
+    unsafe {
+        // Provider CLIs lead their own process group.
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+}
+
+/// Stop the CLIs an interrupted run left behind. A process is ours only if it
+/// started within seconds of the recorded attempt; a reused PID is left alone.
+/// Errors name the subtasks whose process could not be verified.
+async fn stop_orphans(st: &State) -> Result<(), String> {
+    let mut unknown = vec![];
+    for t in st.subtasks.iter().filter(|t| t.status == "interrupted") {
+        if t.pid == 0 {
+            // Still waiting for a slot or a model list: no CLI was started.
+            continue;
+        }
+        match process_start(t.pid).await {
+            Ok(None) => {}
+            Ok(Some(at)) if (at - t.started_at).abs() <= 15_000 => {
+                kill_tree(t.pid).await;
+                if !matches!(process_start(t.pid).await, Ok(None)) {
+                    unknown.push(t.title.clone());
+                }
+            }
+            Ok(Some(_)) => {}
+            Err(_) => unknown.push(t.title.clone()),
+        }
+    }
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Could not verify that these subtasks stopped: {}. Make sure no CLI from the previous session is still running, then choose Resume anyway.",
+            unknown.join(", ")
+        ))
     }
 }
 
@@ -1617,7 +2070,10 @@ pub async fn orchestra_approve(
         id,
         user,
         move |app, core, s, mut out, rx| async move {
-            let r = execute(&app, &core, &s, &mut out, run, &options, checkpoint, rx).await;
+            let r = execute(
+                &app, &core, &s, &mut out, run, &options, checkpoint, false, rx,
+            )
+            .await;
             (out, r)
         },
     )
@@ -1639,7 +2095,74 @@ pub fn orchestra_cancel(
     save_state(&app, &core, &id, &mut m, &st)
 }
 
+/// Resume a run interrupted by a restart: completed subtasks keep their results,
+/// interrupted ones are verified stopped and rerun from a clean lane.
+#[tauri::command]
+pub async fn orchestra_resume(
+    app: tauri::AppHandle,
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+    message: String,
+    force: bool,
+) -> Result<(), String> {
+    let (mut m, mut st) = load(&core, &id, &message)?;
+    if st.stage != "interrupted" || !st.resumable {
+        return Err("This Orchestra run cannot be resumed.".into());
+    }
+    let options = st
+        .options
+        .clone()
+        .ok_or("The run options were not saved.")?;
+    if let Err(e) = stop_orphans(&st).await {
+        if !force {
+            st.notice = e.clone();
+            save_state(&app, &core, &id, &mut m, &st)?;
+            return Err(e);
+        }
+    }
+    // Lanes of interrupted work may hold partial edits; finished work is kept as patches.
+    for (top, path, branch) in std::mem::take(&mut st.lanes) {
+        gitops::remove_lane(Path::new(&top), Path::new(&path), &branch).await;
+    }
+    for t in st.subtasks.iter_mut().filter(|t| t.status == "interrupted") {
+        t.status = "pending".into();
+    }
+    st.resumable = false;
+    st.notice.clear();
+    let run = st.clone();
+    let user = user_message("Resume the interrupted Orchestra run.".into());
+    turns::spawn_turn(
+        app.clone(),
+        core.inner().clone(),
+        id.clone(),
+        user,
+        move |app, core, s, mut out, rx| async move {
+            let r = execute(&app, &core, &s, &mut out, run, &options, None, true, rx).await;
+            (out, r)
+        },
+    )
+    .await?;
+    // The old card hands over to the resumed run in the new message.
+    st.stage = "resumed".into();
+    save_state(&app, &core, &id, &mut m, &st)
+}
+
 /// After a failed integration: keep the branches for manual merging, or discard them.
+/// Admit `extra` more subtasks than the configured total for a running Orchestra message.
+#[tauri::command]
+pub fn orchestra_raise(
+    core: tauri::State<'_, Arc<Core>>,
+    message_id: String,
+    extra: usize,
+) -> Result<(), String> {
+    if !(1..=99).contains(&extra) {
+        return Err("Choose between 1 and 99 more subtasks".into());
+    }
+    let mut r = core.orchestra_raises.lock().map_err(|_| "Lock failed")?;
+    *r.entry(message_id).or_insert(0) += extra;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn orchestra_lanes(
     app: tauri::AppHandle,
@@ -1649,8 +2172,15 @@ pub async fn orchestra_lanes(
     keep: bool,
 ) -> Result<(), String> {
     let (mut m, mut st) = load(&core, &id, &message)?;
-    if st.stage != "failed" {
+    let interrupted = st.stage == "interrupted" && st.resumable;
+    if st.stage != "failed" && !interrupted {
         return Err("Nothing to keep or discard.".into());
+    }
+    if interrupted {
+        // Discarding an interrupted run stops what it left running first.
+        let _ = stop_orphans(&st).await;
+        st.resumable = false;
+        st.notice.clear();
     }
     if !keep {
         for (top, path, branch) in &st.lanes {

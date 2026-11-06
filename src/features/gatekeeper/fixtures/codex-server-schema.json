@@ -1,0 +1,50 @@
+{
+  "oneOf": [
+    {
+      "description": "NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": ["item/commandExecution/requestApproval"],
+          "title": "Item/commandExecution/requestApprovalRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/CommandExecutionRequestApprovalParams"
+        }
+      },
+      "required": ["id", "method", "params"],
+      "title": "Item/commandExecution/requestApprovalRequest",
+      "type": "object"
+    },
+    {
+      "description": "Sent when approval is requested for a specific file change. This request is used for Turns started via turn/start.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": ["item/fileChange/requestApproval"],
+          "title": "Item/fileChange/requestApprovalRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/FileChangeRequestApprovalParams"
+        }
+      },
+      "required": ["id", "method", "params"],
+      "title": "Item/fileChange/requestApprovalRequest",
+      "type": "object"
+    }
+  ],
+  "definitions": {
+    "CommandExecutionRequestApprovalParams": {
+      "required": ["itemId", "startedAtMs", "threadId", "turnId"]
+    },
+    "FileChangeRequestApprovalParams": {
+      "required": ["itemId", "startedAtMs", "threadId", "turnId"]
+    }
+  }
+}

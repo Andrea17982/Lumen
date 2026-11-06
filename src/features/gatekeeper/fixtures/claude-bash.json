@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": "mcp-42",
+  "method": "tools/call",
+  "params": {
+    "name": "approve",
+    "arguments": {
+      "tool_name": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "Inspect worktree",
+        "timeout": 10000
+      },
+      "tool_use_id": "toolu_1"
+    }
+  }
+}

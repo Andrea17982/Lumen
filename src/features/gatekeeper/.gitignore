@@ -1,0 +1,4 @@
+/.scratch/
+/target/
+/Cargo.lock
+/node_modules/

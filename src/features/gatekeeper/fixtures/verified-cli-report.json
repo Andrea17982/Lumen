@@ -1,0 +1,17 @@
+{
+  "claude": {
+    "evidence": "Installed CLI accepted permission-prompt-tool and discovered the permission tool over authenticated MCP",
+    "state": "available",
+    "version": "2.1.314 (Claude Code)"
+  },
+  "codex": {
+    "evidence": "Installed CLI generated matching command/file approval schemas and completed app-server initialize",
+    "state": "available",
+    "version": "codex-cli 0.167.0-alpha.3.2"
+  },
+  "modelTurns": 0,
+  "note": "Real CLI initialization, generated schemas and MCP discovery only; adapter decisions are exercised by fixtures and real local MCP transport tests",
+  "permissionCallbacksFromModels": 0,
+  "verifiedAt": "2026-11-06",
+  "platform": "Windows"
+}

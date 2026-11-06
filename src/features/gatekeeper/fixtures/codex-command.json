@@ -1,0 +1,16 @@
+{
+  "id": 42,
+  "method": "item/commandExecution/requestApproval",
+  "params": {
+    "threadId": "thread-1",
+    "turnId": "turn-1",
+    "itemId": "item-1",
+    "kind": "command",
+    "startedAtMs": 1793923200000,
+    "environmentId": null,
+    "command": "git status --short",
+    "cwd": "FIXTURE_CWD",
+    "reason": "Inspect the working tree",
+    "approvalId": null
+  }
+}

@@ -1,5 +1,117 @@
 import { expect, test } from '@playwright/test';
 
+test('usage shows an empty state when no cloud account is configured', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Usage', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Provider usage' })).toContainText(
+    'No cloud providers configured.',
+  );
+});
+
+test('usage excludes local Ollama and explains unavailable cloud quotas', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [
+          { id: 'c', name: 'Work', provider: 'claude' },
+          { id: 'a', name: 'Google', provider: 'antigravity' },
+          { id: 'o', name: 'Local', provider: 'ollama' },
+        ],
+        sessions: [],
+      }),
+    ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Usage', exact: true }).click();
+  const usage = page.getByRole('dialog', { name: 'Provider usage' });
+  await expect(usage).toContainText('Work');
+  await expect(usage).toContainText('Google');
+  await expect(usage).not.toContainText('Local');
+  await expect(usage).toContainText('use /usage in Claude Code');
+  await expect(usage).toContainText('No quota data available');
+});
+
+test('usage displays Codex windows and Antigravity model groups', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [
+          { id: 'g', name: 'Codex', provider: 'gpt' },
+          { id: 'a', name: 'Antigravity', provider: 'antigravity' },
+        ],
+        sessions: [],
+        usage: [
+          {
+            accountId: 'g',
+            updatedAt: Date.now(),
+            source: 'codex-cli',
+            windows: [
+              { windowMinutes: 299, usedPercent: 23, resetsAt: Date.now() + 60000 },
+              { windowMinutes: 43200, usedPercent: 42, resetsAt: Date.now() + 60000 },
+            ],
+          },
+          {
+            accountId: 'a',
+            updatedAt: Date.now(),
+            source: 'antigravity-cli',
+            windows: [
+              {
+                group: 'Gemini Models',
+                windowMinutes: 300,
+                usedPercent: 10,
+                resetsAt: Date.now() + 60000,
+              },
+              {
+                group: 'Claude Models',
+                windowMinutes: 10080,
+                usedPercent: 55,
+                resetsAt: Date.now() + 60000,
+              },
+            ],
+          },
+        ],
+      }),
+    ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Usage', exact: true }).click();
+  const usage = page.getByRole('dialog', { name: 'Provider usage' });
+  for (const value of ['23%', '42%', 'Gemini Models', '10%', 'Claude Models', '55%']) {
+    await expect(usage).toContainText(value);
+  }
+});
+
+test('Claude usage resets at the reported deadline without a refresh request', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-06T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-11-06T12:00:01Z'));
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [{ id: 'c', name: 'Claude', provider: 'claude' }],
+        sessions: [],
+        usage: [
+          {
+            accountId: 'c',
+            updatedAt: Date.now(),
+            source: 'claude-cli',
+            windows: [{ windowMinutes: 300, usedPercent: 37, resetsAt: Date.now() + 5000 }],
+          },
+        ],
+      }),
+    ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Usage', exact: true }).click();
+  const usage = page.getByRole('dialog', { name: 'Provider usage' });
+  await expect(usage).toContainText('37%');
+  await page.clock.fastForward(5100);
+  await expect(usage).toContainText('0%');
+  await expect(usage).not.toContainText('37%');
+});
+
 test('first run, provider controls and honest browser boundary', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -352,7 +464,7 @@ test('Orchestra cards show questions, an editable plan and live progress', async
     activity: [{ kind: 'orchestra', text: JSON.stringify(st) }],
   });
   await page.addInitScript(
-    ([q, p, r]) =>
+    ([q, p, r, i]) =>
       localStorage.setItem(
         'lumen-preview-v1',
         JSON.stringify({
@@ -371,7 +483,7 @@ test('Orchestra cards show questions, an editable plan and live progress', async
               updatedAt: 1,
             },
           ],
-          messages: { orc: [q, p, r] },
+          messages: { orc: [q, p, r, i] },
         }),
       ),
     [
@@ -391,10 +503,33 @@ test('Orchestra cards show questions, an editable plan and live progress', async
               endedAt: 2001,
             }),
             sub('s2', 'UI', 'g', { status: 'failed', output: 'Rate limit reached' }),
+            sub('s3', 'Docs', 'g', { status: 'queued' }),
           ],
           steps: [{ name: 'Integration', status: 'running', detail: '' }],
+          queue: {
+            running: 0,
+            admitted: 2,
+            concurrent: 6,
+            total: 2,
+            waiting: [{ id: 's3', reason: 'total-cap' }],
+            wakeAt: null,
+          },
         }),
         'Final summary',
+      ),
+      msg(
+        'i',
+        state('interrupted', {
+          resumable: true,
+          notice: 'Could not verify that these subtasks stopped: Tests.',
+          subtasks: [
+            sub('s1', 'Lint', 'c', { status: 'done', output: 'Lint clean' }),
+            sub('s2', 'Tests', 'g', {
+              status: 'interrupted',
+              output: 'Interrupted: Lumen was closed.',
+            }),
+          ],
+        }),
       ),
     ],
   );
@@ -412,12 +547,60 @@ test('Orchestra cards show questions, an editable plan and live progress', async
   await expect(plan.getByRole('button', { name: 'Remove API' })).toBeDisabled();
   await plan.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByRole('alert')).toContainText('desktop app');
-  const progress = page.getByRole('region', { name: 'Orchestra progress' });
+  const progress = page.getByRole('region', { name: 'Orchestra progress' }).first();
   await expect(progress.getByText('2s')).toBeVisible();
   await expect(progress.getByLabel('Failed')).toBeVisible();
+  await expect(progress.getByLabel('Queued')).toBeVisible();
+  await expect(progress.getByText('Subtask limit reached: s3 (2 of 2 admitted)')).toBeVisible();
+  await expect(progress.getByRole('button', { name: 'Allow 1 more' })).toBeVisible();
   await progress.getByText('API', { exact: true }).click();
   await expect(progress.getByText('API ready')).toBeVisible();
   await expect(page.getByText('Final summary')).toBeVisible();
+  const resumed = page.getByRole('region', { name: 'Orchestra progress' }).last();
+  await expect(resumed.getByText(/Completed subtasks are kept/)).toBeVisible();
+  await expect(resumed.getByLabel('Interrupted')).toBeVisible();
+  await expect(resumed.getByText(/could not verify/i)).toBeVisible();
+  await expect(resumed.getByRole('button', { name: 'Resume anyway' })).toBeVisible();
+  await resumed.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('desktop app');
+});
+
+test('Orchestra limits are optional and saved from Teamwork settings', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('lumen-preview-settings')) return;
+    localStorage.setItem('lumen-preview-settings', JSON.stringify({ orchestra: true }));
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [
+          { id: 'c', name: 'Personal', provider: 'claude' },
+          { id: 'o', name: 'Local', provider: 'ollama' },
+        ],
+        sessions: [],
+        messages: {},
+      }),
+    );
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Teamwork' }).click();
+  const limits = page.getByRole('group', { name: 'Orchestra limits' });
+  const agents = limits.getByRole('spinbutton', { name: /Simultaneous agents/ });
+  await expect(agents).toHaveAttribute('placeholder', '6');
+  await agents.fill('2');
+  await agents.press('Enter');
+  // Fields are disabled while a save is in flight; wait for it before the next edit.
+  await expect(agents).toBeEnabled();
+  await limits.getByRole('spinbutton', { name: /Claude quota threshold/ }).fill('80');
+  await limits.getByRole('spinbutton', { name: /Claude quota threshold/ }).blur();
+  await expect(limits.getByRole('spinbutton', { name: /Ollama/ })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Teamwork' }).click();
+  await expect(limits.getByRole('spinbutton', { name: /Simultaneous agents/ })).toHaveValue('2');
+  await expect(limits.getByRole('spinbutton', { name: /Claude quota threshold/ })).toHaveValue(
+    '80',
+  );
 });
 
 test('the Orchestra switch shows a composer badge that turns it off', async ({ page }) => {
@@ -460,4 +643,48 @@ test('choosing File edits with Antigravity connected warns once, unless hidden',
   await access.selectOption('read-only');
   await access.selectOption('file-edits');
   await expect(notice).toHaveCount(0);
+});
+
+test('reasoning folds away under a chevron and the reply shows only the answer', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('lumen-preview-v1')) return;
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [{ id: 'c', name: 'Personal', provider: 'claude' }],
+        sessions: [
+          {
+            id: 'chat',
+            title: 'Reasoning fixture',
+            status: 'completed',
+            pinned: false,
+            workspace: 'C:/Work',
+            updatedAt: 1,
+          },
+        ],
+        messages: {
+          chat: [
+            { id: 'u', role: 'user', text: 'Question?', activity: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: '<think>weighing options</think>The answer is 42',
+              activity: [{ kind: 'thinking', text: 'native thought' }],
+            },
+          ],
+        },
+      }),
+    );
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Reasoning fixture/ }).click();
+  await expect(page.getByText('The answer is 42')).toBeVisible();
+  await expect(page.getByText('weighing options')).toBeHidden();
+  await expect(page.getByText('native thought')).toBeHidden();
+  await page.getByText('Reasoning', { exact: true }).click();
+  await expect(page.getByText('weighing options')).toBeVisible();
+  await expect(page.getByText('native thought')).toBeVisible();
+  await expect(page.getByText('Activity & diagnostics')).toHaveCount(0);
 });

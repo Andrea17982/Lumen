@@ -1,0 +1,73 @@
+.gatekeeper-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.gatekeeper-panel h3,
+.gatekeeper-panel p {
+  margin: 0;
+}
+.gatekeeper-request,
+.gatekeeper-whitelist {
+  border: 1px solid var(--border, #586171);
+  border-radius: 10px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.gatekeeper-heading,
+.gatekeeper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.gatekeeper-heading {
+  justify-content: space-between;
+}
+.gatekeeper-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow: auto;
+  background: var(--bg, #151922);
+  color: var(--text, #eef0f5);
+  padding: 12px;
+  border-radius: 6px;
+  margin: 6px 0;
+  tab-size: 4;
+}
+.gatekeeper-panel code,
+.gatekeeper-identity {
+  overflow-wrap: anywhere;
+}
+.gatekeeper-identity,
+.gatekeeper-detail {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.gatekeeper-panel summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.gatekeeper-note {
+  display: grid;
+  gap: 6px;
+}
+.gatekeeper-note textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+.gatekeeper-panel button,
+.gatekeeper-panel select,
+.gatekeeper-panel textarea {
+  font: inherit;
+}
+.gatekeeper-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.gatekeeper-panel [role='alert'] {
+  color: var(--danger, #ffaaa5);
+}

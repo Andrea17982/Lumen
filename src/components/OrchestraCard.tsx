@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Check, Circle, CircleAlert, LoaderCircle, Workflow, X } from 'lucide-react';
+import {
+  Check,
+  Circle,
+  CircleAlert,
+  CircleMinus,
+  Clock,
+  LoaderCircle,
+  Workflow,
+  X,
+} from 'lucide-react';
+import { QueueNotice } from '../features/orchestra/scheduling';
 import type { Account, Message, OrchestraState } from '../lib/types';
 import { nameOf } from '../lib/util';
 
@@ -12,6 +22,9 @@ function StatusIcon({ status }: { status: string }) {
   if (status === 'running') return <LoaderCircle size={13} className="spin" aria-label="Running" />;
   if (status === 'done') return <Check size={13} aria-label="Done" />;
   if (status === 'failed') return <CircleAlert size={13} aria-label="Failed" />;
+  if (status === 'queued') return <Clock size={13} aria-label="Queued" />;
+  if (status === 'skipped') return <CircleMinus size={13} aria-label="Skipped" />;
+  if (status === 'interrupted') return <CircleAlert size={13} aria-label="Interrupted" />;
   return <Circle size={9} aria-label="Waiting" />;
 }
 
@@ -262,11 +275,18 @@ export default function OrchestraCard({
   return (
     <section className="orchestra-card" aria-label="Orchestra progress">
       {header}
-      {state.stage === 'interrupted' && (
+      {state.stage === 'interrupted' && !state.resumable && (
         <p className="orchestra-warning">
           Interrupted before it finished. Its temporary worktrees were removed.
         </p>
       )}
+      {state.stage === 'interrupted' && state.resumable && (
+        <p className="orchestra-warning">
+          Interrupted when Lumen closed. Completed subtasks are kept; interrupted ones are checked
+          and run again from a clean worktree.
+        </p>
+      )}
+      {state.stage === 'resumed' && <p className="orchestra-warning">Resumed below.</p>}
       {state.subtasks.map((t) => {
         const text = message.live?.[t.id] || t.output;
         return (
@@ -283,6 +303,13 @@ export default function OrchestraCard({
           </details>
         );
       })}
+      {state.stage === 'running' && state.queue && (
+        <QueueNotice
+          queue={state.queue}
+          disabled={busy}
+          onRaise={(extra) => act('orchestra_raise', { messageId: message.id, extra })}
+        />
+      )}
       {state.steps.map((s) => (
         <div key={s.name} className={`orchestra-row step ${s.status}`}>
           <StatusIcon status={s.status} />
@@ -290,6 +317,36 @@ export default function OrchestraCard({
           <small>{s.detail}</small>
         </div>
       ))}
+      {state.stage === 'interrupted' && state.resumable && (
+        <>
+          {state.notice && <p className="orchestra-warning">{state.notice}</p>}
+          <div className="orchestra-actions">
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => act('orchestra_resume', { force: false })}
+            >
+              Resume
+            </button>
+            {state.notice && (
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => act('orchestra_resume', { force: true })}
+              >
+                Resume anyway
+              </button>
+            )}
+            <button
+              className="text-button danger"
+              disabled={busy}
+              onClick={() => act('orchestra_lanes', { keep: false })}
+            >
+              Discard
+            </button>
+          </div>
+        </>
+      )}
       {state.stage === 'failed' && state.lanes.length > 0 && (
         <div className="orchestra-actions">
           <button

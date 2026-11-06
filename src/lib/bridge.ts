@@ -1,6 +1,21 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Account, AppSettings, Message, RunEvent, Session, Workspace } from './types';
+import type {
+  Account,
+  AccountUsage,
+  AppSettings,
+  Message,
+  RunEvent,
+  Session,
+  Workspace,
+} from './types';
+import type { ApprovalRequest, Decision, SessionView } from '../features/gatekeeper/contracts';
+
+export function onUsage(handler: (usage: AccountUsage) => void) {
+  return desktop
+    ? listen<AccountUsage>('lumen:usage', (event) => handler(event.payload))
+    : Promise.resolve(() => {});
+}
 
 export const desktop = isTauri();
 const key = 'lumen-preview-v1';
@@ -9,6 +24,7 @@ function read(): {
   accounts: Account[];
   workspaces?: Workspace[];
   messages?: Record<string, Message[]>;
+  usage?: AccountUsage[];
 } {
   try {
     return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
@@ -29,6 +45,8 @@ function previewSettings(): AppSettings {
     closeToTray: false,
     openAtLogin: false,
     ollamaModel: '',
+    orchestraLimits: { maxConcurrent: null, maxSubtasks: null, quotaThresholds: {} },
+    localAssistant: { enabled: false, model: '', autoTitles: true, timeoutMs: 60_000 },
   };
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(settingsKey) || '{}') };
@@ -101,6 +119,9 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'list_accounts':
       result = data.accounts;
       break;
+    case 'get_usage':
+      result = data.usage || [];
+      break;
     case 'get_settings':
       result = previewSettings();
       break;
@@ -114,6 +135,9 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       break;
     case 'ollama_status':
       result = { installed: false, running: false, models: [], selected: null };
+      break;
+    case 'ollama_models':
+      result = [];
       break;
     case 'api_status':
       result = { running: false, url: 'http://localhost:8317/v1', log: [] };
@@ -161,6 +185,14 @@ export function applyEvent(messages: Message[], event: RunEvent): Message[] {
       }
     }
     if (['start', 'done', 'status'].includes(event.kind)) return m;
+    const last = m.activity.at(-1);
+    // Reasoning streams in fragments; keep them as one block instead of one entry per token.
+    if (event.kind === 'thinking' && last?.kind === 'thinking') {
+      return {
+        ...m,
+        activity: [...m.activity.slice(0, -1), { kind: 'thinking', text: last.text + event.text }],
+      };
+    }
     return { ...m, activity: [...m.activity, { kind: event.kind, text: event.text }].slice(-500) };
   });
 }
@@ -169,4 +201,23 @@ export async function external(url: string) {
     const { openUrl } = await import('@tauri-apps/plugin-opener');
     await openUrl(url);
   } else window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export interface ApprovalSnapshot {
+  requests: ApprovalRequest[];
+  sessions: SessionView[];
+}
+/** Approvals and live provider sessions for one chat. Empty outside the desktop app. */
+export async function approvalSnapshot(chat: string): Promise<ApprovalSnapshot> {
+  if (!desktop) return { requests: [], sessions: [] };
+  return invoke<ApprovalSnapshot>('gatekeeper_snapshot', { chat });
+}
+/** Sends only the request ID, scope and action; the native broker holds the request itself. */
+export async function decideApproval(decision: Decision): Promise<void> {
+  if (!desktop) throw new Error('Approvals need the Lumen desktop app.');
+  await invoke('gatekeeper_decide', { decision });
+}
+/** Fires on every approval change, and when the listener lagged and the snapshot must reload. */
+export function onApprovalChange(handler: () => void) {
+  return desktop ? listen('lumen:gatekeeper', () => handler()) : Promise.resolve(() => {});
 }

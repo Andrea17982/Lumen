@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 91,
+  "method": "tools/call",
+  "params": {
+    "name": "approve",
+    "arguments": {
+      "tool_name": "Edit",
+      "input": {
+        "file_path": "src/example.ts",
+        "old_string": "before",
+        "new_string": "after",
+        "replace_all": false
+      },
+      "tool_use_id": "toolu_edit"
+    }
+  }
+}

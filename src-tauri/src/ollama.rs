@@ -6,6 +6,8 @@
 use crate::models::{ModelInfo, Provider};
 use crate::providers;
 use serde::Serialize;
+use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -118,6 +120,81 @@ pub async fn catalog(pinned: &str) -> Result<Vec<ModelInfo>, String> {
     }])
 }
 
+/// Model names are passed as CLI arguments, so anything that could read as a flag is refused.
+pub fn valid_model(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 120
+        && !name.starts_with('-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._:/-".contains(c))
+}
+
+/// Drops terminal control sequences (cursor moves, colors) from CLI output.
+pub fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.as_str().starts_with('[') {
+                chars.next();
+                for d in chars.by_ref() {
+                    if d.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// One non-interactive answer from a local model. The prompt goes through stdin, so it
+/// never appears in the process arguments. Errors start with `model-missing:` or
+/// `unavailable:` so the frontend can tell them apart.
+pub async fn generate(model: &str, prompt: &str, timeout_ms: u64) -> Result<String, String> {
+    if !valid_model(model) {
+        return Err("unavailable: Choose a valid local model in Settings.".into());
+    }
+    // `ollama run` would pull a missing model from the registry, so check the local list first.
+    let installed = list().await.map_err(|e| format!("unavailable: {e}"))?;
+    let known = |m: &LocalModel| m.name == model || m.name == format!("{model}:latest");
+    if !installed.iter().any(known) {
+        return Err("model-missing: The selected model is not installed.".into());
+    }
+    let mut c = providers::command(&Provider::Ollama).map_err(|e| format!("unavailable: {e}"))?;
+    c.arg("run")
+        .arg(model)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = c.spawn().map_err(|e| format!("unavailable: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(prompt.as_bytes())
+            .await
+            .map_err(|e| format!("unavailable: {e}"))?;
+    }
+    let out = tokio::time::timeout(
+        std::time::Duration::from_millis(timeout_ms),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| "unavailable: Ollama took too long.".to_string())?
+    .map_err(|e| format!("unavailable: {e}"))?;
+    if !out.status.success() {
+        return Err(
+            "unavailable: Ollama did not answer. Open the Ollama app and try again.".into(),
+        );
+    }
+    Ok(strip_ansi(&String::from_utf8_lossy(&out.stdout))
+        .trim()
+        .to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +214,30 @@ tinyllama:latest   2644915ede35    637 MB    5 months ago\n";
         );
         assert_eq!(choose(&models, "missing").unwrap().name, "qwen2.5:7b");
         assert!(parse_list("NAME    ID    SIZE    MODIFIED \n").is_empty());
+    }
+    #[test]
+    fn refuses_flag_like_and_odd_model_names() {
+        assert!(valid_model("qwen2.5:7b"));
+        assert!(valid_model("library/llama3.2"));
+        assert!(!valid_model("--insecure"));
+        assert!(!valid_model("llama 3; rm"));
+        assert!(!valid_model(""));
+    }
+    /// Needs a running Ollama with an installed model: `cargo test ollama -- --ignored`.
+    #[tokio::test]
+    #[ignore]
+    async fn answers_from_the_local_daemon_and_never_pulls() {
+        let models = list().await.expect("Ollama is running");
+        let model = models.first().expect("one model installed").name.clone();
+        let answer = generate(&model, "Reply with the single word: pong", 120_000)
+            .await
+            .expect("local answer");
+        assert!(!answer.is_empty());
+        let missing = generate("lumen-test-missing-model", "hi", 5_000).await;
+        assert!(missing.unwrap_err().starts_with("model-missing:"));
+    }
+    #[test]
+    fn strips_terminal_sequences() {
+        assert_eq!(strip_ansi("\u{1b}[?25lHello\u{1b}[0m world"), "Hello world");
     }
 }

@@ -819,12 +819,79 @@ label {
     monospace;
   margin: 9px 0;
 }
-.working {
+.working-indicator {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
+  margin: 10px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+.working-dots i {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dot-blink 1.4s infinite ease-in-out both;
+}
+.working-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.working-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+.reasoning {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.reasoning > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+}
+.reasoning > summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning > summary svg {
+  transition: transform 0.15s ease;
+}
+.reasoning[open] > summary svg {
+  transform: rotate(180deg);
+}
+.reasoning pre {
+  max-height: 250px;
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    11px/1.6 'Cascadia Code',
+    Consolas,
+    monospace;
+}
+@keyframes dot-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 .spin {
   animation: spin 1.3s linear infinite;
@@ -1925,12 +1992,6 @@ footer.about .version {
   display: flex;
   align-items: center;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.message:hover .message-actions,
-.message:focus-within .message-actions {
-  opacity: 1;
 }
 .audit-button {
   display: inline-flex;
@@ -2562,4 +2623,37 @@ footer.about .version {
   display: inline;
   width: auto;
   margin: 0;
+}
+
+.draft-sheet {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.draft-sheet > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.draft-panel {
+  display: grid;
+  gap: 8px;
+}
+.draft-panel textarea {
+  min-height: 96px;
+  resize: vertical;
+  font: inherit;
+}
+.draft-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.draft-panel [role='alert'] {
+  margin: 0;
+  color: var(--danger, #c0392b);
 }

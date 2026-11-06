@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.4.0"
+version = "0.4.2"
 description = "A quiet desktop workspace for Claude Code and Codex"
 authors = ["Andrea17982"]
 edition = "2021"
@@ -31,6 +31,8 @@ toml = "0.8"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 tokio-stream = "0.1"
 ignore = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+lumen-gatekeeper = { path = "../src/features/gatekeeper" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

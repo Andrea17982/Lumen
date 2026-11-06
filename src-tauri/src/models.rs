@@ -71,6 +71,8 @@ pub enum AccessMode {
     ReadOnly,
     FileEdits,
     Autopilot,
+    /// Claude asks the user, through the Gatekeeper, before each action that needs permission.
+    Ask,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,7 +98,7 @@ pub struct Activity {
     pub kind: String,
     pub text: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RunOptions {
     pub mode: String,
@@ -170,6 +172,8 @@ pub enum AutoPolicy {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     pub used_percent: f64,
     pub resets_at: i64,
     pub window_minutes: i64,

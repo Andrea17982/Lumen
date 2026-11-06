@@ -2,6 +2,17 @@
 
 Lumen lets Claude Code, Codex and the other connected CLIs work together. Every feature is one click or on by default, and runs through the official CLIs. Lumen never calls provider APIs or reads credentials.
 
+## New in 0.4.2
+
+- **Working indicator** under the last answer while an agent works: *Working*, *Thinking it through* or *Calling a tool*, with animated dots.
+- **Reasoning in a disclosure**, closed by default, instead of inside the answer. Inline `<think>` blocks from local models are separated too.
+- **Commit message draft** above the composer, generated from uncommitted changes. **Copy message** copies it; Lumen never commits.
+- **Editable handoff draft** on long conversations. **Continue in a fresh session** uses your revised text.
+- **Ollama titles**: after the first answer, chats with a derived title get a short title from the local model. Renamed chats are never touched.
+- **Orchestra limits** in Settings → Teamwork: simultaneous agents, total subtasks per run and a per-provider quota threshold. Waiting subtasks show "Queued" and start when a slot frees. Ollama is not listed.
+- **Orchestra Resume**: a run interrupted by closing Lumen shows **Resume** or **Discard** at the next start. Completed results are kept, and attempts already used still count.
+- **Approve each action** (Claude only): a permission mode where every write or command asks for approval in the chat panel. Codex does not support it yet.
+
 ## New in 0.4
 
 ### Orchestra

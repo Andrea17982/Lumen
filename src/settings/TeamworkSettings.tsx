@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { saveSettings, useAppSettings } from '../lib/settings';
-import type { AppSettings } from '../lib/types';
+import type { Account, AppSettings, Provider } from '../lib/types';
+import { NO_LIMITS, OrchestraLimitsSettings } from '../features/orchestra/scheduling';
 import { Switch } from './controls';
+import LocalAssistantSettings from '../features/local-assistant/LocalAssistantSettings';
+import { localAssistant } from '../features/local-assistant/instance';
 
 /** Settings → Teamwork: how the providers help each other. */
 export default function TeamworkSettings({
   advanced,
+  accounts,
   onError,
 }: {
   advanced: boolean;
+  accounts: Account[];
   onError: (s: string) => void;
 }) {
   const s = useAppSettings(onError);
@@ -24,6 +29,9 @@ export default function TeamworkSettings({
     }
   }
   if (!s) return null;
+  const providers = [...new Set(accounts.map((a) => a.provider))].filter(
+    (p): p is Provider => p !== 'ollama',
+  );
   return (
     <section className="settings-section">
       <h3>Teamwork</h3>
@@ -35,12 +43,25 @@ export default function TeamworkSettings({
         disabled={busy}
         onChange={(v) => void save({ ...s, orchestra: v })}
       />
+      {s.orchestra && (
+        <OrchestraLimitsSettings
+          value={s.orchestraLimits ?? NO_LIMITS}
+          providers={providers}
+          disabled={busy}
+          onChange={(orchestraLimits) => void save({ ...s, orchestraLimits })}
+        />
+      )}
       <Switch
         label="Switch on rate limit"
         hint="If one provider hits its limit, another continues the same message."
         checked={s.autoFallback}
         disabled={busy}
         onChange={(v) => void save({ ...s, autoFallback: v })}
+      />
+      <LocalAssistantSettings
+        assistant={localAssistant}
+        config={s.localAssistant}
+        onChange={(next) => void save({ ...s, localAssistant: next })}
       />
       {advanced && (
         <>

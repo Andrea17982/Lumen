@@ -1,4 +1,5 @@
 mod api;
+mod approvals;
 mod catalog;
 mod context;
 mod gitops;
@@ -9,6 +10,7 @@ mod ollama;
 mod orchestra;
 mod providers;
 mod router;
+mod scheduling;
 mod settings;
 mod store;
 mod tray;
@@ -36,7 +38,11 @@ pub struct Core {
     limits: limits::Limits,
     settings: Mutex<settings::AppSettings>,
     api: tokio::sync::Mutex<Option<api::Running>>,
+    /// Approval journal for Ask-first turns; None when it could not be opened.
+    approvals: Option<lumen_gatekeeper::Gatekeeper>,
     api_log: Mutex<VecDeque<api::ApiLog>>,
+    /// Extra subtasks the user admitted beyond the total cap, per running Orchestra message.
+    orchestra_raises: Mutex<HashMap<String, usize>>,
 }
 impl Core {
     /// Signal every running job to stop; true when some were running.
@@ -627,6 +633,7 @@ pub(crate) async fn headless(
                     model: Some(&selected.id),
                     effort: &effort,
                     access: AccessMode::ReadOnly,
+                    approvals: None,
                 },
                 rx,
                 |act| match act.kind.as_str() {
@@ -684,6 +691,69 @@ fn fix_path() {
     }
 }
 
+/// Forwards Gatekeeper changes to the window. A lagged listener asks the UI to reload its snapshot.
+fn relay_approvals(app: tauri::AppHandle, keeper: lumen_gatekeeper::Gatekeeper) {
+    let mut rx = keeper.subscribe();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let _ = app.emit("lumen:gatekeeper", event);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    let _ = app.emit("lumen:gatekeeper", serde_json::json!({"resync": true}));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApprovalSnapshot {
+    requests: Vec<lumen_gatekeeper::ApprovalRequest>,
+    sessions: Vec<lumen_gatekeeper::SessionView>,
+}
+
+/// Approvals and live provider sessions belonging to one chat.
+#[tauri::command]
+fn gatekeeper_snapshot(
+    core: tauri::State<'_, Arc<Core>>,
+    chat: String,
+) -> Result<ApprovalSnapshot, String> {
+    let keeper = core
+        .approvals
+        .as_ref()
+        .ok_or("unavailable: The approval journal could not be opened.")?;
+    Ok(ApprovalSnapshot {
+        requests: keeper
+            .snapshot()?
+            .into_iter()
+            .filter(|r| r.scope.session_id == chat)
+            .collect(),
+        sessions: keeper
+            .sessions()?
+            .into_iter()
+            .filter(|s| s.scope.session_id == chat)
+            .collect(),
+    })
+}
+
+/// The renderer sends only the request ID, scope and action. The broker keeps the immutable request.
+#[tauri::command]
+fn gatekeeper_decide(
+    core: tauri::State<'_, Arc<Core>>,
+    decision: lumen_gatekeeper::Decision,
+) -> Result<(), String> {
+    let keeper = core
+        .approvals
+        .as_ref()
+        .ok_or("unavailable: The approval journal could not be opened.")?;
+    core.store.session(&decision.scope.session_id)?;
+    keeper.decide(decision)
+}
+
 pub fn run() {
     #[cfg(unix)]
     fix_path();
@@ -722,6 +792,12 @@ pub fn run() {
             std::fs::create_dir_all(root.join("accounts"))?;
             let db = store::Store::open(&root.join("lumen.db")).map_err(std::io::Error::other)?;
             let prefs = settings::AppSettings::load(&root);
+            // Opened once per app run; a failure only disables Ask-first turns.
+            let journal = lumen_gatekeeper::Gatekeeper::open(
+                root.join("gatekeeper.sqlite"),
+                std::time::Duration::from_secs(300),
+            )
+            .ok();
             let core = Arc::new(Core {
                 store: db,
                 root,
@@ -731,12 +807,17 @@ pub fn run() {
                 workspace_locks: Mutex::new(HashMap::new()),
                 catalogs: Mutex::new(HashMap::new()),
                 usage_lock: Mutex::new(()),
+                orchestra_raises: Mutex::new(HashMap::new()),
                 limits: Default::default(),
                 settings: Mutex::new(prefs.clone()),
                 api: tokio::sync::Mutex::new(None),
                 api_log: Mutex::new(VecDeque::new()),
+                approvals: journal,
             });
             app.manage(core.clone());
+            if let Some(keeper) = core.approvals.clone() {
+                relay_approvals(app.handle().clone(), keeper);
+            }
             orchestra::recover(&core);
             let handle = app.handle().clone();
             let _ = tray::sync_tray(&handle, prefs.close_to_tray);
@@ -773,6 +854,9 @@ pub fn run() {
             turns::rewind_preview,
             turns::rewind,
             turns::compact_session,
+            turns::working_diff,
+            gatekeeper_snapshot,
+            gatekeeper_decide,
             cancel_run,
             project_context,
             save_project_context,
@@ -780,10 +864,14 @@ pub fn run() {
             save_settings,
             tray::quit_app,
             ollama_status,
+            ollama_models,
+            ollama_generate,
             orchestra::orchestra_answer,
             orchestra::orchestra_approve,
             orchestra::orchestra_cancel,
             orchestra::orchestra_lanes,
+            orchestra::orchestra_raise,
+            orchestra::orchestra_resume,
             orchestra::orchestra_init_git,
             api_status,
             provider_health,
@@ -859,18 +947,27 @@ fn save_usage(core: tauri::State<Arc<Core>>, mut usage: AccountUsage) -> Result<
     }
     usage.updated_at = now();
     usage.source = "manual".into();
-    write_usage(&core, usage)
+    write_usage(&core, usage).map(|_| ())
 }
-fn write_usage(core: &Core, usage: AccountUsage) -> Result<(), String> {
+fn write_usage(core: &Core, mut usage: AccountUsage) -> Result<AccountUsage, String> {
     let _lock = core.usage_lock.lock().map_err(|_| "Usage lock failed")?;
     let mut data = read_usage_file(core)?;
+    if usage.source == "claude-cli" {
+        if let Some(previous) = data
+            .iter()
+            .find(|u| u.account_id == usage.account_id && u.source == usage.source)
+        {
+            usage::merge_claude_windows(&mut usage, previous);
+        }
+    }
     data.retain(|u| u.account_id != usage.account_id);
-    data.push(usage);
+    data.push(usage.clone());
     std::fs::write(
         core.root.join("usage.json"),
         serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?,
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    Ok(usage)
 }
 #[tauri::command]
 async fn refresh_usage(
@@ -879,8 +976,16 @@ async fn refresh_usage(
 ) -> Result<AccountUsage, String> {
     let a = account(&core, &id)?;
     let snapshot = usage::read(&a, &config_dir(&core, &a)).await?;
-    write_usage(&core, snapshot.clone())?;
-    Ok(snapshot)
+    write_usage(&core, snapshot)
+}
+fn record_claude_usage(core: &Core, app: &tauri::AppHandle, account_id: &str, raw: &str) {
+    if let Ok(value) = serde_json::from_str(raw) {
+        if let Some(snapshot) = usage::claude_event(account_id, &value) {
+            if let Ok(snapshot) = write_usage(core, snapshot) {
+                let _ = app.emit("lumen:usage", snapshot);
+            }
+        }
+    }
 }
 #[tauri::command]
 fn integration_status(core: tauri::State<Arc<Core>>) -> Result<serde_json::Value, String> {
@@ -894,6 +999,38 @@ async fn ollama_status(core: tauri::State<'_, Arc<Core>>) -> Result<ollama::Olla
         .map(|s| s.ollama_model.clone())
         .unwrap_or_default();
     Ok(ollama::status(&pinned).await)
+}
+/// Local helper: refused unless the user turned it on, so the backend never runs it unasked.
+#[tauri::command]
+async fn ollama_models(core: tauri::State<'_, Arc<Core>>) -> Result<Vec<String>, String> {
+    let on = core
+        .settings
+        .lock()
+        .map(|s| s.local_assistant.enabled)
+        .unwrap_or(false);
+    if !on {
+        return Err("disabled: The local assistant is turned off.".into());
+    }
+    let models = ollama::list()
+        .await
+        .map_err(|e| format!("unavailable: {e}"))?;
+    Ok(models.into_iter().map(|m| m.name).collect())
+}
+#[tauri::command]
+async fn ollama_generate(
+    core: tauri::State<'_, Arc<Core>>,
+    model: String,
+    prompt: String,
+) -> Result<String, String> {
+    let (on, timeout_ms) = core
+        .settings
+        .lock()
+        .map(|s| (s.local_assistant.enabled, s.local_assistant.timeout_ms))
+        .unwrap_or((false, 60_000));
+    if !on {
+        return Err("disabled: The local assistant is turned off.".into());
+    }
+    ollama::generate(&model, &prompt, timeout_ms).await
 }
 #[tauri::command]
 fn install_skill(core: tauri::State<Arc<Core>>, path: String) -> Result<(), String> {

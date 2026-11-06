@@ -1,3 +1,5 @@
+import type { OrchestraLimits } from '../features/orchestra/scheduling/limits';
+import type { LocalAssistantConfig } from '../features/local-assistant/types';
 export type Provider = 'claude' | 'gpt' | 'gemini' | 'antigravity' | 'ollama';
 export type Mode = Provider | 'auto' | 'both';
 export type Status = 'idle' | 'waiting' | 'running' | 'completed' | 'interrupted' | 'error';
@@ -16,7 +18,7 @@ export interface Workspace {
   name: string;
   folder: string;
 }
-export type AccessMode = 'read-only' | 'file-edits' | 'autopilot';
+export type AccessMode = 'read-only' | 'file-edits' | 'autopilot' | 'ask';
 export interface ModelInfo {
   id: string;
   name: string;
@@ -54,10 +56,13 @@ export interface OrchestraSubtask {
   agent: string;
   model: string;
   effort: string;
+  pinned?: boolean;
+  /** pending · queued · running · done · failed · skipped · interrupted */
   status: string;
   output: string;
   startedAt: number;
   endedAt: number;
+  attempts?: number;
 }
 export interface OrchestraState {
   stage: string;
@@ -75,6 +80,21 @@ export interface OrchestraState {
   readOnly: boolean;
   steps: { name: string; status: string; detail: string }[];
   lanes: [string, string, string][];
+  queue?: OrchestraQueue | null;
+  /** Interrupted while subtasks ran: completed work is kept and the rest can resume. */
+  resumable?: boolean;
+  /** Why the last resume was refused. */
+  notice?: string;
+}
+export type WaitReason = 'concurrency' | 'total-cap' | 'probe' | 'cooldown' | 'quota';
+/** Why queued Orchestra subtasks wait, while a run is in progress. */
+export interface OrchestraQueue {
+  running: number;
+  admitted: number;
+  concurrent: number;
+  total: number | null;
+  waiting: { id: string; reason: WaitReason }[];
+  wakeAt: number | null;
 }
 export interface RunOptions {
   mode: Mode;
@@ -97,6 +117,7 @@ export interface Plan {
   reason: string;
 }
 export interface UsageWindow {
+  group?: string;
   usedPercent: number;
   resetsAt: number;
   windowMinutes: number;
@@ -138,6 +159,8 @@ export interface AppSettings {
   closeToTray: boolean;
   openAtLogin: boolean;
   ollamaModel: string;
+  orchestraLimits: OrchestraLimits;
+  localAssistant: LocalAssistantConfig;
 }
 export interface Health {
   accountId: string;

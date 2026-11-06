@@ -1,0 +1,12 @@
+{
+  "id": "patch-request-1",
+  "method": "item/fileChange/requestApproval",
+  "params": {
+    "threadId": "thread-1",
+    "turnId": "turn-1",
+    "itemId": "patch-1",
+    "startedAtMs": 1793923200000,
+    "reason": "Apply the reviewed change",
+    "grantRoot": null
+  }
+}

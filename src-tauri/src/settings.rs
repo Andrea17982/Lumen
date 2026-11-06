@@ -1,6 +1,38 @@
 //! Small persisted preferences that the backend needs (frontend-only ones stay in localStorage).
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
+
+/// Optional Orchestra caps; `None` and missing thresholds mean no cap of the user's own.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OrchestraLimits {
+    pub max_concurrent: Option<usize>,
+    pub max_subtasks: Option<usize>,
+    /// Used percentage per provider id at which it gets no new work.
+    pub quota_thresholds: HashMap<String, f64>,
+}
+
+/// Optional local helper (Ollama) for titles, commit messages and handoff drafts.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LocalAssistantSettings {
+    pub enabled: bool,
+    /// Installed Ollama model used by the helper; empty means none chosen yet.
+    pub model: String,
+    /// Name new chats automatically after their first reply.
+    pub auto_titles: bool,
+    pub timeout_ms: u64,
+}
+impl Default for LocalAssistantSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: String::new(),
+            auto_titles: true,
+            timeout_ms: 60_000,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -24,6 +56,8 @@ pub struct AppSettings {
     pub ollama_model: String,
     /// The one-time "still running in the notification area" notice was shown.
     pub tray_hint_shown: bool,
+    pub orchestra_limits: OrchestraLimits,
+    pub local_assistant: LocalAssistantSettings,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -39,6 +73,8 @@ impl Default for AppSettings {
             open_at_login: false,
             ollama_model: String::new(),
             tray_hint_shown: false,
+            orchestra_limits: OrchestraLimits::default(),
+            local_assistant: LocalAssistantSettings::default(),
         }
     }
 }
@@ -70,6 +106,18 @@ impl AppSettings {
             return Err("The API key must be at least 16 characters".into());
         }
         self.ollama_model = self.ollama_model.trim().chars().take(120).collect();
+        let a = &mut self.local_assistant;
+        a.model = a.model.trim().chars().take(120).collect();
+        a.timeout_ms = a.timeout_ms.clamp(5_000, 300_000);
+        let l = &mut self.orchestra_limits;
+        l.max_concurrent = l.max_concurrent.filter(|&n| n >= 1).map(|n| n.min(32));
+        l.max_subtasks = l.max_subtasks.filter(|&n| n >= 1).map(|n| n.min(999));
+        l.quota_thresholds.retain(|p, v| {
+            ["claude", "gpt", "gemini", "antigravity"].contains(&p.as_str())
+                && v.is_finite()
+                && *v > 0.0
+                && *v < 100.0
+        });
         Ok(())
     }
 }
@@ -82,5 +130,6 @@ mod tests {
         let s: AppSettings = serde_json::from_str(r#"{"autoFallback":false}"#).unwrap();
         assert!(!s.auto_fallback && !s.orchestra && !s.close_to_tray && !s.open_at_login);
         assert!(s.ollama_model.is_empty() && s.self_heal);
+        assert!(!s.local_assistant.enabled && s.local_assistant.auto_titles);
     }
 }

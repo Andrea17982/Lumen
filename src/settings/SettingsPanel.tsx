@@ -202,7 +202,9 @@ export default function SettingsPanel({
                 {advanced && <AutoSettings accounts={accounts} onError={setError} />}
               </>
             )}
-            {current === 'teamwork' && <TeamworkSettings advanced={advanced} onError={setError} />}
+            {current === 'teamwork' && (
+              <TeamworkSettings advanced={advanced} accounts={accounts} onError={setError} />
+            )}
             {current === 'tools' && (
               <>
                 <IntegrationSettings onError={setError} />

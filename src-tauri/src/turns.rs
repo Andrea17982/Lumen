@@ -290,9 +290,23 @@ pub async fn stage(
             model: Some(&selected.id),
             effort: &resolved_effort,
             access,
+            approvals: core
+                .approvals
+                .clone()
+                .map(|keeper| crate::approvals::Approvals {
+                    keeper,
+                    chat: s.id.clone(),
+                }),
         },
         cancel,
         |activity| {
+            if activity.kind == "quota" {
+                crate::record_claude_usage(core, app, &a.id, &activity.text);
+                return;
+            }
+            if activity.kind == "pid" {
+                return;
+            }
             if visible && ["delta", "replace"].contains(&activity.kind.as_str()) {
                 if activity.kind == "delta" {
                     out.text.push_str(&activity.text);
@@ -532,6 +546,7 @@ pub(crate) async fn build_prompt(
         AccessMode::ReadOnly => "Read-only turn. Do not modify files.",
         AccessMode::FileEdits => "File edits are enabled in the chosen workspace.",
         AccessMode::Autopilot => "Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Work autonomously on the requested task.",
+        AccessMode::Ask => "Ask first: each action that needs permission waits for the user to approve or reject it in Lumen. If an action is rejected, do not retry it another way.",
     };
     let shared = integrations::instructions(&core.root)?;
     let notes = context::read_context(&workspace);
@@ -1203,11 +1218,23 @@ pub async fn rewind(
     Ok(messages[pos].text.clone())
 }
 
+/// Uncommitted changes in the session's project, for a commit-message draft. Empty when none.
+#[tauri::command]
+pub async fn working_diff(core: tauri::State<'_, Arc<Core>>, id: String) -> Result<String, String> {
+    let s = core.store.session(&id)?;
+    match gitops::toplevel(Path::new(&s.workspace)).await {
+        Some(top) => gitops::diff_head(&top, 20_000).await,
+        None => Ok(String::new()),
+    }
+}
+
 /// Handoff & Compact: a new conversation seeded with goal, decisions, diff and next step.
+/// A non-empty `summary` (for example a reviewed local draft) replaces the generated package.
 #[tauri::command]
 pub async fn compact_session(
     core: tauri::State<'_, Arc<Core>>,
     id: String,
+    summary: Option<String>,
 ) -> Result<Session, String> {
     let s = core.store.session(&id)?;
     let messages = core.store.messages(&id)?;
@@ -1249,10 +1276,13 @@ pub async fn compact_session(
     } else {
         format!("```diff\n{}\n```", diff.trim())
     };
-    let package = format!(
-        "**Handoff from “{}”**\n\n**Goal**\n\n{goal}\n\n**Recent decisions and results**\n\n{decisions}\n\n**Uncommitted changes**\n\n{diff}\n\n**Next step**\n\nContinue from the latest request: {latest}",
-        s.title
-    );
+    let package = match summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(edited) => format!("**Handoff from “{}”**\n\n{edited}", s.title),
+        None => format!(
+            "**Handoff from “{}”**\n\n**Goal**\n\n{goal}\n\n**Recent decisions and results**\n\n{decisions}\n\n**Uncommitted changes**\n\n{diff}\n\n**Next step**\n\nContinue from the latest request: {latest}",
+            s.title
+        ),
+    };
     let mut fresh = core.store.create(s.workspace.clone())?;
     if let Some(w) = &s.workspace_id {
         fresh = core

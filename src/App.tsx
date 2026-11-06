@@ -18,7 +18,6 @@ import {
   Square,
   X,
   AlertCircle,
-  LoaderCircle,
   Circle,
   RotateCcw,
   Paperclip,
@@ -34,7 +33,25 @@ import QuitConfirm from './components/QuitConfirm';
 import OrchestraCard from './components/OrchestraCard';
 import { saveSettings, useAppSettings } from './lib/settings';
 import SettingsPanel, { type SettingsTab } from './settings/SettingsPanel';
-import { applyEvent, call, desktop, subscribe } from './lib/bridge';
+import {
+  applyEvent,
+  approvalSnapshot,
+  call,
+  decideApproval,
+  desktop,
+  onApprovalChange,
+  onUsage,
+  subscribe,
+  type ApprovalSnapshot,
+} from './lib/bridge';
+import { GatekeeperPanel } from './features/gatekeeper';
+import { usageStatus } from './lib/usage';
+import { localAssistant } from './features/local-assistant/instance';
+import { nameNewChat } from './features/local-assistant/autoTitle';
+import { splitReasoning, workPhase } from './lib/reasoning';
+import { Draft } from './features/local-assistant/draft';
+import DraftSheet from './components/DraftSheet';
+import WorkingIndicator from './components/WorkingIndicator';
 import type {
   Account,
   AccessMode,
@@ -57,6 +74,7 @@ import { errorText, Mark, nameOf } from './lib/util';
 const MessageBody = lazy(() => import('./components/MessageBody'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
 const HIDDEN = [
+  'thinking',
   'checkpoint',
   'lane',
   'worktree',
@@ -88,26 +106,38 @@ function providerOf(m: Message): 'claude' | 'gpt' | null {
 }
 const tokens = (text: string) => Math.ceil(text.length / 4);
 const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-function countdown(until: number) {
-  const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
+function countdown(until: number, now = Date.now()) {
+  const m = Math.max(0, Math.ceil((until - now) / 60000));
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
-function usageBar(label: string, window?: UsageWindow) {
+function usageBar(label: string, window?: UsageWindow, now = Date.now()) {
+  const reset = window ? countdown(window.resetsAt, now) : '';
+  const usedPercent = window && window.resetsAt <= now ? 0 : window?.usedPercent;
   return (
     <div className="usage-meter">
       <span>{label}</span>
       {window ? (
         <>
           <div className="usage-track">
-            <i style={{ width: `${window.usedPercent}%` }} />
+            <i style={{ width: `${usedPercent}%` }} />
           </div>
-          <strong>{Math.round(window.usedPercent)}%</strong>
+          <strong>{Math.round(usedPercent ?? 0)}%</strong>
+          <small>Resets in {reset}</small>
         </>
       ) : (
         <small>Unavailable</small>
       )}
     </div>
   );
+}
+
+function mergeUsage(current: AccountUsage[], incoming: AccountUsage[]): AccountUsage[] {
+  const merged = new Map(current.map((row) => [row.accountId, row]));
+  for (const row of incoming) {
+    const previous = merged.get(row.accountId);
+    if (!previous || row.updatedAt >= previous.updatedAt) merged.set(row.accountId, row);
+  }
+  return [...merged.values()];
 }
 
 export default function App() {
@@ -161,15 +191,55 @@ export default function App() {
   const [renameValue, setRenameValue] = useState('');
   const [plan, setPlan] = useState<Plan | null>(null);
   const [usage, setUsage] = useState<AccountUsage[]>([]);
+  const [usageClock, setUsageClock] = useState(Date.now());
+  const [usageErrors, setUsageErrors] = useState<Record<string, string>>({});
+  const usageRequests = useRef(new Map<string, Promise<void>>());
+  useEffect(() => {
+    const timer = window.setInterval(() => setUsageClock(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const now = Date.now();
+    const nextReset = Math.min(
+      ...usage
+        .flatMap((row) => row.windows.map((w) => w.resetsAt))
+        .filter((time) => Number.isFinite(time) && time > now),
+    );
+    if (!Number.isFinite(nextReset)) return;
+    // Browser timers cannot represent delays beyond approximately 24 days.
+    const timer = window.setTimeout(
+      () => setUsageClock(Date.now()),
+      Math.min(nextReset - now + 1, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [usage, usageClock]);
+  useEffect(() => {
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void onUsage((row) => {
+      setUsage((old) => mergeUsage(old, [row]));
+    }).then((stop) => {
+      if (disposed) stop();
+      else unsubscribe = stop;
+    });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
   const [usageOpen, setUsageOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
   const [copyState, setCopyState] = useState('');
+  const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
   const [autoReview, setAutoReview] = useState(
     () => localStorage.getItem('lumen-auto-review') === 'true',
   );
   const [attached, setAttached] = useState<string[]>([]);
   const appSettings = useAppSettings();
+  useEffect(() => {
+    if (appSettings) localAssistant.configure(appSettings.localAssistant);
+  }, [appSettings]);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [projectOpen, setProjectOpen] = useState(false);
   const [health, setHealth] = useState<Health[]>([]);
@@ -224,42 +294,34 @@ export default function App() {
     [],
   );
   const loadUsage = useCallback(async () => {
-    setUsage(await call<AccountUsage[]>('get_usage'));
-    for (const a of accounts.filter((account) => account.provider === 'gpt')) {
-      try {
-        const row = await call<AccountUsage>('refresh_usage', { id: a.id });
-        setUsage((old) => [...old.filter((x) => x.accountId !== row.accountId), row]);
-      } catch {
-        /* Keep any saved snapshot when the CLI cannot refresh. */
-      }
-    }
+    const saved = await call<AccountUsage[]>('get_usage');
+    setUsage((old) => mergeUsage(old, saved));
+    await Promise.all(
+      accounts
+        .filter((a) => ['gpt', 'antigravity'].includes(a.provider))
+        .map((a) => {
+          const pending = usageRequests.current.get(a.id);
+          if (pending) return pending;
+          const request = (async () => {
+            try {
+              const row = await call<AccountUsage>('refresh_usage', { id: a.id });
+              setUsage((old) => mergeUsage(old, [row]));
+              setUsageErrors((old) => ({ ...old, [a.id]: '' }));
+            } catch (error) {
+              setUsageErrors((old) => ({ ...old, [a.id]: errorText(error) }));
+            }
+          })().finally(() => usageRequests.current.delete(a.id));
+          usageRequests.current.set(a.id, request);
+          return request;
+        }),
+    );
   }, [accounts]);
   useEffect(() => {
-    let stopped = false;
-    const refresh = async () => {
-      try {
-        const rows = await call<AccountUsage[]>('get_usage');
-        if (!stopped) setUsage(rows);
-        for (const a of accounts.filter((account) => account.provider === 'gpt')) {
-          try {
-            const row = await call<AccountUsage>('refresh_usage', { id: a.id });
-            if (!stopped)
-              setUsage((old) => [...old.filter((x) => x.accountId !== row.accountId), row]);
-          } catch {
-            /* Keep the most recent saved snapshot when the CLI is unavailable. */
-          }
-        }
-      } catch {
-        /* Usage is optional when running in browser preview. */
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [accounts]);
+    const refreshUsage = () => void loadUsage().catch(() => {});
+    refreshUsage();
+    const timer = window.setInterval(refreshUsage, 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadUsage]);
   useEffect(() => {
     void refresh().catch((e) => setError(errorText(e)));
   }, [refresh]);
@@ -328,6 +390,19 @@ export default function App() {
             })
             .catch((e) => setError(errorText(e)));
         void refreshRef.current().catch((e) => setError(errorText(e)));
+        const chat = activeSession.current;
+        if (chat?.id === event.sessionId)
+          void call<Message[]>('get_messages', { id: chat.id })
+            .then((m) => nameNewChat(localAssistant, chat, m, () => activeSession.current?.title))
+            .then((title) => {
+              if (!title) return;
+              if (activeSession.current?.id === chat.id)
+                activeSession.current = { ...activeSession.current, title };
+              return refreshRef.current();
+            })
+            .catch(() => {
+              // The helper is optional: a failed title keeps the derived one.
+            });
       }
     }).then((fn) => {
       if (gone) fn();
@@ -664,12 +739,60 @@ export default function App() {
       setError(errorText(e));
     }
   }
-  async function compact() {
+  async function compact(summary?: string) {
     if (!session) return;
     try {
-      const next = await call<Session>('compact_session', { id: session.id });
+      const next = await call<Session>('compact_session', { id: session.id, summary });
       await refresh();
       setSelected(next.id);
+      setSheet(null);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  // A draft belongs to the chat it was opened in.
+  useEffect(() => {
+    setSheet(null);
+  }, [session?.id]);
+  // Approvals are per chat; the native journal pushes every change, so reload on each one.
+  const [approvals, setApprovals] = useState<ApprovalSnapshot>({ requests: [], sessions: [] });
+  useEffect(() => {
+    let alive = true;
+    let stop: (() => void) | undefined;
+    const load = () => {
+      if (!session) return;
+      approvalSnapshot(session.id)
+        .then((next) => alive && setApprovals(next))
+        .catch(() => undefined);
+    };
+    setApprovals({ requests: [], sessions: [] });
+    load();
+    void onApprovalChange(load).then((off) => {
+      if (alive) stop = off;
+      else off();
+    });
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [session?.id]);
+  /** Opens the handoff draft; the conversation text is captured now, generation stays on request. */
+  function openHandoff() {
+    const transcript = messages
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
+      .join('\n\n')
+      .slice(-30_000);
+    setSheet({ kind: 'handoff', draft: Draft.handoff(localAssistant, () => transcript) });
+  }
+  async function openCommit() {
+    if (!session) return;
+    try {
+      const diff = await call<string>('working_diff', { id: session.id });
+      if (!diff.trim()) {
+        setError('There are no uncommitted changes to describe.');
+        return;
+      }
+      setSheet({ kind: 'commit', draft: Draft.commit(localAssistant, () => diff) });
     } catch (e) {
       setError(errorText(e));
     }
@@ -698,6 +821,15 @@ export default function App() {
   }
   const renderMessage = (m: Message, inLane = false) => {
     const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
+    const inline =
+      m.role === 'assistant' ? splitReasoning(m.text) : { reasoning: '', answer: m.text };
+    const reasoning = [
+      ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
+      inline.reasoning,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const isLive = running && m.role === 'assistant' && m.id === messages.at(-1)?.id;
     const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
     const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
     const from = providerOf(m);
@@ -742,7 +874,7 @@ export default function App() {
                 aria-label="Copy response"
                 onClick={() => {
                   void navigator.clipboard
-                    .writeText(m.text)
+                    .writeText(inline.answer)
                     .then(() => {
                       setCopyState(m.id);
                       setTimeout(() => setCopyState(''), 1800);
@@ -755,6 +887,15 @@ export default function App() {
             )}
           </span>
         </div>
+        {reasoning && (
+          <details className="reasoning">
+            <summary>
+              <ChevronDown size={13} />
+              Reasoning
+            </summary>
+            <pre>{reasoning}</pre>
+          </details>
+        )}
         {visible.length > 0 && (
           <details className="activity">
             <summary>
@@ -770,11 +911,9 @@ export default function App() {
               {visible.map((a, i) => (
                 <details key={i}>
                   <summary>
-                    {a.kind === 'thinking'
-                      ? 'Reasoning summary'
-                      : a.kind === 'file'
-                        ? 'File changes'
-                        : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
+                    {a.kind === 'file'
+                      ? 'File changes'
+                      : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
                   </summary>
                   <pre>{a.text}</pre>
                 </details>
@@ -795,8 +934,8 @@ export default function App() {
         )}
         {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
           <div className="prose">
-            <Suspense fallback={<p>{m.text}</p>}>
-              <MessageBody text={m.text} />
+            <Suspense fallback={<p>{inline.answer}</p>}>
+              <MessageBody text={inline.answer} />
             </Suspense>
           </div>
         )}
@@ -830,12 +969,7 @@ export default function App() {
             {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
           </small>
         )}
-        {!m.text && m.role === 'assistant' && running && (
-          <span className="working">
-            <LoaderCircle size={14} className="spin" />
-            Working on it…
-          </span>
-        )}
+        {isLive && <WorkingIndicator phase={workPhase(m.activity.map((a) => a.kind))} />}
       </article>
     );
   };
@@ -1060,23 +1194,55 @@ export default function App() {
                 <X size={16} />
               </button>
             </header>
-            {accounts.length === 0 && <p>No connected providers.</p>}
-            {accounts.map((a) => {
-              const row = usage.find((u) => u.accountId === a.id);
-              const fiveHour = row?.windows.find((w) => w.windowMinutes <= 300);
-              const weekly = row?.windows.find((w) => w.windowMinutes >= 10080);
-              return (
-                <div className="usage-provider" key={a.id}>
-                  <strong>
-                    {nameOf(a.provider)} <small>{a.name}</small>
-                  </strong>
-                  <div>{usageBar('5 hour', fiveHour)}</div>
-                  <div>{usageBar('Weekly', weekly)}</div>
-                </div>
-              );
-            })}
+            {accounts.every((a) => a.provider === 'ollama') && (
+              <p>No cloud providers configured.</p>
+            )}
+            {accounts
+              .filter((a) => a.provider !== 'ollama')
+              .map((a) => {
+                const row = usage.find((u) => u.accountId === a.id);
+                const groups = [...new Set(row?.windows.map((w) => w.group ?? '') ?? [''])];
+                return (
+                  <div className="usage-provider" key={a.id}>
+                    <strong>
+                      {nameOf(a.provider)} <small>{a.name}</small>
+                    </strong>
+                    {groups.map((group) => {
+                      const windows = row?.windows.filter((w) => (w.group ?? '') === group);
+                      return (
+                        <div key={group}>
+                          {group && <small>{group}</small>}
+                          {usageBar(
+                            '5 hour',
+                            windows?.find((w) => w.windowMinutes <= 300),
+                            usageClock,
+                          )}
+                          {usageBar(
+                            'Weekly',
+                            windows?.find((w) => w.windowMinutes >= 10080),
+                            usageClock,
+                          )}
+                        </div>
+                      );
+                    })}
+                    <small className="usage-updated">{usageStatus(row)}</small>
+                    {usageErrors[a.id] && (
+                      <small className="usage-updated" role="status">
+                        Refresh failed: {usageErrors[a.id]}. Showing the last available snapshot.
+                      </small>
+                    )}
+                    {a.provider === 'claude' && (
+                      <small className="usage-updated">
+                        Updated when Claude responds in Lumen; use /usage in Claude Code for an
+                        independent check.
+                      </small>
+                    )}
+                  </div>
+                );
+              })}
             <small className="usage-updated">
-              Updates every 30 seconds. Unsupported provider quotas show as unavailable.
+              Codex and Antigravity refresh is attempted every 30 seconds while the app is open.
+              Claude updates when it responds in Lumen; reset countdowns run locally.
             </small>
           </section>
         </>
@@ -1407,10 +1573,53 @@ export default function App() {
             </div>
           )}
           {session && historyTokens > 40_000 && !running && (
-            <button className="compact-chip" onClick={() => void compact()}>
+            <button className="compact-chip" onClick={openHandoff}>
               <Shrink size={13} />
-              Long conversation · Compact and continue in a fresh session
+              Long conversation · Draft a handoff and continue in a fresh session
             </button>
+          )}
+          {session && !running && !sheet && (
+            <button className="compact-chip" onClick={() => void openCommit()}>
+              <Sparkles size={13} />
+              Draft a commit message for uncommitted changes
+            </button>
+          )}
+          {session &&
+            approvals.requests.some(
+              (r) => r.status === 'pending' || r.delivery === 'uncertain',
+            ) && (
+              <GatekeeperPanel
+                requests={approvals.requests.filter(
+                  (r) => r.status === 'pending' || r.delivery === 'uncertain',
+                )}
+                sessions={approvals.sessions}
+                onDecide={decideApproval}
+              />
+            )}
+          {session && sheet && (
+            <DraftSheet
+              key={sheet.kind}
+              title={sheet.kind === 'commit' ? 'Commit message draft' : 'Handoff draft'}
+              draft={sheet.draft}
+              label={sheet.kind === 'commit' ? 'Commit message' : 'Handoff summary'}
+              useLabel={sheet.kind === 'commit' ? 'Copy message' : 'Continue in a fresh session'}
+              onClose={() => setSheet(null)}
+              onUse={(text) => {
+                if (sheet.kind === 'commit') {
+                  void navigator.clipboard
+                    .writeText(text)
+                    .then(() => setSheet(null))
+                    .catch((e) => setError(errorText(e)));
+                } else void compact(text);
+              }}
+              footer={
+                sheet.kind === 'handoff' ? (
+                  <button className="text-button" onClick={() => void compact()}>
+                    Continue with the built-in summary
+                  </button>
+                ) : null
+              }
+            />
           )}
           {plan && (
             <div className="plan-line">
@@ -1585,6 +1794,7 @@ export default function App() {
                   <option value="read-only">Ask</option>
                   <option value="file-edits">File edits on</option>
                   <option value="autopilot">Autopilot</option>
+                  <option value="ask">Approve each action</option>
                 </select>
               </div>
               <button

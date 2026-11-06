@@ -140,7 +140,7 @@ Key characteristics:
 
 - One principal reading surface, with generous space in the empty state.
 - A frosted session rail and a soft intersecting three-bar mark.
-- Compact controls, subtle dividers, muted metadata, and visible focus.
+- Compact controls, subtle dividers, muted metadata, and a minimal visual treatment.
 - Auto routing selected by default, with provider controls disclosed progressively.
 
 This document records `src/styles.css` and the components in `src/App.tsx`, `src/components/` and `src/settings/`. Tokens above are extracted values; CSS remains the runtime source of truth. Screenshots of the current implementation are in `docs/images/`.
@@ -151,7 +151,7 @@ The palette is cool neutral with a restrained blue primary accent. Frontmatter s
 
 ### Primary
 
-`accent` is the blue used for leading suggestion icons, links, caret, running indicators, and focus outlines. `button` supplies the contrasting solid send and primary-action fill; its foreground is `surface`. Hovered primary actions use `accent`.
+`accent` is the blue used for leading suggestion icons, links, caret, and running indicators. `button` supplies the contrasting solid send and primary-action fill; its foreground is `surface`. Hovered primary actions use `accent`.
 
 ### Neutral
 
@@ -211,7 +211,7 @@ Motion is small and local: button color/background transitions take .16s; sideba
 
 ## Shapes
 
-Use small softened rectangles for compact controls, not oversized pill buttons. Radii range from 4px for keyboard hints and inline code to 6–8px for controls, segments, fields, and rows; suggestions and new conversation use 10px. User message panels use 12px; the composer is the largest recurring rounded container at 17px. Send and avatar controls are circular. Borders are generally 1px in `line`; the accent focus outline is 2px with a 3px offset.
+Use small softened rectangles for compact controls, not oversized pill buttons. Radii range from 4px for keyboard hints and inline code to 6-8px for controls, segments, fields, and rows; suggestions and new conversation use 10px. User message panels use 12px; the composer is the largest recurring rounded container at 17px. Send and avatar controls are circular. Borders are generally 1px in `line`.
 
 ## Components
 
@@ -219,7 +219,7 @@ Use small softened rectangles for compact controls, not oversized pill buttons. 
 
 New conversation is a softly raised full-width 12px control with an icon and keyboard hint. Session rows are compact, left aligned, ellipsized, and 8px rounded; selection uses `selected` plus the theme shadow. Status dots accompany accessible status text, and pins remain small supporting marks. Icon buttons are normally 28px square; account-row icon buttons are 22px wide. Disabled buttons reduce opacity to .42 and stop advertising a pointer cursor. These sizes reflect desktop density, not a verified touch-target system.
 
-Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px padding. They populate a draft and focus the composer. Secondary text actions use `accent`; destructive actions use `error`. Global hover treatment applies only to enabled buttons; visible keyboard focus uses the shared accent outline.
+Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px padding. They populate a draft and focus the composer. Secondary text actions use `accent`; destructive actions use `error`. Global hover treatment applies only to enabled buttons. Controls do not add a visual focus ring; text fields retain the native caret.
 
 ### Composer and fields
 

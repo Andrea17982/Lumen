@@ -215,12 +215,30 @@ pub struct Invocation<'a> {
     pub model: Option<&'a str>,
     pub effort: &'a str,
     pub access: AccessMode,
+    /// Required for `AccessMode::Ask`; other modes never consult it.
+    pub approvals: Option<crate::approvals::Approvals>,
 }
 pub async fn execute(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    if input.access == AccessMode::Ask {
+        if input.account.provider != Provider::Claude {
+            return Err(
+                "Ask first is available for Claude only for now. Choose another permission mode."
+                    .into(),
+            );
+        }
+        let Some(approvals) = input.approvals.clone() else {
+            return Err(
+                "unavailable: The approval journal could not be opened, so Ask first is off."
+                    .into(),
+            );
+        };
+        let exe = std::env::current_exe().map_err(|e| format!("unavailable: {e}"))?;
+        return crate::approvals::claude_turn(input, approvals, &exe, cancel, emit).await;
+    }
     let p = &input.account.provider;
     let mut c = command(p)?;
     isolate(&mut c, p, input.config);
@@ -267,7 +285,7 @@ pub async fn execute(
     run_command(c, &prompt, p, cancel, emit).await
 }
 
-const DENY: [&str; 9] = [
+pub(crate) const DENY: [&str; 9] = [
     "Read(**/.env)",
     "Read(**/.env.*)",
     "Read(**/package-lock.json)",
@@ -379,14 +397,14 @@ pub fn invocation_args(
         Provider::Gemini | Provider::Antigravity => {
             if *p == Provider::Gemini {
                 let permission = match access {
-                    AccessMode::ReadOnly => "--approval-mode=plan",
+                    AccessMode::ReadOnly | AccessMode::Ask => "--approval-mode=plan",
                     AccessMode::FileEdits => "--approval-mode=auto_edit",
                     AccessMode::Autopilot => "--approval-mode=yolo",
                 };
                 args.push(permission.into());
             } else {
                 let permission = match access {
-                    AccessMode::ReadOnly => "--mode=plan",
+                    AccessMode::ReadOnly | AccessMode::Ask => "--mode=plan",
                     AccessMode::FileEdits => "--mode=accept-edits",
                     AccessMode::Autopilot => "--dangerously-skip-permissions",
                 };
@@ -423,7 +441,7 @@ pub fn invocation_args(
     args
 }
 
-async fn run_command(
+pub(crate) async fn run_command(
     mut c: Command,
     prompt: &str,
     p: &Provider,
@@ -440,6 +458,13 @@ async fn run_command(
     let mut child = c
         .spawn()
         .map_err(|e| format!("Cannot start {}: {e}", p.binary()))?;
+    // Callers that must outlive the app (Orchestra recovery) record the process.
+    if let Some(pid) = child.id() {
+        emit(Activity {
+            kind: "pid".into(),
+            text: pid.to_string(),
+        });
+    }
     let mut stdin = child.stdin.take().ok_or("CLI stdin unavailable")?;
     let prompt = prompt.to_owned();
     let writer = tokio::spawn(async move {
@@ -474,7 +499,11 @@ async fn run_command(
                     let line=line.map_err(|e|e.to_string())?;
                     let Some(line)=line else{break};
                     if *p==Provider::Ollama{let chunk=format!("{line}\n");text.push_str(&chunk);emit(Activity{kind:"delta".into(),text:chunk});continue;}
-                    if let Ok(v)=serde_json::from_str::<Value>(&line){for a in normalize(p,&v){
+                    if let Ok(v)=serde_json::from_str::<Value>(&line){
+                        if *p == Provider::Claude && v["type"] == "rate_limit_event" {
+                            emit(Activity { kind: "quota".into(), text: v.to_string() });
+                        }
+                        for a in normalize(p,&v){
                         match a.kind.as_str(){
                             "delta"=>{text.push_str(&a.text);emit(a);},
                             "text"=>{if !text.is_empty(){text.push_str("\n\n");}text.push_str(&a.text);emit(Activity{kind:"replace".into(),text:text.clone()});},
@@ -634,7 +663,9 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(result, prompt);
-        assert_eq!(events.len(), 1);
+        // The process ID first, then the answer.
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, "pid");
         drop(tx);
     }
     #[cfg(windows)]
