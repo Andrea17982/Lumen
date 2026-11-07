@@ -3,6 +3,7 @@ mod approvals;
 mod approvals_codex;
 mod assets;
 mod catalog;
+mod classify;
 mod context;
 mod gitops;
 mod godot;
@@ -653,6 +654,7 @@ pub(crate) async fn headless(
             let mut sent = String::new();
             let result = providers::execute(
                 providers::Invocation {
+                    resume: None,
                     account: a,
                     config: &config_dir(core, a),
                     workspace: &workspace,

@@ -89,6 +89,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
         }
     };
     if *p == Provider::Gpt {
+        if v["type"] == "thread.started" {
+            push("session", v["thread_id"].as_str().unwrap_or("").into());
+        }
         if let Some(item) = v.get("item") {
             let typ = item["type"].as_str().unwrap_or("");
             let phase = v["type"].as_str().unwrap_or("");
@@ -121,6 +124,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             );
         }
     } else if *p == Provider::Claude {
+        if v["type"] == "system" && v["subtype"] == "init" {
+            push("session", v["session_id"].as_str().unwrap_or("").into());
+        }
         if v["type"] == "stream_event" {
             let delta = &v["event"]["delta"];
             if let Some(t) = delta["text"].as_str() {
@@ -235,12 +241,26 @@ pub struct Invocation<'a> {
     pub access: AccessMode,
     /// Required for `AccessMode::Ask`; other modes never consult it.
     pub approvals: Option<crate::approvals::Approvals>,
+    /// Native CLI session to continue (Claude `--resume`, Codex `exec resume`). The prompt then
+    /// carries only the new request: the CLI already holds the earlier turns, tool calls included.
+    pub resume: Option<&'a str>,
 }
 pub async fn execute(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    crate::models::share_global_instructions(&input.account.provider, input.config);
+    if matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
+        // Lumen's shared skills become native skills, loaded only when a task needs them.
+        if let Some(data) = input.config.parent().and_then(Path::parent) {
+            for dir in crate::integrations::enabled_skills(data) {
+                if let Some(name) = dir.file_name() {
+                    crate::models::mirror_dir(&dir, &input.config.join("skills").join(name), 0);
+                }
+            }
+        }
+    }
     if input.access == AccessMode::Ask {
         if !matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
             return Err(
@@ -294,6 +314,19 @@ pub async fn execute(
             }
         }
     }
+    if let Some(id) = input.resume.filter(|id| !id.is_empty()) {
+        match p {
+            Provider::Claude => args.extend(["--resume".into(), id.into()]),
+            Provider::Gpt => {
+                // Exec flags stay before the subcommand; `-` still reads the prompt from stdin.
+                if args.last().map(String::as_str) == Some("-") {
+                    args.pop();
+                }
+                args.extend(["resume".into(), id.into(), "-".into()]);
+            }
+            _ => {}
+        }
+    }
     c.args(args);
     let prompt = if *p == Provider::Antigravity {
         format!(
@@ -305,6 +338,41 @@ pub async fn execute(
     };
     run_command(c, &prompt, p, cancel, emit).await
 }
+
+/// Commands that only inspect the repository: offered in every restricted Claude mode.
+pub(crate) const READ_COMMANDS: [&str; 8] = [
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(git show:*)",
+    "Bash(git blame:*)",
+    "Bash(git grep:*)",
+    "Bash(git branch:*)",
+    "Bash(git ls-files:*)",
+];
+
+/// Build, test and lint commands, so File edits can verify a change the way Codex's
+/// workspace-write sandbox already can. They run project code, which File edits already trusts.
+pub(crate) const CHECK_COMMANDS: [&str; 18] = [
+    "Bash(cargo check:*)",
+    "Bash(cargo build:*)",
+    "Bash(cargo test:*)",
+    "Bash(cargo clippy:*)",
+    "Bash(cargo fmt:*)",
+    "Bash(npm test:*)",
+    "Bash(npm run test:*)",
+    "Bash(npm run build:*)",
+    "Bash(npm run lint:*)",
+    "Bash(npm run check:*)",
+    "Bash(npm run typecheck:*)",
+    "Bash(npx tsc:*)",
+    "Bash(pnpm test:*)",
+    "Bash(yarn test:*)",
+    "Bash(pytest:*)",
+    "Bash(python -m pytest:*)",
+    "Bash(go test:*)",
+    "Bash(dotnet test:*)",
+];
 
 pub(crate) const DENY: [&str; 9] = [
     "Read(**/.env)",
@@ -390,10 +458,23 @@ pub fn invocation_args(
                     ["--dangerously-skip-permissions", "--tools", "default"].map(str::to_owned),
                 );
             } else {
-                let tools = if access == AccessMode::FileEdits {
-                    "Read,Glob,Grep,Edit,Write"
+                // Planning, subagents and the read-only git/verification commands let the model
+                // check its own work. Bash is offered, but dontAsk only lets the listed command
+                // prefixes run; anything else is refused without a prompt.
+                let (tools, allowed) = if access == AccessMode::FileEdits {
+                    (
+                        "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Bash",
+                        format!(
+                            "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,{},{}",
+                            READ_COMMANDS.join(","),
+                            CHECK_COMMANDS.join(",")
+                        ),
+                    )
                 } else {
-                    "Read,Glob,Grep"
+                    (
+                        "Read,Glob,Grep,TodoWrite,Task,Bash",
+                        format!("Read,Glob,Grep,TodoWrite,Task,{}", READ_COMMANDS.join(",")),
+                    )
                 };
                 args.extend(
                     [
@@ -404,7 +485,7 @@ pub fn invocation_args(
                         "--tools",
                         tools,
                         "--allowedTools",
-                        tools,
+                        allowed.as_str(),
                     ]
                     .map(str::to_owned),
                 );
@@ -579,6 +660,30 @@ pub(crate) async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn native_session_ids_are_reported() {
+        let c = normalize(
+            &Provider::Claude,
+            &json!({"type":"system","subtype":"init","session_id":"abc"}),
+        );
+        assert!(c.iter().any(|a| a.kind == "session" && a.text == "abc"));
+        let g = normalize(
+            &Provider::Gpt,
+            &json!({"type":"thread.started","thread_id":"t1"}),
+        );
+        assert!(g.iter().any(|a| a.kind == "session" && a.text == "t1"));
+    }
+    #[test]
+    fn restricted_claude_can_verify_but_not_run_anything() {
+        let args = invocation_args(&Provider::Claude, AccessMode::FileEdits, None, "");
+        let i = args.iter().position(|a| a == "--allowedTools").unwrap();
+        assert!(args[i + 1].contains("Bash(cargo test:*)"));
+        assert!(!args[i + 1].split(',').any(|t| t == "Bash"));
+        let ro = invocation_args(&Provider::Claude, AccessMode::ReadOnly, None, "");
+        let i = ro.iter().position(|a| a == "--allowedTools").unwrap();
+        assert!(ro[i + 1].contains("Bash(git diff:*)"));
+        assert!(!ro[i + 1].contains("Edit") && !ro[i + 1].contains("cargo"));
+    }
     #[test]
     fn claude_reports_input_tokens_including_cache() {
         let v = json!({"type":"assistant","message":{"content":[],"usage":{

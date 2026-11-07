@@ -556,6 +556,7 @@ mod tests {
         let (_tx, rx) = watch::channel(false);
         let result = codex_turn(
             Invocation {
+                resume: None,
                 account: &account,
                 config: &config,
                 workspace: &workspace,

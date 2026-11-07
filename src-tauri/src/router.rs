@@ -1,16 +1,16 @@
 use crate::models::*;
 
-#[derive(Clone, Copy)]
-struct TaskProfile {
-    tier: i32,
-    effort: i32,
-    review: bool,
-    parallel: bool,
+/// What a request needs. `effort` 0..=2 maps to low/medium/high before the Auto policy.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TaskProfile {
+    pub tier: i32,
+    pub effort: i32,
+    pub review: bool,
 }
 
 /// Calibrated against the user's Italian examples. Length raises effort only;
 /// a long email should not automatically require a flagship model.
-fn profile(prompt: &str) -> TaskProfile {
+pub(crate) fn profile(prompt: &str) -> TaskProfile {
     let p = prompt.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| p.contains(w));
     let advanced = has(&[
@@ -69,13 +69,6 @@ fn profile(prompt: &str) -> TaskProfile {
                 "revisore",
                 "independent review",
             ]),
-        parallel: has(&[
-            "compare",
-            "trade-off",
-            "alternatives",
-            "confronta",
-            "alternative",
-        ]),
     }
 }
 
@@ -88,8 +81,17 @@ fn requested_effort(task: TaskProfile, policy: &AutoPolicy) -> &'static str {
     ["low", "medium", "high"][(task.effort + adjustment).clamp(0, 2) as usize]
 }
 
-/// Deliberately local and deterministic: routing itself sends no data to a provider.
+/// Keyword routing, for callers without a classifier verdict.
 pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result<Plan, String> {
+    route_with(profile(prompt), options, accounts)
+}
+
+/// Plans a turn for a rated task (`crate::classify`, or the keyword profile).
+pub fn route_with(
+    task: TaskProfile,
+    options: &RunOptions,
+    accounts: &[Account],
+) -> Result<Plan, String> {
     if !["auto", "claude", "gpt", "both"].contains(&options.mode.as_str()) {
         return Err("Unknown provider mode".into());
     }
@@ -105,7 +107,6 @@ pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result
             return Err("Invalid model identifier".into());
         }
     }
-    let task = profile(prompt);
     let preferred = match options.mode.as_str() {
         "claude" | "both" => Provider::Claude,
         _ if task.tier == 2 => Provider::Claude,
@@ -153,9 +154,7 @@ pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result
     let strategy = if options.mode == "both" {
         "broadcast"
     } else if options.mode == "auto" && partner.is_some() {
-        if task.parallel && options.auto_policy != AutoPolicy::Budget {
-            "parallel"
-        } else if (task.review && options.auto_policy != AutoPolicy::Budget)
+        if (task.review && options.auto_policy != AutoPolicy::Budget)
             || (options.auto_policy == AutoPolicy::Quality && task.tier > 0)
             || options.auto_review
         {
@@ -187,8 +186,6 @@ pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result
             "Same prompt to Claude and ChatGPT, side by side"
         } else if strategy == "review" && options.mode != "auto" {
             "Answer, then cross-audit by the other model"
-        } else if task.parallel {
-            "Independent perspectives, then synthesis"
         } else if task.tier == 2 {
             "Migration, architecture or security: flagship model with proportional reasoning"
         } else if task.tier == 1 {
@@ -360,7 +357,7 @@ mod tests {
             route("compare alternatives", &opts(), &accounts())
                 .unwrap()
                 .strategy,
-            "parallel"
+            "single"
         );
     }
     #[test]

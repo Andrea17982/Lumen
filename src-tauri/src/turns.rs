@@ -1,4 +1,4 @@
-//! Turn orchestration: single, writer + cross-audit, parallel perspectives and
+//! Turn orchestration: single, writer + cross-audit and
 //! side-by-side broadcast, with rate-limit fallback, checkpoints and self-healing.
 use crate::{
     account, config_dir, context, event, gitops, integrations, limits, models::*, models_for,
@@ -32,9 +32,27 @@ pub async fn send_message(
     }
     let mut session = core.store.session(&id)?;
     let accounts = core.store.accounts()?;
-    let mut plan = router::route(&text, &options, &accounts)?;
+    let history = core.store.messages(&id)?;
+    let verdict = if options.mode == "auto" && options.audit_of.is_none() {
+        let local = core.settings.lock().ok().and_then(|s| {
+            let l = &s.local_assistant;
+            (l.enabled && !l.model.is_empty()).then(|| (l.model.clone(), l.timeout_ms))
+        });
+        crate::classify::classify(
+            &core.root,
+            &accounts,
+            local,
+            &text,
+            &crate::classify::recent_context(&history),
+        )
+        .await
+    } else {
+        crate::classify::heuristic(&text)
+    };
+    let mut plan = router::route_with(verdict.task, &options, &accounts)?;
     if options.mode == "auto" {
         crate::balance(&core, &options, &accounts, &mut plan).await?;
+        stick_to_previous(&core, &history, &accounts, &mut plan);
         // Skip an account that is cooling down after a rate limit.
         if core.limits.cooling(&plan.account_id, now()) {
             if let Some(b) = accounts.iter().find(|b| {
@@ -51,9 +69,13 @@ pub async fn send_message(
         }
         let a = account(&core, &plan.account_id)?;
         let models = models_for(&core, &a, false, None).await?;
-        let selected = router::select_model(&models, &text, &options.auto_policy)?;
+        let selected =
+            router::select_tier(&models, verdict.task.tier).ok_or("No provider model available")?;
         plan.model = Some(selected.id.clone());
         plan.effort = resolve_effort(selected, &plan.effort);
+        if verdict.source != "keywords" {
+            plan.reason = format!("{} · rated by {}", plan.reason, verdict.source);
+        }
     } else if options.mode != "both" {
         let a = account(&core, &plan.account_id)?;
         let models = models_for(&core, &a, false, None).await?;
@@ -68,7 +90,7 @@ pub async fn send_message(
         && options.audit_of.is_none()
         && plan.strategy != "broadcast"
         && core.settings.lock().map(|s| s.orchestra).unwrap_or(false)
-        && router::complex(&text)
+        && verdict.complex
     {
         if options.access() != AccessMode::ReadOnly
             && gitops::toplevel(Path::new(&session.workspace))
@@ -235,6 +257,144 @@ pub(crate) fn friendly(e: &str) -> String {
         .unwrap_or_else(|| e.to_string())
 }
 
+/// Auto keeps a chat on the account that answered last, so the next turn can continue that
+/// CLI's own session instead of starting over on another provider. A cooling account, the
+/// Google emergency fallback and Both are left as routed.
+fn stick_to_previous(core: &Core, history: &[Message], accounts: &[Account], plan: &mut Plan) {
+    if !matches!(plan.provider, Provider::Claude | Provider::Gpt) || plan.strategy == "broadcast" {
+        return;
+    }
+    let Some(native) = history
+        .iter()
+        .rev()
+        .find(|m| m.role == "assistant")
+        .and_then(native_of)
+    else {
+        return;
+    };
+    let Some(a) = accounts.iter().find(|a| a.id == native.account) else {
+        return;
+    };
+    if a.id == plan.account_id || core.limits.cooling(&a.id, now()) {
+        return;
+    }
+    plan.provider = a.provider.clone();
+    plan.account_id = a.id.clone();
+    if plan.strategy != "single" {
+        plan.partner_account = accounts
+            .iter()
+            .find(|b| {
+                b.provider != a.provider && matches!(b.provider, Provider::Claude | Provider::Gpt)
+            })
+            .map(|b| b.id.clone());
+        if plan.partner_account.is_none() {
+            plan.strategy = "single".into();
+        }
+    }
+    plan.reason
+        .push_str(" · same assistant as the previous reply");
+}
+
+/// The native session of `out` on `account`, continued with `prompt`.
+fn continue_reply(
+    out: &Message,
+    account: &Account,
+    workspace: &str,
+    prompt: String,
+) -> Option<Resume> {
+    native_of(out)
+        .filter(|n| n.account == account.id && n.workspace == workspace)
+        .map(|n| Resume {
+            session: n.session,
+            prompt,
+        })
+}
+
+/// Native CLI session a visible reply left behind. The next turn on the same account and
+/// folder continues it instead of replaying the chat as text.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct Native {
+    pub account: String,
+    pub session: String,
+    pub workspace: String,
+}
+
+/// A native session to continue, and the prompt that carries only the new request.
+#[derive(Debug, Clone)]
+pub(crate) struct Resume {
+    pub session: String,
+    pub prompt: String,
+}
+
+fn native_of(m: &Message) -> Option<Native> {
+    m.activity
+        .iter()
+        .rev()
+        .find(|a| a.kind == "native")
+        .and_then(|a| serde_json::from_str(&a.text).ok())
+}
+
+/// The native session to continue, when the reply right before the latest request came from
+/// the same account in the same folder. Any other shape (a provider switch, Both, an edited
+/// history, Ask first) falls back to the full replay.
+pub(crate) fn resumable(
+    messages: &[Message],
+    exclude: &[&str],
+    account: &Account,
+    workspace: &str,
+    access: AccessMode,
+) -> Option<(String, Message)> {
+    if access == AccessMode::Ask || !matches!(account.provider, Provider::Claude | Provider::Gpt) {
+        return None;
+    }
+    let shown: Vec<&Message> = messages
+        .iter()
+        .filter(|m| !exclude.contains(&m.id.as_str()))
+        .collect();
+    let (request, rest) = shown.split_last()?;
+    let previous = rest.last()?;
+    if request.role != "user" || previous.role != "assistant" {
+        return None;
+    }
+    let native = native_of(previous)?;
+    (native.account == account.id && native.workspace == workspace && !native.session.is_empty())
+        .then(|| (native.session, (*request).clone()))
+}
+
+/// Prompt for a resumed native session: only what is new this turn.
+pub(crate) async fn resume_prompt(
+    core: &Core,
+    s: &Session,
+    exclude: &[&str],
+    account: &Account,
+    options: &RunOptions,
+) -> Option<Resume> {
+    if options.audit_of.is_some() {
+        return None;
+    }
+    let messages = core.store.messages(&s.id).ok()?;
+    let (session, request) =
+        resumable(&messages, exclude, account, &s.workspace, options.access())?;
+    let workspace = PathBuf::from(&s.workspace);
+    let attached = if options.attachments.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nFiles attached by the user:\n{}",
+            context::attachments(&workspace, &options.attachments).ok()?
+        )
+    };
+    let map = repo_references(core, s, &workspace, &messages).await;
+    let text = context::spill(&workspace, &request.text).0;
+    Some(Resume {
+        session,
+        prompt: format!(
+            "[Lumen: {}]{map}\n\n{text}{attached}",
+            permission_text(options.access())
+        ),
+    })
+}
+
 // Stage keeps the app/session/output references explicit across asynchronous worker calls.
 #[allow(clippy::too_many_arguments)]
 pub async fn stage(
@@ -250,7 +410,43 @@ pub async fn stage(
     cancel: watch::Receiver<bool>,
     visible: bool,
 ) -> Result<String, String> {
+    stage_with(
+        app, core, s, out, a, prompt, model, effort, access, cancel, visible, None,
+    )
+    .await
+}
+
+/// A stage that continues `resume` when given. A resume the CLI rejects (a deleted or expired
+/// session) is retried once as a full replay, so a stale record never fails a turn.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn stage_with(
+    app: &tauri::AppHandle,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+    a: &Account,
+    prompt: &str,
+    model: Option<&str>,
+    effort: &str,
+    access: AccessMode,
+    cancel: watch::Receiver<bool>,
+    visible: bool,
+    resume: Option<&Resume>,
+) -> Result<String, String> {
     let config = config_dir(core, a);
+    let resume = resume.filter(|_| {
+        access != AccessMode::Ask && matches!(a.provider, Provider::Claude | Provider::Gpt)
+    });
+    let native_skills = matches!(a.provider, Provider::Claude | Provider::Gpt);
+    let stripped;
+    let prompt = if native_skills {
+        stripped = without_skill_list(prompt);
+        stripped.as_str()
+    } else {
+        prompt
+    };
+    let full_prompt = prompt;
+    let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let workspace = PathBuf::from(&s.workspace);
     let mut checkpoint = std::time::Instant::now();
     let models = models_for(core, a, false, Some(cancel.clone())).await?;
@@ -261,7 +457,7 @@ pub async fn stage(
         .ok_or("No provider model available")?;
     let resolved_effort = resolve_effort(selected, effort);
     let mut waiting = cancel.clone();
-    let _permit = tokio::select! {
+    let permit = tokio::select! {
         biased;
         _ = waiting.changed() => return Err("Cancelled".into()),
         p = core.inference.clone().acquire_owned() => p.map_err(|e| e.to_string())?,
@@ -287,6 +483,8 @@ pub async fn stage(
     // overhead every later prompt will also pay.
     let prompt_tokens = (prompt.chars().count() as u64).div_ceil(4);
     let mut measured = Measured::default();
+    let mut native: Option<String> = None;
+    let retry_cancel = cancel.clone();
     let result = providers::execute(
         providers::Invocation {
             account: a,
@@ -303,6 +501,7 @@ pub async fn stage(
                     keeper,
                     chat: s.id.clone(),
                 }),
+            resume: resume.map(|r| r.session.as_str()),
         },
         cancel,
         |activity| {
@@ -311,6 +510,10 @@ pub async fn stage(
                 return;
             }
             if activity.kind == "pid" {
+                return;
+            }
+            if activity.kind == "session" {
+                native = Some(activity.text);
                 return;
             }
             if activity.kind == "usage" || activity.kind == "window" {
@@ -356,8 +559,44 @@ pub async fn stage(
         },
     )
     .await;
+    if let (Some(_), Err(e)) = (resume, &result) {
+        if e != "Cancelled" && !e.starts_with(limits::RATE_LIMIT) && out.text.trim().is_empty() {
+            drop(permit);
+            out.activity.retain(|x| x.kind != "native");
+            return Box::pin(stage_with(
+                app,
+                core,
+                s,
+                out,
+                a,
+                full_prompt,
+                model,
+                effort,
+                access,
+                retry_cancel,
+                visible,
+                None,
+            ))
+            .await;
+        }
+    }
     if result.is_ok() {
         core.limits.record_turn(&a.id, now());
+        if (visible || resume.is_some()) && access != AccessMode::Ask {
+            // Codex may not repeat the id on resume; the continued session keeps its own.
+            if let Some(session) = native.or_else(|| resume.map(|r| r.session.clone())) {
+                out.activity.retain(|x| x.kind != "native");
+                out.activity.push(Activity {
+                    kind: "native".into(),
+                    text: serde_json::to_string(&Native {
+                        account: a.id.clone(),
+                        session,
+                        workspace: s.workspace.clone(),
+                    })
+                    .unwrap_or_default(),
+                });
+            }
+        }
     }
     result
 }
@@ -445,8 +684,9 @@ async fn stage_fallback(
     access: AccessMode,
     cancel: watch::Receiver<bool>,
     visible: bool,
+    resume: Option<&Resume>,
 ) -> Result<(String, Account), String> {
-    match stage(
+    match stage_with(
         app,
         core,
         s,
@@ -458,6 +698,7 @@ async fn stage_fallback(
         access,
         cancel.clone(),
         visible,
+        resume,
     )
     .await
     {
@@ -560,7 +801,7 @@ pub(crate) async fn build_prompt(
         &shared,
         &format!("{}{map}", notes_block(&workspace)),
         permission_text(options.access()),
-        &tail_chars(&history, 100_000),
+        &fit_history(&messages, &history, exclude, 100_000),
         &attached,
         &audit,
     );
@@ -655,6 +896,30 @@ fn history_text(messages: &[Message], workspace: &Path, exclude: &[&str], write:
         .join("\n\n")
 }
 
+/// The history the prompt can hold: the latest turns, plus the chat's first request when it
+/// would otherwise be cut, so the goal of a long chat is never lost.
+fn fit_history(messages: &[Message], history: &str, exclude: &[&str], max: usize) -> String {
+    if history.chars().count() <= max {
+        return history.to_owned();
+    }
+    let first: String = messages
+        .iter()
+        .find(|m| m.role == "user" && !exclude.contains(&m.id.as_str()))
+        .map(|m| context::shown_text(&m.text).chars().take(4_000).collect())
+        .unwrap_or_default();
+    let head = format!(
+        "[Lumen: earlier turns were omitted. This chat began with this request:]
+user:
+{first}
+
+[...]
+
+"
+    );
+    let room = max.saturating_sub(head.chars().count());
+    format!("{head}{}", tail_chars(history, room))
+}
+
 /// The last `max` characters, where the most recent turns are.
 fn tail_chars(text: &str, max: usize) -> String {
     text.chars()
@@ -688,6 +953,19 @@ fn notes_block(workspace: &Path) -> String {
     }
 }
 
+const SKILLS_OPEN: &str = "<lumen-skills>\n";
+const SKILLS_CLOSE: &str = "</lumen-skills>\n";
+
+/// The prompt without Lumen's skill listing, for CLIs that load the skills natively.
+fn without_skill_list(prompt: &str) -> String {
+    match (prompt.find(SKILLS_OPEN), prompt.find(SKILLS_CLOSE)) {
+        (Some(a), Some(b)) if b > a => {
+            format!("{}{}", &prompt[..a], &prompt[b + SKILLS_CLOSE.len()..])
+        }
+        _ => prompt.to_owned(),
+    }
+}
+
 fn assemble_prompt(
     shared: &str,
     notes: &str,
@@ -696,6 +974,11 @@ fn assemble_prompt(
     attached: &str,
     audit: &str,
 ) -> String {
+    let shared = if shared.trim().is_empty() {
+        String::new()
+    } else {
+        format!("{SKILLS_OPEN}{shared}{SKILLS_CLOSE}")
+    };
     format!(
         "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. {permission}\n\n{context_text}{attached}{audit}"
     )
@@ -900,71 +1183,15 @@ async fn run_plan(
     } else {
         None
     };
-    if plan.strategy == "parallel" {
-        let partner = account(
-            core,
-            plan.partner_account.as_deref().ok_or("Missing partner")?,
-        )?;
-        let mut other = Message {
-            id: out.id.clone(),
-            role: "assistant".into(),
-            text: String::new(),
-            activity: vec![],
-        };
-        let (a, b) = tokio::join!(
-            stage(
-                app,
-                core,
-                s,
-                out,
-                &writer,
-                &prompt,
-                plan.model.as_deref(),
-                &plan.effort,
-                AccessMode::ReadOnly,
-                cancel.clone(),
-                false
-            ),
-            stage(
-                app,
-                core,
-                s,
-                &mut other,
-                &partner,
-                &prompt,
-                partner_model.as_deref(),
-                &plan.effort,
-                AccessMode::ReadOnly,
-                cancel.clone(),
-                false
-            )
-        );
-        out.activity.extend(other.activity);
-        let a = a?;
-        let b = b?;
-        out.activity.push(Activity {
-            kind: "perspectives".into(),
-            text: format!("Perspective A:\n{a}\n\nPerspective B:\n{b}"),
-        });
-        let synth = format!("Synthesize these independent perspectives. Resolve disagreements and answer the request.\nRequest and context:\n{prompt}\n\nA:\n{a}\n\nB:\n{b}");
-        out.text.clear();
-        event(app, &s.id, &out.id, "replace", "");
-        let (text, _) = stage_fallback(
+    let resume = resume_prompt(core, s, &[&out.id], &writer, options).await;
+    if resume.is_some() {
+        note(
             app,
-            core,
-            s,
+            &s.id,
             out,
-            &writer,
-            &synth,
-            plan.model.as_deref(),
-            &plan.effort,
-            options.access(),
-            cancel,
-            true,
-        )
-        .await?;
-        out.text = text;
-        return Ok(());
+            "resume",
+            "Continuing the CLI's own session: only the new message was sent.".into(),
+        );
     }
     let (mut draft, writer) = stage_fallback(
         app,
@@ -978,6 +1205,7 @@ async fn run_plan(
         options.access(),
         cancel.clone(),
         true,
+        resume.as_ref(),
     )
     .await?;
     let writer_model = if writer.id == plan.account_id {
@@ -1067,7 +1295,13 @@ async fn run_plan(
                 let revise = format!("Another assistant audited your answer. Address every valid point (ignore incorrect ones) and give the final answer. Do not claim to have run checks unless you actually did.\n{prompt}\n\nYour draft:\n{draft}\n\nAudit:\n{review}");
                 out.text.clear();
                 event(app, &s.id, &out.id, "replace", "");
-                draft = stage(
+                let resume = continue_reply(
+                    out,
+                    &writer,
+                    &s.workspace,
+                    format!("Another assistant audited your answer. Address every valid point (ignore incorrect ones) and give the final answer. Do not claim to have run checks unless you actually did.\n\nAudit:\n{review}"),
+                );
+                draft = stage_with(
                     app,
                     core,
                     s,
@@ -1079,6 +1313,7 @@ async fn run_plan(
                     options.access(),
                     cancel.clone(),
                     true,
+                    resume.as_ref(),
                 )
                 .await?;
             }
@@ -1147,7 +1382,8 @@ pub(crate) async fn self_heal(
             return Ok(());
         }
         let fix = format!("The project check `{cmd}` failed after your changes. Fix the root cause with minimal edits, then summarize what you changed in one short paragraph.\n\nCheck output:\n{log}");
-        let text = stage(
+        let resume = continue_reply(out, writer, &s.workspace, fix.clone());
+        let text = stage_with(
             app,
             core,
             s,
@@ -1159,6 +1395,7 @@ pub(crate) async fn self_heal(
             options.access(),
             cancel.clone(),
             false,
+            resume.as_ref(),
         )
         .await?;
         out.text.push_str(&format!(
@@ -1611,4 +1848,76 @@ pub async fn compact_session(
         },
     )?;
     core.store.session(&fresh.id)
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+
+    fn msg(id: &str, role: &str, activity: Vec<Activity>) -> Message {
+        Message {
+            id: id.into(),
+            role: role.into(),
+            text: format!("text {id}"),
+            activity,
+        }
+    }
+    fn native(account: &str, workspace: &str) -> Activity {
+        Activity {
+            kind: "native".into(),
+            text: serde_json::to_string(&Native {
+                account: account.into(),
+                session: "sid".into(),
+                workspace: workspace.into(),
+            })
+            .unwrap(),
+        }
+    }
+    fn claude() -> Account {
+        Account {
+            id: "acc".into(),
+            name: "A".into(),
+            provider: Provider::Claude,
+        }
+    }
+
+    #[test]
+    fn resumes_only_the_same_account_and_folder() {
+        let chat = vec![
+            msg("u1", "user", vec![]),
+            msg("a1", "assistant", vec![native("acc", "/w")]),
+            msg("u2", "user", vec![]),
+            msg("out", "assistant", vec![]),
+        ];
+        let (sid, req) =
+            resumable(&chat, &["out"], &claude(), "/w", AccessMode::FileEdits).unwrap();
+        assert_eq!((sid.as_str(), req.id.as_str()), ("sid", "u2"));
+        assert!(resumable(&chat, &["out"], &claude(), "/other", AccessMode::FileEdits).is_none());
+        assert!(resumable(&chat, &["out"], &claude(), "/w", AccessMode::Ask).is_none());
+        let mut other = claude();
+        other.id = "b".into();
+        assert!(resumable(&chat, &["out"], &other, "/w", AccessMode::FileEdits).is_none());
+    }
+
+    #[test]
+    fn replays_when_the_previous_reply_has_no_session() {
+        let chat = vec![
+            msg("u1", "user", vec![]),
+            msg("a1", "assistant", vec![native("acc", "/w")]),
+            msg("u2", "user", vec![]),
+            msg("a2", "assistant", vec![]),
+            msg("u3", "user", vec![]),
+        ];
+        assert!(resumable(&chat, &[], &claude(), "/w", AccessMode::FileEdits).is_none());
+    }
+
+    #[test]
+    fn long_history_keeps_the_first_request() {
+        let chat = vec![msg("u1", "user", vec![])];
+        let history = format!("user:\ntext u1\n\n{}", "x".repeat(500));
+        let fitted = fit_history(&chat, &history, &[], 300);
+        assert!(fitted.contains("text u1"));
+        assert!(fitted.chars().count() <= 300);
+        assert!(fitted.ends_with('x'));
+    }
 }

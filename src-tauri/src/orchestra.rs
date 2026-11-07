@@ -751,6 +751,7 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
     let (app, session, message, id) = (&job.app, &job.session, &job.message, &job.id);
     let r = providers::execute(
         providers::Invocation {
+            resume: None,
             account: a,
             config: &config,
             workspace: &job.workspace,
