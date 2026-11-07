@@ -28,6 +28,9 @@ function LimitField({
   useEffect(() => setDraft(value == null ? '' : String(value)), [value]);
   const commit = () => {
     const n = draft.trim() === '' ? null : Number(draft);
+    // Enter then blur, or moving focus away, must not save the same value again: the save
+    // disables every field while it runs, and typing in the next field would be lost.
+    if (n === (value ?? null)) return;
     if (n === null || (Number.isFinite(n) && n >= 1 && n <= max)) onCommit(n);
     else setDraft(value == null ? '' : String(value));
   };
