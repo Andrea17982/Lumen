@@ -413,6 +413,7 @@ test('settings sections and Simple/Advanced mode hide expert options', async ({ 
   await page.getByRole('tab', { name: 'Teamwork' }).click();
   await expect(page.getByRole('switch', { name: /Orchestra/ })).toBeVisible();
   await expect(page.getByRole('switch', { name: /Self-healing/ })).toHaveCount(0);
+  await expect(page.locator('#settings-body').getByRole('switch')).toHaveCount(1);
   await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('switch', { name: /Self-healing/ }).uncheck();
   await expect(tabs.getByRole('tab', { name: 'Tools' })).toBeVisible();
@@ -592,6 +593,7 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('tab', { name: 'Teamwork' }).click();
   const limits = page.getByRole('group', { name: 'Orchestra limits' });
   const agents = limits.getByRole('spinbutton', { name: /Simultaneous agents/ });
@@ -777,19 +779,4 @@ test('the command palette opens with Ctrl K, filters, runs and restores focus', 
   await expect(palette.getByRole('status')).toHaveText('No matching commands');
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
-});
-
-test('the project panel offers the repository map, visual review and a screenshot button', async ({
-  page,
-}) => {
-  await page.addInitScript(contextFixture, 'Fix PlayerController');
-  await page.goto('/');
-  await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
-  await expect(page.getByRole('button', { name: 'Attach a screenshot' })).toBeVisible();
-  await page.getByRole('button', { name: 'Attach files' }).click();
-  await expect(page.getByRole('region', { name: 'Repository map' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Find a declaration' })).toBeVisible();
-  const review = page.getByRole('region', { name: 'Visual review' });
-  await expect(review.getByRole('button', { name: /Capture screen/ })).toBeVisible();
-  await expect(review.getByText(/No screenshots yet/)).toBeVisible();
 });

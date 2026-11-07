@@ -534,8 +534,10 @@ async fn reset_settings(
     app: tauri::AppHandle,
     core: tauri::State<'_, Arc<Core>>,
 ) -> Result<settings::AppSettings, String> {
-    let mut value = settings::AppSettings::default();
-    value.api_token = format!("lumen-{}", models::id().replace('-', ""));
+    let value = settings::AppSettings {
+        api_token: format!("lumen-{}", models::id().replace('-', "")),
+        ..Default::default()
+    };
     tray::sync_tray(&app, false)?;
     tray::sync_autostart(&app, false)?;
     if let Some(running) = core.api.lock().await.take() {

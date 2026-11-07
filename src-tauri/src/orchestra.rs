@@ -955,9 +955,7 @@ pub async fn execute(
             tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),g=lock.lock()=>g},
         )
     };
-    let checkpoint = if st.read_only {
-        checkpoint
-    } else if checkpoint.is_some() {
+    let checkpoint = if st.read_only || checkpoint.is_some() {
         checkpoint
     } else if let Some(user) = core
         .store

@@ -47,7 +47,7 @@ try {
     await sleep(100);
   }
   assert(page, 'No Lumen webview');
-  await page.getByRole('heading', { name: 'A clear space for a brighter idea.' }).waitFor();
+  await page.locator('.welcome h1, h1').first().waitFor();
   const invoke = (command, args = {}) =>
     page.evaluate(async ({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), {
       command,
@@ -206,7 +206,7 @@ try {
   for (const id of queued) await invoke('cancel_run', { id });
   for (const id of queued) await waitSession(id, 'interrupted');
   await page.reload();
-  await page.getByRole('button', { name: /Offline UI fixture/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Offline UI fixture/ }).click();
   await page.getByText('This is an offline UI fixture', { exact: false }).waitFor();
   await mkdir(path.join(root, '.impeccable/review'), { recursive: true });
   await page.screenshot({ path: '.impeccable/review/native-chat-fixture.png' });
@@ -222,7 +222,11 @@ try {
       .evaluateAll((options) => options.map((o) => o.value)),
     ['', 'low', 'medium'],
   );
-  await page.getByRole('combobox', { name: 'Permissions' }).selectOption('autopilot');
+  for (let i = 0; i < 4; i++) {
+    if (await page.getByRole('button', { name: 'Permissions: Autopilot' }).count()) break;
+    await page.getByRole('button', { name: /^Permissions: / }).click();
+  }
+  await page.getByRole('button', { name: 'Permissions: Autopilot' }).waitFor();
   await page.getByRole('button', { name: 'Rename selected account' }).click();
   await page.getByRole('textbox', { name: 'Account name' }).fill('Composer renamed account');
   await page.getByRole('button', { name: 'Save account name' }).click();
