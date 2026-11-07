@@ -1,13 +1,17 @@
 //! Auto routing verdict from a small model instead of keywords. The local helper (Ollama) is
 //! used when the user enabled it; otherwise the cheapest Claude model at low effort rates the
 //! request. Any failure or timeout falls back to the keyword profile, so routing never blocks.
-use crate::models::{Account, Message, Provider};
+//! A short follow-up ("procedi", "ok fix it") reuses the previous request's verdict, so most
+//! turns of a conversation skip the call entirely.
+use crate::models::{Account, Activity, Message, Provider};
 use crate::router::TaskProfile;
 use serde_json::Value;
 use std::path::Path;
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(12);
+/// Requests up to this many characters on one line may be follow-ups.
+const FOLLOW_UP_CHARS: usize = 80;
 
 /// What the turn needs: model class, reasoning, an independent audit, and whether it is big
 /// enough for Orchestra to split.
@@ -25,6 +29,56 @@ pub fn heuristic(prompt: &str) -> Verdict {
         complex: crate::router::complex(prompt),
         source: "keywords",
     }
+}
+
+/// The verdict stored on a request, so the next turn can reuse it.
+pub fn record(v: &Verdict) -> Activity {
+    Activity {
+        kind: "route".into(),
+        text: serde_json::json!({
+            "tier": v.task.tier,
+            "effort": v.task.effort,
+            "review": v.task.review,
+            "complex": v.complex,
+            "source": v.source,
+        })
+        .to_string(),
+    }
+}
+
+/// The verdict of the latest earlier request in this chat.
+pub fn previous(messages: &[Message]) -> Option<Verdict> {
+    let a = messages
+        .iter()
+        .rev()
+        .filter(|m| m.role == "user")
+        .find_map(|m| m.activity.iter().find(|a| a.kind == "route"))?;
+    let (task, complex) = parse(&a.text)?;
+    Some(Verdict {
+        task,
+        complex,
+        source: "previous request",
+    })
+}
+
+/// A short one-line message after an earlier rated request continues that task. It keeps the
+/// earlier verdict, raised if its own words ask for more.
+pub fn follow_up(previous: Option<Verdict>, request: &str) -> Option<Verdict> {
+    let prev = previous?;
+    let text = request.trim();
+    if text.chars().count() > FOLLOW_UP_CHARS || text.contains('\n') || text.contains("```") {
+        return None;
+    }
+    let own = crate::router::profile(text);
+    Some(Verdict {
+        task: TaskProfile {
+            tier: prev.task.tier.max(own.tier),
+            effort: prev.task.effort.max(own.effort),
+            review: prev.task.review,
+        },
+        complex: prev.complex,
+        source: "previous request",
+    })
 }
 
 /// The previous exchange, shortened, so a follow-up like "procedi" is rated by its real task.
@@ -56,8 +110,8 @@ fn prompt(request: &str, context: &str) -> String {
 
 tier: 0 = small talk, quick factual questions, short writing or translation, trivial one-line edits. 1 = ordinary coding, debugging, refactoring, explaining code, substantial writing. 2 = hard work: architecture, security, concurrency, subtle or intermittent bugs, large refactors or migrations, math, deep analysis.
 effort: 0 = answer directly, 1 = needs some thought, 2 = needs long careful reasoning.
-review: true only when a mistake would be costly (security, data loss, production systems) and an independent second check is worth paying for.
-complex: true only when the work is large enough to split into several independent subtasks for parallel agents.
+review: true only when a mistake would be costly (security, data loss, money, production systems) and an independent second check is worth paying for. Most requests are false.
+complex: true only when the request asks for several separate deliverables, or one large feature spanning many files or areas, that independent agents could build in parallel. A single bug, question, review, explanation or change to one area is never complex, however hard. Most requests are false.
 A short follow-up ("go on", "fix it", "procedi", "ok fallo") continues the previous task: rate that task, not the words.
 
 Previous exchange:
@@ -173,6 +227,40 @@ mod tests {
         assert_eq!((t.tier, t.effort, t.review, complex), (2, 2, true, true));
         assert!(parse("no json here").is_none());
         assert_eq!(parse("{\"tier\":9}").unwrap().0.tier, 2);
+    }
+
+    #[test]
+    fn short_follow_ups_reuse_the_previous_verdict() {
+        let hard = Verdict {
+            task: TaskProfile {
+                tier: 2,
+                effort: 2,
+                review: false,
+            },
+            complex: false,
+            source: "claude",
+        };
+        let chat = vec![
+            Message {
+                id: "u1".into(),
+                role: "user".into(),
+                text: "fix the race".into(),
+                activity: vec![record(&hard)],
+            },
+            Message {
+                id: "a1".into(),
+                role: "assistant".into(),
+                text: "plan".into(),
+                activity: vec![],
+            },
+        ];
+        let prev = previous(&chat).unwrap();
+        assert_eq!((prev.task.tier, prev.task.effort), (2, 2));
+        let v = follow_up(Some(prev), "procedi").unwrap();
+        assert_eq!((v.task.tier, v.source), (2, "previous request"));
+        assert!(follow_up(Some(prev), &"x".repeat(81)).is_none());
+        assert!(follow_up(Some(prev), "line one\nline two").is_none());
+        assert!(follow_up(None, "procedi").is_none());
     }
 
     #[test]

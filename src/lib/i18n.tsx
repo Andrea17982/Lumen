@@ -131,9 +131,9 @@ const it: Record<string, string> = {
   'Switch on rate limit': 'Passa ad un altro al raggiungimento del limite',
   'If one provider hits its limit, another continues the same message.':
     'Se un provider raggiunge il limite, un altro continua lo stesso messaggio.',
-  'Repository map references': 'Riferimenti alla mappa del repository',
-  'When a request names a class, function, scene or table, add where it is declared to the prompt (at most 12 locations, about 600 tokens). The request shows what was added.':
-    'Quando una richiesta cita una classe, funzione, scena o tabella, aggiungi al prompt il punto in cui è definita (massimo 12 posizioni, circa 600 token). La richiesta mostra cosa è stato aggiunto.',
+  'Code graph': 'Grafo del codice',
+  "Claude and Codex get Lumen's code graph as tools: definitions with exact line ranges, callers, file outlines, related files and the impact of a change. They read only the lines they need instead of searching whole files.":
+    'Claude e Codex ricevono il grafo del codice di Lumen come strumenti: definizioni con righe esatte, chiamanti, struttura dei file, file correlati e impatto di una modifica. Leggono solo le righe che servono invece di cercare in file interi.',
   'Self-healing': 'Correzione automatica',
   'After edits, run the project check and fix failures automatically (up to 3 times).':
     'Dopo le modifiche, esegui il controllo del progetto e correggi automaticamente gli errori (fino a 3 tentativi).',

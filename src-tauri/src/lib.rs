@@ -4,9 +4,11 @@ mod approvals_codex;
 mod assets;
 mod catalog;
 mod classify;
+mod codegraph;
 mod context;
 mod gitops;
 mod godot;
+mod graph_mcp;
 mod integrations;
 mod layers;
 mod limits;
@@ -781,6 +783,11 @@ fn gatekeeper_decide(
         .ok_or("unavailable: The approval journal could not be opened.")?;
     core.store.session(&decision.scope.session_id)?;
     keeper.decide(decision)
+}
+
+/// Entry for `lumen --lumen-graph-mcp <data> <root>`: the code graph as a stdio MCP server.
+pub fn serve_graph(data: std::path::PathBuf, root: std::path::PathBuf) -> std::io::Result<()> {
+    graph_mcp::serve(data, root)
 }
 
 pub fn run() {
