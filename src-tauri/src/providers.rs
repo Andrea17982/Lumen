@@ -131,6 +131,14 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             }
         }
         if v["type"] == "assistant" {
+            // Input tokens of this API request, counting cached reads and cache writes.
+            let usage = &v["message"]["usage"];
+            if let Some(input) = usage["input_tokens"].as_u64() {
+                let total = input
+                    + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                    + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                push("usage", total.to_string());
+            }
             if let Some(blocks) = v["message"]["content"].as_array() {
                 for b in blocks {
                     if b["type"] == "tool_use" {
@@ -148,6 +156,16 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             }
         }
         if v["type"] == "result" {
+            // The CLI reports each model's real context window; the largest one bounds the chat.
+            if let Some(models) = v["modelUsage"].as_object() {
+                if let Some(window) = models
+                    .values()
+                    .filter_map(|m| m["contextWindow"].as_u64())
+                    .max()
+                {
+                    push("window", window.to_string());
+                }
+            }
             if v["is_error"] == true {
                 push(
                     "error",
@@ -224,9 +242,9 @@ pub async fn execute(
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
     if input.access == AccessMode::Ask {
-        if input.account.provider != Provider::Claude {
+        if !matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
             return Err(
-                "Ask first is available for Claude only for now. Choose another permission mode."
+                "Approve each action is available for Claude and Codex. Choose another permission mode."
                     .into(),
             );
         }
@@ -236,6 +254,9 @@ pub async fn execute(
                     .into(),
             );
         };
+        if input.account.provider == Provider::Gpt {
+            return crate::approvals_codex::codex_turn(input, approvals, cancel, emit).await;
+        }
         let exe = std::env::current_exe().map_err(|e| format!("unavailable: {e}"))?;
         return crate::approvals::claude_turn(input, approvals, &exe, cancel, emit).await;
     }
@@ -558,6 +579,13 @@ pub(crate) async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn claude_reports_input_tokens_including_cache() {
+        let v = json!({"type":"assistant","message":{"content":[],"usage":{
+            "input_tokens":10,"cache_read_input_tokens":200,"cache_creation_input_tokens":30,"output_tokens":5}}});
+        let acts = normalize(&Provider::Claude, &v);
+        assert!(acts.iter().any(|a| a.kind == "usage" && a.text == "240"));
+    }
     #[test]
     fn access_profiles_use_official_flags() {
         let auto = invocation_args(&Provider::Gpt, AccessMode::Autopilot, None, "");

@@ -1,16 +1,23 @@
 mod api;
 mod approvals;
+mod approvals_codex;
+mod assets;
 mod catalog;
 mod context;
 mod gitops;
+mod godot;
 mod integrations;
+mod layers;
 mod limits;
 mod models;
 mod ollama;
 mod orchestra;
+mod projecttools;
 mod providers;
+mod repomap;
 mod router;
 mod scheduling;
+mod screens;
 mod settings;
 mod store;
 mod tray;
@@ -521,6 +528,24 @@ async fn save_settings(
     *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
     Ok(value)
 }
+
+#[tauri::command]
+async fn reset_settings(
+    app: tauri::AppHandle,
+    core: tauri::State<'_, Arc<Core>>,
+) -> Result<settings::AppSettings, String> {
+    let mut value = settings::AppSettings::default();
+    value.api_token = format!("lumen-{}", models::id().replace('-', ""));
+    tray::sync_tray(&app, false)?;
+    tray::sync_autostart(&app, false)?;
+    if let Some(running) = core.api.lock().await.take() {
+        let _ = running.stop.send(());
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+    value.save(&core.root)?;
+    *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
+    Ok(value)
+}
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiStatus {
@@ -855,13 +880,34 @@ pub fn run() {
             turns::rewind,
             turns::compact_session,
             turns::working_diff,
+            turns::prompt_estimate,
             gatekeeper_snapshot,
             gatekeeper_decide,
             cancel_run,
             project_context,
+            projecttools::project_tools,
+            projecttools::project_checks,
+            projecttools::project_godot_diagnostics,
+            godot::godot_connection_test,
+            godot::open_godot_editor,
+            layers::change_layers,
+            repomap::repo_map_search,
+            repomap::repo_map_references,
+            screens::capture_targets,
+            screens::capture_screenshot,
+            screens::save_pasted_image,
+            screens::attachment_image_data,
+            screens::import_screenshot,
+            screens::list_screenshots,
+            screens::rename_screenshot,
+            screens::delete_screenshot,
+            screens::screenshot_data,
+            projecttools::run_project_check,
+            projecttools::open_source_location,
             save_project_context,
             get_settings,
             save_settings,
+            reset_settings,
             tray::quit_app,
             ollama_status,
             ollama_models,

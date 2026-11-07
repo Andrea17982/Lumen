@@ -935,12 +935,40 @@ pub async fn execute(
     let top = gitops::toplevel(&workspace).await;
     st.read_only = st.read_only || options.access() == AccessMode::ReadOnly || top.is_none();
     let lock = turns::workspace_lock(core, s)?;
+    let other_sessions = turns::conversations_on_workspace(core, s);
+    if !other_sessions.is_empty() && !st.read_only {
+        turns::note(
+            app,
+            &s.id,
+            out,
+            "coordination",
+            format!(
+                "Another Lumen conversation is active on this project ({}). Orchestra integrates changes only after the project write lock is released.",
+                other_sessions.join(", ")
+            ),
+        );
+    }
     let _guard = if st.read_only {
         None
     } else {
         Some(
             tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),g=lock.lock()=>g},
         )
+    };
+    let checkpoint = if st.read_only {
+        checkpoint
+    } else if checkpoint.is_some() {
+        checkpoint
+    } else if let Some(user) = core
+        .store
+        .messages(&s.id)?
+        .into_iter()
+        .rev()
+        .find(|m| m.role == "user")
+    {
+        turns::checkpoint_message(core, s, &user.id).await?
+    } else {
+        None
     };
     let base = match (&top, checkpoint) {
         _ if resume && !st.base.is_empty() => st.base.clone(),
@@ -2075,20 +2103,7 @@ pub async fn orchestra_approve(
     let mut run = st.clone();
     st.stage = "approved".into();
     save_state(&app, &core, &id, &mut m, &st)?;
-    let mut user = user_message("Approved the plan.".into());
-    let session = core.store.session(&id)?;
-    let mut checkpoint = None;
-    if !run.read_only {
-        if let Some(top) = gitops::toplevel(Path::new(&session.workspace)).await {
-            if let Ok(tree) = gitops::checkpoint(&top, &user.id).await {
-                checkpoint = Some(tree.clone());
-                user.activity.push(Activity {
-                    kind: "checkpoint".into(),
-                    text: tree,
-                });
-            }
-        }
-    }
+    let user = user_message("Approved the plan.".into());
     run.steps.clear();
     turns::spawn_turn(
         app,
@@ -2096,10 +2111,7 @@ pub async fn orchestra_approve(
         id,
         user,
         move |app, core, s, mut out, rx| async move {
-            let r = execute(
-                &app, &core, &s, &mut out, run, &options, checkpoint, false, rx,
-            )
-            .await;
+            let r = execute(&app, &core, &s, &mut out, run, &options, None, false, rx).await;
             (out, r)
         },
     )

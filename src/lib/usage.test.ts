@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { usageStatus } from './usage';
+import { usageStatus, usageStatusLabel } from './usage';
 import type { AccountUsage } from './types';
 
 describe('usageStatus', () => {
@@ -14,5 +14,10 @@ describe('usageStatus', () => {
   it('handles invalid and future timestamps without formatting an invalid date', () => {
     expect(usageStatus({ ...row, updatedAt: NaN }, now)).toContain('timestamp unavailable');
     expect(usageStatus({ ...row, updatedAt: now + 1 }, now)).toContain('timestamp unavailable');
+  });
+  it('labels timestamps outside the valid Date range consistently', () => {
+    const invalid = { ...row, updatedAt: -8_640_000_000_000_001 };
+    expect(usageStatus(invalid, now)).toContain('timestamp unavailable');
+    expect(usageStatusLabel(invalid, now)).toBe('Check data');
   });
 });

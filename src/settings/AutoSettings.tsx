@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { call, desktop } from '../lib/bridge';
 import type { Account } from '../lib/types';
+import { useI18n } from '../lib/i18n';
 interface Usage {
   accountId: string;
   windows: { usedPercent: number; resetsAt: number; windowMinutes: number }[];
@@ -18,6 +19,7 @@ export default function AutoSettings({
   accounts: Account[];
   onError: (s: string) => void;
 }) {
+  const { t } = useI18n();
   const [usage, setUsage] = useState<Usage[]>([]);
   const [id, setId] = useState(accounts[0]?.id || '');
   const [busy, setBusy] = useState(false);
@@ -46,17 +48,22 @@ export default function AutoSettings({
   const selected = usage.find((u) => u.accountId === id);
   return (
     <section className="settings-section">
-      <h3>Auto usage balancing</h3>
+      <h3>{t('Auto usage balancing')}</h3>
       <p>
-        Balance remaining quota against time until reset. Fresh snapshots last 15 minutes. Unknown
-        usage never counts as free capacity.
+        {t(
+          'Balance remaining quota against time until reset. Fresh snapshots last 15 minutes. Unknown usage never counts as free capacity.',
+        )}
       </p>
       <div className="quota-editor">
         <label>
-          Account
-          <select aria-label="Usage account" value={id} onChange={(e) => setId(e.target.value)}>
+          {t('Account')}
+          <select
+            aria-label={t('Usage account')}
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+          >
             <option value="" disabled>
-              Choose account
+              {t('Choose account')}
             </option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -76,22 +83,23 @@ export default function AutoSettings({
               .finally(() => setBusy(false));
           }}
         >
-          Refresh official quota
+          {t('Refresh official quota')}
         </button>
         {selected && (
           <p>
             {selected.source} · {new Date(selected.updatedAt).toLocaleString()}{' '}
-            {Date.now() - selected.updatedAt > 900000 ? '· Stale' : ''}
+            {Date.now() - selected.updatedAt > 900000 ? `· ${t('Stale')}` : ''}
           </p>
         )}
         <p>
-          Codex supports automatic quota queries. For Claude, copy the percentages and reset times
-          from /usage. Leave a window blank if it is unavailable.
+          {t(
+            'Codex supports automatic quota queries. For Claude, copy the percentages and reset times from /usage. Leave a window blank if it is unavailable.',
+          )}
         </p>
         {['5-hour', 'Weekly'].map((name, i) => (
           <div key={name} className="quota-window">
             <label>
-              {name} used %
+              {t(name)} {t('used %')}
               <input
                 aria-label={`${name} used percent`}
                 type="number"
@@ -103,7 +111,7 @@ export default function AutoSettings({
               />
             </label>
             <label>
-              Reset (local time)
+              {t('Reset (local time)')}
               <input
                 aria-label={`${name} reset`}
                 type="datetime-local"
@@ -129,7 +137,7 @@ export default function AutoSettings({
                 : [],
             );
             if (!windows.length) {
-              onError('Enter at least one quota percentage and reset time.');
+              onError(t('Enter at least one quota percentage and reset time.'));
               return;
             }
             setBusy(true);
@@ -141,7 +149,7 @@ export default function AutoSettings({
               .finally(() => setBusy(false));
           }}
         >
-          Save quota snapshot
+          {t('Save quota snapshot')}
         </button>
       </div>
     </section>

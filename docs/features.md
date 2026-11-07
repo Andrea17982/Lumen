@@ -2,16 +2,33 @@
 
 Lumen lets Claude Code, Codex and the other connected CLIs work together. Every feature is one click or on by default, and runs through the official CLIs. Lumen never calls provider APIs or reads credentials.
 
+## New in 0.5.0
+
+- **Project context panel removed** from the conversation header and command palette because its sections overlapped and could not be read reliably.
+- **Attach files from the PC** with the composer paperclip: choose multiple files of any extension. Images pasted with Ctrl+V are saved as attachments. Images appear in the transcript; readable small text files are included in the prompt, while binary or large files are referenced by path for CLI tools.
+- **Model-requested screenshots (Claude Ask-first)**: the model can list visible monitors/windows and explicitly call `capture_screen`. The image is returned to the model and saved in the project's ignored screenshot folder. Lumen never captures a screen automatically. User-started Visual review remains available.
+- **Project write coordination**: write turns in conversations targeting the same folder are serialized. A waiting turn records which other conversation is active, and its Rewind checkpoint is taken only after it obtains the project lock. Rewind and worktree apply are blocked while another conversation is active; Rewind also refuses checkpoints followed by activity in another conversation on that folder.
+- **Orchestra multi-task routing**: three or more checklist items, or explicit long requests for multiple parallel tasks/features, route through Orchestra when it is enabled.
+
+- **Context indicator** beside Usage: a dot that is green under 50%, orange to 80% and red above. Clicking it shows the exact count (tokens used of the model's window), its parts and **Compact into a fresh session**. For Claude, the window and the CLI's own instructions and tools come from what Claude reported on its last reply; other providers show a local estimate.
+- **Repository map references** (Settings → Teamwork, on by default): when a request names a declaration, its location is added to the prompt (at most 12, about 600 tokens) and shown under the request.
+- **Screenshots** are never captured automatically. In Claude Ask-first turns, the model can request a screen or a specific visible window through MCP when visual inspection is needed. The composer has no screenshot button; user initiated capture remains in Visual review.
+- **Settings** Simple mode contains only the Orchestra toggle. All other settings are under Advanced. General → Restore defaults resets local preferences and backend preferences while keeping accounts, conversations and project folders.
+- **Godot**: **Test connection** starts the project's Godot MCP server and reads the editor's project info; **Open editor** opens a nested project in the installed Godot.
+- **Checks**: a built-in `res://` reference check per Godot project, with git-ignored local files reported apart. Checks are marked headless or playtest (`"playtest": true` in `.lumen/checks.json`).
+- **Change review**: uncommitted files grouped by layer (client, domain, backend, database, content, simulation, tests, docs) with the checks that cover each layer. `.lumen/layers.json` and `"layers"` on custom checks refine it.
+- **Approve each action for Codex**: Codex turns in this mode run over `codex app-server`; each command or file change waits for approval in the chat panel.
+
 ## New in 0.4.2
 
-- **Working indicator** under the last answer while an agent works: *Working*, *Thinking it through* or *Calling a tool*, with animated dots.
+- **Working indicator** under the last answer while an agent works: _Working_, _Thinking it through_ or _Calling a tool_, with animated dots.
 - **Reasoning in a disclosure**, closed by default, instead of inside the answer. Inline `<think>` blocks from local models are separated too.
 - **Commit message draft** above the composer, generated from uncommitted changes. **Copy message** copies it; Lumen never commits.
 - **Editable handoff draft** on long conversations. **Continue in a fresh session** uses your revised text.
 - **Ollama titles**: after the first answer, chats with a derived title get a short title from the local model. Renamed chats are never touched.
 - **Orchestra limits** in Settings → Teamwork: simultaneous agents, total subtasks per run and a per-provider quota threshold. Waiting subtasks show "Queued" and start when a slot frees. Ollama is not listed.
 - **Orchestra Resume**: a run interrupted by closing Lumen shows **Resume** or **Discard** at the next start. Completed results are kept, and attempts already used still count.
-- **Approve each action** (Claude only): a permission mode where every write or command asks for approval in the chat panel. Codex does not support it yet.
+- **Approve each action** (Claude): a permission mode where every write or command asks for approval in the chat panel. Codex support came after 0.4.5.
 
 ## New in 0.4
 
@@ -48,7 +65,7 @@ Antigravity's command line, run without a terminal, refuses every shell command 
 
 ### Settings: Simple and Advanced
 
-Settings is split into sections — **General · Accounts · Auto · Teamwork · Tools · About** — shown one at a time between a fixed header and footer. The **Simple | Advanced** switch in the header hides expert options. Simple keeps appearance, folder, window behavior, accounts, the Auto preference, Orchestra and Switch on rate limit. Advanced adds usage balancing and Claude quota snapshots, Self-healing, Cross-audit rounds, the Ollama model and the **Tools** section (MCP, skills, local API). Hiding an option never changes its behavior; when Advanced options are on, Simple mode says how many with a **Show** link.
+Settings is split into sections — **General · Accounts · Auto · Teamwork · Tools · About** — shown one at a time between a fixed header and footer. The **Simple | Advanced** switch in the header controls disclosure. Simple shows only the Orchestra toggle. Advanced shows every other setting. General → **Restore defaults** resets local and backend preferences while keeping accounts, conversations and project folders.
 
 ### Notification area and login
 
@@ -74,10 +91,7 @@ Both is a read-only comparison in the interface. The backend can still isolate e
 
 ## Shared project context (`LUMEN.md`)
 
-The **book icon** in the top bar opens the project panel:
-
-- **Shared notes** are saved as `LUMEN.md` in the conversation folder and injected into every turn for both providers. A `verify: <command>` line sets the self-healing check, and `verify: off` disables it.
-- **Attach files** lists project files with ripgrep's walker, so `.gitignore` is respected. Each file shows its approximate token weight. Lockfiles, build output and minified files are marked as skipped. Secret files such as `.env`, keys and `.ssh` are never listed.
+If `LUMEN.md` exists in the conversation folder, its shared notes are injected into every turn for both providers. A `verify: <command>` line sets the self-healing check, and `verify: off` disables it. The Project context panel was removed; edit `LUMEN.md` with the preferred editor. Use the paperclip to attach files explicitly from any folder.
 
 Each turn replays the conversation, including turns from the other provider and a note of the files they changed. Switching models therefore keeps the context.
 

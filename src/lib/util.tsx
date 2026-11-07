@@ -1,4 +1,5 @@
 import type { Provider } from './types';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 export const REPO = 'https://github.com/Andrea17982/Lumen';
 export const PAYPAL =
@@ -21,5 +22,27 @@ export function Mark({ small = false }: { small?: boolean }) {
       <span />
       <span />
     </span>
+  );
+}
+
+export function IconButton({
+  label,
+  children,
+  className = 'icon-button',
+  ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'> & {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      {...props}
+      type={props.type ?? 'button'}
+      className={className}
+      aria-label={label}
+      title={props.title ?? label}
+    >
+      {children}
+    </button>
   );
 }

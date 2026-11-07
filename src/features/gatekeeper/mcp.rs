@@ -3,7 +3,7 @@
 use crate::{Availability, Delivery, Gatekeeper, Provider, Scope};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
@@ -154,9 +154,27 @@ impl ClaudeEndpoint {
                         "ping" if initialized => json!({"jsonrpc":"2.0","id":id,"result":{}}),
                         "tools/list" if ready => {
                             self.ready.send_replace(true);
-                            json!({"jsonrpc":"2.0","id":id,"result":{"tools":[permission_tool()]}})
+                            json!({"jsonrpc":"2.0","id":id,"result":{"tools":[permission_tool(),list_screens_tool(),capture_screen_tool()]}})
                         }
                         "tools/call" if ready => {
+                            let tool_name = message["params"]["name"].as_str().unwrap_or("");
+                            if tool_name == "list_screens" {
+                                let result = list_screens().await;
+                                match result {
+                                    Ok(text) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":text}]} }),
+                                    Err(error) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":error}],"isError":true} }),
+                                }
+                            } else if tool_name == "capture_screen" {
+                                let root = self.keeper.sessions()?.into_iter()
+                                    .find(|s| s.scope == self.scope)
+                                    .map(|s| PathBuf::from(s.cwd))
+                                    .ok_or("Claude session is no longer active")?;
+                                let title = message["params"]["arguments"]["window_title"].as_str().map(str::to_owned);
+                                match capture_screen(root, title).await {
+                                    Ok((path, data)) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Screenshot saved to {path}")},{"type":"image","data":data,"mimeType":"image/jpeg"}]} }),
+                                    Err(error) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":error}],"isError":true} }),
+                                }
+                            } else {
                             match self.keeper.request_claude(&self.scope, &message) {
                                 Ok(pending) => {
                                     let tx = out_tx.clone();
@@ -168,6 +186,7 @@ impl ClaudeEndpoint {
                                     continue;
                                 }
                                 Err(error) => rpc_error(id, -32602, &error),
+                            }
                             }
                         }
                         _ => rpc_error(id, -32601, "Unsupported MCP method or initialization incomplete"),
@@ -217,6 +236,61 @@ pub fn permission_tool() -> Value {
             "required":["tool_name","input"],"additionalProperties":false
         }
     })
+}
+
+fn list_screens_tool() -> Value {
+    json!({"name":"list_screens","description":"List available monitors and visible application windows. Call before capture_screen when choosing a particular window.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}})
+}
+
+fn capture_screen_tool() -> Value {
+    json!({"name":"capture_screen","description":"Capture the desktop only when visual inspection is needed for the user's task. Returns the image to you and saves it in the current project. Omit window_title for the primary monitor, or pass a visible window title (or unique substring) to capture only that window. Ask the user before capturing if the screen may show unrelated private information.","inputSchema":{"type":"object","properties":{"window_title":{"type":"string","description":"Optional visible window title or unique substring. Omit to capture the primary monitor."}},"additionalProperties":false}})
+}
+
+async fn list_screens() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?.into_iter().map(|m| {
+            Ok(json!({"type":"monitor","name":m.name().map_err(|e|e.to_string())?,"primary":m.is_primary().unwrap_or(false),"width":m.width().unwrap_or(0),"height":m.height().unwrap_or(0)}))
+        }).collect::<Result<Vec<_>,String>>()?;
+        let windows = xcap::Window::all().map_err(|e| e.to_string())?.into_iter().filter_map(|w| {
+            let title = w.title().ok()?;
+            if title.trim().is_empty() || w.is_minimized().unwrap_or(true) { return None; }
+            Some(json!({"type":"window","title":title,"app":w.app_name().unwrap_or_default(),"width":w.width().unwrap_or(0),"height":w.height().unwrap_or(0)}))
+        }).collect::<Vec<_>>();
+        Ok(serde_json::to_string(&json!({"screens":monitors,"windows":windows})).map_err(|e|e.to_string())?)
+    }).await.map_err(|e|e.to_string())?
+}
+
+async fn capture_screen(root: PathBuf, title: Option<String>) -> Result<(String, String), String> {
+    tokio::task::spawn_blocking(move || {
+        let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+        let source_title = title.clone().filter(|s| !s.trim().is_empty());
+        let image = if let Some(title) = source_title.clone() {
+            let matches = xcap::Window::all().map_err(|e| e.to_string())?.into_iter().filter(|w| {
+                w.title().ok().is_some_and(|t| t.to_lowercase().contains(&title.to_lowercase()))
+                    && !w.is_minimized().unwrap_or(true)
+            }).collect::<Vec<_>>();
+            if matches.len() != 1 { return Err(if matches.is_empty() { "No visible window matched that title".into() } else { "More than one window matched; use a more specific title".into() }); }
+            matches.into_iter().next().unwrap().capture_image().map_err(|e|e.to_string())?
+        } else {
+            let monitor = xcap::Monitor::all().map_err(|e| e.to_string())?.into_iter().find(|m| m.is_primary().unwrap_or(false)).ok_or("No primary monitor is available")?;
+            monitor.capture_image().map_err(|e|e.to_string())?
+        };
+        let dir = root.join(".lumen/screenshots");
+        std::fs::create_dir_all(&dir).map_err(|e|e.to_string())?;
+        let ignore = dir.join(".gitignore");
+        if !ignore.exists() { std::fs::write(ignore, "# Lumen screenshots stay local\n*\n").map_err(|e|e.to_string())?; }
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        let file = format!("shot-{stamp}.png");
+        image.save(dir.join(&file)).map_err(|e|e.to_string())?;
+        let path = format!(".lumen/screenshots/{file}");
+        let sidecar = json!({"path":path,"label":"Captured at the assistant's request","width":image.width(),"height":image.height(),"source":source_title.unwrap_or_else(||"Primary monitor".into()),"captured":stamp});
+        std::fs::write(dir.join(format!("shot-{stamp}.json")), serde_json::to_vec_pretty(&sidecar).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        let thumbnail = image::DynamicImage::ImageRgba8(image).thumbnail(1600, 1200).to_rgb8();
+        let mut encoded = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 78).encode_image(&image::DynamicImage::ImageRgb8(thumbnail)).map_err(|e|e.to_string())?;
+        use base64::Engine as _;
+        Ok((path, base64::engine::general_purpose::STANDARD.encode(encoded)))
+    }).await.map_err(|e|e.to_string())?
 }
 
 pub async fn read_frame<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Value>, String> {

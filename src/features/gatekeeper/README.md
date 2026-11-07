@@ -1,8 +1,9 @@
 # Gatekeeper integration handoff
 
 This directory is a native crate plus a React review surface. Lumen connects it
-for Claude only, through `src-tauri/src/approvals.rs`, the Ask-first access mode
-and the chat panel. The Codex runner is still not connected.
+for Claude through `src-tauri/src/approvals.rs` and for Codex through
+`src-tauri/src/approvals_codex.rs` (`codex app-server`), with the Ask-first access
+mode and the chat panel.
 
 ## Verified support, 2026-11-06, Windows
 
@@ -22,7 +23,12 @@ and the chat panel. The Codex runner is still not connected.
   (ignored by default; it needs `LUMEN_GATEKEEPER_MCP_EXE` and a signed-in
   `LUMEN_TEST_CLAUDE_CONFIG`). Read-only tools such as `echo` are auto-allowed
   by Claude Code and never reach the approval tool.
-  The Codex approval path has no model-generated callback test. The native
+- Lumen's own Codex turn, 2026-11-07, Windows, Codex 0.167.0-alpha.3.2: the
+  app-server runner received `item/commandExecution/requestApproval` for a file
+  write, the broker approved it, the file was written and the turn completed.
+  The test is `approvals_codex::tests::approved_codex_action_runs_in_a_real_turn`
+  (ignored; needs a signed-in `LUMEN_TEST_CODEX_CONFIG`). That model turn raised
+  no file-change callback, which stays covered by fixtures only. The native
   window (clicks, countdown) and macOS/Linux, packaged executable entry points
   and clean installs remain open.
 

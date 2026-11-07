@@ -1,4 +1,20 @@
-# Validation — 0.4.2
+# Validation
+
+## 0.5.0 local validation
+
+| Check | Result | Scope |
+| --- | --- | --- |
+| `npm run build` | Pass | TypeScript and production frontend bundle |
+| `cargo check --manifest-path src-tauri/Cargo.toml --all-targets` | Pass | Rust application and targets, including screenshot MCP tools |
+| `npm run format:check` | Pass | Prettier across frontend and browser fixtures |
+| `cargo fmt --check` (app and Gatekeeper manifests) | Pass | Rust formatting |
+| `git diff --check` | Pass | Whitespace and patch integrity |
+| `npm run build:release` | Pass | Windows x64 NSIS and portable artifacts |
+| Portable checksum | Pass | Portable SHA-256 matches `src-tauri/target/release/lumen.exe` |
+
+Automated unit, Playwright and full Rust test suites were not run locally. The GitHub release workflow runs frontend and Rust tests before attaching release assets. Native checks for the screenshot MCP tool and settings remain open; macOS/Linux behavior is not established.
+
+## 0.4.2
 
 Evidence is separated by scope. Provider integrations still need acceptance testing with real accounts. The 0.4.0 evidence (native offline harness, live Orchestra run) is unchanged and is not repeated here.
 

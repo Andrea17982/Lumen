@@ -60,7 +60,7 @@ pub async fn send_message(
         crate::catalog::validate(&models, plan.model.as_deref(), &plan.effort)?;
     }
     for f in &options.attachments {
-        context::jail(Path::new(&session.workspace), f)?;
+        context::attachment_path(Path::new(&session.workspace), f)?;
     }
     // Orchestra: complex Auto work is planned and split across agents.
     let mut orchestra_nogit = false;
@@ -105,17 +105,6 @@ pub async fn send_message(
             kind: "attachments".into(),
             text: options.attachments.join("\n"),
         });
-    }
-    // Invisible snapshot before any turn that may write: powers Rewind.
-    if options.access() != AccessMode::ReadOnly {
-        if let Some(top) = gitops::toplevel(Path::new(&session.workspace)).await {
-            if let Ok(tree) = gitops::checkpoint(&top, &user.id).await {
-                user.activity.push(Activity {
-                    kind: "checkpoint".into(),
-                    text: tree,
-                });
-            }
-        }
     }
     if let Err(e) = core.store.save_message(&id, &user) {
         release(&core);
@@ -228,6 +217,18 @@ pub async fn send_message(
     Ok(returned)
 }
 
+/// Token usage a provider reported for a turn, stored on the reply for the context meter.
+#[derive(serde::Serialize, Default)]
+struct Measured {
+    /// Input tokens of the latest request, cached reads and writes included.
+    latest: u64,
+    /// First request input minus the local prompt estimate: CLI instructions, tools and the
+    /// estimate's own error.
+    overhead: Option<u64>,
+    /// Context window the CLI reported for the model.
+    window: Option<u64>,
+}
+
 pub(crate) fn friendly(e: &str) -> String {
     e.strip_prefix(limits::RATE_LIMIT)
         .map(|m| format!("Rate limit reached: {m}"))
@@ -281,6 +282,11 @@ pub async fn stage(
             }
         ),
     );
+    // Context measurement for the meter: the first request of the turn carries the prompt plus
+    // the CLI's own instructions and tools, so the difference from the local estimate is the
+    // overhead every later prompt will also pay.
+    let prompt_tokens = (prompt.chars().count() as u64).div_ceil(4);
+    let mut measured = Measured::default();
     let result = providers::execute(
         providers::Invocation {
             account: a,
@@ -305,6 +311,26 @@ pub async fn stage(
                 return;
             }
             if activity.kind == "pid" {
+                return;
+            }
+            if activity.kind == "usage" || activity.kind == "window" {
+                let Ok(n) = activity.text.parse::<u64>() else {
+                    return;
+                };
+                if activity.kind == "window" {
+                    measured.window = Some(n);
+                } else {
+                    measured
+                        .overhead
+                        .get_or_insert(n.saturating_sub(prompt_tokens));
+                    measured.latest = n;
+                }
+                // Only the latest measurement matters: each request replaces the last one.
+                out.activity.retain(|a| a.kind != "usage");
+                out.activity.push(Activity {
+                    kind: "usage".into(),
+                    text: serde_json::to_string(&measured).unwrap_or_default(),
+                });
                 return;
             }
             if visible && ["delta", "replace"].contains(&activity.kind.as_str()) {
@@ -501,64 +527,8 @@ pub(crate) async fn build_prompt(
 ) -> Result<(String, String), String> {
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
-    let history = messages
-        .iter()
-        .filter(|m| !exclude.contains(&m.id.as_str()))
-        .map(|m| {
-            let text = if m.role == "user" {
-                context::spill(&workspace, &m.text).0
-            } else {
-                m.text.clone()
-            };
-            let files: Vec<String> = m
-                .activity
-                .iter()
-                .filter(|a| a.kind == "file")
-                .take(12)
-                .map(|a| {
-                    a.text
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .chars()
-                        .take(160)
-                        .collect()
-                })
-                .collect();
-            let files = if files.is_empty() {
-                String::new()
-            } else {
-                format!("\n[files changed in this turn: {}]", files.join("; "))
-            };
-            format!("{}:\n{}{}", m.role, text, files)
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let context_text: String = history
-        .chars()
-        .rev()
-        .take(100_000)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    let permission = match options.access() {
-        AccessMode::ReadOnly => "Read-only turn. Do not modify files.",
-        AccessMode::FileEdits => "File edits are enabled in the chosen workspace.",
-        AccessMode::Autopilot => "Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Work autonomously on the requested task.",
-        AccessMode::Ask => "Ask first: each action that needs permission waits for the user to approve or reject it in Lumen. If an action is rejected, do not retry it another way.",
-    };
+    let history = history_text(&messages, &workspace, exclude, true);
     let shared = integrations::instructions(&core.root)?;
-    let notes = context::read_context(&workspace);
-    let notes = if notes.trim().is_empty() {
-        String::new()
-    } else {
-        format!(
-            "\nProject notes ({}, shared by every assistant in Lumen):\n{}\n",
-            context::CONTEXT_FILE,
-            notes.trim()
-        )
-    };
     let attached = if options.attachments.is_empty() {
         String::new()
     } else {
@@ -585,10 +555,178 @@ pub(crate) async fn build_prompt(
             }
         }
     }
-    let prompt = format!(
-        "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. {permission}\n\n{context_text}{attached}{audit}"
+    let map = repo_references(core, s, &workspace, &messages).await;
+    let prompt = assemble_prompt(
+        &shared,
+        &format!("{}{map}", notes_block(&workspace)),
+        permission_text(options.access()),
+        &tail_chars(&history, 100_000),
+        &attached,
+        &audit,
     );
     Ok((prompt, history))
+}
+
+/// Declarations of identifiers the latest request mentions, from the repository map, when the
+/// setting is on. What was added is recorded on the request so the chat shows it.
+async fn repo_references(
+    core: &Core,
+    s: &Session,
+    workspace: &Path,
+    messages: &[Message],
+) -> String {
+    if !core
+        .settings
+        .lock()
+        .map(|x| x.repo_context)
+        .unwrap_or(false)
+    {
+        return String::new();
+    }
+    let Some(mut request) = messages.iter().rev().find(|m| m.role == "user").cloned() else {
+        return String::new();
+    };
+    let (data, root, text) = (
+        core.root.clone(),
+        workspace.to_path_buf(),
+        request.text.clone(),
+    );
+    let Ok((block, used)) = tauri::async_runtime::spawn_blocking(move || {
+        crate::repomap::context_for(&data, &root, &text)
+    })
+    .await
+    else {
+        return String::new();
+    };
+    if !used.is_empty() && !request.activity.iter().any(|a| a.kind == "references") {
+        request.activity.push(Activity {
+            kind: "references".into(),
+            text: used
+                .iter()
+                .map(|u| format!("{} · {}:{}", u.name, u.file, u.line))
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                ),
+        });
+        let _ = core.store.save_message(&s.id, &request);
+    }
+    block
+}
+
+/// Chat history as the CLI receives it. Estimates pass `write` false: long pasted logs are shown
+/// as excerpts without saving the full copy to the project.
+fn history_text(messages: &[Message], workspace: &Path, exclude: &[&str], write: bool) -> String {
+    messages
+        .iter()
+        .filter(|m| !exclude.contains(&m.id.as_str()))
+        .map(|m| {
+            let text = if m.role == "user" && write {
+                context::spill(workspace, &m.text).0
+            } else if m.role == "user" {
+                context::shown_text(&m.text)
+            } else {
+                m.text.clone()
+            };
+            let files: Vec<String> = m
+                .activity
+                .iter()
+                .filter(|a| a.kind == "file")
+                .take(12)
+                .map(|a| {
+                    a.text
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(160)
+                        .collect()
+                })
+                .collect();
+            let files = if files.is_empty() {
+                String::new()
+            } else {
+                format!("\n[files changed in this turn: {}]", files.join("; "))
+            };
+            format!("{}:\n{}{}", m.role, text, files)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// The last `max` characters, where the most recent turns are.
+fn tail_chars(text: &str, max: usize) -> String {
+    text.chars()
+        .rev()
+        .take(max)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect()
+}
+
+fn permission_text(access: AccessMode) -> &'static str {
+    match access {
+        AccessMode::ReadOnly => "Read-only turn. Do not modify files.",
+        AccessMode::FileEdits => "File edits are enabled in the chosen workspace.",
+        AccessMode::Autopilot => "Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Work autonomously on the requested task.",
+        AccessMode::Ask => "Ask first: each action that needs permission waits for the user to approve or reject it in Lumen. If an action is rejected, do not retry it another way.",
+    }
+}
+
+fn notes_block(workspace: &Path) -> String {
+    let notes = context::read_context(workspace);
+    if notes.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nProject notes ({}, shared by every assistant in Lumen):\n{}\n",
+            context::CONTEXT_FILE,
+            notes.trim()
+        )
+    }
+}
+
+fn assemble_prompt(
+    shared: &str,
+    notes: &str,
+    permission: &str,
+    context_text: &str,
+    attached: &str,
+    audit: &str,
+) -> String {
+    format!(
+        "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. {permission}\n\n{context_text}{attached}{audit}"
+    )
+}
+
+/// Characters in the prompt the next turn would send, for the context meter. Attachments and
+/// audit diffs are left out, and nothing is written or read from git, so the estimate is cheap.
+pub(crate) fn prompt_chars(core: &Core, s: &Session) -> Result<usize, String> {
+    let workspace = PathBuf::from(&s.workspace);
+    let messages = core.store.messages(&s.id)?;
+    let history = history_text(&messages, &workspace, &[], false);
+    let shared = integrations::instructions(&core.root)?;
+    let prompt = assemble_prompt(
+        &shared,
+        &notes_block(&workspace),
+        permission_text(s.access_mode),
+        &tail_chars(&history, 100_000),
+        "",
+        "",
+    );
+    Ok(prompt.chars().count())
+}
+
+/// Estimated prompt size of a chat, for the context meter.
+#[tauri::command]
+pub async fn prompt_estimate(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Result<usize, String> {
+    let s = core.store.session(&id)?;
+    prompt_chars(&core, &s)
 }
 
 pub(crate) fn workspace_lock(
@@ -614,6 +752,89 @@ pub(crate) fn workspace_lock(
         .clone())
 }
 
+/// Other active Lumen conversations that target the same canonical project folder.
+pub(crate) fn conversations_on_workspace(core: &Core, s: &Session) -> Vec<String> {
+    let Ok(current) = dunce::canonicalize(&s.workspace) else {
+        return Vec::new();
+    };
+    let current_key = if cfg!(windows) {
+        current.to_string_lossy().to_lowercase()
+    } else {
+        current.to_string_lossy().into_owned()
+    };
+    let ids = core
+        .jobs
+        .lock()
+        .map(|jobs| {
+            jobs.keys()
+                .filter(|id| *id != &s.id)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    ids.into_iter()
+        .filter_map(|id| core.store.session(&id).ok())
+        .filter(|other| {
+            dunce::canonicalize(&other.workspace)
+                .ok()
+                .map(|path| {
+                    let key = if cfg!(windows) {
+                        path.to_string_lossy().to_lowercase()
+                    } else {
+                        path.to_string_lossy().into_owned()
+                    };
+                    key == current_key
+                })
+                .unwrap_or(false)
+        })
+        .map(|other| other.title)
+        .collect()
+}
+
+fn later_project_conversations(core: &Core, s: &Session, after: i64) -> Vec<String> {
+    let Ok(current) = dunce::canonicalize(&s.workspace) else {
+        return Vec::new();
+    };
+    core.store
+        .sessions_updated_after(after)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(id, _, _)| id != &s.id)
+        .filter_map(|(_, title, folder)| {
+            let folder = dunce::canonicalize(folder).ok()?;
+            (folder == current).then_some(title)
+        })
+        .collect()
+}
+
+/// Take a turn's rewind/base snapshot only after its project write lock is held.
+pub(crate) async fn checkpoint_message(
+    core: &Core,
+    s: &Session,
+    message_id: &str,
+) -> Result<Option<String>, String> {
+    let mut messages = core.store.messages(&s.id)?;
+    let Some(message) = messages
+        .iter_mut()
+        .find(|m| m.id == message_id && m.role == "user")
+    else {
+        return Ok(None);
+    };
+    if let Some(tree) = checkpoint_of(message) {
+        return Ok(Some(tree));
+    }
+    let Some(top) = gitops::toplevel(Path::new(&s.workspace)).await else {
+        return Ok(None);
+    };
+    let tree = gitops::checkpoint(&top, message_id).await?;
+    message.activity.push(Activity {
+        kind: "checkpoint".into(),
+        text: tree.clone(),
+    });
+    core.store.save_message(&s.id, message)?;
+    Ok(Some(tree))
+}
+
 pub(crate) fn approved(review: &str) -> bool {
     review.trim_start().lines().next().is_some_and(|l| {
         l.trim()
@@ -635,6 +856,19 @@ async fn run_plan(
 ) -> Result<(), String> {
     let writer = account(core, &plan.account_id)?;
     let lock = workspace_lock(core, s)?;
+    let other_sessions = conversations_on_workspace(core, s);
+    if !other_sessions.is_empty() && options.access() != AccessMode::ReadOnly {
+        note(
+            app,
+            &s.id,
+            out,
+            "coordination",
+            format!(
+                "Another Lumen conversation is active on this project ({}). Write turns are serialized; this turn reads the project after the other writer releases its lock.",
+                other_sessions.join(", ")
+            ),
+        );
+    }
     let _guard = if options.access() != AccessMode::ReadOnly {
         Some(
             tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),g=lock.lock()=>g},
@@ -642,6 +876,17 @@ async fn run_plan(
     } else {
         None
     };
+    if options.access() != AccessMode::ReadOnly {
+        if let Some(user) = core
+            .store
+            .messages(&s.id)?
+            .into_iter()
+            .rev()
+            .find(|m| m.role == "user")
+        {
+            checkpoint_message(core, s, &user.id).await?;
+        }
+    }
     let (prompt, history) = build_prompt(core, s, &[&out.id], options).await?;
     let partner_model = if let Some(id) = &plan.partner_account {
         let partner = account(core, id)?;
@@ -955,6 +1200,17 @@ async fn run_broadcast(
     )?;
     let workspace = PathBuf::from(&s.workspace);
     let mut access = options.access();
+    let write_lock = workspace_lock(core, s)?;
+    let _write_guard = if access == AccessMode::ReadOnly {
+        None
+    } else {
+        Some(write_lock.lock().await)
+    };
+    let checkpoint = if access == AccessMode::ReadOnly {
+        None
+    } else {
+        checkpoint_message(core, s, &user.id).await?
+    };
     let mut outs: Vec<Message> = [&first, &second]
         .iter()
         .map(|a| Message {
@@ -977,7 +1233,7 @@ async fn run_broadcast(
     if access != AccessMode::ReadOnly {
         match gitops::toplevel(&workspace).await {
             Some(top) => {
-                base = match checkpoint_of(user) {
+                base = match checkpoint.clone() {
                     Some(t) => t,
                     None => gitops::write_tree(&top).await?,
                 };
@@ -1112,6 +1368,23 @@ pub async fn resolve_lanes(
         .and_then(lane_of)
         .ok_or("This version is no longer available")?;
     if apply {
+        let s = core.store.session(&session)?;
+        let other_sessions = conversations_on_workspace(&core, &s);
+        if !other_sessions.is_empty() {
+            return Err(format!(
+                "Cannot apply this version while another conversation is active on the project: {}",
+                other_sessions.join(", ")
+            ));
+        }
+        let lock = workspace_lock(&core, &s)?;
+        let _guard = lock.lock().await;
+        let other_sessions = conversations_on_workspace(&core, &s);
+        if !other_sessions.is_empty() {
+            return Err(format!(
+                "Cannot apply this version while another conversation is active on the project: {}",
+                other_sessions.join(", ")
+            ));
+        }
         let patch = gitops::lane_patch(Path::new(&target.path), &target.base).await?;
         gitops::apply_patch(Path::new(&target.top), &patch).await?;
     }
@@ -1165,6 +1438,14 @@ pub async fn rewind_preview(
     message: String,
 ) -> Result<RewindPreview, String> {
     let (s, messages, pos) = rewind_target(&core, &session, &message).await?;
+    let message_time = core.store.message_created_at(&session, &message)?;
+    let later = later_project_conversations(&core, &s, message_time);
+    if !later.is_empty() {
+        return Err(format!(
+            "Rewind is blocked because another conversation has changed this project since that message: {}",
+            later.join(", ")
+        ));
+    }
     // The earliest checkpoint at or after this message is the state before this turn.
     let tree = messages[pos..]
         .iter()
@@ -1197,7 +1478,32 @@ pub async fn rewind(
     {
         return Err("Stop this conversation before rewinding".into());
     }
+    let initial = core.store.session(&session)?;
+    let other_sessions = conversations_on_workspace(&core, &initial);
+    if !other_sessions.is_empty() {
+        return Err(format!(
+            "Cannot rewind while another conversation is active on the project: {}",
+            other_sessions.join(", ")
+        ));
+    }
+    let lock = workspace_lock(&core, &initial)?;
+    let _guard = lock.lock().await;
+    let other_sessions = conversations_on_workspace(&core, &initial);
+    if !other_sessions.is_empty() {
+        return Err(format!(
+            "Cannot rewind while another conversation is active on the project: {}",
+            other_sessions.join(", ")
+        ));
+    }
     let (s, messages, pos) = rewind_target(&core, &session, &message).await?;
+    let message_time = core.store.message_created_at(&session, &message)?;
+    let later = later_project_conversations(&core, &s, message_time);
+    if !later.is_empty() {
+        return Err(format!(
+            "Cannot rewind because another conversation has changed this project since that message: {}",
+            later.join(", ")
+        ));
+    }
     let tree = messages[pos..]
         .iter()
         .filter(|m| m.role == "user")

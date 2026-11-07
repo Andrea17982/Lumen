@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { AlertCircle, ArrowUpRight, Heart, X } from 'lucide-react';
 import { version } from '../../package.json';
-import { call, external } from '../lib/bridge';
-import { advancedActive, useAppSettings } from '../lib/settings';
-import type { Account, McpServer, Provider } from '../lib/types';
+import { external } from '../lib/bridge';
+import { useAppSettings } from '../lib/settings';
+import type { Account, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
 import ApiSettings from './ApiSettings';
@@ -12,6 +12,7 @@ import AutoSettings from './AutoSettings';
 import GeneralSettings from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
 import TeamworkSettings from './TeamworkSettings';
+import { useI18n } from '../lib/i18n';
 
 export type SettingsTab = 'general' | 'accounts' | 'auto' | 'teamwork' | 'tools' | 'about';
 const TABS: { id: SettingsTab; label: string; advanced?: boolean }[] = [
@@ -59,24 +60,16 @@ export default function SettingsPanel({
   workspace: string;
   chooseFolder: () => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const reduced = useReducedMotion();
   const [advanced, setAdvanced] = useState(() => localStorage.getItem(MODE_KEY) === 'advanced');
   const [tab, setTab] = useState<SettingsTab>(requestedTab || 'general');
-  const settings = useAppSettings(setError);
-  const [mcpOn, setMcpOn] = useState(0);
+  useAppSettings(setError);
   useEffect(() => {
     if (open) setTab(requestedTab || 'general');
   }, [open, requestedTab]);
-  // Enabled MCP servers live in the Advanced-only Tools tab, so Simple mode counts them.
-  useEffect(() => {
-    if (!open || advanced) return;
-    void call<McpServer[]>('mcp_health')
-      .then((list) => setMcpOn(list.filter((m) => m.enabled).length))
-      .catch(() => setMcpOn(0));
-  }, [open, advanced]);
-  const visible = TABS.filter((t) => advanced || !t.advanced);
+  const visible = advanced ? TABS : [];
   const current = visible.some((t) => t.id === tab) ? tab : 'general';
-  const hidden = advanced ? 0 : advancedActive(settings, balanceUsage, mcpOn);
   function mode(next: boolean) {
     setAdvanced(next);
     localStorage.setItem(MODE_KEY, next ? 'advanced' : 'simple');
@@ -90,48 +83,62 @@ export default function SettingsPanel({
           className="settings-panel"
           initial={reduced ? false : { x: 35, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={reduced ? { x: 0, opacity: 1 } : { x: 35, opacity: 0 }}
-          transition={{ duration: reduced ? 0 : 0.2 }}
-          aria-label="Settings panel"
+          exit={
+            reduced
+              ? { x: 0, opacity: 1 }
+              : {
+                  x: 35,
+                  opacity: 0,
+                  transition: { duration: 0.14, ease: [0.4, 0, 1, 1] },
+                }
+          }
+          transition={{ duration: reduced ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+          aria-label={t('Settings panel')}
         >
           <header className="settings-header">
             <div className="settings-heading">
-              <button className="icon-button" aria-label="Close settings" onClick={onClose}>
+              <button className="icon-button" aria-label={t('Close settings')} onClick={onClose}>
                 <X size={18} />
               </button>
-              <h2>Settings</h2>
-              <div className="auto-policy settings-mode" role="group" aria-label="Settings mode">
+              <h2>{t('Settings')}</h2>
+              <div
+                className="auto-policy settings-mode"
+                role="group"
+                aria-label={t('Settings mode')}
+              >
                 <button aria-pressed={!advanced} onClick={() => mode(false)}>
-                  Simple
+                  {t('Simple')}
                 </button>
                 <button aria-pressed={advanced} onClick={() => mode(true)}>
-                  Advanced
+                  {t('Advanced')}
                 </button>
               </div>
             </div>
-            <nav className="settings-tabs" role="tablist" aria-label="Settings sections">
-              {visible.map((t) => (
-                <button
-                  key={t.id}
-                  role="tab"
-                  id={`settings-tab-${t.id}`}
-                  aria-selected={current === t.id}
-                  aria-controls="settings-body"
-                  onClick={(e) => {
-                    setTab(t.id);
-                    e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </nav>
+            {advanced && (
+              <nav className="settings-tabs" role="tablist" aria-label={t('Settings sections')}>
+                {visible.map((tabItem) => (
+                  <button
+                    key={tabItem.id}
+                    role="tab"
+                    id={`settings-tab-${tabItem.id}`}
+                    aria-selected={current === tabItem.id}
+                    aria-controls="settings-body"
+                    onClick={(e) => {
+                      setTab(tabItem.id);
+                      e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    }}
+                  >
+                    {t(tabItem.label)}
+                  </button>
+                ))}
+              </nav>
+            )}
           </header>
           <div
             className="settings-body"
             id="settings-body"
-            role="tabpanel"
-            aria-labelledby={`settings-tab-${current}`}
+            role={advanced ? 'tabpanel' : undefined}
+            aria-labelledby={advanced ? `settings-tab-${current}` : undefined}
           >
             {error && (
               <div role="alert" className="error-banner">
@@ -139,23 +146,33 @@ export default function SettingsPanel({
                 <span>{error}</span>
                 <button
                   className="icon-button"
-                  aria-label="Dismiss settings error"
+                  aria-label={t('Dismiss settings error')}
                   onClick={() => setError('')}
                 >
                   <X size={14} />
                 </button>
               </div>
             )}
-            {current === 'general' && (
+            {!advanced && (
+              <TeamworkSettings
+                simpleOnly
+                advanced={false}
+                accounts={accounts}
+                onError={setError}
+              />
+            )}
+            {advanced && current === 'general' && (
               <GeneralSettings
                 theme={theme}
                 setTheme={setTheme}
                 workspace={workspace}
                 chooseFolder={chooseFolder}
                 onError={setError}
+                setAutoPolicy={setAutoPolicy}
+                setBalanceUsage={setBalanceUsage}
               />
             )}
-            {current === 'accounts' && (
+            {advanced && current === 'accounts' && (
               <AccountSettings
                 accounts={accounts}
                 refresh={refreshAccounts}
@@ -164,11 +181,13 @@ export default function SettingsPanel({
                 advanced={advanced}
               />
             )}
-            {current === 'auto' && (
+            {advanced && current === 'auto' && (
               <>
                 <section className="settings-section">
-                  <h3>Auto preferences</h3>
-                  <p>Choose how Auto weighs speed, quality and the remaining provider quota.</p>
+                  <h3>{t('Auto preferences')}</h3>
+                  <p>
+                    {t('Choose how Auto weighs speed, quality and the remaining provider quota.')}
+                  </p>
                   <div className="auto-controls settings-auto-controls">
                     <div className="auto-policy" role="group" aria-label="Auto policy">
                       {['budget', 'default', 'quality'].map((p) => (
@@ -194,7 +213,7 @@ export default function SettingsPanel({
                             localStorage.setItem('lumen-balance-usage', String(e.target.checked));
                           }}
                         />{' '}
-                        Balance usage
+                        {t('Balance usage')}
                       </label>
                     )}
                   </div>
@@ -202,16 +221,16 @@ export default function SettingsPanel({
                 {advanced && <AutoSettings accounts={accounts} onError={setError} />}
               </>
             )}
-            {current === 'teamwork' && (
+            {advanced && current === 'teamwork' && (
               <TeamworkSettings advanced={advanced} accounts={accounts} onError={setError} />
             )}
-            {current === 'tools' && (
+            {advanced && current === 'tools' && (
               <>
                 <IntegrationSettings onError={setError} />
                 <ApiSettings onError={setError} />
               </>
             )}
-            {current === 'about' && (
+            {advanced && current === 'about' && (
               <section className="settings-section about">
                 <Mark small />
                 <p>
@@ -223,28 +242,22 @@ export default function SettingsPanel({
                   onClick={() => void external(PAYPAL).catch((e) => setError(errorText(e)))}
                 >
                   <Heart size={15} />
-                  Support Lumen on PayPal
+                  {t('Support Lumen on PayPal')}
                   <ArrowUpRight size={14} />
                 </button>
-                <small>Optional donations · No features behind a paywall.</small>
+                <small>{t('Optional donations · No features behind a paywall.')}</small>
               </section>
-            )}
-            {hidden > 0 && (
-              <p className="hidden-advanced">
-                {hidden} advanced {hidden === 1 ? 'option is' : 'options are'} on ·{' '}
-                <button className="text-button" onClick={() => mode(true)}>
-                  Show
-                </button>
-              </p>
             )}
           </div>
           <footer className="settings-footer version">
-            <span>Lumen {version} · Open source · MIT</span>
+            <span>
+              Lumen {version} · {t('Open source')} · MIT
+            </span>
             <button
               className="text-button"
               onClick={() => void external(`${REPO}/issues`).catch((e) => setError(errorText(e)))}
             >
-              Share your feedback <ArrowUpRight size={12} />
+              {t('Share your feedback')} <ArrowUpRight size={12} />
             </button>
           </footer>
         </motion.aside>

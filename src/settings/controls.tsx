@@ -9,7 +9,7 @@ export function Switch({
   disabled,
 }: {
   label: string;
-  hint: string;
+  hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
@@ -18,7 +18,7 @@ export function Switch({
     <label className="switch-row">
       <span>
         <strong>{label}</strong>
-        <small>{hint}</small>
+        {hint && <small>{hint}</small>}
       </span>
       <input
         type="checkbox"

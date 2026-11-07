@@ -13,7 +13,13 @@ src-tauri/gen/
 auth.json
 .claude/
 .codex/
+!.codex/
+.codex/*
+!.codex/hooks.json
 .impeccable/
+!.impeccable/
+.impeccable/*
+!.impeccable/config.json
 test-results/
 playwright-report/
 *.tsbuildinfo

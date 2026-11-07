@@ -21,8 +21,9 @@ conversation's summary.
 Ask-first Claude turns are integrated: `src-tauri/src/approvals.rs` starts the
 Claude CLI with the Gatekeeper MCP bridge, probes readiness with no prompt, then
 runs the turn with `--permission-prompt-tool`. Approvals appear in the chat's
-panel and are decided through the native broker. Codex has no approval runner
-yet, so Ask-first is refused for it. Orchestra subtasks do not use Ask-first.
+panel and are decided through the native broker. Ask-first Codex turns run over
+`codex app-server` in `src-tauri/src/approvals_codex.rs`, which maps the app's `gpt`
+provider to Gatekeeper's `codex`. Orchestra subtasks do not use Ask-first.
 
 ## Shared integration contract
 
@@ -48,8 +49,7 @@ in `src-tauri/src/scheduling.rs`.
 
 - Integrated Orchestra run on an isolated copy of Lumen, including quota changes,
   queued work, restart, repeated Resume and prevention of duplicate effects.
-- Codex approval runner (`app-server`) and its cards in the app; Ask-first in
-  Orchestra subtasks.
+- Ask-first in Orchestra subtasks.
 - Ask-first in the native window: approve, reject and cancel clicks and the
   countdown are not yet verified in the webview. The real Claude turn test
   decided through the broker directly.

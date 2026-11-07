@@ -3,9 +3,11 @@ import { call, desktop } from '../lib/bridge';
 import { saveSettings, useAppSettings } from '../lib/settings';
 import type { ApiStatus, AppSettings } from '../lib/types';
 import { CopyField, Switch } from './controls';
+import { useI18n } from '../lib/i18n';
 
 /** Settings → Tools → Local API (Advanced only). */
 export default function ApiSettings({ onError }: { onError: (s: string) => void }) {
+  const { t } = useI18n();
   const s = useAppSettings(onError);
   const [api, setApi] = useState<ApiStatus | null>(null);
   const [port, setPort] = useState('');
@@ -38,14 +40,15 @@ export default function ApiSettings({ onError }: { onError: (s: string) => void 
   if (!s) return null;
   return (
     <section className="settings-section">
-      <h3>Local API</h3>
+      <h3>{t('Local API')}</h3>
       <p>
-        Let other apps on this PC use your subscriptions through an OpenAI-compatible endpoint.
-        Read-only, local only.
+        {t(
+          'Let other apps on this PC use your subscriptions through an OpenAI-compatible endpoint. Read-only, local only.',
+        )}
       </p>
       <Switch
-        label="Serve on localhost"
-        hint="Models: lumen-auto, lumen-claude, lumen-chatgpt."
+        label={t('Serve on localhost')}
+        hint={t('Models: lumen-auto, lumen-claude, lumen-chatgpt.')}
         checked={s.apiEnabled}
         disabled={!desktop || busy}
         onChange={(v) => void save({ ...s, apiEnabled: v, apiPort: Number(port) || 8317 })}
@@ -70,7 +73,7 @@ export default function ApiSettings({ onError }: { onError: (s: string) => void 
               api.log.slice(0, 8).map((l) => (
                 <div key={l.at + l.model}>
                   <span className={l.status === '200' ? 'ok' : 'bad'}>
-                    {l.status === '200' ? '200' : 'Error'}
+                    {l.status === '200' ? '200' : t('Error')}
                   </span>
                   <span>{l.model}</span>
                   <small>
@@ -80,7 +83,7 @@ export default function ApiSettings({ onError }: { onError: (s: string) => void 
                 </div>
               ))
             ) : (
-              <small>No requests yet.</small>
+              <small>{t('No requests yet.')}</small>
             )}
           </div>
         </div>

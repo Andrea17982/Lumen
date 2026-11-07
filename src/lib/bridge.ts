@@ -47,6 +47,7 @@ function previewSettings(): AppSettings {
     ollamaModel: '',
     orchestraLimits: { maxConcurrent: null, maxSubtasks: null, quotaThresholds: {} },
     localAssistant: { enabled: false, model: '', autoTitles: true, timeoutMs: 60_000 },
+    repoContext: true,
   };
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(settingsKey) || '{}') };
@@ -131,7 +132,18 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       break;
     case 'provider_health':
     case 'mcp_health':
+    case 'project_tools':
+    case 'project_checks':
+    case 'list_screenshots':
+    case 'capture_targets':
+    case 'change_layers':
       result = [];
+      break;
+    case 'repo_map_search':
+      result = {
+        symbols: [],
+        stats: { files: 0, symbols: 0, refreshed: 0, removed: 0, millis: 0, partial: false },
+      };
       break;
     case 'ollama_status':
       result = { installed: false, running: false, models: [], selected: null };

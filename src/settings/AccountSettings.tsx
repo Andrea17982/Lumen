@@ -5,6 +5,7 @@ import { call, external } from '../lib/bridge';
 import { saveSettings, useAppSettings } from '../lib/settings';
 import type { Account, Diagnostics, OllamaStatus, Provider } from '../lib/types';
 import { errorText, nameOf, REPO } from '../lib/util';
+import { useI18n } from '../lib/i18n';
 
 export default function AccountSettings({
   accounts,
@@ -19,6 +20,7 @@ export default function AccountSettings({
   refresh: () => Promise<void>;
   onError: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [provider, setProvider] = useState<Provider>(initialProvider);
   const [editing, setEditing] = useState('');
@@ -70,11 +72,11 @@ export default function AccountSettings({
     <section className="settings-section">
       <div className="section-title">
         <h3>
-          Connected accounts{' '}
+          {t('Connected accounts')}{' '}
           <button
             className="help-button"
-            aria-label="Account setup and provider requirements"
-            title="Account setup and provider requirements"
+            aria-label={t('Account setup and provider requirements')}
+            title={t('Account setup and provider requirements')}
             onClick={() =>
               void external(`${REPO}/blob/main/docs/accounts.md`).catch((e) =>
                 onError(errorText(e)),
@@ -84,41 +86,47 @@ export default function AccountSettings({
             ?
           </button>
         </h3>
-        <button className="icon-button" aria-label="Add account" onClick={() => setAdding(!adding)}>
+        <button
+          className="icon-button"
+          aria-label={t('Add account')}
+          onClick={() => setAdding(!adding)}
+        >
           <Plus size={17} />
         </button>
       </div>
       <p>
-        Sign in through the official CLI. Each account gets its own configuration folder.
-        Antigravity, Gemini CLI and Ollama (local) are emergency fallbacks in Auto, used only after
-        Claude and GPT are rate limited or out of quota.
+        {t(
+          'Sign in through the official CLI. Each account gets its own configuration folder. Antigravity, Gemini CLI and Ollama (local) are emergency fallbacks in Auto, used only after Claude and GPT are rate limited or out of quota.',
+        )}
       </p>
       {diag && (
         <div className="cli-status">
           <span className={diag.claude ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
-            Claude CLI {diag.claude ? 'found' : 'not found'}
+            Claude CLI {t(diag.claude ? 'found' : 'not found')}
           </span>
           <span className={diag.gpt ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
-            Codex CLI {diag.gpt ? 'found' : 'not found'}
+            Codex CLI {t(diag.gpt ? 'found' : 'not found')}
           </span>
           <span className={diag.gemini ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
-            Gemini CLI {diag.gemini ? 'found' : 'not found'}
+            Gemini CLI {t(diag.gemini ? 'found' : 'not found')}
           </span>
           <span className={diag.antigravity ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
-            Antigravity CLI {diag.antigravity ? 'found' : 'not found'}
+            Antigravity CLI {t(diag.antigravity ? 'found' : 'not found')}
           </span>
           <span className={diag.ollama ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
-            Ollama {diag.ollama ? 'found' : 'not found'}
+            Ollama {t(diag.ollama ? 'found' : 'not found')}
           </span>
         </div>
       )}
       {accounts.length === 0 && (
-        <div className="account-empty">Connect an account to start your first conversation.</div>
+        <div className="account-empty">
+          {t('Connect an account to start your first conversation.')}
+        </div>
       )}
       {accounts.map((a) => (
         <div className="account-row" key={a.id}>
@@ -143,7 +151,7 @@ export default function AccountSettings({
                 </>
               ) : (
                 <>
-                  {nameOf(a.provider)} · {statuses[a.id] || 'Connection unchecked'}
+                  {nameOf(a.provider)} · {t(statuses[a.id] || 'Connection unchecked')}
                 </>
               )}
             </small>
@@ -159,7 +167,7 @@ export default function AccountSettings({
                 })
               }
             >
-              Sign in
+              {t('Sign in')}
             </button>
           ) : (
             ollama &&
@@ -170,7 +178,7 @@ export default function AccountSettings({
                   void external('https://ollama.com/download').catch((e) => onError(errorText(e)))
                 }
               >
-                Install Ollama
+                {t('Install Ollama')}
               </button>
             )
           )}
@@ -216,9 +224,9 @@ export default function AccountSettings({
           </button>
           {a.provider === 'ollama' && advanced && settings && ollama?.models.length ? (
             <label className="ollama-model">
-              Model
+              {t('Model')}
               <select
-                aria-label="Ollama model"
+                aria-label={t('Ollama model')}
                 value={settings.ollamaModel}
                 disabled={pending}
                 onChange={(e) =>
@@ -228,7 +236,7 @@ export default function AccountSettings({
                   })
                 }
               >
-                <option value="">Automatic (largest)</option>
+                <option value="">{t('Automatic (largest)')}</option>
                 {ollama.models.map((m) => (
                   <option key={m.name} value={m.name}>
                     {m.name} · {m.size}
@@ -239,7 +247,7 @@ export default function AccountSettings({
           ) : null}
           {confirm === a.id && (
             <div className="account-confirm">
-              <span>Remove this account and its local login files?</span>
+              <span>{t('Remove this account and its local login files?')}</span>
               <button
                 className="text-button danger"
                 disabled={pending}
@@ -251,10 +259,10 @@ export default function AccountSettings({
                   })
                 }
               >
-                Remove
+                {t('Remove')}
               </button>
               <button className="text-button" onClick={() => setConfirm('')}>
-                Keep
+                {t('Keep')}
               </button>
             </div>
           )}
@@ -274,18 +282,18 @@ export default function AccountSettings({
           }}
         >
           <label>
-            Account name
+            {t('Account name')}
             <input
               required
               maxLength={80}
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Personal"
+              placeholder={t('e.g. Personal')}
             />
           </label>
           <label>
-            Provider
+            {t('Provider')}
             <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
               <option value="claude">Claude Code</option>
               <option value="gpt">ChatGPT / Codex</option>

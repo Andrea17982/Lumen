@@ -130,20 +130,65 @@ pub fn jail(workspace: &Path, rel: &str) -> Result<PathBuf, String> {
 pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String> {
     let mut out = String::new();
     let mut budget: usize = 400_000;
-    for rel in files.iter().take(50) {
-        let path = jail(workspace, rel)?;
+    for selected in files.iter().take(50) {
+        let path = attachment_path(workspace, selected)?;
+        let display = Path::new(selected)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(selected);
+        if crate::screens::is_image(selected) {
+            out.push_str(&format!(
+                "\n<image path=\"{}\">Image attached by the user. Open this file with your image or file viewing tool before answering.</image>\n",
+                path.display()
+            ));
+            continue;
+        }
+        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        if metadata.len() > 100 * 1024 * 1024 {
+            return Err(format!(
+                "{display} is larger than the 100 MB attachment limit"
+            ));
+        }
+        if metadata.len() > budget as u64 {
+            out.push_str(&format!(
+                "\n<file path=\"{}\">Large file attached by the user ({} bytes). Inspect it with an available file-reading tool if supported.</file>\n",
+                path.display(), metadata.len()
+            ));
+            continue;
+        }
         let text = std::fs::read(&path).map_err(|e| e.to_string())?;
         if text.contains(&0) {
-            return Err(format!("{rel} is a binary file"));
+            out.push_str(&format!(
+                "\n<file path=\"{}\">Binary file attached by the user ({} bytes). Inspect it with an available file-reading tool if supported.</file>\n",
+                path.display(), metadata.len()
+            ));
+            continue;
         }
         let text = String::from_utf8_lossy(&text);
         if text.len() > budget {
-            return Err("Attached files exceed 400 KB. Attach fewer files.".into());
+            return Err("Attached text files exceed 400 KB. Attach fewer files.".into());
         }
         budget -= text.len();
-        out.push_str(&format!("\n<file path=\"{rel}\">\n{text}\n</file>\n"));
+        out.push_str(&format!(
+            "\n<file path=\"{}\">\n{text}\n</file>\n",
+            path.display()
+        ));
     }
     Ok(out)
+}
+
+/// Attachments can be project-relative files or absolute paths selected by the user.
+pub fn attachment_path(workspace: &Path, selected: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(selected);
+    let path = if candidate.is_absolute() {
+        dunce::canonicalize(candidate).map_err(|_| format!("{selected} is not available"))?
+    } else {
+        jail(workspace, selected)?
+    };
+    if !path.is_file() {
+        return Err(format!("{selected} is not a file"));
+    }
+    Ok(path)
 }
 
 fn is_progress(line: &str) -> bool {
@@ -219,33 +264,43 @@ pub fn compress_log(text: &str, max_lines: usize) -> String {
     out.join("\n")
 }
 
+/// Name of the saved copy of a long pasted log, derived from its content.
+fn spill_name(text: &str) -> String {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    format!("{:016x}.log", h.finish())
+}
+
+/// What a prompt shows for a pasted text: the text itself, or for a long log an excerpt that
+/// points at the saved copy. Never touches the disk, so estimates can use it.
+pub fn shown_text(text: &str) -> String {
+    let lines = text.lines().count();
+    if lines < 400 {
+        return text.into();
+    }
+    let rel = format!(".lumen/spill/{}", spill_name(text));
+    format!(
+        "{}\n\n[Lumen: the full {lines}-line log is saved at {rel}. Read only the line ranges you need.]",
+        compress_log(text, 50)
+    )
+}
+
 /// Replaces long pasted logs in a prompt with a compact excerpt plus a pointer to the full log.
 pub fn spill(workspace: &Path, text: &str) -> (String, Option<String>) {
     if text.lines().count() < 400 {
         return (text.into(), None);
     }
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut h);
-    let name = format!("{:016x}.log", h.finish());
+    let name = spill_name(text);
     let dir = workspace.join(".lumen").join("spill");
     if std::fs::create_dir_all(&dir).is_err() {
         return (text.into(), None);
     }
     // The folder ignores itself so spill files never appear in git status.
     let _ = std::fs::write(workspace.join(".lumen").join(".gitignore"), "*\n");
-    let path = dir.join(&name);
-    if std::fs::write(&path, text).is_err() {
+    if std::fs::write(dir.join(&name), text).is_err() {
         return (text.into(), None);
     }
-    let rel = format!(".lumen/spill/{name}");
-    let excerpt = compress_log(text, 50);
-    (
-        format!(
-            "{excerpt}\n\n[Lumen: the full {}-line log is saved at {rel}. Read only the line ranges you need.]",
-            text.lines().count()
-        ),
-        Some(rel),
-    )
+    (shown_text(text), Some(format!(".lumen/spill/{name}")))
 }
 
 /// Verification command: `verify: <cmd>` in LUMEN.md, otherwise detected from the project.
@@ -268,11 +323,12 @@ pub fn verify_command(workspace: &Path) -> Option<String> {
     None
 }
 
-pub async fn run_shell(
+/// Runs a shell command in `workspace` with a ten-minute limit; the caller keeps the cancel sender alive.
+pub async fn shell_output(
     workspace: &Path,
     cmd: &str,
     mut cancel: tokio::sync::watch::Receiver<bool>,
-) -> Result<(bool, String), String> {
+) -> Result<std::process::Output, String> {
     #[cfg(windows)]
     let mut c = {
         let mut c = tokio::process::Command::new("cmd.exe");
@@ -288,13 +344,22 @@ pub async fn run_shell(
     c.current_dir(workspace)
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
-    let out = tokio::select! {
+    tokio::select! {
         biased;
-        _ = cancel.changed() => return Err("Cancelled".into()),
-        r = tokio::time::timeout(std::time::Duration::from_secs(600), c.output()) => r.map_err(|_| "Verification timed out after 10 minutes")?.map_err(|e| e.to_string())?,
-    };
+        _ = cancel.changed() => Err("Cancelled".into()),
+        r = tokio::time::timeout(std::time::Duration::from_secs(600), c.output()) => r.map_err(|_| "Command timed out after 10 minutes".to_string())?.map_err(|e| e.to_string()),
+    }
+}
+
+pub async fn run_shell(
+    workspace: &Path,
+    cmd: &str,
+    cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<(bool, String), String> {
+    let out = shell_output(workspace, cmd, cancel).await?;
     let text = format!(
-        "{}\n{}",
+        "{}
+{}",
         String::from_utf8_lossy(&out.stderr),
         String::from_utf8_lossy(&out.stdout)
     );
@@ -318,5 +383,16 @@ mod tests {
         assert!(is_secret("config/.env.local"));
         assert!(!is_secret(".env.example"));
         assert!(estimate("hello world, this is code") > 3);
+    }
+
+    #[test]
+    fn estimated_text_matches_what_a_prompt_shows() {
+        let log: String = (0..500).map(|i| format!("line {i}\n")).collect();
+        assert_eq!(shown_text("short note"), "short note");
+        let dir = std::env::temp_dir().join(format!("lumen-spill-{}", crate::models::id()));
+        let (shown, rel) = spill(&dir, &log);
+        assert_eq!(shown, shown_text(&log));
+        assert!(rel.is_some_and(|r| shown.contains(&r)));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -1,5 +1,5 @@
 //! "Ask first" Claude turns. Claude runs with `--permission-prompt-tool`, so each action that
-//! needs permission waits for a decision in the Gatekeeper panel. Codex has no such path yet.
+//! needs permission waits for a decision in the Gatekeeper panel. Codex: `approvals_codex`.
 use crate::models::{Activity, Provider};
 use crate::providers::{self, Invocation};
 use lumen_gatekeeper::{

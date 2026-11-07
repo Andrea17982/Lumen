@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Search, X } from 'lucide-react';
 import { call } from '../lib/bridge';
+import ProjectTools from './ProjectTools';
+import VisualReview from './VisualReview';
+import RepoMap from './RepoMap';
 import type { FileEntry, ProjectContext } from '../lib/types';
 
 const formatTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
@@ -109,6 +112,9 @@ export default function ProjectPanel({
               </button>
             </div>
           </section>
+          <RepoMap folder={folder} onError={onError} />
+          <ProjectTools folder={folder} onError={onError} />
+          <VisualReview folder={folder} onError={onError} />
           <section className="file-section">
             <div className="panel-label">
               Attach files{' '}

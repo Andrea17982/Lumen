@@ -58,6 +58,8 @@ pub struct AppSettings {
     pub tray_hint_shown: bool,
     pub orchestra_limits: OrchestraLimits,
     pub local_assistant: LocalAssistantSettings,
+    /// Add repository-map locations of identifiers a request mentions to its prompt.
+    pub repo_context: bool,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -75,6 +77,7 @@ impl Default for AppSettings {
             tray_hint_shown: false,
             orchestra_limits: OrchestraLimits::default(),
             local_assistant: LocalAssistantSettings::default(),
+            repo_context: true,
         }
     }
 }

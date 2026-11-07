@@ -32,7 +32,7 @@ The original human brief defined the product; no benchmarks or testimonials are 
 - Persist useful work and make failures recoverable.
 
 ## Open decisions
-The user selected English for the entire interface. No performance or provider compatibility claims until verified.
+The interface supports English and Italian, with English as the initial language and the user's selection saved locally. No performance or provider compatibility claims until verified.
 
 ## Confirmed 0.2 changes
 The user requested removal of alpha/promotional labels from the chat shell; named workspace plus per-conversation folder selection beside the AI selector; easy account renaming; model/effort selectors from official providers; and an explicit full-permission Autopilot mode. Authorship and thanks remain in About/README. Autopilot grants available CLI tools under OS permissions; it does not itself implement graphical computer control.

@@ -248,7 +248,43 @@ pub fn task_tier(prompt: &str) -> i32 {
 /// or coding that is demanding or long. Simple prompts keep the normal path.
 pub fn complex(prompt: &str) -> bool {
     let t = profile(prompt);
-    t.tier == 2 || (t.tier == 1 && (t.effort > 0 || prompt.len() > 600))
+    let checklist_items = prompt
+        .lines()
+        .filter(|line| {
+            let line = line.trim_start();
+            line.starts_with("- ")
+                || line.starts_with("* ")
+                || line.starts_with("• ")
+                || (line.len() >= 3
+                    && line.as_bytes()[0].is_ascii_digit()
+                    && matches!(line.as_bytes()[1], b'.' | b')')
+                    && line.as_bytes()[2].is_ascii_whitespace())
+        })
+        .count();
+    let explicit_parallel = [
+        "multiple tasks",
+        "several tasks",
+        "many tasks",
+        "parallel tasks",
+        "multiple features",
+        "several features",
+        "multiple tasks",
+        "several tasks",
+        "many concurrent tasks",
+        "molte task",
+        "più task",
+        "contemporaneamente",
+        "contemporanee",
+        "in parallelo",
+        "più attività",
+        "molte attività",
+    ]
+    .iter()
+    .any(|phrase| prompt.to_lowercase().contains(phrase));
+    checklist_items >= 3
+        || (explicit_parallel && (checklist_items >= 2 || prompt.len() > 400))
+        || t.tier == 2
+        || (t.tier == 1 && (t.effort > 0 || prompt.len() > 600))
 }
 /// Quota pressure per time remaining. The tightest active window is the constraint.
 /// Snapshots expire after 15 minutes; exhausted windows never receive reset bonuses.

@@ -81,6 +81,22 @@ impl Store {
             )
         })
     }
+    pub fn sessions_updated_after(&self, at: i64) -> Result<Vec<(String, String, String)>, String> {
+        self.with(|c| {
+            let mut q = c.prepare("SELECT id,title,workspace FROM sessions WHERE updated_at>?1")?;
+            let rows = q.query_map([at], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect()
+        })
+    }
+    pub fn message_created_at(&self, session: &str, message: &str) -> Result<i64, String> {
+        self.with(|c| {
+            c.query_row(
+                "SELECT created_at FROM messages WHERE session_id=?1 AND id=?2",
+                params![session, message],
+                |r| r.get(0),
+            )
+        })
+    }
     pub fn create(&self, workspace: String) -> Result<Session, String> {
         let s = Session {
             id: id(),

@@ -29,6 +29,16 @@ src-tauri/
   src/lib.rs           Tauri commands, settings, headless API turns, PATH fix
   src/turns.rs         Turn orchestration: single, cross-audit, parallel, Both,
                        rate-limit fallback, self-healing, Rewind, handoff
+  src/projecttools.rs  Project-scoped skill/MCP discovery, Godot diagnostics,
+                       bounded checks and source-location opening
+  src/repomap.rs       Incremental symbol index (C#, GDScript, TS/JS, SQL, scenes)
+                       and the bounded prompt block of mentioned declarations
+  src/godot.rs         Godot MCP connection test over stdio, editor launch
+  src/assets.rs        Built-in check for missing res:// references
+  src/layers.rs        Uncommitted changes grouped by layer, with covering checks
+  src/screens.rs       Screen/window capture, import and labelled screenshots
+  src/approvals.rs     Ask-first Claude turns (permission-prompt-tool + MCP bridge)
+  src/approvals_codex.rs  Ask-first Codex turns over `codex app-server`
   src/gitops.rs        Private-index checkpoints, restores and lane worktrees
   src/context.rs       LUMEN.md, file walker, attachments, log spill, verify
   src/limits.rs        Rate-limit detection, cooldowns, turn counters
@@ -85,9 +95,21 @@ New UI goes in `components/` (conversation surface) or `settings/` (one file per
 
 Add providers by extending `Provider` (and its `fallback_rank`), command construction, normalization fixtures and routing (see `providers.rs`, `catalog.rs`, `router.rs`; `ollama.rs` is the smallest example).
 
+## Changes after 0.4.5
+
+- The composer and turn lifecycle do not capture screenshots automatically. Claude Ask-first's session-bound MCP endpoint exposes `list_screens` and `capture_screen`; captures are scoped to that turn's working directory, saved under `.lumen/screenshots/`, and returned as MCP image content. User-started Visual review still uses the Tauri commands in `screens.rs`.
+- `reset_settings` restores `AppSettings::default()`, stops the optional local API, disables tray/autostart preferences and generates a fresh local API token. UI preferences (language, theme, text size, Auto policy and usage balance) reset in General settings. Provider accounts, conversations and workspace selection are kept.
+
+- `repomap.rs` keeps one index per project in `<app-data>/repomap/<hash>.json`, never in the project or `LUMEN.md`. Files are walked with the same ignore rules as attachments (`.gitignore`, hidden folders, secrets, noise) and re-read only when size or modification time changes; deleted and renamed files drop out on the next refresh. Definitions come from per-language patterns, not a parser: it is a map of declarations, not a call graph. Limits: 20,000 files, 512 KB per file, 8 s per refresh. `turns::build_prompt` adds the declarations of identifiers the latest request names (at most 12, 2,400 characters) when `repoContext` is on and records them as a `references` activity on that request. Every path that builds its prompt there (single, Both, Orchestra's orchestrator, Ollama) gets the same block.
+- Context meter: the Claude parser keeps each request's input (`usage`) and the `contextWindow` of the result event's `modelUsage`. `turns::stage` stores one `usage` activity per reply as JSON `{latest, overhead, window}`, where `overhead` is the first request's input minus the local prompt estimate. The meter adds that overhead to the local estimate of the next prompt and uses the reported window. Other providers stay local estimates over published windows.
+- `godot.rs` starts a Godot server declared in `.mcp.json` or `.codex/config.toml` only on request, sends `initialize`, `tools/list` and `get_project_info`, then stops it. Arguments and environment values are expanded for the child and never returned.
+- `screens.rs` saves captures and imports in `<project>/.lumen/screenshots/` with a JSON sidecar (label, resolution, source, time); the folder carries its own `.gitignore`. Image attachments are sent as a file reference the CLI opens with its own tools, not inlined.
+- `approvals_codex.rs` follows the Gatekeeper README's runner steps: schema and `initialize` evidence from the selected binary, `thread/start` and `turn/start`, a reader that never waits on approvals, one writer queue, `delivery_is_current` before each reply and `complete_delivery` after it. Requests the adapters cannot represent are declined.
+
 ## Changes in 0.4
 
 - `orchestra.rs` runs Orchestra. Its state is one `orchestra` activity (JSON) on each assistant message, replaced in place and mirrored by `orchestra` events; subtask output streams as `orchestra-delta` events that the UI keeps out of the saved transcript. Follow-up steps (`orchestra_answer`, `orchestra_approve`) run through `turns::spawn_turn`, so they use the same job slots, cancellation and status as ordinary turns. Subtask worktrees live under `<app-data>/worktrees/<id>/<subtask>` on `lumen/orchestra-*` branches.
+- `projecttools.rs` reads project-local skill and MCP declarations without exposing server arguments, headers or environment values. It lists project checks but runs them only on request with bounded output. Godot diagnostics find nested project files and a Godot executable; the scan itself starts nothing (the connection test is in `godot.rs`).
 - `ollama.rs` lists local models and exposes a one-model catalog; `providers.rs` runs `ollama run` and reads plain text.
 - `tray.rs` owns the tray icon, close-to-tray, the quit confirmation event and the login item (`tauri-plugin-autostart`, `tauri-plugin-notification`). The main window starts hidden and is shown in `setup` unless Lumen was started at login with the tray on.
 - Settings fields: `orchestra`, `closeToTray`, `openAtLogin`, `ollamaModel`, `trayHintShown`. `src/lib/settings.ts` shares one copy between Settings and the composer.

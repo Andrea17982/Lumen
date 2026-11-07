@@ -125,9 +125,31 @@ async fn read_antigravity(a: &Account, dir: &Path) -> Result<AccountUsage, Strin
     result
 }
 
+/// Removes terminal colour and cursor sequences (`ESC [ ... final-byte`) so they cannot break a row.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        if chars.next() == Some('[') {
+            // Parameter and intermediate bytes end at a final byte in 0x40..=0x7E.
+            for next in chars.by_ref() {
+                if ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 fn parse_antigravity(output: &str) -> Result<Vec<UsageWindow>, String> {
     let mut windows = Vec::new();
-    for line in output.lines() {
+    let output = strip_ansi(output);
+    for (index, line) in output.lines().enumerate() {
         let fields: Vec<_> = line.split('\t').map(str::trim).collect();
         // Do not replace a complete snapshot with a silently incomplete one if
         // a quota row has changed format or contains invalid values.
@@ -161,10 +183,13 @@ fn parse_antigravity(output: &str) -> Result<Vec<UsageWindow>, String> {
         })();
         match window {
             Some(window) => windows.push(window),
-            None => return Err(
-                "Antigravity returned an unrecognized or invalid quota row. Check the CLI version."
-                    .into(),
-            ),
+            // The row's text can carry account details, so only its position is reported.
+            None => {
+                return Err(format!(
+                    "Antigravity returned an unrecognized or invalid quota row on line {}. Check the CLI version.",
+                    index + 1
+                ))
+            }
         }
     }
     Ok(windows)
@@ -217,6 +242,23 @@ pub fn claude_event(account_id: &str, v: &Value) -> Option<AccountUsage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn antigravity_fixtures_accept_colour_and_windows_line_endings() {
+        // Representative output: a banner, coloured rows, CRLF endings and a trailing blank line.
+        let coloured = "\u{1b}[1mUsage\u{1b}[0m\r\n\r\n\u{1b}[32mGemini Models\u{1b}[0m\tFive Hour Limit Remaining\t99%\t2026-11-06T16:22:29Z\r\nClaude and GPT models\tWeekly Limit Remaining\t45%\t2026-11-13T14:20:12Z\r\n\r\n";
+        let windows = parse_antigravity(coloured).unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[1].group.as_deref(), Some("Claude and GPT models"));
+        assert_eq!(windows[1].window_minutes, 10080);
+        assert!((windows[1].used_percent - 55.0).abs() < 1e-9);
+        // A changed row names its line but never echoes the row itself.
+        let changed = "Usage\nGemini Models\tDaily Limit Remaining\t50%\tuser@example.com";
+        let error = parse_antigravity(changed).unwrap_err();
+        assert!(error.contains("line 2"));
+        assert!(!error.contains("example.com"));
+    }
+
     #[test]
     fn parses_weekly_only() {
         let w = parse(

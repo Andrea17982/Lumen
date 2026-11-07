@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { call, desktop } from '../lib/bridge';
 import type { McpServer } from '../lib/types';
+import { useI18n } from '../lib/i18n';
 interface Inventory {
   path: string;
   skills: string[];
@@ -10,6 +11,7 @@ interface Inventory {
 
 /** One MCP hub and skill library shared by Claude and ChatGPT. */
 export default function IntegrationSettings({ onError }: { onError: (s: string) => void }) {
+  const { t } = useI18n();
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [json, setJson] = useState('');
@@ -40,17 +42,17 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
   return (
     <section className="settings-section">
       <div className="section-title">
-        <h3>Tools (MCP)</h3>
+        <h3>{t('Tools (MCP)')}</h3>
         <button
           className="icon-button"
-          aria-label="Add MCP server"
+          aria-label={t('Add MCP server')}
           disabled={!desktop}
           onClick={() => setAdding(!adding)}
         >
           <Plus size={17} />
         </button>
       </div>
-      <p>Turn a tool on once and both assistants can use it when edits are allowed.</p>
+      <p>{t('Turn a tool on once and both assistants can use it when edits are allowed.')}</p>
       {adding && (
         <form
           className="account-form"
@@ -65,7 +67,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           }}
         >
           <label>
-            Name
+            {t('Name')}
             <input
               required
               autoFocus
@@ -76,7 +78,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
             />
           </label>
           <label>
-            Command or URL
+            {t('Command or URL')}
             <input
               required
               placeholder="npx -y @modelcontextprotocol/server-filesystem ."
@@ -85,16 +87,16 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
             />
           </label>
           <button className="primary-button" disabled={busy}>
-            Add tool
+            {t('Add tool')}
           </button>
         </form>
       )}
-      {servers.length === 0 && !adding && <div className="account-empty">No tools yet.</div>}
+      {servers.length === 0 && !adding && <div className="account-empty">{t('No tools yet.')}</div>}
       {servers.map((s) => (
         <div className="mcp-row" key={s.name}>
           <span
             className={`health-dot ${s.healthy ? 'active' : 'cooldown'}`}
-            title={s.healthy ? 'Ready' : 'Command not found'}
+            title={s.healthy ? t('Ready') : t('Command not found')}
           />
           <div className="account-info">
             <strong>{s.name}</strong>
@@ -104,7 +106,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
             type="checkbox"
             role="switch"
             className="switch"
-            aria-label={`Enable ${s.name}`}
+            aria-label={`${t('Enable')} ${s.name}`}
             checked={s.enabled}
             disabled={busy}
             onChange={(e) =>
@@ -113,7 +115,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           />
           <button
             className="icon-button"
-            aria-label={`Remove ${s.name}`}
+            aria-label={`${t('Remove')} ${s.name}`}
             disabled={busy}
             onClick={() => void act(() => call('mcp_remove', { name: s.name }))}
           >
@@ -123,7 +125,8 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
       ))}
       <div className="panel-row">
         <small>
-          Skills: {inventory?.skills.length ? inventory.skills.join(', ') : 'none installed'}
+          {t('Skills')}:{' '}
+          {inventory?.skills.length ? inventory.skills.join(', ') : t('none installed')}
         </small>
         <button
           className="text-button"
@@ -134,20 +137,20 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
               const path = await open({
                 directory: true,
                 multiple: false,
-                title: 'Import skill folder containing SKILL.md',
+                title: t('Import skill folder containing SKILL.md'),
               });
               if (typeof path === 'string') await call('install_skill', { path });
             })
           }
         >
-          Import skill
+          {t('Import skill')}
         </button>
       </div>
       <details className="raw-config">
-        <summary>Edit as JSON</summary>
+        <summary>{t('Edit as JSON')}</summary>
         <textarea
           className="integration-editor"
-          aria-label="Shared MCP configuration"
+          aria-label={t('Shared MCP configuration')}
           value={json}
           onChange={(e) => setJson(e.target.value)}
           spellCheck={false}
@@ -157,7 +160,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           disabled={!desktop || busy}
           onClick={() => void act(() => call('save_mcp', { json }))}
         >
-          Save
+          {t('Save')}
         </button>
       </details>
     </section>

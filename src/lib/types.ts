@@ -161,6 +161,7 @@ export interface AppSettings {
   ollamaModel: string;
   orchestraLimits: OrchestraLimits;
   localAssistant: LocalAssistantConfig;
+  repoContext: boolean;
 }
 export interface Health {
   accountId: string;
@@ -195,4 +196,87 @@ export interface RewindPreview {
   files: string[];
   restorable: boolean;
   laterMessages: number;
+}
+export interface ProjectTool {
+  kind: 'skill' | 'mcp';
+  name: string;
+  provider: Provider;
+  origin: string;
+  detail: string;
+  trust: string;
+  conflict: boolean;
+}
+export interface GodotDiagnostics {
+  executable: string | null;
+  projects: string[];
+  mcpServers: string[];
+  editorConnection: string;
+  servers: string[];
+}
+export interface ProjectCheck {
+  id: string;
+  label: string;
+  command: string;
+  cwd: string;
+  source: string;
+  playtest: boolean;
+  layers: string[];
+}
+export interface CheckResult {
+  ok: boolean;
+  exitCode: number | null;
+  output: string;
+  truncated: boolean;
+  millis: number;
+  links: { file: string; line: number }[];
+}
+
+export interface GodotConnection {
+  server: string;
+  started: boolean;
+  serverInfo: string;
+  toolCount: number;
+  editorConnected: boolean;
+  detail: string;
+}
+
+export interface Screenshot {
+  path: string;
+  label: string;
+  width: number;
+  height: number;
+  source: string;
+  captured: number;
+}
+export interface CaptureTarget {
+  id: number;
+  title: string;
+  app: string;
+}
+
+export interface RepoSymbol {
+  name: string;
+  kind: string;
+  file: string;
+  line: number;
+}
+export interface RepoMapStats {
+  files: number;
+  symbols: number;
+  refreshed: number;
+  removed: number;
+  millis: number;
+  partial: boolean;
+}
+export interface RepoReference {
+  file: string;
+  /** 0 when a scene or resource uses the file rather than mentioning a line. */
+  line: number;
+  text: string;
+}
+
+export interface ChangeLayer {
+  name: string;
+  files: { path: string; status: string }[];
+  checks: string[];
 }

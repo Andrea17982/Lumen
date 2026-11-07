@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import type { ClipboardEvent } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import {
   ArrowUp,
   Check,
@@ -7,13 +8,11 @@ import {
   ChevronUp,
   Copy,
   Folder,
-  Menu,
+  MoreHorizontal,
   MessageSquare,
   Pin,
   Plus,
   Search,
-  Settings2,
-  ShieldCheck,
   Sparkles,
   Square,
   X,
@@ -21,14 +20,12 @@ import {
   Circle,
   RotateCcw,
   Paperclip,
-  BookOpen,
   Repeat2,
-  Columns2,
   Shrink,
   Workflow,
+  MapPin,
 } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
-import ProjectPanel from './components/ProjectPanel';
 import QuitConfirm from './components/QuitConfirm';
 import OrchestraCard from './components/OrchestraCard';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -45,13 +42,29 @@ import {
   type ApprovalSnapshot,
 } from './lib/bridge';
 import { GatekeeperPanel } from './features/gatekeeper';
-import { usageStatus } from './lib/usage';
+import { formatResetCountdown } from './lib/usage';
 import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
 import { splitReasoning, workPhase } from './lib/reasoning';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
 import WorkingIndicator from './components/WorkingIndicator';
+import AttachmentPreview from './components/AttachmentPreview';
+import Welcome from './components/Welcome';
+import Topbar, { type HealthPill } from './components/Topbar';
+import ModeControl from './components/ModeControl';
+import PermissionButton, { ACCESS_ORDER } from './components/PermissionButton';
+import UsagePopover from './components/UsagePopover';
+import ContextMeter from './components/ContextMeter';
+import CommandPalette from './components/CommandPalette';
+import { runCommand, type Command } from './lib/commands';
+import {
+  contextWindow,
+  estimateTokens,
+  lastMeasurement,
+  contextUse as measureContext,
+  tokensForChars,
+} from './lib/context';
 import type {
   Account,
   AccessMode,
@@ -60,8 +73,6 @@ import type {
   Mode,
   Plan,
   AccountUsage,
-  UsageWindow,
-  FileEntry,
   Health,
   RewindPreview,
   RunEvent,
@@ -69,7 +80,8 @@ import type {
   Status,
   OrchestraState,
 } from './lib/types';
-import { errorText, Mark, nameOf } from './lib/util';
+import { errorText, IconButton, Mark, nameOf } from './lib/util';
+import { useI18n } from './lib/i18n';
 
 const MessageBody = lazy(() => import('./components/MessageBody'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
@@ -83,6 +95,8 @@ const HIDDEN = [
   'attachments',
   'orchestra',
   'orchestra-nogit',
+  'usage',
+  'references',
 ];
 function orchestraOf(m: Message): OrchestraState | null {
   const a = m.activity.find((x) => x.kind === 'orchestra');
@@ -104,33 +118,8 @@ function providerOf(m: Message): 'claude' | 'gpt' | null {
   if (src.startsWith('codex')) return 'gpt';
   return null;
 }
-const tokens = (text: string) => Math.ceil(text.length / 4);
+const tokens = estimateTokens;
 const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-function countdown(until: number, now = Date.now()) {
-  const m = Math.max(0, Math.ceil((until - now) / 60000));
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
-}
-function usageBar(label: string, window?: UsageWindow, now = Date.now()) {
-  const reset = window ? countdown(window.resetsAt, now) : '';
-  const usedPercent = window && window.resetsAt <= now ? 0 : window?.usedPercent;
-  return (
-    <div className="usage-meter">
-      <span>{label}</span>
-      {window ? (
-        <>
-          <div className="usage-track">
-            <i style={{ width: `${usedPercent}%` }} />
-          </div>
-          <strong>{Math.round(usedPercent ?? 0)}%</strong>
-          <small>Resets in {reset}</small>
-        </>
-      ) : (
-        <small>Unavailable</small>
-      )}
-    </div>
-  );
-}
-
 function mergeUsage(current: AccountUsage[], incoming: AccountUsage[]): AccountUsage[] {
   const merged = new Map(current.map((row) => [row.accountId, row]));
   for (const row of incoming) {
@@ -141,6 +130,7 @@ function mergeUsage(current: AccountUsage[], incoming: AccountUsage[]): AccountU
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -159,6 +149,7 @@ export default function App() {
   const [projectName, setProjectName] = useState('');
   const [projectFilter, setProjectFilter] = useState('*');
   const [context, setContext] = useState<{ session: Session; x: number; y: number } | null>(null);
+  const contextTrigger = useRef<HTMLElement | null>(null);
   const [renameTarget, setRenameTarget] = useState<Session | null>(null);
   const [renamePos, setRenamePos] = useState({ x: 0, y: 0 });
   const [usagePos, setUsagePos] = useState({ left: 276, bottom: 74 });
@@ -228,20 +219,17 @@ export default function App() {
     };
   }, []);
   const [usageOpen, setUsageOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
   const [copyState, setCopyState] = useState('');
   const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
-  const [autoReview, setAutoReview] = useState(
-    () => localStorage.getItem('lumen-auto-review') === 'true',
-  );
+  const [autoReview] = useState(() => localStorage.getItem('lumen-auto-review') === 'true');
   const [attached, setAttached] = useState<string[]>([]);
   const appSettings = useAppSettings();
   useEffect(() => {
     if (appSettings) localAssistant.configure(appSettings.localAssistant);
   }, [appSettings]);
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [projectOpen, setProjectOpen] = useState(false);
   const [health, setHealth] = useState<Health[]>([]);
   const [rewindTarget, setRewindTarget] = useState<{ id: string; preview: RewindPreview } | null>(
     null,
@@ -260,6 +248,25 @@ export default function App() {
     (activeSession.current?.id === selected ? activeSession.current : undefined);
   if (session) activeSession.current = session;
   const running = active(session?.status) || busy;
+  // The backend sizes the prompt the next turn would send. It refreshes when a run ends, the
+  // chat changes or its permission mode changes; until then the meter uses visible text.
+  const [promptEstimate, setPromptEstimate] = useState<{ id: string; chars: number } | null>(null);
+  const sessionId = session?.id;
+  const sessionAccess = session?.accessMode;
+  useEffect(() => {
+    if (!sessionId || running) return;
+    let gone = false;
+    void call<number>('prompt_estimate', { id: sessionId })
+      .then((chars) => {
+        if (!gone) setPromptEstimate({ id: sessionId, chars });
+      })
+      .catch(() => {
+        if (!gone) setPromptEstimate(null);
+      });
+    return () => {
+      gone = true;
+    };
+  }, [sessionId, sessionAccess, running]);
   const currentWorkspace = session?.workspace || workspace;
   const currentWorkspaceId = session ? session.workspaceId || '' : workspaceId;
   const namedWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
@@ -416,12 +423,18 @@ export default function App() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: reduced ? 'instant' : 'smooth', block: 'end' });
   }, [messages, reduced]);
+  // Shortcuts run registry commands through this ref, so the window listener sees current state.
+  const commandsRef = useRef<Command[]>([]);
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
         e.preventDefault();
-        setSidebar(true);
-        setProjectForm(true);
+        runCommand(commandsRef.current, 'new-project');
         return;
       }
       if (settings) {
@@ -446,9 +459,7 @@ export default function App() {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
-        setSelected(null);
-        setMessages([]);
-        input.current?.focus();
+        runCommand(commandsRef.current, 'new-chat');
       }
       if (
         e.key === '/' &&
@@ -458,8 +469,7 @@ export default function App() {
         )
       ) {
         e.preventDefault();
-        setSidebar(true);
-        requestAnimationFrame(() => searchInput.current?.focus());
+        runCommand(commandsRef.current, 'search');
       }
       if (e.key === 'Escape') {
         setContext(null);
@@ -507,14 +517,45 @@ export default function App() {
       setFolderBusy(false);
     }
   }
+  async function attachFiles() {
+    if (!desktop) return;
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const paths = await open({ multiple: true, directory: false, title: 'Attach files' });
+      if (Array.isArray(paths))
+        setAttached((current) => [...new Set([...current, ...paths])].slice(0, 50));
+      else if (typeof paths === 'string')
+        setAttached((current) => [...new Set([...current, paths])].slice(0, 50));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  async function pasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const item = Array.from(e.clipboardData.items).find((entry) => entry.type.startsWith('image/'));
+    const file = item?.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    if (!desktop) {
+      setError('Paste images in the Lumen desktop app.');
+      return;
+    }
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      for (let offset = 0; offset < bytes.length; offset += 0x8000)
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      const path = await call<string>('save_pasted_image', {
+        data: btoa(binary),
+        mime: file.type || 'image/png',
+      });
+      setAttached((current) => [...new Set([...current, path])].slice(0, 50));
+    } catch (error) {
+      setError(errorText(error));
+    }
+  }
   async function chooseWorkspace(id: string) {
     setFolderBusy(true);
     try {
-      if (id === '__add') {
-        setProjectForm(true);
-        setSidebar(true);
-        return;
-      }
       if (session) await moveSession(session, id);
       else {
         setWorkspaceId(id);
@@ -621,7 +662,7 @@ export default function App() {
       const result = await call<Plan>('send_message', {
         id: s.id,
         text,
-        options: { ...runOptions(override), mode: runMode },
+        options: { ...runOptions(override), mode: runMode, attachments: override ? [] : attached },
       });
       if (!override) {
         setDraft('');
@@ -798,16 +839,30 @@ export default function App() {
     }
   }
   const historyTokens = messages.reduce((n, m) => n + tokens(m.text), 0);
-  const attachedTokens = attached.reduce(
-    (n, p) => n + (files.find((f) => f.path === p)?.tokens || 0),
-    0,
-  );
+  const attachedTokens = 0; // Arbitrary external files are not read merely to estimate context.
   const draftTokens = tokens(draft) + attachedTokens;
-  const heaviest = attached
-    .map((p) => files.find((f) => f.path === p))
-    .filter((f): f is FileEntry => !!f)
-    .sort((a, b) => b.tokens - a.tokens)[0];
-  const heavyFile = !!heaviest && draftTokens > 2000 && heaviest.tokens > draftTokens * 0.8;
+  const contextProvider =
+    mode !== 'auto' && mode !== 'both'
+      ? mode
+      : (accounts.find((a) => a.id === accountId)?.provider ??
+        plan?.provider ??
+        // Only certain when every connected account belongs to the same provider.
+        (accounts.length > 0 && accounts.every((a) => a.provider === accounts[0].provider)
+          ? accounts[0].provider
+          : null));
+  const promptTokens =
+    promptEstimate && promptEstimate.id === session?.id
+      ? tokensForChars(promptEstimate.chars)
+      : historyTokens;
+  // Only Claude reports its window and CLI overhead; other providers stay a local estimate.
+  const contextUse = contextProvider
+    ? measureContext(
+        promptTokens,
+        draftTokens,
+        contextWindow(contextProvider, model || plan?.model || ''),
+        contextProvider === 'claude' ? lastMeasurement(messages) : null,
+      )
+    : null;
   const blob = /[A-Za-z0-9+/=]{4000,}/.test(draft);
   const impact =
     draftTokens + historyTokens > 60_000 ? 'High' : draftTokens > 8000 ? 'Medium' : 'Low';
@@ -831,13 +886,17 @@ export default function App() {
       .join('\n\n');
     const isLive = running && m.role === 'assistant' && m.id === messages.at(-1)?.id;
     const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
+    const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
     const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
     const from = providerOf(m);
     const other = from === 'claude' ? 'gpt' : 'claude';
     const orchestraState = m.role === 'assistant' ? orchestraOf(m) : null;
     const nogit = m.activity.some((a) => a.kind === 'orchestra-nogit');
     return (
-      <article key={m.id} className={`message ${m.role}`}>
+      <article
+        key={m.id}
+        className={`message ${m.role}${m.id === messages.at(-1)?.id ? ' is-latest' : ''}`}
+      >
         <div className="message-author">
           {m.role === 'assistant' ? (
             <>
@@ -954,7 +1013,23 @@ export default function App() {
           <div className="attachment-chips">
             {attachments.map((f) => (
               <span key={f}>
-                <Paperclip size={11} /> {f}
+                <Paperclip size={11} /> {f.split(/[\\/]/).filter(Boolean).at(-1) || f}
+                {/\.(png|jpe?g|webp|gif)$/i.test(f) && session?.workspace && (
+                  <AttachmentPreview folder={session.workspace} path={f} />
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+        {references && (
+          <div
+            className="attachment-chips"
+            aria-label="Repository map locations added to this request"
+            title="Added to the prompt from the repository map"
+          >
+            {references.map((r) => (
+              <span key={r}>
+                <MapPin size={11} /> {r}
               </span>
             ))}
           </div>
@@ -981,33 +1056,184 @@ export default function App() {
     input.current?.focus();
   };
 
+  /** Actions on one conversation; the sidebar menu and the palette run the same entries. */
+  const sessionCommands = (
+    s: Session,
+    at = { x: window.innerWidth / 2 - 136, y: 96 },
+  ): Command[] => [
+    {
+      id: 'session-rename',
+      label: 'Rename',
+      group: 'Conversation',
+      run: () => {
+        setRenameTarget(s);
+        setRenameValue(s.title);
+        setRenamePos({
+          x: Math.min(at.x, window.innerWidth - 272),
+          y: Math.min(at.y, window.innerHeight - 150),
+        });
+      },
+    },
+    {
+      id: 'session-pin',
+      label: s.pinned ? 'Unpin' : 'Pin conversation',
+      group: 'Conversation',
+      run: () => void update(s, s.title, !s.pinned),
+    },
+    {
+      id: 'session-delete',
+      label: 'Delete',
+      group: 'Conversation',
+      available: !active(s.status),
+      run: () => setDeleteTarget(s),
+    },
+  ];
+
+  const commands: Command[] = [
+    {
+      id: 'new-chat',
+      label: 'New conversation',
+      group: 'Conversation',
+      shortcut: 'Ctrl N',
+      run: newChat,
+    },
+    {
+      id: 'new-project',
+      label: 'New project',
+      group: 'Project',
+      shortcut: 'Ctrl P',
+      run: () => {
+        setSidebar(true);
+        setProjectForm(true);
+      },
+    },
+    {
+      id: 'search',
+      label: 'Search conversations',
+      group: 'Conversation',
+      shortcut: '/',
+      run: () => {
+        setSidebar(true);
+        requestAnimationFrame(() => searchInput.current?.focus());
+      },
+    },
+    {
+      id: 'compact',
+      label: 'Compact context into a fresh session',
+      group: 'Conversation',
+      keywords: 'handoff summary shrink',
+      available: !!session && !running && messages.length > 0,
+      run: () => void compact(),
+    },
+    {
+      id: 'handoff',
+      label: 'Draft a handoff summary',
+      group: 'Conversation',
+      available: !!session && !running && messages.length > 0,
+      run: openHandoff,
+    },
+    {
+      id: 'commit',
+      label: 'Draft a commit message',
+      group: 'Project',
+      keywords: 'git diff',
+      available: !!session && !running,
+      run: () => void openCommit(),
+    },
+    {
+      id: 'usage',
+      label: 'Show provider usage',
+      group: 'Providers',
+      keywords: 'quota limits',
+      run: () => setUsageOpen(true),
+    },
+    ...(['general', 'accounts', 'auto', 'teamwork', 'tools', 'about'] as SettingsTab[]).map(
+      (tab): Command => ({
+        id: `settings-${tab}`,
+        label: `Settings: ${tab[0].toUpperCase()}${tab.slice(1)}`,
+        group: 'Settings',
+        keywords: 'preferences',
+        run: () => openSettings(tab),
+      }),
+    ),
+    ...ACCESS_ORDER.map((access): Command => ({
+      id: `access-${access}`,
+      label: `Permission mode: ${{ 'read-only': 'Ask (read-only)', 'file-edits': 'Edits', ask: 'Approve each action', autopilot: 'Autopilot' }[access]}`,
+      group: 'Permissions',
+      keywords: 'access',
+      run: () => void changeAccessMode(access),
+    })),
+    ...(['system', 'light', 'dark'] as const).map((name): Command => ({
+      id: `theme-${name}`,
+      label: `Theme: ${name}`,
+      group: 'Appearance',
+      run: () => setTheme(name),
+    })),
+    ...(session ? sessionCommands(session) : []),
+  ];
+  useEffect(() => {
+    commandsRef.current = commands;
+  });
+
+  const providerPills: HealthPill[] = (['claude', 'gpt'] as const)
+    .filter((p) => accounts.some((a) => a.provider === p))
+    .map((p) => {
+      const rows = health.filter((h) =>
+        accounts.some((a) => a.id === h.accountId && a.provider === p),
+      );
+      const best =
+        rows.find((h) => h.state === 'active') || rows.find((h) => h.state === 'near') || rows[0];
+      const state = best?.state || 'active';
+      return {
+        key: p,
+        state,
+        label:
+          state === 'cooldown' && best?.until
+            ? `${nameOf(p)} · ${formatResetCountdown(best.until)}`
+            : nameOf(p),
+        title:
+          state === 'cooldown'
+            ? `${nameOf(p)} is cooling down after a rate limit`
+            : state === 'near'
+              ? `${nameOf(p)} is close to its usage limit`
+              : `${nameOf(p)} is ready · ${best?.turns || 0} turns in the last 5 hours`,
+      };
+    });
+
   return (
     <div className="app-shell">
+      {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
       {sidebar && (
         <button
           className="sidebar-scrim"
-          aria-label="Close sidebar"
+          aria-label={t('Close sidebar')}
           onClick={() => setSidebar(false)}
         />
       )}
       <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="brand">
-          <Mark small />
+          <span className="brand-tile">
+            <Mark small />
+          </span>
           <span>Lumen</span>
         </div>
         <div className="new-actions">
-          <button className="new-chat" onClick={newChat} title="New conversation (Ctrl N)">
+          <button
+            className="new-chat"
+            onClick={newChat}
+            title={`${t('New conversation')} (Ctrl N)`}
+          >
             <Plus size={15} />
-            <span>New conversation</span>
+            <span>{t('New conversation')}</span>
             <kbd>Ctrl N</kbd>
           </button>
           <button
             className="new-chat"
             onClick={() => setProjectForm(true)}
-            title="New project (Ctrl P)"
+            title={`${t('New project')} (Ctrl P)`}
           >
             <Folder size={15} />
-            <span>New project</span>
+            <span>{t('New project')}</span>
             <kbd>Ctrl P</kbd>
           </button>
         </div>
@@ -1021,18 +1247,18 @@ export default function App() {
           >
             <input
               autoFocus
-              aria-label="Project name"
-              placeholder="Project name"
+              aria-label={t('Project name')}
+              placeholder={t('Project name')}
               maxLength={100}
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
             />
             <button type="submit" disabled={!projectName.trim()}>
-              Create
+              {t('Create')}
             </button>
             <button
               type="button"
-              aria-label="Cancel new project"
+              aria-label={t('Cancel new project')}
               onClick={() => setProjectForm(false)}
             >
               <X size={14} />
@@ -1043,8 +1269,8 @@ export default function App() {
           <Search size={15} />
           <input
             ref={searchInput}
-            aria-label="Search conversations"
-            placeholder="Search conversations"
+            aria-label={t('Search conversations')}
+            placeholder={t('Search conversations')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -1052,8 +1278,8 @@ export default function App() {
         </label>
         <div className="project-list" aria-label="Projects">
           {[
-            { id: '*', name: 'All conversations' },
-            ...(workspaces.length ? [{ id: '', name: 'Unsorted' }] : []),
+            { id: '*', name: t('All conversations') },
+            ...(workspaces.length ? [{ id: '', name: t('Unsorted') }] : []),
             ...workspaces,
           ].map((w) => (
             <button
@@ -1081,7 +1307,7 @@ export default function App() {
           ))}
         </div>
         <div className="session-heading">
-          <span>Your conversations</span>
+          <span>{t('Your conversations')}</span>
           <span>
             {sessions.length}
             {hasMore ? '+' : ''}
@@ -1091,54 +1317,75 @@ export default function App() {
           {sessions.length === 0 && (
             <div className="sidebar-empty">
               <MessageSquare size={20} />
-              <p>{search ? 'No conversations found.' : 'A little room for your next big idea.'}</p>
+              <p>
+                {search ? t('No conversations found.') : t('A little room for your next big idea.')}
+              </p>
             </div>
           )}
           {sessions
             .filter((s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter)
             .map((s) => (
-              <button
-                key={s.id}
-                draggable
-                onDragStart={(e) => {
-                  setDraggedSession(s.id);
-                  e.dataTransfer.setData('text/lumen-session', s.id);
-                }}
-                onDragEnd={() => setDraggedSession(null)}
-                onDragOver={(e) => {
-                  if (draggedSession) e.preventDefault();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const id = e.dataTransfer.getData('text/lumen-session');
-                  if (id && id !== s.id)
-                    void call('reorder_session', { id, beforeId: s.id })
-                      .then(refresh)
-                      .catch((err) => setError(errorText(err)));
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContext({
-                    session: s,
-                    x: Math.min(e.clientX, window.innerWidth - 245),
-                    y: Math.min(e.clientY, window.innerHeight - 130),
-                  });
-                }}
-                className={`session-row ${selected === s.id ? 'selected' : ''}`}
-                onClick={() => {
-                  setSelected(s.id);
-                  setSidebar(false);
-                }}
-              >
-                <span className={`status-dot ${s.status}`} title={s.status} />
-                <span className="session-title">{s.title}</span>
-                {s.pinned && <Pin size={12} />}
-                <span className="sr-only">{s.status}</span>
-              </button>
+              <div className="session-item" key={s.id}>
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedSession(s.id);
+                    e.dataTransfer.setData('text/lumen-session', s.id);
+                  }}
+                  onDragEnd={() => setDraggedSession(null)}
+                  onDragOver={(e) => {
+                    if (draggedSession) e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData('text/lumen-session');
+                    if (id && id !== s.id)
+                      void call('reorder_session', { id, beforeId: s.id })
+                        .then(refresh)
+                        .catch((err) => setError(errorText(err)));
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    contextTrigger.current = e.currentTarget;
+                    setContext({
+                      session: s,
+                      x: Math.min(e.clientX, window.innerWidth - 245),
+                      y: Math.min(e.clientY, window.innerHeight - 130),
+                    });
+                  }}
+                  className={`session-row ${selected === s.id ? 'selected' : ''}`}
+                  onClick={() => {
+                    setSelected(s.id);
+                    setSidebar(false);
+                  }}
+                >
+                  <span className={`status-dot ${s.status}`} title={s.status} />
+                  <span className="session-title">{s.title}</span>
+                  {s.pinned && <Pin size={12} />}
+                  <span className="sr-only">{s.status}</span>
+                </button>
+                <IconButton
+                  className="session-menu-button"
+                  label={`Actions for ${s.title}`}
+                  aria-haspopup="menu"
+                  aria-expanded={context?.session.id === s.id}
+                  onClick={(e) => {
+                    contextTrigger.current = e.currentTarget;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setContext({
+                      session: s,
+                      x: Math.max(0, Math.min(rect.right, window.innerWidth - 245)),
+                      y: Math.max(0, Math.min(rect.bottom, window.innerHeight - 180)),
+                    });
+                  }}
+                >
+                  <MoreHorizontal size={16} />
+                </IconButton>
+              </div>
             ))}
           {hasMore && (
             <button className="text-button load-more" onClick={() => void loadMore()}>
-              Load more conversations
+              {t('Load more conversations')}
             </button>
           )}
         </nav>
@@ -1158,94 +1405,29 @@ export default function App() {
               aria-expanded={usageOpen}
             >
               <Circle size={8} fill="currentColor" />
-              Usage
+              {t('Usage')}
             </button>
+            {session && (
+              <ContextMeter
+                use={contextUse}
+                disabled={running || messages.length === 0}
+                onCompact={() => void compact()}
+              />
+            )}
           </div>
         </div>
       </aside>
 
       {usageOpen && (
-        <>
-          <button
-            className="usage-scrim"
-            aria-label="Close usage"
-            onClick={() => setUsageOpen(false)}
-          />
-          <section
-            className="usage-popover"
-            role="dialog"
-            aria-label="Provider usage"
-            style={{ left: usagePos.left, bottom: usagePos.bottom }}
-          >
-            <header>
-              <strong>Usage</strong>
-              <button
-                className="icon-button"
-                aria-label="Refresh usage"
-                onClick={() => void loadUsage()}
-              >
-                <Circle size={14} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Close usage"
-                onClick={() => setUsageOpen(false)}
-              >
-                <X size={16} />
-              </button>
-            </header>
-            {accounts.every((a) => a.provider === 'ollama') && (
-              <p>No cloud providers configured.</p>
-            )}
-            {accounts
-              .filter((a) => a.provider !== 'ollama')
-              .map((a) => {
-                const row = usage.find((u) => u.accountId === a.id);
-                const groups = [...new Set(row?.windows.map((w) => w.group ?? '') ?? [''])];
-                return (
-                  <div className="usage-provider" key={a.id}>
-                    <strong>
-                      {nameOf(a.provider)} <small>{a.name}</small>
-                    </strong>
-                    {groups.map((group) => {
-                      const windows = row?.windows.filter((w) => (w.group ?? '') === group);
-                      return (
-                        <div key={group}>
-                          {group && <small>{group}</small>}
-                          {usageBar(
-                            '5 hour',
-                            windows?.find((w) => w.windowMinutes <= 300),
-                            usageClock,
-                          )}
-                          {usageBar(
-                            'Weekly',
-                            windows?.find((w) => w.windowMinutes >= 10080),
-                            usageClock,
-                          )}
-                        </div>
-                      );
-                    })}
-                    <small className="usage-updated">{usageStatus(row)}</small>
-                    {usageErrors[a.id] && (
-                      <small className="usage-updated" role="status">
-                        Refresh failed: {usageErrors[a.id]}. Showing the last available snapshot.
-                      </small>
-                    )}
-                    {a.provider === 'claude' && (
-                      <small className="usage-updated">
-                        Updated when Claude responds in Lumen; use /usage in Claude Code for an
-                        independent check.
-                      </small>
-                    )}
-                  </div>
-                );
-              })}
-            <small className="usage-updated">
-              Codex and Antigravity refresh is attempted every 30 seconds while the app is open.
-              Claude updates when it responds in Lumen; reset countdowns run locally.
-            </small>
-          </section>
-        </>
+        <UsagePopover
+          accounts={accounts}
+          usage={usage}
+          errors={usageErrors}
+          now={usageClock}
+          position={usagePos}
+          onRefresh={() => void loadUsage()}
+          onClose={() => setUsageOpen(false)}
+        />
       )}
 
       {context && (
@@ -1259,57 +1441,55 @@ export default function App() {
             className="popup context-menu"
             role="menu"
             style={{ left: context.x, top: context.y }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setContext(null);
+                contextTrigger.current?.focus();
+              }
+            }}
           >
-            <button
-              role="menuitem"
-              onClick={() => {
-                setRenameTarget(context.session);
-                setRenameValue(context.session.title);
-                setRenamePos({
-                  x: Math.min(context.x, window.innerWidth - 272),
-                  y: Math.min(context.y, window.innerHeight - 150),
-                });
-                setContext(null);
-              }}
-            >
-              Rename
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                void update(context.session, context.session.title, !context.session.pinned);
-                setContext(null);
-              }}
-            >
-              {context.session.pinned ? 'Unpin' : 'Pin conversation'}
-            </button>
-            {workspaces.length > 0 && (
-              <label className="menu-select">
-                Move to
-                <select
-                  aria-label="Move conversation to project"
-                  value={context.session.workspaceId || ''}
-                  onChange={(e) => void moveSession(context.session, e.target.value)}
+            {(() => {
+              const [rename, pin, remove] = sessionCommands(context.session, context);
+              const item = (c: Command, autoFocus = false) => (
+                <button
+                  key={c.id}
+                  role="menuitem"
+                  autoFocus={autoFocus}
+                  disabled={c.available === false}
+                  onClick={() => {
+                    c.run();
+                    setContext(null);
+                  }}
                 >
-                  <option value="">Unsorted</option>
-                  {workspaces.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <button
-              role="menuitem"
-              disabled={active(context.session.status)}
-              onClick={() => {
-                setDeleteTarget(context.session);
-                setContext(null);
-              }}
-            >
-              Delete
-            </button>
+                  {c.label}
+                </button>
+              );
+              return (
+                <>
+                  {item(rename, true)}
+                  {item(pin)}
+                  {workspaces.length > 0 && (
+                    <label className="menu-select">
+                      Move to
+                      <select
+                        aria-label="Move conversation to project"
+                        value={context.session.workspaceId || ''}
+                        onChange={(e) => void moveSession(context.session, e.target.value)}
+                      >
+                        <option value="">Unsorted</option>
+                        {workspaces.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {item(remove)}
+                </>
+              );
+            })()}
           </div>
         </>
       )}
@@ -1420,70 +1600,21 @@ export default function App() {
         </div>
       )}
       <main className="workspace">
-        <header className="topbar">
-          <div className="topbar-left">
-            <button
-              className="icon-button mobile-menu"
-              aria-label="Open sidebar"
-              onClick={() => setSidebar(true)}
-            >
-              <Menu size={19} />
-            </button>
-            <span className="workspace-name">
-              <Folder size={15} />
-              {namedWorkspace?.name ||
-                (currentWorkspace
-                  ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1)
-                  : 'Personal workspace')}
-            </span>
-            <span className="topbar-divider" />
-            <span className="conversation-label">{session?.title || 'New conversation'}</span>
-          </div>
-          <div className="topbar-actions">
-            {!desktop && <span className="preview-label">Browser preview</span>}
-            {(['claude', 'gpt'] as const)
-              .filter((p) => accounts.some((a) => a.provider === p))
-              .map((p) => {
-                const rows = health.filter((h) =>
-                  accounts.some((a) => a.id === h.accountId && a.provider === p),
-                );
-                const best =
-                  rows.find((h) => h.state === 'active') ||
-                  rows.find((h) => h.state === 'near') ||
-                  rows[0];
-                const state = best?.state || 'active';
-                return (
-                  <span
-                    key={p}
-                    className={`health-pill ${state}`}
-                    title={
-                      state === 'cooldown'
-                        ? `${nameOf(p)} is cooling down after a rate limit`
-                        : state === 'near'
-                          ? `${nameOf(p)} is close to its usage limit`
-                          : `${nameOf(p)} is ready · ${best?.turns || 0} turns in the last 5 hours`
-                    }
-                  >
-                    <span className={`health-dot ${state}`} />
-                    {nameOf(p)}
-                    {state === 'cooldown' && best?.until ? ` · ${countdown(best.until)}` : ''}
-                  </span>
-                );
-              })}
-            <button
-              className={`icon-button ${projectOpen ? 'on' : ''}`}
-              aria-label="Project context"
-              title="Project context: shared notes and files"
-              aria-pressed={projectOpen}
-              onClick={() => setProjectOpen(!projectOpen)}
-            >
-              <BookOpen size={16} />
-            </button>
-            <button className="icon-button" aria-label="Settings" onClick={() => openSettings()}>
-              <Settings2 size={17} />
-            </button>
-          </div>
-        </header>
+        <div className="aurora" aria-hidden="true" />
+        <Topbar
+          desktop={desktop}
+          workspaceLabel={
+            namedWorkspace?.name ||
+            (currentWorkspace
+              ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1) || ''
+              : t('Personal workspace'))
+          }
+          workspaceTitle={currentWorkspace || undefined}
+          conversationTitle={session?.title || t('New conversation')}
+          pills={providerPills}
+          onOpenSidebar={() => setSidebar(true)}
+          onOpenSettings={() => openSettings()}
+        />
         {renaming && session && (
           <form
             className="rename-bar"
@@ -1515,22 +1646,7 @@ export default function App() {
 
         <div className={`conversation ${messages.length ? 'has-messages' : ''}`}>
           {messages.length === 0 ? (
-            <div className="welcome">
-              <motion.div
-                initial={false}
-                animate={{ y: [0, -5, 0] }}
-                transition={
-                  reduced ? { duration: 0 } : { duration: 8, repeat: Infinity, ease: 'easeInOut' }
-                }
-              >
-                <Mark />
-              </motion.div>
-              <h1>
-                A clear space
-                <br />
-                for a brighter idea.
-              </h1>
-            </div>
+            <Welcome reduced={!!reduced} />
           ) : (
             <div className="message-list">
               {groups.map((g) =>
@@ -1565,7 +1681,7 @@ export default function App() {
               <span>{error}</span>
               <button
                 className="icon-button"
-                aria-label="Dismiss error"
+                aria-label={t('Dismiss error')}
                 onClick={() => setError('')}
               >
                 <X size={14} />
@@ -1643,9 +1759,10 @@ export default function App() {
             <textarea
               ref={input}
               aria-label="Message"
-              placeholder="What's on your mind?"
+              placeholder={t("What's on your mind?")}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => void pasteImage(e)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
@@ -1654,6 +1771,25 @@ export default function App() {
               }}
               maxLength={100000}
             />
+            {attached.length > 0 && (
+              <div className="attachment-list" aria-label="Attached files">
+                {attached.map((path) => {
+                  const name = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
+                  return (
+                    <span className="attachment-chip" key={path} title={path}>
+                      <span>{name}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${name}`}
+                        onClick={() => setAttached((current) => current.filter((p) => p !== path))}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             {(mode === 'claude' || mode === 'gpt') && (
               <ProviderOptions
                 provider={mode}
@@ -1673,34 +1809,24 @@ export default function App() {
               />
             )}
             <div className="composer-toolbar">
-              <div className="mode-control" role="group" aria-label="AI provider">
-                {(accessMode === 'read-only'
-                  ? (['auto', 'claude', 'gpt', 'both'] as const)
-                  : (['auto', 'claude', 'gpt'] as const)
-                ).map((p) => (
-                  <button
-                    key={p}
-                    aria-pressed={mode === p}
-                    className={mode === p ? 'active' : ''}
-                    onClick={() => {
-                      setMode(p);
-                      setAccountId('');
-                      setModel('');
-                      setEffort('');
-                      setCatalogReady(false);
-                      setAdvanced(false);
-                    }}
-                  >
-                    {p === 'auto' && <Sparkles size={13} />}
-                    {p === 'both' && <Columns2 size={13} />}
-                    <span>{p === 'auto' ? 'Auto' : p === 'both' ? 'Both' : nameOf(p)}</span>
-                  </button>
-                ))}
-              </div>
+              <ModeControl
+                mode={mode}
+                bothAvailable={accessMode === 'read-only'}
+                onChange={(next) => {
+                  setMode(next);
+                  setAccountId('');
+                  setModel('');
+                  setEffort('');
+                  setCatalogReady(false);
+                  setAdvanced(false);
+                }}
+              />
               {mode === 'auto' && appSettings?.orchestra && (
                 <button
                   className="orchestra-badge"
-                  title="Orchestra is on: complex tasks are planned and split across agents. Click to turn off."
+                  title={t(
+                    'Orchestra is on: complex tasks are planned and split across agents. Click to turn off.',
+                  )}
                   onClick={() =>
                     void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
                       setError(errorText(e)),
@@ -1711,67 +1837,28 @@ export default function App() {
                   Orchestra
                 </button>
               )}
-              {mode !== 'both' && (
-                <button
-                  className={`icon-button audit-toggle ${autoReview ? 'on' : ''}`}
-                  aria-label="Cross-audit"
-                  aria-pressed={autoReview}
-                  title={
-                    autoReview
-                      ? 'Cross-audit on: the other model reviews every answer'
-                      : 'Cross-audit off'
-                  }
-                  onClick={() => {
-                    setAutoReview(!autoReview);
-                    localStorage.setItem('lumen-auto-review', String(!autoReview));
-                  }}
-                >
-                  <Repeat2 size={15} />
-                </button>
+              {workspaces.length > 0 && (
+                <div className="workspace-controls">
+                  <select
+                    aria-label="Project"
+                    title={namedWorkspace?.name || t('Choose project')}
+                    value={currentWorkspaceId}
+                    disabled={running || folderBusy}
+                    onChange={(e) => void chooseWorkspace(e.target.value)}
+                  >
+                    {!currentWorkspaceId && <option value="">{t('Choose project')}</option>}
+                    {workspaces.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
-              <div className="workspace-controls">
-                <select
-                  aria-label="Project"
-                  title={namedWorkspace?.name || 'Choose project'}
-                  value={currentWorkspaceId}
-                  disabled={running || folderBusy}
-                  onChange={(e) => void chooseWorkspace(e.target.value)}
-                >
-                  {workspaces.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                  <option value="__add">New project…</option>
-                </select>
-                <button
-                  className="folder-control"
-                  aria-label="Choose conversation folder"
-                  title={currentWorkspace || 'Choose conversation folder'}
-                  disabled={running || folderBusy}
-                  onClick={() => void chooseFolder().catch((e) => setError(errorText(e)))}
-                >
-                  <Folder size={14} />
-                  <span>
-                    {currentWorkspace
-                      ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1)
-                      : 'Choose folder'}
-                  </span>
-                </button>
-              </div>
-              <button
-                className={`icon-button attach-button ${attached.length ? 'on' : ''}`}
-                aria-label="Attach files"
-                title={attached.length ? `${attached.length} files attached` : 'Attach files'}
-                onClick={() => setProjectOpen(true)}
-              >
-                <Paperclip size={15} />
-                {attached.length > 0 && <small>{attached.length}</small>}
-              </button>
               {(mode === 'claude' || mode === 'gpt') && (
                 <button
                   className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
-                  aria-label="Advanced provider options"
+                  aria-label={t('Advanced provider options')}
                   aria-expanded={advanced}
                   onClick={() => setAdvanced(!advanced)}
                 >
@@ -1779,27 +1866,22 @@ export default function App() {
                 </button>
               )}
               <div className="composer-spacer" />
-              <div className={`access-control ${accessMode === 'autopilot' ? 'autopilot' : ''}`}>
-                <ShieldCheck size={13} />
-                <select
-                  aria-label="Permissions"
-                  value={accessMode}
-                  title={
-                    accessMode === 'autopilot'
-                      ? 'Full access: commands, network, files and configured automation tools. No CLI approval prompts.'
-                      : 'Conversation permissions'
-                  }
-                  onChange={(e) => void changeAccessMode(e.target.value as AccessMode)}
-                >
-                  <option value="read-only">Ask</option>
-                  <option value="file-edits">File edits on</option>
-                  <option value="autopilot">Autopilot</option>
-                  <option value="ask">Approve each action</option>
-                </select>
-              </div>
+              <PermissionButton
+                accessMode={accessMode}
+                onCycle={(next) => void changeAccessMode(next)}
+              />
+              <button
+                className={`icon-button attach-button ${attached.length ? 'on' : ''}`}
+                aria-label={t('Attach files')}
+                title={attached.length ? t(`${attached.length} files attached`) : t('Attach files')}
+                onClick={() => void attachFiles()}
+              >
+                <Paperclip size={15} />
+                {attached.length > 0 && <small>{attached.length}</small>}
+              </button>
               <button
                 className="send-button"
-                aria-label={running ? 'Stop response' : 'Send message'}
+                aria-label={running ? t('Stop response') : t('Send message')}
                 disabled={
                   !running &&
                   (!draft.trim() ||
@@ -1819,35 +1901,25 @@ export default function App() {
           <div className="composer-caption">
             {draft.trim() && (
               <span
-                className={`token-badge ${heavyFile || blob ? 'warn' : impact.toLowerCase()}`}
+                className={`token-badge ${blob ? 'warn' : impact.toLowerCase()}`}
                 title={
-                  heavyFile
-                    ? `${heaviest.path} is more than 80% of this prompt`
+                  false
+                    ? 'Attachments are not included in this estimate'
                     : blob
                       ? 'This message contains a large encoded blob'
                       : `Estimated prompt size · quota impact ${impact}`
                 }
               >
-                ~{compactTokens(draftTokens)} tokens · {heavyFile || blob ? 'Heavy' : impact}
+                ~{compactTokens(draftTokens)} tokens · {blob ? 'Heavy' : impact}
               </span>
             )}
             <span>
-              Enter to send <span className="caption-dot">·</span> Shift Enter for a new line
+              {t('Enter to send')} <span className="caption-dot">·</span>{' '}
+              {t('Shift Enter for a new line')}
             </span>
           </div>
         </div>
       </main>
-      {projectOpen && (
-        <ProjectPanel
-          folder={currentWorkspace}
-          attached={attached}
-          setAttached={setAttached}
-          onFiles={setFiles}
-          onClose={() => setProjectOpen(false)}
-          onError={setError}
-        />
-      )}
-
       <QuitConfirm />
       <SettingsPanel
         open={settings}

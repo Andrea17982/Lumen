@@ -29,7 +29,7 @@ test('usage excludes local Ollama and explains unavailable cloud quotas', async 
   await expect(usage).toContainText('Google');
   await expect(usage).not.toContainText('Local');
   await expect(usage).toContainText('use /usage in Claude Code');
-  await expect(usage).toContainText('No quota data available');
+  await expect(usage.getByLabel('No quota data available')).toHaveCount(2);
 });
 
 test('usage displays Codex windows and Antigravity model groups', async ({ page }) => {
@@ -49,6 +49,7 @@ test('usage displays Codex windows and Antigravity model groups', async ({ page 
             source: 'codex-cli',
             windows: [
               { windowMinutes: 299, usedPercent: 23, resetsAt: Date.now() + 60000 },
+              { windowMinutes: 1440, usedPercent: 67, resetsAt: Date.now() + 60000 },
               { windowMinutes: 43200, usedPercent: 42, resetsAt: Date.now() + 60000 },
             ],
           },
@@ -78,7 +79,17 @@ test('usage displays Codex windows and Antigravity model groups', async ({ page 
   await page.goto('/');
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
   const usage = page.getByRole('dialog', { name: 'Provider usage' });
-  for (const value of ['23%', '42%', 'Gemini Models', '10%', 'Claude Models', '55%']) {
+  for (const value of [
+    '23%',
+    '67%',
+    '1 day',
+    '42%',
+    '30 day',
+    'Gemini Models',
+    '10%',
+    'Claude Models',
+    '55%',
+  ]) {
     await expect(usage).toContainText(value);
   }
 });
@@ -140,8 +151,9 @@ test('first run, provider controls and honest browser boundary', async ({ page }
   ])
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Both', exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Permissions' }).selectOption('autopilot');
-  await expect(page.getByRole('combobox', { name: 'Permissions' })).toHaveValue('autopilot');
+  const permissions = page.getByRole('button', { name: /^Permissions:/ });
+  for (let i = 0; i < 3; i += 1) await permissions.click();
+  await expect(permissions).toHaveAttribute('aria-label', 'Permissions: Autopilot');
   await expect(page.getByRole('button', { name: 'Both', exact: true })).toHaveCount(0);
 });
 
@@ -174,20 +186,14 @@ test('moving between projects preserves the conversation folder across reloads',
       ),
   );
   await page.goto('/');
-  await page.getByRole('button', { name: /Linked conversation/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Linked conversation/ }).click();
   await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption('w2');
   await expect(page.locator('.workspace-name')).toHaveText('Code workspace');
-  await expect(page.getByRole('button', { name: 'Choose conversation folder' })).toHaveAttribute(
-    'title',
-    'C:/Original',
-  );
+  await expect(page.locator('.workspace-name')).toHaveAttribute('title', 'C:/Original');
   await page.reload();
-  await page.getByRole('button', { name: /Linked conversation/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Linked conversation/ }).click();
   await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toHaveValue('w2');
-  await expect(page.getByRole('button', { name: 'Choose conversation folder' })).toHaveAttribute(
-    'title',
-    'C:/Original',
-  );
+  await expect(page.locator('.workspace-name')).toHaveAttribute('title', 'C:/Original');
 });
 
 test('accounts can be renamed from Settings without changing identity', async ({ page }) => {
@@ -281,7 +287,7 @@ test('filtering the sidebar preserves the selected running conversation', async 
     ),
   );
   await page.goto('/');
-  await page.getByRole('button', { name: /Running fixture/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Running fixture/ }).click();
   await page.getByRole('textbox', { name: 'Search conversations' }).fill('no matches');
   await expect(page.getByText('No conversations found.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Stop response' })).toBeVisible();
@@ -335,7 +341,13 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
     .locator('.project-list')
     .getByRole('button', { name: 'Unsorted', exact: true })
     .click();
-  await page.locator('.session-row').filter({ hasText: 'Move me' }).click({ button: 'right' });
+  const actions = page.getByRole('button', { name: 'Actions for Move me' });
+  await actions.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(actions).toBeFocused();
+  await page.keyboard.press('Enter');
   await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
   await page.getByRole('textbox', { name: 'Conversation title' }).fill('Renamed conversation');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -358,10 +370,7 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
     .click();
   await expect(row).toBeVisible();
   await row.click();
-  await expect(page.getByRole('button', { name: 'Choose conversation folder' })).toHaveAttribute(
-    'title',
-    'C:/Work',
-  );
+  await expect(page.locator('.workspace-name')).toHaveAttribute('title', 'C:/Work');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('tab', { name: 'Auto' }).click();
@@ -534,7 +543,7 @@ test('Orchestra cards show questions, an editable plan and live progress', async
     ],
   );
   await page.goto('/');
-  await page.getByRole('button', { name: /Orchestra fixture/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Orchestra fixture/ }).click();
   const questions = page.getByRole('region', { name: 'Orchestra questions' });
   await expect(questions.getByRole('textbox', { name: /Which database/ })).toHaveValue('SQLite');
   await expect(questions.getByRole('button', { name: 'Skip questions' })).toBeVisible();
@@ -589,11 +598,17 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
   await expect(agents).toHaveAttribute('placeholder', '6');
   await agents.fill('2');
   await agents.press('Enter');
-  // Fields are disabled while a save is in flight; wait for it before the next edit.
+  // Wait until the first save is stored, so the next edit does not race it.
+  const stored = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('lumen-preview-settings') ?? '{}'));
+  await expect.poll(async () => (await stored()).orchestraLimits?.maxConcurrent).toBe(2);
   await expect(agents).toBeEnabled();
-  await limits.getByRole('spinbutton', { name: /Claude quota threshold/ }).fill('80');
-  await limits.getByRole('spinbutton', { name: /Claude quota threshold/ }).blur();
+  const threshold = limits.getByRole('spinbutton', { name: /Claude quota threshold/ });
+  await threshold.fill('80');
+  await threshold.blur();
   await expect(limits.getByRole('spinbutton', { name: /Ollama/ })).toHaveCount(0);
+  // Reloading while the threshold save is in flight would drop it, so wait until it is stored.
+  await expect.poll(async () => (await stored()).orchestraLimits?.quotaThresholds?.claude).toBe(80);
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Teamwork' }).click();
@@ -633,15 +648,15 @@ test('choosing File edits with Antigravity connected warns once, unless hidden',
     ),
   );
   await page.goto('/');
-  const access = page.getByRole('combobox', { name: 'Permissions' });
-  await access.selectOption('file-edits');
+  const access = page.getByRole('button', { name: /^Permissions:/ });
+  await access.click();
   const notice = page.getByRole('dialog', { name: 'Antigravity in File edits' });
   await expect(notice).toBeVisible();
   await notice.getByRole('checkbox', { name: "Don't show again" }).check();
   await notice.getByRole('button', { name: 'OK' }).click();
   await expect(notice).toHaveCount(0);
-  await access.selectOption('read-only');
-  await access.selectOption('file-edits');
+  for (let i = 0; i < 4; i += 1) await access.click();
+  await expect(access).toHaveAttribute('aria-label', 'Permissions: Edits');
   await expect(notice).toHaveCount(0);
 });
 
@@ -679,7 +694,7 @@ test('reasoning folds away under a chevron and the reply shows only the answer',
     );
   });
   await page.goto('/');
-  await page.getByRole('button', { name: /Reasoning fixture/ }).click();
+  await page.getByRole('button', { name: /^(?!Actions for).*Reasoning fixture/ }).click();
   await expect(page.getByText('The answer is 42')).toBeVisible();
   await expect(page.getByText('weighing options')).toBeHidden();
   await expect(page.getByText('native thought')).toBeHidden();
@@ -687,4 +702,94 @@ test('reasoning folds away under a chevron and the reply shows only the answer',
   await expect(page.getByText('weighing options')).toBeVisible();
   await expect(page.getByText('native thought')).toBeVisible();
   await expect(page.getByText('Activity & diagnostics')).toHaveCount(0);
+});
+
+const contextFixture = (text: string) => {
+  if (localStorage.getItem('lumen-preview-v1')) return;
+  localStorage.setItem(
+    'lumen-preview-v1',
+    JSON.stringify({
+      accounts: [{ id: 'c', name: 'Personal', provider: 'claude' }],
+      sessions: [
+        {
+          id: 'chat',
+          title: 'Context fixture',
+          status: 'completed',
+          pinned: false,
+          workspace: 'C:/Work',
+          updatedAt: 1,
+        },
+      ],
+      messages: { chat: [{ id: 'u', role: 'user', text, activity: [] }] },
+    }),
+  );
+};
+
+test('the context meter shows a coloured dot, exact tokens and a Compact action', async ({
+  page,
+}) => {
+  await page.addInitScript(contextFixture, 'x'.repeat(240_000));
+  await page.goto('/');
+  await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
+  // 240,000 characters is 60,000 tokens: 30% of a 200k window, so the dot is green.
+  const meter = page.getByRole('button', { name: /^Context \d+%/ });
+  await expect(meter).toHaveText(/Context 30%/);
+  await expect(meter).toHaveClass(/context-meter low/);
+  await meter.click();
+  const popover = page.getByRole('dialog', { name: 'Context window' });
+  await expect(popover.getByText(/60,0\d\d \/ 200,000/)).toBeVisible();
+  await expect(popover.getByRole('progressbar', { name: 'Context used' })).toBeVisible();
+  await expect(popover.getByText('Not measured')).toBeVisible();
+  await popover.getByRole('button', { name: /Compact into a fresh session/ }).click();
+  await expect(popover).toHaveCount(0);
+  // The browser preview has no native backend, so the request surfaces an honest error.
+  await expect(page.getByRole('alert')).toBeVisible();
+});
+
+test('the context dot turns orange and red at 50% and 80%', async ({ page }) => {
+  await page.addInitScript(contextFixture, 'x'.repeat(680_000));
+  await page.goto('/');
+  await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
+  const meter = page.getByRole('button', { name: /^Context \d+%/ });
+  await expect(meter).toHaveText(/Context 85%/);
+  await expect(meter).toHaveClass(/context-meter high/);
+});
+
+test('the command palette opens with Ctrl K, filters, runs and restores focus', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const composer = page.getByRole('textbox').first();
+  await composer.focus();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
+  await expect(palette.getByRole('combobox')).toBeFocused();
+  await page.keyboard.type('settings: acc');
+  await expect(palette.getByRole('option')).toHaveCount(1);
+  await expect(palette.getByRole('option').first()).toHaveText(/Settings: Accounts/);
+  await page.keyboard.press('Enter');
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole('dialog', { name: /Settings/ }).first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('zzzz');
+  await expect(palette.getByRole('status')).toHaveText('No matching commands');
+  await page.keyboard.press('Escape');
+  await expect(palette).toBeHidden();
+});
+
+test('the project panel offers the repository map, visual review and a screenshot button', async ({
+  page,
+}) => {
+  await page.addInitScript(contextFixture, 'Fix PlayerController');
+  await page.goto('/');
+  await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
+  await expect(page.getByRole('button', { name: 'Attach a screenshot' })).toBeVisible();
+  await page.getByRole('button', { name: 'Attach files' }).click();
+  await expect(page.getByRole('region', { name: 'Repository map' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Find a declaration' })).toBeVisible();
+  const review = page.getByRole('region', { name: 'Visual review' });
+  await expect(review.getByRole('button', { name: /Capture screen/ })).toBeVisible();
+  await expect(review.getByText(/No screenshots yet/)).toBeVisible();
 });
