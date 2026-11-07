@@ -606,7 +606,9 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
   await expect.poll(async () => (await stored()).orchestraLimits?.maxConcurrent).toBe(2);
   await expect(agents).toBeEnabled();
   const threshold = limits.getByRole('spinbutton', { name: /Claude quota threshold/ });
+  await expect(threshold).toBeEnabled();
   await threshold.fill('80');
+  await threshold.press('Enter');
   await threshold.blur();
   await expect(limits.getByRole('spinbutton', { name: /Ollama/ })).toHaveCount(0);
   // Reloading while the threshold save is in flight would drop it, so wait until it is stored.
