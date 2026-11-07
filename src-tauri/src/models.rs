@@ -186,3 +186,109 @@ pub struct AccountUsage {
     pub updated_at: i64,
     pub source: String,
 }
+
+/// The user's own CLI home (`~/.claude`, `~/.codex`), honouring an inherited override.
+fn global_home(p: &Provider) -> Option<std::path::PathBuf> {
+    let (var, dir) = match p {
+        Provider::Claude => ("CLAUDE_CONFIG_DIR", ".claude"),
+        Provider::Gpt => ("CODEX_HOME", ".codex"),
+        _ => return None,
+    };
+    if let Some(v) = std::env::var_os(var).filter(|v| !v.is_empty()) {
+        return Some(v.into());
+    }
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })?;
+    Some(std::path::PathBuf::from(home).join(dir))
+}
+
+/// Copies the user's global instructions and skills into an isolated account home, so a turn in
+/// Lumen follows the same personal rules as the native CLI. Credentials and settings stay
+/// isolated: only instruction files and skill/agent/command folders are mirrored.
+pub fn share_global_instructions(p: &Provider, config: &std::path::Path) {
+    let Some(home) = global_home(p) else { return };
+    let same = match (dunce::canonicalize(&home), dunce::canonicalize(config)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    if same || !home.is_dir() {
+        return;
+    }
+    let (files, dirs): (&[&str], &[&str]) = match p {
+        Provider::Claude => (&["CLAUDE.md"], &["skills", "agents", "commands"]),
+        _ => (&["AGENTS.md", "AGENTS.override.md"], &["skills", "prompts"]),
+    };
+    for f in files {
+        mirror_file(&home.join(f), &config.join(f));
+    }
+    for d in dirs {
+        mirror_dir(&home.join(d), &config.join(d), 0);
+    }
+}
+
+fn mirror_file(from: &std::path::Path, to: &std::path::Path) {
+    let Ok(meta) = std::fs::metadata(from) else {
+        return;
+    };
+    if !meta.is_file() || meta.len() > 2_000_000 {
+        return;
+    }
+    let Ok(data) = std::fs::read(from) else {
+        return;
+    };
+    if std::fs::read(to).ok().as_deref() == Some(&data[..]) {
+        return;
+    }
+    if let Some(parent) = to.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(to, data);
+}
+
+pub(crate) fn mirror_dir(from: &std::path::Path, to: &std::path::Path, depth: u8) {
+    if depth > 6 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(from) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let Ok(kind) = e.file_type() else { continue };
+        let name = e.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        if kind.is_dir() {
+            mirror_dir(&e.path(), &to.join(&name), depth + 1);
+        } else if kind.is_file() {
+            mirror_file(&e.path(), &to.join(&name));
+        }
+    }
+}
+
+#[cfg(test)]
+mod share_tests {
+    use super::*;
+
+    #[test]
+    fn mirrors_instructions_and_skills_only() {
+        let root = std::env::temp_dir().join(format!("lumen-share-{}", std::process::id()));
+        let (home, iso) = (root.join("home"), root.join("iso"));
+        std::fs::create_dir_all(home.join("skills/a")).unwrap();
+        std::fs::write(home.join("CLAUDE.md"), "rules").unwrap();
+        std::fs::write(home.join("skills/a/SKILL.md"), "skill").unwrap();
+        std::fs::write(home.join(".credentials.json"), "secret").unwrap();
+        std::fs::create_dir_all(&iso).unwrap();
+        mirror_file(&home.join("CLAUDE.md"), &iso.join("CLAUDE.md"));
+        mirror_dir(&home.join("skills"), &iso.join("skills"), 0);
+        assert_eq!(
+            std::fs::read_to_string(iso.join("CLAUDE.md")).unwrap(),
+            "rules"
+        );
+        assert_eq!(
+            std::fs::read_to_string(iso.join("skills/a/SKILL.md")).unwrap(),
+            "skill"
+        );
+        assert!(!iso.join(".credentials.json").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

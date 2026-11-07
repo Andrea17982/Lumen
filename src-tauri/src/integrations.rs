@@ -108,8 +108,26 @@ pub fn save_mcp(data: &Path, text: &str) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())
 }
+/// Folders of the shared skills that are switched on.
+pub fn enabled_skills(data: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(state) = status(data) else {
+        return vec![];
+    };
+    state["skills"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|name| root(data).join("skills").join(name))
+        .filter(|p| p.join("SKILL.md").is_file())
+        .collect()
+}
+
 pub fn instructions(data: &Path) -> Result<String, String> {
     let state = status(data)?;
+    if state["skills"].as_array().is_none_or(|a| a.is_empty()) {
+        return Ok(String::new());
+    }
     let mut result=String::from("Shared skills available in Lumen. When a skill applies, read its SKILL.md before acting and resolve resources relative to its folder:\n");
     for name in state["skills"]
         .as_array()

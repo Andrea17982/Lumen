@@ -97,6 +97,8 @@ const HIDDEN = [
   'orchestra-nogit',
   'usage',
   'references',
+  'native',
+  'resume',
 ];
 function orchestraOf(m: Message): OrchestraState | null {
   const a = m.activity.find((x) => x.kind === 'orchestra');
@@ -1744,13 +1746,11 @@ export default function App() {
                 {nameOf(plan.provider)} ·{' '}
                 {plan.strategy === 'single'
                   ? 'Direct'
-                  : plan.strategy === 'parallel'
-                    ? 'Parallel perspectives'
-                    : plan.strategy === 'broadcast'
-                      ? 'Claude and ChatGPT side by side'
-                      : plan.strategy === 'orchestra'
-                        ? 'Orchestra'
-                        : 'Answer + cross-audit'}{' '}
+                  : plan.strategy === 'broadcast'
+                    ? 'Claude and ChatGPT side by side'
+                    : plan.strategy === 'orchestra'
+                      ? 'Orchestra'
+                      : 'Answer + cross-audit'}{' '}
                 · {plan.effort} reasoning
               </span>
             </div>
