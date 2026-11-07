@@ -68,7 +68,7 @@ export default function SettingsPanel({
   useEffect(() => {
     if (open) setTab(requestedTab || 'general');
   }, [open, requestedTab]);
-  const visible = advanced ? TABS : [];
+  const visible = TABS.filter((tabItem) => advanced || !tabItem.advanced);
   const current = visible.some((t) => t.id === tab) ? tab : 'general';
   function mode(next: boolean) {
     setAdvanced(next);
@@ -153,15 +153,7 @@ export default function SettingsPanel({
                 </button>
               </div>
             )}
-            {!advanced && (
-              <TeamworkSettings
-                simpleOnly
-                advanced={false}
-                accounts={accounts}
-                onError={setError}
-              />
-            )}
-            {advanced && current === 'general' && (
+            {current === 'general' && (
               <GeneralSettings
                 theme={theme}
                 setTheme={setTheme}
@@ -172,7 +164,7 @@ export default function SettingsPanel({
                 setBalanceUsage={setBalanceUsage}
               />
             )}
-            {advanced && current === 'accounts' && (
+            {current === 'accounts' && (
               <AccountSettings
                 accounts={accounts}
                 refresh={refreshAccounts}
@@ -181,7 +173,7 @@ export default function SettingsPanel({
                 advanced={advanced}
               />
             )}
-            {advanced && current === 'auto' && (
+            {current === 'auto' && (
               <>
                 <section className="settings-section">
                   <h3>{t('Auto preferences')}</h3>
@@ -221,16 +213,21 @@ export default function SettingsPanel({
                 {advanced && <AutoSettings accounts={accounts} onError={setError} />}
               </>
             )}
-            {advanced && current === 'teamwork' && (
-              <TeamworkSettings advanced={advanced} accounts={accounts} onError={setError} />
+            {current === 'teamwork' && (
+              <TeamworkSettings
+                advanced={advanced}
+                simpleOnly={!advanced}
+                accounts={accounts}
+                onError={setError}
+              />
             )}
-            {advanced && current === 'tools' && (
+            {current === 'tools' && (
               <>
                 <IntegrationSettings onError={setError} />
                 <ApiSettings onError={setError} />
               </>
             )}
-            {advanced && current === 'about' && (
+            {current === 'about' && (
               <section className="settings-section about">
                 <Mark small />
                 <p>
