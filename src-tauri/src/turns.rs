@@ -33,7 +33,12 @@ pub async fn send_message(
     let mut session = core.store.session(&id)?;
     let accounts = core.store.accounts()?;
     let history = core.store.messages(&id)?;
-    let verdict = if options.mode == "auto" && options.audit_of.is_none() {
+    let reused = (options.mode == "auto" && options.audit_of.is_none())
+        .then(|| crate::classify::follow_up(crate::classify::previous(&history), &text))
+        .flatten();
+    let verdict = if let Some(v) = reused {
+        v
+    } else if options.mode == "auto" && options.audit_of.is_none() {
         let local = core.settings.lock().ok().and_then(|s| {
             let l = &s.local_assistant;
             (l.enabled && !l.model.is_empty()).then(|| (l.model.clone(), l.timeout_ms))
@@ -122,6 +127,9 @@ pub async fn send_message(
         text: text.clone(),
         activity: vec![],
     };
+    if options.mode == "auto" {
+        user.activity.push(crate::classify::record(&verdict));
+    }
     if !options.attachments.is_empty() {
         user.activity.push(Activity {
             kind: "attachments".into(),

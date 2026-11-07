@@ -99,6 +99,7 @@ const HIDDEN = [
   'references',
   'native',
   'resume',
+  'route',
 ];
 function orchestraOf(m: Message): OrchestraState | null {
   const a = m.activity.find((x) => x.kind === 'orchestra');
