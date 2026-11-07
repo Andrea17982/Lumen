@@ -384,12 +384,11 @@ pub(crate) async fn resume_prompt(
             context::attachments(&workspace, &options.attachments).ok()?
         )
     };
-    let map = repo_references(core, s, &workspace, &messages).await;
     let text = context::spill(&workspace, &request.text).0;
     Some(Resume {
         session,
         prompt: format!(
-            "[Lumen: {}]{map}\n\n{text}{attached}",
+            "[Lumen: {}]\n\n{text}{attached}",
             permission_text(options.access())
         ),
     })
@@ -438,13 +437,18 @@ pub(crate) async fn stage_with(
         access != AccessMode::Ask && matches!(a.provider, Provider::Claude | Provider::Gpt)
     });
     let native_skills = matches!(a.provider, Provider::Claude | Provider::Gpt);
-    let stripped;
-    let prompt = if native_skills {
-        stripped = without_skill_list(prompt);
-        stripped.as_str()
+    let stripped = if native_skills {
+        without(prompt, SKILLS_OPEN, SKILLS_CLOSE)
     } else {
-        prompt
+        prompt.to_owned()
     };
+    // Only Claude and Codex outside Ask first get the graph server.
+    let stripped = if native_skills && access != AccessMode::Ask {
+        stripped
+    } else {
+        without(&stripped, GRAPH_OPEN, GRAPH_CLOSE)
+    };
+    let prompt = stripped.as_str();
     let full_prompt = prompt;
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let workspace = PathBuf::from(&s.workspace);
@@ -808,13 +812,13 @@ pub(crate) async fn build_prompt(
     Ok((prompt, history))
 }
 
-/// Declarations of identifiers the latest request mentions, from the repository map, when the
-/// setting is on. What was added is recorded on the request so the chat shows it.
+/// Points Claude and Codex at the code-graph tools when the setting is on. The CLIs query the
+/// graph themselves, so nothing is guessed from the request's words.
 async fn repo_references(
     core: &Core,
-    s: &Session,
-    workspace: &Path,
-    messages: &[Message],
+    _s: &Session,
+    _workspace: &Path,
+    _messages: &[Message],
 ) -> String {
     if !core
         .settings
@@ -824,37 +828,14 @@ async fn repo_references(
     {
         return String::new();
     }
-    let Some(mut request) = messages.iter().rev().find(|m| m.role == "user").cloned() else {
-        return String::new();
-    };
-    let (data, root, text) = (
-        core.root.clone(),
-        workspace.to_path_buf(),
-        request.text.clone(),
-    );
-    let Ok((block, used)) = tauri::async_runtime::spawn_blocking(move || {
-        crate::repomap::context_for(&data, &root, &text)
-    })
-    .await
-    else {
-        return String::new();
-    };
-    if !used.is_empty() && !request.activity.iter().any(|a| a.kind == "references") {
-        request.activity.push(Activity {
-            kind: "references".into(),
-            text: used
-                .iter()
-                .map(|u| format!("{} · {}:{}", u.name, u.file, u.line))
-                .collect::<Vec<_>>()
-                .join(
-                    "
-",
-                ),
-        });
-        let _ = core.store.save_message(&s.id, &request);
-    }
-    block
+    format!(
+        "{GRAPH_OPEN}Code graph: the `{}` tools (overview, find_symbol, symbol, file_outline, related_files, impact) know where code is defined, who uses it and what a change affects, with exact line ranges. Use them before broad Grep or whole-file Reads, then Read only the lines you need.\n{GRAPH_CLOSE}",
+        crate::graph_mcp::SERVER
+    )
 }
+
+const GRAPH_OPEN: &str = "<lumen-graph>\n";
+const GRAPH_CLOSE: &str = "</lumen-graph>\n";
 
 /// Chat history as the CLI receives it. Estimates pass `write` false: long pasted logs are shown
 /// as excerpts without saving the full copy to the project.
@@ -956,12 +937,11 @@ fn notes_block(workspace: &Path) -> String {
 const SKILLS_OPEN: &str = "<lumen-skills>\n";
 const SKILLS_CLOSE: &str = "</lumen-skills>\n";
 
-/// The prompt without Lumen's skill listing, for CLIs that load the skills natively.
-fn without_skill_list(prompt: &str) -> String {
-    match (prompt.find(SKILLS_OPEN), prompt.find(SKILLS_CLOSE)) {
-        (Some(a), Some(b)) if b > a => {
-            format!("{}{}", &prompt[..a], &prompt[b + SKILLS_CLOSE.len()..])
-        }
+/// The prompt without its first `open`…`close` section: Lumen's skill listing for CLIs that load
+/// skills natively, the code-graph hint for CLIs that do not get the graph server.
+fn without(prompt: &str, open: &str, close: &str) -> String {
+    match (prompt.find(open), prompt.find(close)) {
+        (Some(a), Some(b)) if b > a => format!("{}{}", &prompt[..a], &prompt[b + close.len()..]),
         _ => prompt.to_owned(),
     }
 }

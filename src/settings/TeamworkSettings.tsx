@@ -80,9 +80,9 @@ export default function TeamworkSettings({
         onChange={(next) => void save({ ...s, localAssistant: next })}
       />
       <Switch
-        label={t('Repository map references')}
+        label={t('Code graph')}
         hint={t(
-          'When a request names a class, function, scene or table, add where it is declared to the prompt (at most 12 locations, about 600 tokens). The request shows what was added.',
+          "Claude and Codex get Lumen's code graph as tools: definitions with exact line ranges, callers, file outlines, related files and the impact of a change. They read only the lines they need instead of searching whole files.",
         )}
         checked={s.repoContext}
         disabled={busy}

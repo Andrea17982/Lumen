@@ -286,7 +286,7 @@ pub async fn execute(
     // Windows batch launchers reject verbatim UNC-style drive prefixes as their cwd.
     let workspace = dunce::canonicalize(input.workspace)
         .map_err(|_| "The conversation folder is no longer available")?;
-    c.current_dir(workspace)
+    c.current_dir(&workspace)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -325,6 +325,15 @@ pub async fn execute(
                 args.extend(["resume".into(), id.into(), "-".into()]);
             }
             _ => {}
+        }
+    }
+    if matches!(p, Provider::Claude | Provider::Gpt) {
+        if let Some(data) = input.config.parent().and_then(Path::parent) {
+            if graph_enabled(data) {
+                if let Some(extra) = crate::graph_mcp::cli_args(data, &workspace, p) {
+                    add_graph(&mut args, extra, p);
+                }
+            }
         }
     }
     c.args(args);
@@ -373,6 +382,35 @@ pub(crate) const CHECK_COMMANDS: [&str; 18] = [
     "Bash(go test:*)",
     "Bash(dotnet test:*)",
 ];
+
+/// The code graph setting ("repoContext"), on unless the user turned it off.
+pub(crate) fn graph_enabled(data: &Path) -> bool {
+    std::fs::read(data.join("settings.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["repoContext"].as_bool())
+        .unwrap_or(true)
+}
+
+/// Adds the code-graph MCP server and, in restricted Claude modes, allows its tools.
+fn add_graph(args: &mut Vec<String>, extra: Vec<String>, p: &Provider) {
+    let tools = format!("mcp__{}", crate::graph_mcp::SERVER);
+    if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
+        args[i + 1] = format!("{},{tools}", args[i + 1]);
+    }
+    if *p == Provider::Gpt {
+        // Config overrides go before the trailing `-` / `resume <id> -`.
+        let at = args
+            .iter()
+            .position(|a| a == "resume")
+            .unwrap_or_else(|| args.len().saturating_sub(1));
+        for (k, e) in extra.into_iter().enumerate() {
+            args.insert(at + k, e);
+        }
+    } else {
+        args.extend(extra);
+    }
+}
 
 pub(crate) const DENY: [&str; 9] = [
     "Read(**/.env)",
@@ -660,6 +698,37 @@ pub(crate) async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn graph_server_args_keep_codex_stdin_last() {
+        let mut args: Vec<String> = ["exec", "--json", "resume", "t1", "-"]
+            .map(String::from)
+            .into();
+        add_graph(
+            &mut args,
+            vec!["-c".into(), "mcp_servers.x.command=1".into()],
+            &Provider::Gpt,
+        );
+        assert_eq!(
+            args,
+            [
+                "exec",
+                "--json",
+                "-c",
+                "mcp_servers.x.command=1",
+                "resume",
+                "t1",
+                "-"
+            ]
+        );
+        let mut claude: Vec<String> = ["--allowedTools", "Read"].map(String::from).into();
+        add_graph(
+            &mut claude,
+            vec!["--mcp-config".into(), "g.json".into()],
+            &Provider::Claude,
+        );
+        assert_eq!(claude[1], "Read,mcp__lumen_graph");
+        assert_eq!(claude[2..], ["--mcp-config", "g.json"]);
+    }
     #[test]
     fn native_session_ids_are_reported() {
         let c = normalize(
