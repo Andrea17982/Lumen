@@ -1,22 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import {
-  ArrowUp,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Folder,
-  Plus,
-  Search,
-  Sparkles,
-  Square,
-  X,
-  Circle,
-  Paperclip,
-  Shrink,
-  Workflow,
-} from 'lucide-react';
+import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -44,8 +29,7 @@ import { ProjectList, SessionList } from './components/Sidebar';
 import { active, laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
-import ModeControl from './components/ModeControl';
-import PermissionButton from './components/PermissionButton';
+import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
 import ContextMeter from './components/ContextMeter';
 import CommandPalette from './components/CommandPalette';
@@ -79,7 +63,6 @@ import { useI18n } from './lib/i18n';
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
 const tokens = estimateTokens;
-const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 export default function App() {
   const { t } = useI18n();
@@ -1447,114 +1430,49 @@ export default function App() {
                 paused={settings}
               />
             )}
-            <div className="composer-toolbar">
-              <ModeControl
-                mode={mode}
-                bothAvailable={accessMode === 'read-only'}
-                onChange={(next) => {
-                  setMode(next);
-                  setAccountId('');
-                  setModel('');
-                  setEffort('');
-                  setCatalogReady(false);
-                  setAdvanced(false);
-                }}
-              />
-              {mode === 'auto' && appSettings?.orchestra && (
-                <button
-                  className="orchestra-badge"
-                  title={t(
-                    'Orchestra is on: complex tasks are planned and split across agents. Click to turn off.',
-                  )}
-                  onClick={() =>
-                    void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
-                      setError(errorText(e)),
-                    )
-                  }
-                >
-                  <Workflow size={12} />
-                  Orchestra
-                </button>
-              )}
-              {workspaces.length > 0 && (
-                <div className="workspace-controls">
-                  <select
-                    aria-label="Project"
-                    title={namedWorkspace?.name || t('Choose project')}
-                    value={currentWorkspaceId}
-                    disabled={running || folderBusy}
-                    onChange={(e) => void chooseWorkspace(e.target.value)}
-                  >
-                    {!currentWorkspaceId && <option value="">{t('Choose project')}</option>}
-                    {workspaces.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {(mode === 'claude' || mode === 'gpt') && (
-                <button
-                  className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
-                  aria-label={t('Advanced provider options')}
-                  aria-expanded={advanced}
-                  onClick={() => setAdvanced(!advanced)}
-                >
-                  {advanced ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-                </button>
-              )}
-              <div className="composer-spacer" />
-              <PermissionButton
-                accessMode={accessMode}
-                onCycle={(next) => void changeAccessMode(next)}
-              />
-              <button
-                className={`icon-button attach-button ${attached.length ? 'on' : ''}`}
-                aria-label={t('Attach files')}
-                title={attached.length ? t(`${attached.length} files attached`) : t('Attach files')}
-                onClick={() => void attachFiles()}
-              >
-                <Paperclip size={15} />
-                {attached.length > 0 && <small>{attached.length}</small>}
-              </button>
-              <button
-                className="send-button"
-                aria-label={running ? t('Stop response') : t('Send message')}
-                disabled={
-                  !running &&
-                  (!draft.trim() ||
-                    folderBusy ||
-                    (desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady))
-                }
-                onClick={() => {
-                  if (running && selected)
-                    void call('cancel_run', { id: selected }).catch((e) => setError(errorText(e)));
-                  else void send();
-                }}
-              >
-                {running ? <Square size={15} fill="currentColor" /> : <ArrowUp size={19} />}
-              </button>
-            </div>
+            <ComposerToolbar
+              mode={mode}
+              bothAvailable={accessMode === 'read-only'}
+              onMode={(next) => {
+                setMode(next);
+                setAccountId('');
+                setModel('');
+                setEffort('');
+                setCatalogReady(false);
+                setAdvanced(false);
+              }}
+              orchestra={mode === 'auto' && !!appSettings?.orchestra}
+              onOrchestraOff={() =>
+                appSettings &&
+                void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
+                  setError(errorText(e)),
+                )
+              }
+              workspaces={workspaces}
+              workspaceId={currentWorkspaceId}
+              workspaceName={namedWorkspace?.name}
+              workspaceLocked={running || folderBusy}
+              onWorkspace={(id) => void chooseWorkspace(id)}
+              advanced={advanced}
+              onAdvanced={() => setAdvanced(!advanced)}
+              accessMode={accessMode}
+              onAccess={(next) => void changeAccessMode(next)}
+              attached={attached.length}
+              onAttach={() => void attachFiles()}
+              running={running}
+              canSend={
+                !!draft.trim() &&
+                !folderBusy &&
+                !(desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady)
+              }
+              onSend={() => {
+                if (running && selected)
+                  void call('cancel_run', { id: selected }).catch((e) => setError(errorText(e)));
+                else void send();
+              }}
+            />
           </div>
-          <div className="composer-caption">
-            {draft.trim() && (
-              <span
-                className={`token-badge ${blob ? 'warn' : impact.toLowerCase()}`}
-                title={
-                  blob
-                    ? 'This message contains a large encoded blob'
-                    : `Estimated prompt size · quota impact ${impact}`
-                }
-              >
-                ~{compactTokens(draftTokens)} tokens · {blob ? 'Heavy' : impact}
-              </span>
-            )}
-            <span>
-              {t('Enter to send')} <span className="caption-dot">·</span>{' '}
-              {t('Shift Enter for a new line')}
-            </span>
-          </div>
+          <TokenCaption tokens={draft.trim() ? draftTokens : 0} impact={impact} heavy={blob} />
         </div>
       </main>
       <QuitConfirm />
