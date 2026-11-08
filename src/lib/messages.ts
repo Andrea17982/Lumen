@@ -1,4 +1,7 @@
-import type { AccountUsage, Message, OrchestraState } from './types';
+import type { AccountUsage, Message, OrchestraState, Status } from './types';
+
+/** A conversation with a turn in progress. */
+export const active = (s?: Status) => s === 'running' || s === 'waiting';
 
 /** Activity kinds that feed the UI or the backend but are not listed under Activity. */
 export const HIDDEN = [

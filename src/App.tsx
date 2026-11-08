@@ -41,15 +41,16 @@ import DraftSheet from './components/DraftSheet';
 import MessageView from './components/MessageView';
 import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerParts';
 import { ProjectList, SessionList } from './components/Sidebar';
-import { laneOf, mergeUsage, providerOf } from './lib/messages';
+import { active, laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
 import ModeControl from './components/ModeControl';
-import PermissionButton, { ACCESS_ORDER } from './components/PermissionButton';
+import PermissionButton from './components/PermissionButton';
 import UsagePopover from './components/UsagePopover';
 import ContextMeter from './components/ContextMeter';
 import CommandPalette from './components/CommandPalette';
 import { runCommand, type Command } from './lib/commands';
+import { appCommands, conversationCommands } from './lib/appCommands';
 import {
   contextWindow,
   estimateTokens,
@@ -77,7 +78,6 @@ import { useI18n } from './lib/i18n';
 // Loaded on first use, so starting Lumen parses less code.
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
-const active = (s?: Status) => s === 'running' || s === 'waiting';
 const tokens = estimateTokens;
 const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
@@ -883,120 +883,38 @@ export default function App() {
   };
 
   /** Actions on one conversation; the sidebar menu and the palette run the same entries. */
-  const sessionCommands = (
-    s: Session,
-    at = { x: window.innerWidth / 2 - 136, y: 96 },
-  ): Command[] => [
-    {
-      id: 'session-rename',
-      label: 'Rename',
-      group: 'Conversation',
-      run: () => {
-        setRenameTarget(s);
-        setRenameValue(s.title);
-        setRenamePos({
-          x: Math.min(at.x, window.innerWidth - 272),
-          y: Math.min(at.y, window.innerHeight - 150),
-        });
+  const sessionCommands = (s: Session, at?: { x: number; y: number }) =>
+    conversationCommands(s, at, {
+      rename: (target, pos) => {
+        setRenameTarget(target);
+        setRenameValue(target.title);
+        setRenamePos(pos);
       },
+      pin: (target) => void update(target, target.title, !target.pinned),
+      remove: setDeleteTarget,
+    });
+  const commands = appCommands({
+    session,
+    canAct: !!session && !running,
+    hasMessages: messages.length > 0,
+    newChat,
+    newProject: () => {
+      setSidebar(true);
+      setProjectForm(true);
     },
-    {
-      id: 'session-pin',
-      label: s.pinned ? 'Unpin' : 'Pin conversation',
-      group: 'Conversation',
-      run: () => void update(s, s.title, !s.pinned),
+    search: () => {
+      setSidebar(true);
+      requestAnimationFrame(() => searchInput.current?.focus());
     },
-    {
-      id: 'session-delete',
-      label: 'Delete',
-      group: 'Conversation',
-      available: !active(s.status),
-      run: () => setDeleteTarget(s),
-    },
-  ];
-
-  const commands: Command[] = [
-    {
-      id: 'new-chat',
-      label: 'New conversation',
-      group: 'Conversation',
-      shortcut: 'Ctrl N',
-      run: newChat,
-    },
-    {
-      id: 'new-project',
-      label: 'New project',
-      group: 'Project',
-      shortcut: 'Ctrl P',
-      run: () => {
-        setSidebar(true);
-        setProjectForm(true);
-      },
-    },
-    {
-      id: 'search',
-      label: 'Search conversations',
-      group: 'Conversation',
-      shortcut: '/',
-      run: () => {
-        setSidebar(true);
-        requestAnimationFrame(() => searchInput.current?.focus());
-      },
-    },
-    {
-      id: 'compact',
-      label: 'Compact context into a fresh session',
-      group: 'Conversation',
-      keywords: 'handoff summary shrink',
-      available: !!session && !running && messages.length > 0,
-      run: () => void compact(),
-    },
-    {
-      id: 'handoff',
-      label: 'Draft a handoff summary',
-      group: 'Conversation',
-      available: !!session && !running && messages.length > 0,
-      run: openHandoff,
-    },
-    {
-      id: 'commit',
-      label: 'Draft a commit message',
-      group: 'Project',
-      keywords: 'git diff',
-      available: !!session && !running,
-      run: () => void openCommit(),
-    },
-    {
-      id: 'usage',
-      label: 'Show provider usage',
-      group: 'Providers',
-      keywords: 'quota limits',
-      run: () => setUsageOpen(true),
-    },
-    ...(['general', 'accounts', 'auto', 'teamwork', 'tools', 'about'] as SettingsTab[]).map(
-      (tab): Command => ({
-        id: `settings-${tab}`,
-        label: `Settings: ${tab[0].toUpperCase()}${tab.slice(1)}`,
-        group: 'Settings',
-        keywords: 'preferences',
-        run: () => openSettings(tab),
-      }),
-    ),
-    ...ACCESS_ORDER.map((access): Command => ({
-      id: `access-${access}`,
-      label: `Permission mode: ${{ 'read-only': 'Ask (read-only)', 'file-edits': 'Edits', ask: 'Approve each action', autopilot: 'Autopilot' }[access]}`,
-      group: 'Permissions',
-      keywords: 'access',
-      run: () => void changeAccessMode(access),
-    })),
-    ...(['system', 'light', 'dark'] as const).map((name): Command => ({
-      id: `theme-${name}`,
-      label: `Theme: ${name}`,
-      group: 'Appearance',
-      run: () => setTheme(name),
-    })),
-    ...(session ? sessionCommands(session) : []),
-  ];
+    compact: () => void compact(),
+    handoff: openHandoff,
+    commit: () => void openCommit(),
+    usage: () => setUsageOpen(true),
+    settings: openSettings,
+    access: (mode) => void changeAccessMode(mode),
+    theme: setTheme,
+    sessionCommands,
+  });
   useEffect(() => {
     commandsRef.current = commands;
   });
