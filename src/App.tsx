@@ -7,9 +7,6 @@ import {
   ChevronDown,
   ChevronUp,
   Folder,
-  MoreHorizontal,
-  MessageSquare,
-  Pin,
   Plus,
   Search,
   Sparkles,
@@ -43,6 +40,7 @@ import { nameNewChat } from './features/local-assistant/autoTitle';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
 import MessageView from './components/MessageView';
+import { ProjectList, SessionList } from './components/Sidebar';
 import { laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
@@ -73,7 +71,7 @@ import type {
   Session,
   Status,
 } from './lib/types';
-import { errorText, IconButton, Mark, nameOf } from './lib/util';
+import { errorText, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 
 // Loaded on first use, so starting Lumen parses less code.
@@ -115,7 +113,6 @@ export default function App() {
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
   const [accessMode, setAccessMode] = useState<AccessMode>('read-only');
-  const [draggedSession, setDraggedSession] = useState<string | null>(null);
   const [catalogReady, setCatalogReady] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState(
@@ -1105,36 +1102,21 @@ export default function App() {
           />
           <kbd>/</kbd>
         </label>
-        <div className="project-list" aria-label="Projects">
-          {[
-            { id: '*', name: t('All conversations') },
-            ...(workspaces.length ? [{ id: '', name: t('Unsorted') }] : []),
-            ...workspaces,
-          ].map((w) => (
-            <button
-              key={w.id}
-              className={projectFilter === w.id ? 'selected' : ''}
-              onClick={() => {
-                setProjectFilter(w.id);
-                if (w.id !== '*') {
-                  setWorkspaceId(w.id);
-                  localStorage.setItem('lumen-workspace-id', w.id);
-                }
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const s = sessions.find(
-                  (s) => s.id === e.dataTransfer.getData('text/lumen-session'),
-                );
-                if (s && w.id !== '*') void moveSession(s, w.id);
-              }}
-            >
-              <Folder size={13} />
-              {w.name}
-            </button>
-          ))}
-        </div>
+        <ProjectList
+          workspaces={workspaces}
+          filter={projectFilter}
+          onFilter={(id) => {
+            setProjectFilter(id);
+            if (id !== '*') {
+              setWorkspaceId(id);
+              localStorage.setItem('lumen-workspace-id', id);
+            }
+          }}
+          onDropSession={(id, workspace) => {
+            const s = sessions.find((s) => s.id === id);
+            if (s) void moveSession(s, workspace);
+          }}
+        />
         <div className="session-heading">
           <span>{t('Your conversations')}</span>
           <span>
@@ -1142,82 +1124,30 @@ export default function App() {
             {hasMore ? '+' : ''}
           </span>
         </div>
-        <nav className="session-list" aria-label="Conversations">
-          {sessions.length === 0 && (
-            <div className="sidebar-empty">
-              <MessageSquare size={20} />
-              <p>
-                {search ? t('No conversations found.') : t('A little room for your next big idea.')}
-              </p>
-            </div>
+        <SessionList
+          sessions={sessions.filter(
+            (s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter,
           )}
-          {sessions
-            .filter((s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter)
-            .map((s) => (
-              <div className="session-item" key={s.id}>
-                <button
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedSession(s.id);
-                    e.dataTransfer.setData('text/lumen-session', s.id);
-                  }}
-                  onDragEnd={() => setDraggedSession(null)}
-                  onDragOver={(e) => {
-                    if (draggedSession) e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData('text/lumen-session');
-                    if (id && id !== s.id)
-                      void call('reorder_session', { id, beforeId: s.id })
-                        .then(refresh)
-                        .catch((err) => setError(errorText(err)));
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    contextTrigger.current = e.currentTarget;
-                    setContext({
-                      session: s,
-                      x: Math.min(e.clientX, window.innerWidth - 245),
-                      y: Math.min(e.clientY, window.innerHeight - 130),
-                    });
-                  }}
-                  className={`session-row ${selected === s.id ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelected(s.id);
-                    setSidebar(false);
-                  }}
-                >
-                  <span className={`status-dot ${s.status}`} title={s.status} />
-                  <span className="session-title">{s.title}</span>
-                  {s.pinned && <Pin size={12} />}
-                  <span className="sr-only">{s.status}</span>
-                </button>
-                <IconButton
-                  className="session-menu-button"
-                  label={`Actions for ${s.title}`}
-                  aria-haspopup="menu"
-                  aria-expanded={context?.session.id === s.id}
-                  onClick={(e) => {
-                    contextTrigger.current = e.currentTarget;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setContext({
-                      session: s,
-                      x: Math.max(0, Math.min(rect.right, window.innerWidth - 245)),
-                      y: Math.max(0, Math.min(rect.bottom, window.innerHeight - 180)),
-                    });
-                  }}
-                >
-                  <MoreHorizontal size={16} />
-                </IconButton>
-              </div>
-            ))}
-          {hasMore && (
-            <button className="text-button load-more" onClick={() => void loadMore()}>
-              {t('Load more conversations')}
-            </button>
-          )}
-        </nav>
+          empty={sessions.length === 0}
+          searching={!!search}
+          selected={selected}
+          menuOpenFor={context?.session.id}
+          hasMore={hasMore}
+          onSelect={(id) => {
+            setSelected(id);
+            setSidebar(false);
+          }}
+          onReorder={(id, beforeId) =>
+            void call('reorder_session', { id, beforeId })
+              .then(refresh)
+              .catch((err) => setError(errorText(err)))
+          }
+          onMenu={(session, x, y, trigger) => {
+            contextTrigger.current = trigger;
+            setContext({ session, x, y });
+          }}
+          onLoadMore={() => void loadMore()}
+        />
         <div className="sidebar-bottom">
           <div className="sidebar-footer-actions">
             <button
