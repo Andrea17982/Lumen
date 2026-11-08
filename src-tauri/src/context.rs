@@ -106,6 +106,7 @@ pub fn list_files(workspace: &Path, limit: usize) -> Vec<FileEntry> {
 pub fn estimate_bytes(bytes: u64) -> u64 {
     bytes.div_ceil(4)
 }
+#[cfg(test)]
 pub fn estimate(text: &str) -> u64 {
     // ~4 characters per token for English/code; non-ASCII text is denser.
     let ascii = text.bytes().filter(|b| b.is_ascii()).count() as u64;
@@ -127,9 +128,13 @@ pub fn jail(workspace: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Small text files are inlined. Larger ones are referenced by path with a short preview: the
+/// agentic CLIs read only the parts they need, instead of paying for the whole file on every turn.
 pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String> {
+    const INLINE_FILE: usize = 16 * 1024;
+    const PREVIEW: usize = 2 * 1024;
     let mut out = String::new();
-    let mut budget: usize = 400_000;
+    let mut budget: usize = 48 * 1024;
     for selected in files.iter().take(50) {
         let path = attachment_path(workspace, selected)?;
         let display = Path::new(selected)
@@ -149,29 +154,34 @@ pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String>
                 "{display} is larger than the 100 MB attachment limit"
             ));
         }
-        if metadata.len() > budget as u64 {
-            out.push_str(&format!(
-                "\n<file path=\"{}\">Large file attached by the user ({} bytes). Inspect it with an available file-reading tool if supported.</file>\n",
-                path.display(), metadata.len()
-            ));
-            continue;
-        }
-        let text = std::fs::read(&path).map_err(|e| e.to_string())?;
-        if text.contains(&0) {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        if bytes.contains(&0) {
             out.push_str(&format!(
                 "\n<file path=\"{}\">Binary file attached by the user ({} bytes). Inspect it with an available file-reading tool if supported.</file>\n",
                 path.display(), metadata.len()
             ));
             continue;
         }
-        let text = String::from_utf8_lossy(&text);
-        if text.len() > budget {
-            return Err("Attached text files exceed 400 KB. Attach fewer files.".into());
+        let text = String::from_utf8_lossy(&bytes);
+        if text.len() <= INLINE_FILE && text.len() <= budget {
+            budget -= text.len();
+            out.push_str(&format!(
+                "\n<file path=\"{}\">\n{text}\n</file>\n",
+                path.display()
+            ));
+            continue;
         }
-        budget -= text.len();
+        let mut cut = PREVIEW.min(text.len());
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let head = &text[..cut];
+        let head = head.rsplit_once('\n').map_or(head, |(h, _)| h);
         out.push_str(&format!(
-            "\n<file path=\"{}\">\n{text}\n</file>\n",
-            path.display()
+            "\n<file path=\"{}\" bytes=\"{}\" lines=\"{}\">Attached by the user. Only the beginning is shown; read the rest of this file with your file-reading tool, only the parts you need.\n{head}\n…\n</file>\n",
+            path.display(),
+            metadata.len(),
+            text.lines().count()
         ));
     }
     Ok(out)
@@ -369,6 +379,21 @@ pub async fn run_shell(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn large_attachments_are_referenced_with_a_preview() {
+        let root = std::env::temp_dir().join(format!("lumen-att-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("small.txt"), "tiny file").unwrap();
+        let big: String = (0..5000).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(root.join("big.txt"), &big).unwrap();
+        let out = attachments(&root, &["small.txt".into(), "big.txt".into()]).unwrap();
+        assert!(out.contains("tiny file"));
+        assert!(out.contains("lines=\"5000\""));
+        assert!(out.contains("line 0\n") && !out.contains("line 4999"));
+        assert!(out.len() < 4 * 1024);
+        let _ = std::fs::remove_dir_all(&root);
+    }
     #[test]
     fn log_compression_and_filters() {
         let mut log = String::new();

@@ -38,9 +38,6 @@ function previewSettings(): AppSettings {
     autoFallback: true,
     selfHeal: true,
     reviewRounds: 1,
-    apiEnabled: false,
-    apiPort: 8317,
-    apiToken: 'preview-key-preview-key',
     orchestra: false,
     closeToTray: false,
     openAtLogin: false,
@@ -150,9 +147,6 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       break;
     case 'ollama_models':
       result = [];
-      break;
-    case 'api_status':
-      result = { running: false, url: 'http://localhost:8317/v1', log: [] };
       break;
     case 'project_context':
       result = { notes: '', files: [], verify: null, git: false };

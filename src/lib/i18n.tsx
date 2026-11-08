@@ -202,12 +202,6 @@ const it: Record<string, string> = {
   'Edit as JSON': 'Modifica come JSON',
   'Shared MCP configuration': 'Configurazione MCP condivisa',
   Save: 'Salva',
-  'Local API': 'API locale',
-  'Let other apps on this PC use your subscriptions through an OpenAI-compatible endpoint. Read-only, local only.':
-    'Consenti alle altre app di questo PC di usare i tuoi abbonamenti tramite un endpoint compatibile con OpenAI. Solo lettura e solo in locale.',
-  'Serve on localhost': 'Rendi disponibile su localhost',
-  'Models: lumen-auto, lumen-claude, lumen-chatgpt.':
-    'Modelli: lumen-auto, lumen-claude, lumen-chatgpt.',
   Error: 'Errore',
   'No requests yet.': 'Ancora nessuna richiesta.',
 };

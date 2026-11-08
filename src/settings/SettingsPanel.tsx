@@ -7,7 +7,6 @@ import { advancedActive, useAppSettings } from '../lib/settings';
 import type { Account, McpServer, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
-import ApiSettings from './ApiSettings';
 import AutoSettings, { AutoPreferences } from './AutoSettings';
 import GeneralSettings from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
@@ -65,6 +64,13 @@ export default function SettingsPanel({
   useEffect(() => {
     if (open) setTab(requestedTab || 'general');
   }, [open, requestedTab]);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('.settings-panel button:not(:disabled)')?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   const visible = TABS.filter((tabItem) => advanced || !tabItem.advanced);
   const current = visible.some((t) => t.id === tab) ? tab : 'general';
   // Enabled MCP servers live in the Advanced-only Tools tab, so Simple mode counts them.
@@ -194,12 +200,7 @@ export default function SettingsPanel({
                 onError={setError}
               />
             )}
-            {current === 'tools' && (
-              <>
-                <IntegrationSettings onError={setError} />
-                <ApiSettings onError={setError} />
-              </>
-            )}
+            {current === 'tools' && <IntegrationSettings onError={setError} />}
             {current === 'about' && (
               <section className="settings-section about">
                 <Mark small />

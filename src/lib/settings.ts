@@ -43,7 +43,6 @@ export function advancedActive(s: AppSettings | null, balanceUsage: boolean, mcp
       balanceUsage,
       !s.selfHeal,
       s.reviewRounds !== 1,
-      s.apiEnabled,
       Boolean(s.ollamaModel),
       !s.autoFallback,
       !s.repoContext,

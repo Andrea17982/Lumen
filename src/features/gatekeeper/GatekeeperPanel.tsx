@@ -1,3 +1,4 @@
+import { visibleInterval } from '../../lib/visible';
 import { useEffect, useState } from 'react';
 import { decisionBlocker, sameScope, visibleText, whitelistCommands } from './contracts';
 import type { Action, ApprovalRequest, Decision, ExactRule, Scope, SessionView } from './contracts';
@@ -221,8 +222,7 @@ export default function GatekeeperPanel({
 }: GatekeeperPanelProps) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(timer);
+    return visibleInterval(() => setNow(Date.now()), 500);
   }, []);
   return (
     <section className="gatekeeper-panel" aria-label="Gatekeeper approvals">

@@ -152,9 +152,6 @@ export interface AppSettings {
   autoFallback: boolean;
   selfHeal: boolean;
   reviewRounds: number;
-  apiEnabled: boolean;
-  apiPort: number;
-  apiToken: string;
   orchestra: boolean;
   closeToTray: boolean;
   openAtLogin: boolean;
@@ -186,11 +183,6 @@ export interface McpServer {
   enabled: boolean;
   healthy: boolean;
   target: string;
-}
-export interface ApiStatus {
-  running: boolean;
-  url: string;
-  log: { at: number; model: string; status: string; stream: boolean; millis: number }[];
 }
 export interface RewindPreview {
   files: string[];
