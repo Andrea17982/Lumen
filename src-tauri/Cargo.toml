@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.5.2"
+version = "0.5.3"
 description = "A quiet desktop workspace for Claude Code and Codex"
 authors = ["Andrea17982"]
 edition = "2021"
