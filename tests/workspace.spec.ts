@@ -782,3 +782,11 @@ test('the command palette opens with Ctrl K, filters, runs and restores focus', 
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
 });
+
+test('a new conversation can change its folder from the top bar', async ({ page }) => {
+  await page.goto('/');
+  const picker = page.locator('.topbar').getByRole('button', { name: /^Change folder/ });
+  await expect(picker).toBeVisible();
+  await picker.click();
+  await expect(picker).toContainText('Browser preview');
+});

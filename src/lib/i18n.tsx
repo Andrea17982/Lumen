@@ -82,6 +82,7 @@ const it: Record<string, string> = {
   'click to change': 'clicca per cambiare',
   Project: 'Progetto',
   'Choose project': 'Scegli un progetto',
+  'Change folder': 'Cambia cartella',
   'Advanced provider options': 'Opzioni avanzate del provider',
   'Attach files': 'Allega file',
   'Stop response': 'Interrompi risposta',

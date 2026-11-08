@@ -1,4 +1,4 @@
-import { Folder, Menu, Settings2 } from 'lucide-react';
+import { ChevronDown, Folder, Menu, Settings2 } from 'lucide-react';
 import { IconButton } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
@@ -16,6 +16,9 @@ export interface TopbarProps {
   workspaceTitle?: string;
   conversationTitle: string;
   pills: HealthPill[];
+  /** Given for a conversation that has not started: the folder name becomes a picker. */
+  onChooseFolder?: () => void;
+  folderBusy?: boolean;
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
 }
@@ -27,6 +30,8 @@ export default function Topbar({
   workspaceTitle,
   conversationTitle,
   pills,
+  onChooseFolder,
+  folderBusy,
   onOpenSidebar,
   onOpenSettings,
 }: TopbarProps) {
@@ -41,10 +46,25 @@ export default function Topbar({
         >
           <Menu size={19} />
         </IconButton>
-        <span className="workspace-name" title={workspaceTitle}>
-          <Folder size={15} />
-          {workspaceLabel}
-        </span>
+        {onChooseFolder ? (
+          <button
+            type="button"
+            className="workspace-name workspace-picker"
+            title={workspaceTitle}
+            aria-label={`${t('Change folder')}: ${workspaceLabel}`}
+            disabled={folderBusy}
+            onClick={onChooseFolder}
+          >
+            <Folder size={15} />
+            {workspaceLabel}
+            <ChevronDown size={13} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="workspace-name" title={workspaceTitle}>
+            <Folder size={15} />
+            {workspaceLabel}
+          </span>
+        )}
         <span className="topbar-divider" />
         <span className="conversation-label">{conversationTitle}</span>
       </div>

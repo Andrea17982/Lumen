@@ -1615,6 +1615,8 @@ export default function App() {
           workspaceTitle={currentWorkspace || undefined}
           conversationTitle={session?.title || t('New conversation')}
           pills={providerPills}
+          onChooseFolder={!session ? () => void chooseFolder() : undefined}
+          folderBusy={folderBusy || running}
           onOpenSidebar={() => setSidebar(true)}
           onOpenSettings={() => openSettings()}
         />
