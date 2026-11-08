@@ -12,7 +12,6 @@ import {
   Sparkles,
   Square,
   X,
-  AlertCircle,
   Circle,
   Paperclip,
   Shrink,
@@ -40,6 +39,7 @@ import { nameNewChat } from './features/local-assistant/autoTitle';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
 import MessageView from './components/MessageView';
+import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerParts';
 import { ProjectList, SessionList } from './components/Sidebar';
 import { laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
@@ -1437,17 +1437,7 @@ export default function App() {
 
         <div className="composer-region">
           {error && (
-            <div role="alert" className="error-banner">
-              <AlertCircle size={16} />
-              <span>{error}</span>
-              <button
-                className="icon-button"
-                aria-label={t('Dismiss error')}
-                onClick={() => setError('')}
-              >
-                <X size={14} />
-              </button>
-            </div>
+            <ErrorBanner text={error} label={t('Dismiss error')} onDismiss={() => setError('')} />
           )}
           {session && historyTokens > 40_000 && !running && (
             <button className="compact-chip" onClick={openHandoff}>
@@ -1500,22 +1490,7 @@ export default function App() {
               }
             />
           )}
-          {plan && (
-            <div className="plan-line">
-              <Sparkles size={13} />
-              <span>
-                {nameOf(plan.provider)} ·{' '}
-                {plan.strategy === 'single'
-                  ? 'Direct'
-                  : plan.strategy === 'broadcast'
-                    ? 'Claude and ChatGPT side by side'
-                    : plan.strategy === 'orchestra'
-                      ? 'Orchestra'
-                      : 'Answer + cross-audit'}{' '}
-                · {plan.effort} reasoning
-              </span>
-            </div>
-          )}
+          {plan && <PlanLine plan={plan} />}
           <div className="composer">
             <textarea
               ref={input}
@@ -1532,25 +1507,10 @@ export default function App() {
               }}
               maxLength={100000}
             />
-            {attached.length > 0 && (
-              <div className="attachment-list" aria-label="Attached files">
-                {attached.map((path) => {
-                  const name = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
-                  return (
-                    <span className="attachment-chip" key={path} title={path}>
-                      <span>{name}</span>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${name}`}
-                        onClick={() => setAttached((current) => current.filter((p) => p !== path))}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+            <AttachmentList
+              paths={attached}
+              onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}
+            />
             {(mode === 'claude' || mode === 'gpt') && (
               <ProviderOptions
                 provider={mode}
@@ -1664,11 +1624,9 @@ export default function App() {
               <span
                 className={`token-badge ${blob ? 'warn' : impact.toLowerCase()}`}
                 title={
-                  false
-                    ? 'Attachments are not included in this estimate'
-                    : blob
-                      ? 'This message contains a large encoded blob'
-                      : `Estimated prompt size · quota impact ${impact}`
+                  blob
+                    ? 'This message contains a large encoded blob'
+                    : `Estimated prompt size · quota impact ${impact}`
                 }
               >
                 ~{compactTokens(draftTokens)} tokens · {blob ? 'Heavy' : impact}

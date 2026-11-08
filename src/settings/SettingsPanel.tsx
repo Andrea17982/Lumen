@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { AlertCircle, ArrowUpRight, Heart, X } from 'lucide-react';
+import { ArrowUpRight, Heart, X } from 'lucide-react';
 import { version } from '../../package.json';
 import { call, external } from '../lib/bridge';
 import { advancedActive, useAppSettings } from '../lib/settings';
@@ -12,6 +12,7 @@ import GeneralSettings from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
 import TeamworkSettings from './TeamworkSettings';
 import { useI18n } from '../lib/i18n';
+import { ErrorBanner } from '../components/ComposerParts';
 
 export type SettingsTab = 'general' | 'accounts' | 'auto' | 'teamwork' | 'tools' | 'about';
 const TABS: { id: SettingsTab; label: string; advanced?: boolean }[] = [
@@ -150,17 +151,11 @@ export default function SettingsPanel({
             aria-labelledby={`settings-tab-${current}`}
           >
             {error && (
-              <div role="alert" className="error-banner">
-                <AlertCircle size={16} />
-                <span>{error}</span>
-                <button
-                  className="icon-button"
-                  aria-label={t('Dismiss settings error')}
-                  onClick={() => setError('')}
-                >
-                  <X size={14} />
-                </button>
-              </div>
+              <ErrorBanner
+                text={error}
+                label={t('Dismiss settings error')}
+                onDismiss={() => setError('')}
+              />
             )}
             {current === 'general' && (
               <GeneralSettings
