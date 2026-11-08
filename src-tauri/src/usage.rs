@@ -88,7 +88,9 @@ fn parse(value: &Value) -> Vec<UsageWindow> {
 async fn read_antigravity(a: &Account, dir: &Path) -> Result<AccountUsage, String> {
     let mut command = providers::command(&a.provider)?;
     providers::isolate(&mut command, &a.provider, dir);
+    // A background query must never start a browser sign-in.
     command
+        .env("NO_BROWSER", "true")
         .args(["-p", "/usage"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
