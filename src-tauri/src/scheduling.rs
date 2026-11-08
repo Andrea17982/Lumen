@@ -12,6 +12,8 @@ pub const DEFAULT_CONCURRENT: usize = 6;
 pub const FRESH_MS: i64 = 900_000;
 const NEUTRAL_PRESSURE: f64 = 1.0;
 const LOAD_WEIGHT: f64 = 0.5;
+/// A probe job that runs this long without a rate limit confirms the account's quota.
+pub const PROBE_GRACE_MS: i64 = 20_000;
 
 /// Optional caps; `None` means no cap of the user's own.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -196,6 +198,7 @@ struct Task {
     floor: i32,
     cost: f64,
     current: Option<(String, String)>,
+    started_at: i64,
     error: String,
 }
 
@@ -275,6 +278,7 @@ impl Scheduler {
                     errors: 0,
                     tried: HashSet::new(),
                     current: None,
+                    started_at: 0,
                     error: String::new(),
                     input: t,
                 }
@@ -372,6 +376,14 @@ impl Scheduler {
             .collect()
     }
 
+    /// The account's quota is still being checked: its probe jobs fill the
+    /// probe limit and none has run long enough to prove the account works.
+    fn probing(&self, id: &str, now: i64) -> bool {
+        let running = self.on_account(id);
+        running.len() >= self.opts.probe_limit
+            && !running.iter().any(|r| now - r.started_at >= PROBE_GRACE_MS)
+    }
+
     fn blocked(&self, a: &SchedAccount, now: i64) -> Option<Wait> {
         if self.cooldown.get(&a.id).is_some_and(|&u| u > now) {
             return Some(Wait::Cooldown);
@@ -379,8 +391,7 @@ impl Scheduler {
         match verdict(self.usage.get(&a.id), self.threshold(a), now) {
             Verdict::Over => Some(Wait::Quota),
             Verdict::Unknown | Verdict::Stale
-                if !self.confirmed.contains(&a.id)
-                    && self.on_account(&a.id).len() >= self.opts.probe_limit =>
+                if !self.confirmed.contains(&a.id) && self.probing(&a.id, now) =>
             {
                 Some(Wait::Probe)
             }
@@ -437,10 +448,27 @@ impl Scheduler {
                     kept = Some((s, o));
                 }
             }
+            // The planned account is only waiting for its quota check: wait for it
+            // instead of moving the work, so the plan's split survives.
+            if options
+                .iter()
+                .any(|o| !o.switched && self.blocked(o.account, now) == Some(Wait::Probe))
+            {
+                continue;
+            }
             let Some((best_score, best)) = best else {
                 continue;
             };
+            let unchecked = |a: &SchedAccount| {
+                matches!(
+                    verdict(self.usage.get(&a.id), self.threshold(a), now),
+                    Verdict::Unknown | Verdict::Stale
+                ) && !self.confirmed.contains(&a.id)
+            };
             let pick = match kept {
+                // An unknown quota scores as neutral, not as worse: check it with
+                // this job rather than moving the work to the known account.
+                Some((_, k)) if unchecked(k.account) => k,
                 Some((s, k)) if s <= best_score * (1.0 + self.opts.switch_margin) => k,
                 _ => best,
             };
@@ -459,6 +487,7 @@ impl Scheduler {
             t.admitted = true;
             t.attempts += 1;
             t.current = Some((account_id.clone(), model.clone()));
+            t.started_at = now;
             starts.push(Start {
                 id: t.input.id.clone(),
                 account_id,
@@ -574,13 +603,17 @@ impl Scheduler {
                     .iter()
                     .map(|o| self.blocked(o.account, now))
                     .collect();
-                if reasons.contains(&None) {
+                let held = options
+                    .iter()
+                    .zip(&reasons)
+                    .any(|(o, r)| !o.switched && *r == Some(Wait::Probe));
+                if reasons.contains(&None) && !held {
                     continue;
                 }
                 for o in &options {
                     wake.extend(self.wake_for(o.account, now));
                 }
-                if reasons.contains(&Some(Wait::Probe)) {
+                if held || reasons.contains(&Some(Wait::Probe)) {
                     Wait::Probe
                 } else if reasons.contains(&Some(Wait::Cooldown)) {
                     Wait::Cooldown
@@ -597,6 +630,13 @@ impl Scheduler {
         let mut out = vec![];
         if let Some(&u) = self.cooldown.get(&a.id).filter(|&&u| u > now) {
             out.push(u);
+        }
+        if !self.confirmed.contains(&a.id) && self.probing(&a.id, now) {
+            out.extend(
+                self.on_account(&a.id)
+                    .iter()
+                    .map(|r| r.started_at + PROBE_GRACE_MS),
+            );
         }
         if let Some(u) = self.usage.get(&a.id) {
             if verdict(Some(u), self.threshold(a), now) == Verdict::Over {
@@ -760,6 +800,35 @@ mod tests {
         assert_eq!(s.waiting(NOW).0[0].1, Wait::Probe);
         s.finish("s1", Outcome::Done, NOW);
         assert_eq!(ids(&s.next(NOW)), ["s2", "s3"]);
+    }
+
+    #[test]
+    fn unchecked_planned_account_waits_for_its_probe_instead_of_moving() {
+        let mut list = tasks(2, false);
+        list[1].account_id = "g".into();
+        list[1].model = "gpt-terra".into();
+        list.push(SubtaskInput {
+            id: "s3".into(),
+            ..list[0].clone()
+        });
+        let mut s = Scheduler::new(
+            list,
+            vec![claude(), gpt()],
+            Limits::default(),
+            Options::default(),
+        );
+        s.set_usage("g", usage(10.0, NOW));
+        let first = s.next(NOW);
+        assert_eq!(ids(&first), ["s1", "s2"]);
+        assert!(first.iter().all(|x| !x.switched));
+        assert!(s.next(NOW + 1000).is_empty());
+        assert_eq!(
+            s.waiting(NOW + 1000),
+            (vec![("s3".into(), Wait::Probe)], Some(NOW + PROBE_GRACE_MS))
+        );
+        let later = s.next(NOW + PROBE_GRACE_MS);
+        assert_eq!(ids(&later), ["s3"]);
+        assert_eq!(later[0].account_id, "c");
     }
 
     #[test]

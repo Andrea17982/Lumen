@@ -1081,7 +1081,12 @@ pub async fn execute(
             };
             if start.account_id != st.subtasks[i].account_id {
                 let from = st.subtasks[i].agent.clone();
-                st.subtasks[i].agent = display(&a.provider).into();
+                let name = models_for(core, &a, false, None)
+                    .await
+                    .ok()
+                    .and_then(|m| m.into_iter().find(|m| m.id == start.model))
+                    .map_or_else(|| start.model.clone(), |m| m.name);
+                st.subtasks[i].agent = format!("{} · {name}", display(&a.provider));
                 notes.insert(
                     start.id.clone(),
                     format!(
