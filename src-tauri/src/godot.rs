@@ -193,7 +193,7 @@ pub async fn probe(root: &Path, name: &str) -> Result<GodotConnection, String> {
     let (command, args, env) =
         declared(root, name).ok_or("This server is not declared as a local stdio server")?;
     let program = which::which(&command).unwrap_or_else(|_| PathBuf::from(&command));
-    let mut c = tokio::process::Command::new(program);
+    let mut c = crate::proc::command(program);
     c.args(&args)
         .envs(env)
         .current_dir(root)
@@ -201,8 +201,6 @@ pub async fn probe(root: &Path, name: &str) -> Result<GodotConnection, String> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    c.creation_flags(0x08000000);
     #[cfg(unix)]
     c.process_group(0);
     let mut child = c

@@ -1856,9 +1856,8 @@ async fn process_start(pid: u32) -> Result<Option<i64>, String> {
         let script = format!(
             "$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; if ($p) {{ [DateTimeOffset]::new($p.StartTime).ToUnixTimeMilliseconds() }} else {{ 'none' }}"
         );
-        let mut c = tokio::process::Command::new("powershell.exe");
+        let mut c = crate::proc::command("powershell.exe");
         c.args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .creation_flags(0x08000000)
             .kill_on_drop(true);
         let o = c.output().await.map_err(|e| e.to_string())?;
         let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -1916,12 +1915,7 @@ fn parse_etime(text: &str) -> Option<i64> {
 
 async fn kill_tree(pid: u32) {
     #[cfg(windows)]
-    {
-        let mut c = tokio::process::Command::new("taskkill.exe");
-        c.args(["/PID", &pid.to_string(), "/T", "/F"])
-            .creation_flags(0x08000000);
-        let _ = c.output().await;
-    }
+    crate::proc::taskkill(pid).await;
     #[cfg(unix)]
     unsafe {
         // The PID has just been verified against the recorded start time.
@@ -1950,7 +1944,16 @@ async fn stop_orphans(st: &State) -> Result<(), String> {
             Ok(None) => {}
             Ok(Some(at)) if (at - t.started_at).abs() <= 15_000 => {
                 kill_tree(t.pid).await;
-                if !matches!(process_start(t.pid).await, Ok(None)) {
+                // A killed process can take a moment to disappear.
+                let mut gone = false;
+                for _ in 0..20 {
+                    if matches!(process_start(t.pid).await, Ok(None)) {
+                        gone = true;
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                if !gone {
                     unknown.push(t.title.clone());
                 }
             }
@@ -2226,11 +2229,7 @@ pub async fn orchestra_lanes(
     } else {
         // The branches stay; only the temporary worktree folders go.
         for (top, path, _) in &st.lanes {
-            let mut git = tokio::process::Command::new("git");
-            #[cfg(windows)]
-            git.creation_flags(0x08000000);
-            let _ = git
-                .current_dir(top)
+            let _ = crate::gitops::git_cmd(Path::new(top))
                 .args(["worktree", "remove", "--force", path])
                 .output()
                 .await;

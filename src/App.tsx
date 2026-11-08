@@ -1,30 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import {
-  ArrowUp,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  Folder,
-  MoreHorizontal,
-  MessageSquare,
-  Pin,
-  Plus,
-  Search,
-  Sparkles,
-  Square,
-  X,
-  AlertCircle,
-  Circle,
-  RotateCcw,
-  Paperclip,
-  Repeat2,
-  Shrink,
-  Workflow,
-  MapPin,
-} from 'lucide-react';
+import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -44,19 +21,20 @@ import {
 import { formatResetCountdown } from './lib/usage';
 import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
-import { splitReasoning, workPhase } from './lib/reasoning';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
-import WorkingIndicator from './components/WorkingIndicator';
-import AttachmentPreview from './components/AttachmentPreview';
+import MessageView from './components/MessageView';
+import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerParts';
+import { ProjectList, SessionList } from './components/Sidebar';
+import { active, laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
-import ModeControl from './components/ModeControl';
-import PermissionButton, { ACCESS_ORDER } from './components/PermissionButton';
+import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
 import ContextMeter from './components/ContextMeter';
 import CommandPalette from './components/CommandPalette';
 import { runCommand, type Command } from './lib/commands';
+import { appCommands, conversationCommands } from './lib/appCommands';
 import {
   contextWindow,
   estimateTokens,
@@ -77,63 +55,14 @@ import type {
   RunEvent,
   Session,
   Status,
-  OrchestraState,
 } from './lib/types';
-import { errorText, IconButton, Mark, nameOf } from './lib/util';
+import { errorText, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 
-const MessageBody = lazy(() => import('./components/MessageBody'));
 // Loaded on first use, so starting Lumen parses less code.
-const OrchestraCard = lazy(() => import('./components/OrchestraCard'));
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
-const active = (s?: Status) => s === 'running' || s === 'waiting';
-const HIDDEN = [
-  'thinking',
-  'checkpoint',
-  'lane',
-  'worktree',
-  'applied',
-  'discarded',
-  'attachments',
-  'orchestra',
-  'orchestra-nogit',
-  'usage',
-  'references',
-  'native',
-  'resume',
-  'route',
-];
-function orchestraOf(m: Message): OrchestraState | null {
-  const a = m.activity.find((x) => x.kind === 'orchestra');
-  if (!a) return null;
-  try {
-    return JSON.parse(a.text) as OrchestraState;
-  } catch {
-    return null;
-  }
-}
-const laneOf = (m: Message) => m.activity.find((a) => a.kind === 'lane')?.text;
-/** Which provider wrote a message, from its lane or the writer's model activity. */
-function providerOf(m: Message): 'claude' | 'gpt' | null {
-  const lane = laneOf(m);
-  const models = m.activity.filter((a) => a.kind === 'model').map((a) => a.text);
-  const fell = m.activity.some((a) => a.kind === 'fallback');
-  const src = lane || (fell ? models.at(-1) : models[0]) || '';
-  if (src.startsWith('claude')) return 'claude';
-  if (src.startsWith('codex')) return 'gpt';
-  return null;
-}
 const tokens = estimateTokens;
-const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-function mergeUsage(current: AccountUsage[], incoming: AccountUsage[]): AccountUsage[] {
-  const merged = new Map(current.map((row) => [row.accountId, row]));
-  for (const row of incoming) {
-    const previous = merged.get(row.accountId);
-    if (!previous || row.updatedAt >= previous.updatedAt) merged.set(row.accountId, row);
-  }
-  return [...merged.values()];
-}
 
 export default function App() {
   const { t } = useI18n();
@@ -167,7 +96,6 @@ export default function App() {
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
   const [accessMode, setAccessMode] = useState<AccessMode>('read-only');
-  const [draggedSession, setDraggedSession] = useState<string | null>(null);
   const [catalogReady, setCatalogReady] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState(
@@ -232,7 +160,6 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
-  const [copyState, setCopyState] = useState('');
   const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
   const [autoReview] = useState(() => localStorage.getItem('lumen-auto-review') === 'true');
   const [attached, setAttached] = useState<string[]>([]);
@@ -911,182 +838,25 @@ export default function App() {
       else groups.push([m]);
     } else groups.push(m);
   }
-  const renderMessage = (m: Message, inLane = false) => {
-    const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
-    const inline =
-      m.role === 'assistant' ? splitReasoning(m.text) : { reasoning: '', answer: m.text };
-    const reasoning = [
-      ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
-      inline.reasoning,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const isLive = running && m.role === 'assistant' && m.id === messages.at(-1)?.id;
-    const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
-    const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
-    const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
-    const from = providerOf(m);
-    const other = from === 'claude' ? 'gpt' : 'claude';
-    const orchestraState = m.role === 'assistant' ? orchestraOf(m) : null;
-    const nogit = m.activity.some((a) => a.kind === 'orchestra-nogit');
-    return (
-      <article
-        key={m.id}
-        className={`message ${m.role}${m.id === messages.at(-1)?.id ? ' is-latest' : ''}`}
-      >
-        <div className="message-author">
-          {m.role === 'assistant' ? (
-            <>
-              <Mark small />
-              <span>{inLane && from ? nameOf(from) : 'Lumen'}</span>
-            </>
-          ) : (
-            <span className="user-mark">You</span>
-          )}
-          <span className="message-actions">
-            {m.role === 'user' && session && !running && (
-              <button
-                className="icon-button"
-                aria-label="Rewind to here"
-                title="Rewind to here"
-                onClick={() => void askRewind(m)}
-              >
-                <RotateCcw size={13} />
-              </button>
-            )}
-            {m.role === 'assistant' && m.text && !running && from && (
-              <button
-                className="text-button audit-button"
-                title={`Send to ${nameOf(other)} for audit`}
-                onClick={() => audit(m)}
-              >
-                <Repeat2 size={13} />
-                Audit with {nameOf(other)}
-              </button>
-            )}
-            {m.role === 'assistant' && m.text && (
-              <button
-                className="icon-button"
-                aria-label="Copy response"
-                onClick={() => {
-                  void navigator.clipboard
-                    .writeText(inline.answer)
-                    .then(() => {
-                      setCopyState(m.id);
-                      setTimeout(() => setCopyState(''), 1800);
-                    })
-                    .catch((e) => setError(errorText(e)));
-                }}
-              >
-                {copyState === m.id ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            )}
-          </span>
-        </div>
-        {reasoning && (
-          <details className="reasoning">
-            <summary>
-              <ChevronDown size={13} />
-              Reasoning
-            </summary>
-            <pre>{reasoning}</pre>
-          </details>
-        )}
-        {visible.length > 0 && (
-          <details className="activity">
-            <summary>
-              <span className="activity-indicator" />
-              {visible.some((a) => a.kind === 'error')
-                ? 'Activity & diagnostics'
-                : visible.some((a) => a.kind === 'fallback')
-                  ? 'Switched provider · activity'
-                  : `${visible.length} activity ${visible.length === 1 ? 'event' : 'events'}`}
-              <ChevronDown size={13} />
-            </summary>
-            <div className="activity-content">
-              {visible.map((a, i) => (
-                <details key={i}>
-                  <summary>
-                    {a.kind === 'file'
-                      ? 'File changes'
-                      : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
-                  </summary>
-                  <pre>{a.text}</pre>
-                </details>
-              ))}
-            </div>
-          </details>
-        )}
-        {orchestraState && (
-          <Suspense fallback={null}>
-            <OrchestraCard
-              key={`${m.id}-${orchestraState.stage}`}
-              message={m}
-              state={orchestraState}
-              accounts={accounts}
-              busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
-              readOnly={accessMode === 'read-only'}
-              run={orchestra}
-            />
-          </Suspense>
-        )}
-        {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
-          <div className="prose">
-            <Suspense fallback={<p>{inline.answer}</p>}>
-              <MessageBody text={inline.answer} />
-            </Suspense>
-          </div>
-        )}
-        {nogit && !running && (
-          <p className="orchestra-closed">
-            Orchestra needs git in this folder.{' '}
-            <button
-              className="text-button"
-              onClick={() => void orchestra('orchestra_init_git', {})}
-            >
-              Initialize git
-            </button>
-          </p>
-        )}
-        {attachments && (
-          <div className="attachment-chips">
-            {attachments.map((f) => (
-              <span key={f}>
-                <Paperclip size={11} /> {f.split(/[\\/]/).filter(Boolean).at(-1) || f}
-                {/\.(png|jpe?g|webp|gif)$/i.test(f) && session?.workspace && (
-                  <AttachmentPreview folder={session.workspace} path={f} />
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-        {references && (
-          <div
-            className="attachment-chips"
-            aria-label="Repository map locations added to this request"
-            title="Added to the prompt from the repository map"
-          >
-            {references.map((r) => (
-              <span key={r}>
-                <MapPin size={11} /> {r}
-              </span>
-            ))}
-          </div>
-        )}
-        {lane?.kind === 'worktree' && !running && (
-          <button className="primary-button lane-apply" onClick={() => void resolveLanes(m, true)}>
-            Apply {from ? nameOf(from) : 'this'} version
-          </button>
-        )}
-        {lane && lane.kind !== 'worktree' && (
-          <small className="lane-state">
-            {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
-          </small>
-        )}
-        {isLive && <WorkingIndicator phase={workPhase(m.activity.map((a) => a.kind))} />}
-      </article>
-    );
-  };
+  const messageView = (m: Message, inLane = false) => (
+    <MessageView
+      key={m.id}
+      m={m}
+      inLane={inLane}
+      latest={m.id === messages.at(-1)?.id}
+      live={running && m.role === 'assistant' && m.id === messages.at(-1)?.id}
+      running={running}
+      busy={busy}
+      readOnly={accessMode === 'read-only'}
+      workspace={session?.workspace}
+      accounts={accounts}
+      onRewind={session ? (x) => void askRewind(x) : undefined}
+      onAudit={audit}
+      onApplyLane={(x) => void resolveLanes(x, true)}
+      onOrchestra={orchestra}
+      onError={setError}
+    />
+  );
   const newChat = () => {
     setSelected(null);
     setMessages([]);
@@ -1096,120 +866,38 @@ export default function App() {
   };
 
   /** Actions on one conversation; the sidebar menu and the palette run the same entries. */
-  const sessionCommands = (
-    s: Session,
-    at = { x: window.innerWidth / 2 - 136, y: 96 },
-  ): Command[] => [
-    {
-      id: 'session-rename',
-      label: 'Rename',
-      group: 'Conversation',
-      run: () => {
-        setRenameTarget(s);
-        setRenameValue(s.title);
-        setRenamePos({
-          x: Math.min(at.x, window.innerWidth - 272),
-          y: Math.min(at.y, window.innerHeight - 150),
-        });
+  const sessionCommands = (s: Session, at?: { x: number; y: number }) =>
+    conversationCommands(s, at, {
+      rename: (target, pos) => {
+        setRenameTarget(target);
+        setRenameValue(target.title);
+        setRenamePos(pos);
       },
+      pin: (target) => void update(target, target.title, !target.pinned),
+      remove: setDeleteTarget,
+    });
+  const commands = appCommands({
+    session,
+    canAct: !!session && !running,
+    hasMessages: messages.length > 0,
+    newChat,
+    newProject: () => {
+      setSidebar(true);
+      setProjectForm(true);
     },
-    {
-      id: 'session-pin',
-      label: s.pinned ? 'Unpin' : 'Pin conversation',
-      group: 'Conversation',
-      run: () => void update(s, s.title, !s.pinned),
+    search: () => {
+      setSidebar(true);
+      requestAnimationFrame(() => searchInput.current?.focus());
     },
-    {
-      id: 'session-delete',
-      label: 'Delete',
-      group: 'Conversation',
-      available: !active(s.status),
-      run: () => setDeleteTarget(s),
-    },
-  ];
-
-  const commands: Command[] = [
-    {
-      id: 'new-chat',
-      label: 'New conversation',
-      group: 'Conversation',
-      shortcut: 'Ctrl N',
-      run: newChat,
-    },
-    {
-      id: 'new-project',
-      label: 'New project',
-      group: 'Project',
-      shortcut: 'Ctrl P',
-      run: () => {
-        setSidebar(true);
-        setProjectForm(true);
-      },
-    },
-    {
-      id: 'search',
-      label: 'Search conversations',
-      group: 'Conversation',
-      shortcut: '/',
-      run: () => {
-        setSidebar(true);
-        requestAnimationFrame(() => searchInput.current?.focus());
-      },
-    },
-    {
-      id: 'compact',
-      label: 'Compact context into a fresh session',
-      group: 'Conversation',
-      keywords: 'handoff summary shrink',
-      available: !!session && !running && messages.length > 0,
-      run: () => void compact(),
-    },
-    {
-      id: 'handoff',
-      label: 'Draft a handoff summary',
-      group: 'Conversation',
-      available: !!session && !running && messages.length > 0,
-      run: openHandoff,
-    },
-    {
-      id: 'commit',
-      label: 'Draft a commit message',
-      group: 'Project',
-      keywords: 'git diff',
-      available: !!session && !running,
-      run: () => void openCommit(),
-    },
-    {
-      id: 'usage',
-      label: 'Show provider usage',
-      group: 'Providers',
-      keywords: 'quota limits',
-      run: () => setUsageOpen(true),
-    },
-    ...(['general', 'accounts', 'auto', 'teamwork', 'tools', 'about'] as SettingsTab[]).map(
-      (tab): Command => ({
-        id: `settings-${tab}`,
-        label: `Settings: ${tab[0].toUpperCase()}${tab.slice(1)}`,
-        group: 'Settings',
-        keywords: 'preferences',
-        run: () => openSettings(tab),
-      }),
-    ),
-    ...ACCESS_ORDER.map((access): Command => ({
-      id: `access-${access}`,
-      label: `Permission mode: ${{ 'read-only': 'Ask (read-only)', 'file-edits': 'Edits', ask: 'Approve each action', autopilot: 'Autopilot' }[access]}`,
-      group: 'Permissions',
-      keywords: 'access',
-      run: () => void changeAccessMode(access),
-    })),
-    ...(['system', 'light', 'dark'] as const).map((name): Command => ({
-      id: `theme-${name}`,
-      label: `Theme: ${name}`,
-      group: 'Appearance',
-      run: () => setTheme(name),
-    })),
-    ...(session ? sessionCommands(session) : []),
-  ];
+    compact: () => void compact(),
+    handoff: openHandoff,
+    commit: () => void openCommit(),
+    usage: () => setUsageOpen(true),
+    settings: openSettings,
+    access: (mode) => void changeAccessMode(mode),
+    theme: setTheme,
+    sessionCommands,
+  });
   useEffect(() => {
     commandsRef.current = commands;
   });
@@ -1315,36 +1003,21 @@ export default function App() {
           />
           <kbd>/</kbd>
         </label>
-        <div className="project-list" aria-label="Projects">
-          {[
-            { id: '*', name: t('All conversations') },
-            ...(workspaces.length ? [{ id: '', name: t('Unsorted') }] : []),
-            ...workspaces,
-          ].map((w) => (
-            <button
-              key={w.id}
-              className={projectFilter === w.id ? 'selected' : ''}
-              onClick={() => {
-                setProjectFilter(w.id);
-                if (w.id !== '*') {
-                  setWorkspaceId(w.id);
-                  localStorage.setItem('lumen-workspace-id', w.id);
-                }
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const s = sessions.find(
-                  (s) => s.id === e.dataTransfer.getData('text/lumen-session'),
-                );
-                if (s && w.id !== '*') void moveSession(s, w.id);
-              }}
-            >
-              <Folder size={13} />
-              {w.name}
-            </button>
-          ))}
-        </div>
+        <ProjectList
+          workspaces={workspaces}
+          filter={projectFilter}
+          onFilter={(id) => {
+            setProjectFilter(id);
+            if (id !== '*') {
+              setWorkspaceId(id);
+              localStorage.setItem('lumen-workspace-id', id);
+            }
+          }}
+          onDropSession={(id, workspace) => {
+            const s = sessions.find((s) => s.id === id);
+            if (s) void moveSession(s, workspace);
+          }}
+        />
         <div className="session-heading">
           <span>{t('Your conversations')}</span>
           <span>
@@ -1352,82 +1025,30 @@ export default function App() {
             {hasMore ? '+' : ''}
           </span>
         </div>
-        <nav className="session-list" aria-label="Conversations">
-          {sessions.length === 0 && (
-            <div className="sidebar-empty">
-              <MessageSquare size={20} />
-              <p>
-                {search ? t('No conversations found.') : t('A little room for your next big idea.')}
-              </p>
-            </div>
+        <SessionList
+          sessions={sessions.filter(
+            (s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter,
           )}
-          {sessions
-            .filter((s) => projectFilter === '*' || (s.workspaceId || '') === projectFilter)
-            .map((s) => (
-              <div className="session-item" key={s.id}>
-                <button
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedSession(s.id);
-                    e.dataTransfer.setData('text/lumen-session', s.id);
-                  }}
-                  onDragEnd={() => setDraggedSession(null)}
-                  onDragOver={(e) => {
-                    if (draggedSession) e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData('text/lumen-session');
-                    if (id && id !== s.id)
-                      void call('reorder_session', { id, beforeId: s.id })
-                        .then(refresh)
-                        .catch((err) => setError(errorText(err)));
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    contextTrigger.current = e.currentTarget;
-                    setContext({
-                      session: s,
-                      x: Math.min(e.clientX, window.innerWidth - 245),
-                      y: Math.min(e.clientY, window.innerHeight - 130),
-                    });
-                  }}
-                  className={`session-row ${selected === s.id ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelected(s.id);
-                    setSidebar(false);
-                  }}
-                >
-                  <span className={`status-dot ${s.status}`} title={s.status} />
-                  <span className="session-title">{s.title}</span>
-                  {s.pinned && <Pin size={12} />}
-                  <span className="sr-only">{s.status}</span>
-                </button>
-                <IconButton
-                  className="session-menu-button"
-                  label={`Actions for ${s.title}`}
-                  aria-haspopup="menu"
-                  aria-expanded={context?.session.id === s.id}
-                  onClick={(e) => {
-                    contextTrigger.current = e.currentTarget;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setContext({
-                      session: s,
-                      x: Math.max(0, Math.min(rect.right, window.innerWidth - 245)),
-                      y: Math.max(0, Math.min(rect.bottom, window.innerHeight - 180)),
-                    });
-                  }}
-                >
-                  <MoreHorizontal size={16} />
-                </IconButton>
-              </div>
-            ))}
-          {hasMore && (
-            <button className="text-button load-more" onClick={() => void loadMore()}>
-              {t('Load more conversations')}
-            </button>
-          )}
-        </nav>
+          empty={sessions.length === 0}
+          searching={!!search}
+          selected={selected}
+          menuOpenFor={context?.session.id}
+          hasMore={hasMore}
+          onSelect={(id) => {
+            setSelected(id);
+            setSidebar(false);
+          }}
+          onReorder={(id, beforeId) =>
+            void call('reorder_session', { id, beforeId })
+              .then(refresh)
+              .catch((err) => setError(errorText(err)))
+          }
+          onMenu={(session, x, y, trigger) => {
+            contextTrigger.current = trigger;
+            setContext({ session, x, y });
+          }}
+          onLoadMore={() => void loadMore()}
+        />
         <div className="sidebar-bottom">
           <div className="sidebar-footer-actions">
             <button
@@ -1693,7 +1314,7 @@ export default function App() {
               {groups.map((g) =>
                 Array.isArray(g) ? (
                   <div className="lanes" key={g[0].id}>
-                    <div className="lane-grid">{g.map((m) => renderMessage(m, true))}</div>
+                    <div className="lane-grid">{g.map((m) => messageView(m, true))}</div>
                     {g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && !running && (
                       <button
                         className="text-button lane-discard"
@@ -1707,7 +1328,7 @@ export default function App() {
                     )}
                   </div>
                 ) : (
-                  renderMessage(g)
+                  messageView(g)
                 ),
               )}
               <div ref={bottom} />
@@ -1717,17 +1338,7 @@ export default function App() {
 
         <div className="composer-region">
           {error && (
-            <div role="alert" className="error-banner">
-              <AlertCircle size={16} />
-              <span>{error}</span>
-              <button
-                className="icon-button"
-                aria-label={t('Dismiss error')}
-                onClick={() => setError('')}
-              >
-                <X size={14} />
-              </button>
-            </div>
+            <ErrorBanner text={error} label={t('Dismiss error')} onDismiss={() => setError('')} />
           )}
           {session && historyTokens > 40_000 && !running && (
             <button className="compact-chip" onClick={openHandoff}>
@@ -1780,22 +1391,7 @@ export default function App() {
               }
             />
           )}
-          {plan && (
-            <div className="plan-line">
-              <Sparkles size={13} />
-              <span>
-                {nameOf(plan.provider)} ·{' '}
-                {plan.strategy === 'single'
-                  ? 'Direct'
-                  : plan.strategy === 'broadcast'
-                    ? 'Claude and ChatGPT side by side'
-                    : plan.strategy === 'orchestra'
-                      ? 'Orchestra'
-                      : 'Answer + cross-audit'}{' '}
-                · {plan.effort} reasoning
-              </span>
-            </div>
-          )}
+          {plan && <PlanLine plan={plan} />}
           <div className="composer">
             <textarea
               ref={input}
@@ -1812,25 +1408,10 @@ export default function App() {
               }}
               maxLength={100000}
             />
-            {attached.length > 0 && (
-              <div className="attachment-list" aria-label="Attached files">
-                {attached.map((path) => {
-                  const name = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
-                  return (
-                    <span className="attachment-chip" key={path} title={path}>
-                      <span>{name}</span>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${name}`}
-                        onClick={() => setAttached((current) => current.filter((p) => p !== path))}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+            <AttachmentList
+              paths={attached}
+              onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}
+            />
             {(mode === 'claude' || mode === 'gpt') && (
               <ProviderOptions
                 provider={mode}
@@ -1849,116 +1430,49 @@ export default function App() {
                 paused={settings}
               />
             )}
-            <div className="composer-toolbar">
-              <ModeControl
-                mode={mode}
-                bothAvailable={accessMode === 'read-only'}
-                onChange={(next) => {
-                  setMode(next);
-                  setAccountId('');
-                  setModel('');
-                  setEffort('');
-                  setCatalogReady(false);
-                  setAdvanced(false);
-                }}
-              />
-              {mode === 'auto' && appSettings?.orchestra && (
-                <button
-                  className="orchestra-badge"
-                  title={t(
-                    'Orchestra is on: complex tasks are planned and split across agents. Click to turn off.',
-                  )}
-                  onClick={() =>
-                    void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
-                      setError(errorText(e)),
-                    )
-                  }
-                >
-                  <Workflow size={12} />
-                  Orchestra
-                </button>
-              )}
-              {workspaces.length > 0 && (
-                <div className="workspace-controls">
-                  <select
-                    aria-label="Project"
-                    title={namedWorkspace?.name || t('Choose project')}
-                    value={currentWorkspaceId}
-                    disabled={running || folderBusy}
-                    onChange={(e) => void chooseWorkspace(e.target.value)}
-                  >
-                    {!currentWorkspaceId && <option value="">{t('Choose project')}</option>}
-                    {workspaces.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {(mode === 'claude' || mode === 'gpt') && (
-                <button
-                  className={`icon-button advanced-toggle ${advanced ? 'on' : ''}`}
-                  aria-label={t('Advanced provider options')}
-                  aria-expanded={advanced}
-                  onClick={() => setAdvanced(!advanced)}
-                >
-                  {advanced ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-                </button>
-              )}
-              <div className="composer-spacer" />
-              <PermissionButton
-                accessMode={accessMode}
-                onCycle={(next) => void changeAccessMode(next)}
-              />
-              <button
-                className={`icon-button attach-button ${attached.length ? 'on' : ''}`}
-                aria-label={t('Attach files')}
-                title={attached.length ? t(`${attached.length} files attached`) : t('Attach files')}
-                onClick={() => void attachFiles()}
-              >
-                <Paperclip size={15} />
-                {attached.length > 0 && <small>{attached.length}</small>}
-              </button>
-              <button
-                className="send-button"
-                aria-label={running ? t('Stop response') : t('Send message')}
-                disabled={
-                  !running &&
-                  (!draft.trim() ||
-                    folderBusy ||
-                    (desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady))
-                }
-                onClick={() => {
-                  if (running && selected)
-                    void call('cancel_run', { id: selected }).catch((e) => setError(errorText(e)));
-                  else void send();
-                }}
-              >
-                {running ? <Square size={15} fill="currentColor" /> : <ArrowUp size={19} />}
-              </button>
-            </div>
+            <ComposerToolbar
+              mode={mode}
+              bothAvailable={accessMode === 'read-only'}
+              onMode={(next) => {
+                setMode(next);
+                setAccountId('');
+                setModel('');
+                setEffort('');
+                setCatalogReady(false);
+                setAdvanced(false);
+              }}
+              orchestra={mode === 'auto' && !!appSettings?.orchestra}
+              onOrchestraOff={() =>
+                appSettings &&
+                void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
+                  setError(errorText(e)),
+                )
+              }
+              workspaces={workspaces}
+              workspaceId={currentWorkspaceId}
+              workspaceName={namedWorkspace?.name}
+              workspaceLocked={running || folderBusy}
+              onWorkspace={(id) => void chooseWorkspace(id)}
+              advanced={advanced}
+              onAdvanced={() => setAdvanced(!advanced)}
+              accessMode={accessMode}
+              onAccess={(next) => void changeAccessMode(next)}
+              attached={attached.length}
+              onAttach={() => void attachFiles()}
+              running={running}
+              canSend={
+                !!draft.trim() &&
+                !folderBusy &&
+                !(desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady)
+              }
+              onSend={() => {
+                if (running && selected)
+                  void call('cancel_run', { id: selected }).catch((e) => setError(errorText(e)));
+                else void send();
+              }}
+            />
           </div>
-          <div className="composer-caption">
-            {draft.trim() && (
-              <span
-                className={`token-badge ${blob ? 'warn' : impact.toLowerCase()}`}
-                title={
-                  false
-                    ? 'Attachments are not included in this estimate'
-                    : blob
-                      ? 'This message contains a large encoded blob'
-                      : `Estimated prompt size · quota impact ${impact}`
-                }
-              >
-                ~{compactTokens(draftTokens)} tokens · {blob ? 'Heavy' : impact}
-              </span>
-            )}
-            <span>
-              {t('Enter to send')} <span className="caption-dot">·</span>{' '}
-              {t('Shift Enter for a new line')}
-            </span>
-          </div>
+          <TokenCaption tokens={draft.trim() ? draftTokens : 0} impact={impact} heavy={blob} />
         </div>
       </main>
       <QuitConfirm />

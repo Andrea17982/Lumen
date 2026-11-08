@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { call } from './bridge';
 import type { AppSettings } from './types';
+import { errorText } from './util';
 
 /** One shared copy of the backend settings, so Settings and the composer stay in sync. */
 let current: AppSettings | null = null;
@@ -28,7 +29,7 @@ export function useAppSettings(onError?: (s: string) => void) {
   const [s, setS] = useState(current);
   useEffect(() => {
     listeners.add(setS);
-    if (!current) void loadSettings().catch((e) => onError?.(String(e)));
+    if (!current) void loadSettings().catch((e) => onError?.(errorText(e)));
     return () => void listeners.delete(setS);
   }, [onError]);
   return s;

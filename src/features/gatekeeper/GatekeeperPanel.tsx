@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { decisionBlocker, sameScope, visibleText, whitelistCommands } from './contracts';
 import type { Action, ApprovalRequest, Decision, ExactRule, Scope, SessionView } from './contracts';
 import './gatekeeper.css';
+import { errorText } from '../../lib/util';
 
 export interface GatekeeperPanelProps {
   requests: ApprovalRequest[];
@@ -49,7 +50,7 @@ function RequestCard({
         note: note.trim() || null,
       });
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setWorking(false);
     }
@@ -155,7 +156,7 @@ function Whitelist({
     try {
       await action();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setWorking(false);
     }
