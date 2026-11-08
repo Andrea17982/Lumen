@@ -1944,7 +1944,16 @@ async fn stop_orphans(st: &State) -> Result<(), String> {
             Ok(None) => {}
             Ok(Some(at)) if (at - t.started_at).abs() <= 15_000 => {
                 kill_tree(t.pid).await;
-                if !matches!(process_start(t.pid).await, Ok(None)) {
+                // A killed process can take a moment to disappear.
+                let mut gone = false;
+                for _ in 0..20 {
+                    if matches!(process_start(t.pid).await, Ok(None)) {
+                        gone = true;
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                if !gone {
                     unknown.push(t.title.clone());
                 }
             }
