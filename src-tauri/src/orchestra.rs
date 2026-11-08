@@ -418,6 +418,63 @@ async fn hidden(
     r
 }
 
+/// A visible orchestrator turn; on a rate limit the other primary provider takes
+/// over for the rest of the run instead of the run stopping.
+#[allow(clippy::too_many_arguments)]
+async fn orchestrator_stage(
+    app: &tauri::AppHandle,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+    orch: &mut Account,
+    model: &mut Option<String>,
+    prompt: &str,
+    effort: &str,
+    access: AccessMode,
+    cancel: watch::Receiver<bool>,
+) -> Result<String, String> {
+    let first = turns::stage(
+        app,
+        core,
+        s,
+        out,
+        orch,
+        prompt,
+        model.as_deref(),
+        effort,
+        access,
+        cancel.clone(),
+        true,
+    )
+    .await;
+    let Err(e) = &first else { return first };
+    if !e.starts_with(crate::limits::RATE_LIMIT) {
+        return first;
+    }
+    let Some(next) = reviewer_for(core, &orch.provider) else {
+        return first;
+    };
+    turns::note(
+        app,
+        &s.id,
+        out,
+        "coordination",
+        format!(
+            "{} hit a rate limit; {} takes over.",
+            display(&orch.provider),
+            display(&next.provider)
+        ),
+    );
+    *orch = next;
+    *model = None;
+    out.text.clear();
+    event(app, &s.id, &out.id, "replace", "");
+    turns::stage(
+        app, core, s, out, orch, prompt, None, effort, access, cancel, true,
+    )
+    .await
+}
+
 /// Another provider than `writer`, for audits.
 fn reviewer_for(core: &Core, writer: &Provider) -> Option<Account> {
     core.store.accounts().ok()?.into_iter().find(|b| {
@@ -931,7 +988,7 @@ pub async fn execute(
     resume: bool,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
-    let orch = account(core, &st.orchestrator)?;
+    let mut orch = account(core, &st.orchestrator)?;
     let workspace = PathBuf::from(&s.workspace);
     let top = gitops::toplevel(&workspace).await;
     st.read_only = st.read_only || options.access() == AccessMode::ReadOnly || top.is_none();
@@ -1297,7 +1354,7 @@ pub async fn execute(
         publish(app, core, s, out, &st);
         return Err("Every subtask failed. See the Orchestra card for details.".into());
     }
-    let model = Some(st.orchestrator_model.clone()).filter(|m| !m.is_empty());
+    let mut model = Some(st.orchestrator_model.clone()).filter(|m| !m.is_empty());
 
     // Integration: apply each subtask's patch; the orchestrator resolves conflicts.
     if let Some(top) = top
@@ -1454,21 +1511,28 @@ pub async fn execute(
     } else {
         options.access()
     };
-    let mut draft = turns::stage(
+    let last = st.steps.len() - 1;
+    let mut draft = match orchestrator_stage(
         app,
         core,
         s,
         out,
-        &orch,
+        &mut orch,
+        &mut model,
         &final_prompt,
-        model.as_deref(),
         &st.effort,
         access,
         cancel.clone(),
-        true,
     )
-    .await?;
-    let last = st.steps.len() - 1;
+    .await
+    {
+        Ok(d) => d,
+        Err(e) => {
+            st.steps[last].status = "failed".into();
+            publish(app, core, s, out, &st);
+            return Err(e);
+        }
+    };
     st.steps[last].status = "done".into();
     publish(app, core, s, out, &st);
 
@@ -1496,7 +1560,7 @@ pub async fn execute(
                     _ => String::new(),
                 };
                 let review_prompt = format!("You are auditing the integrated result of a team of AI agents. Read-only: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with the single word APPROVED on the first line.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.task, st.answers);
-                let review = hidden(
+                let review = match hidden(
                     app,
                     core,
                     s,
@@ -1507,7 +1571,16 @@ pub async fn execute(
                     &st.effort,
                     cancel.clone(),
                 )
-                .await?;
+                .await
+                {
+                    Ok(r) => r,
+                    // The auditor ran out of quota: keep the checked answer.
+                    Err(e) if e.starts_with(crate::limits::RATE_LIMIT) => {
+                        st.steps[step].detail = "Skipped: rate limit".into();
+                        break;
+                    }
+                    Err(e) => return Err(e),
+                };
                 turns::note(
                     app,
                     &s.id,
@@ -1527,18 +1600,17 @@ pub async fn execute(
                 let revise = format!("Another assistant audited the integrated result. Address every valid point (ignore incorrect ones) with minimal edits and give the final answer. Do not claim to have run checks unless you actually did.\n\nRequest:\n{}\n\nYour answer:\n{draft}\n\nAudit:\n{review}", st.task);
                 out.text.clear();
                 event(app, &s.id, &out.id, "replace", "");
-                draft = turns::stage(
+                draft = orchestrator_stage(
                     app,
                     core,
                     s,
                     out,
-                    &orch,
+                    &mut orch,
+                    &mut model,
                     &revise,
-                    model.as_deref(),
                     &st.effort,
                     access,
                     cancel.clone(),
-                    true,
                 )
                 .await?;
             }
