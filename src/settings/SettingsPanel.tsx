@@ -8,7 +8,7 @@ import type { Account, McpServer, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
 import ApiSettings from './ApiSettings';
-import AutoSettings from './AutoSettings';
+import AutoSettings, { AutoPreferences } from './AutoSettings';
 import GeneralSettings from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
 import TeamworkSettings from './TeamworkSettings';
@@ -40,8 +40,6 @@ export default function SettingsPanel({
   setBalanceUsage,
   theme,
   setTheme,
-  workspace,
-  chooseFolder,
 }: {
   open: boolean;
   tab?: SettingsTab;
@@ -57,8 +55,6 @@ export default function SettingsPanel({
   setBalanceUsage: (v: boolean) => void;
   theme: string;
   setTheme: (t: string) => void;
-  workspace: string;
-  chooseFolder: () => Promise<unknown>;
 }) {
   const { t } = useI18n();
   const reduced = useReducedMotion();
@@ -164,8 +160,6 @@ export default function SettingsPanel({
               <GeneralSettings
                 theme={theme}
                 setTheme={setTheme}
-                workspace={workspace}
-                chooseFolder={chooseFolder}
                 onError={setError}
                 setAutoPolicy={setAutoPolicy}
                 setBalanceUsage={setBalanceUsage}
@@ -182,41 +176,13 @@ export default function SettingsPanel({
             )}
             {current === 'auto' && (
               <>
-                <section className="settings-section">
-                  <h3>{t('Auto preferences')}</h3>
-                  <p>
-                    {t('Choose how Auto weighs speed, quality and the remaining provider quota.')}
-                  </p>
-                  <div className="auto-controls settings-auto-controls">
-                    <div className="auto-policy" role="group" aria-label="Auto policy">
-                      {['budget', 'default', 'quality'].map((p) => (
-                        <button
-                          key={p}
-                          aria-pressed={autoPolicy === p}
-                          onClick={() => {
-                            setAutoPolicy(p);
-                            localStorage.setItem('lumen-auto-policy', p);
-                          }}
-                        >
-                          {p[0].toUpperCase() + p.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                    {advanced && (
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={balanceUsage}
-                          onChange={(e) => {
-                            setBalanceUsage(e.target.checked);
-                            localStorage.setItem('lumen-balance-usage', String(e.target.checked));
-                          }}
-                        />{' '}
-                        {t('Balance usage')}
-                      </label>
-                    )}
-                  </div>
-                </section>
+                <AutoPreferences
+                  advanced={advanced}
+                  autoPolicy={autoPolicy}
+                  setAutoPolicy={setAutoPolicy}
+                  balanceUsage={balanceUsage}
+                  setBalanceUsage={setBalanceUsage}
+                />
                 {advanced && <AutoSettings accounts={accounts} onError={setError} />}
               </>
             )}
@@ -237,9 +203,11 @@ export default function SettingsPanel({
             {current === 'about' && (
               <section className="settings-section about">
                 <Mark small />
+                <h3>{t('About Lumen')}</h3>
                 <p>
-                  Lumen is completely AI Written, created at the direction of Andrea. Thank you to
-                  everyone who tries it and shares how it feels.
+                  {t(
+                    'Lumen is completely AI Written, created at the direction of Andrea. Thank you to everyone who tries it and shares how it feels.',
+                  )}
                 </p>
                 <button
                   className="donate-button"
@@ -254,7 +222,7 @@ export default function SettingsPanel({
             )}
             {hidden > 0 && (
               <p className="hidden-advanced">
-                {hidden} advanced {hidden === 1 ? 'option is' : 'options are'} on ·{' '}
+                {hidden} {t(hidden === 1 ? 'advanced option is on' : 'advanced options are on')} ·{' '}
                 <button className="text-button" onClick={() => mode(true)}>
                   {t('Show')}
                 </button>

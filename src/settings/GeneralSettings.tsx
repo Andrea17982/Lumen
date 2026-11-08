@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, Folder, Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
+import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { call } from '../lib/bridge';
 import { saveSettings, useAppSettings } from '../lib/settings';
 import type { AppSettings } from '../lib/types';
@@ -7,20 +7,16 @@ import { errorText } from '../lib/util';
 import { Switch } from './controls';
 import { useI18n } from '../lib/i18n';
 
-/** Settings → General: appearance, default folder and window behavior. */
+/** Settings → General: interface and window behavior. */
 export default function GeneralSettings({
   theme,
   setTheme,
-  workspace,
-  chooseFolder,
   onError,
   setAutoPolicy,
   setBalanceUsage,
 }: {
   theme: string;
   setTheme: (t: string) => void;
-  workspace: string;
-  chooseFolder: () => Promise<unknown>;
   onError: (s: string) => void;
   setAutoPolicy: (value: string) => void;
   setBalanceUsage: (value: boolean) => void;
@@ -68,7 +64,7 @@ export default function GeneralSettings({
   return (
     <>
       <section className="settings-section">
-        <h3>{t('Appearance')}</h3>
+        <h3>{t('Interface')}</h3>
         <label className="language-control">
           <span>{t('Language')}</span>
           <select
@@ -106,18 +102,6 @@ export default function GeneralSettings({
             localStorage.setItem('lumen-larger-text', String(value));
           }}
         />
-      </section>
-      <section className="settings-section">
-        <h3>{t('Conversation folder')}</h3>
-        <p>{t('Linked to this conversation. New conversations use your last selection.')}</p>
-        <button
-          className="folder-button"
-          onClick={() => void chooseFolder().catch((e) => onError(errorText(e)))}
-        >
-          <Folder size={16} />
-          <span>{workspace || t('Choose a folder')}</span>
-          <ArrowUpRight size={14} />
-        </button>
       </section>
       {s && (
         <section className="settings-section">

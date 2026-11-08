@@ -4,6 +4,32 @@ export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
   Appearance: 'Aspetto',
+  Interface: 'Interfaccia',
+  Reliability: 'Affidabilità',
+  Context: 'Contesto',
+  Budget: 'Risparmio',
+  Default: 'Predefinito',
+  Quality: 'Qualità',
+  'Auto policy': 'Criterio di Auto',
+  'Prefer accounts with more quota left before their reset.':
+    'Preferisci gli account con più quota residua prima del reset.',
+  'About Lumen': 'Informazioni su Lumen',
+  'Lumen is completely AI Written, created at the direction of Andrea. Thank you to everyone who tries it and shares how it feels.':
+    "Lumen è scritto interamente dall'AI, sotto la direzione di Andrea. Grazie a chi lo prova e racconta come si trova.",
+  'advanced option is on': 'opzione avanzata attiva',
+  'advanced options are on': 'opzioni avanzate attive',
+  'Orchestra limits': 'Limiti di Orchestra',
+  'Simultaneous agents': 'Agenti simultanei',
+  'Sub-agents running at once. Others wait for a free slot.':
+    'Sotto-agenti in esecuzione contemporanea. Gli altri attendono uno slot libero.',
+  'Subtasks per run': 'Sotto-attività per esecuzione',
+  'Admitted in total. Finished subtasks still count; raise the limit to admit more.':
+    'Ammesse in totale. Anche quelle completate contano; alza il limite per ammetterne altre.',
+  'No limit': 'Nessun limite',
+  'quota threshold': 'soglia di quota',
+  'Stop giving new work at this usage. Missing or outdated quota data is checked with one job first.':
+    'Smetti di assegnare lavoro oltre questo utilizzo. Se i dati di quota mancano o sono vecchi, prima si verifica con un solo lavoro.',
+  Off: 'Disattivata',
   Theme: 'Tema',
   Language: 'Lingua',
   English: 'Inglese',

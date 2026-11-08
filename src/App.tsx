@@ -1939,8 +1939,6 @@ export default function App() {
         setBalanceUsage={setBalanceUsage}
         theme={theme}
         setTheme={setTheme}
-        workspace={workspace}
-        chooseFolder={chooseFolder}
       />
     </div>
   );
