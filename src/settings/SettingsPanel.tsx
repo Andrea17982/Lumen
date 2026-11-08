@@ -7,7 +7,7 @@ import { advancedActive, useAppSettings } from '../lib/settings';
 import type { Account, McpServer, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
-import AutoSettings, { AutoPreferences } from './AutoSettings';
+import { AutoPreferences } from './AutoSettings';
 import GeneralSettings from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
 import TeamworkSettings from './TeamworkSettings';
@@ -189,7 +189,6 @@ export default function SettingsPanel({
                   balanceUsage={balanceUsage}
                   setBalanceUsage={setBalanceUsage}
                 />
-                {advanced && <AutoSettings accounts={accounts} onError={setError} />}
               </>
             )}
             {current === 'teamwork' && (

@@ -2226,7 +2226,10 @@ pub async fn orchestra_lanes(
     } else {
         // The branches stay; only the temporary worktree folders go.
         for (top, path, _) in &st.lanes {
-            let _ = tokio::process::Command::new("git")
+            let mut git = tokio::process::Command::new("git");
+            #[cfg(windows)]
+            git.creation_flags(0x08000000);
+            let _ = git
                 .current_dir(top)
                 .args(["worktree", "remove", "--force", path])
                 .output()

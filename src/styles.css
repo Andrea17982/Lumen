@@ -2214,29 +2214,6 @@ footer.about .version {
   font: 11px monospace;
   margin: 10px 0;
 }
-.quota-editor {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  font-size: calc(11px * var(--text-scale, 1));
-}
-.quota-editor input,
-.quota-editor select {
-  width: 100%;
-  background: var(--input);
-  color: var(--text);
-  border: 1px solid var(--line);
-  padding: 6px;
-}
-.quota-editor label {
-  display: grid;
-  gap: 3px;
-}
-.quota-window {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 8px;
-}
 .settings-section code {
   overflow-wrap: anywhere;
   font-size: calc(10px * var(--text-scale, 1));

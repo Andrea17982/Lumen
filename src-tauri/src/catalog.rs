@@ -54,6 +54,7 @@ pub async fn discover(
     if matches!(account.provider, Provider::Gemini | Provider::Antigravity) {
         let mut c = providers::command(&account.provider)?;
         providers::isolate(&mut c, &account.provider, dir);
+        c.env("NO_BROWSER", "true");
         let args: &[&str] = if account.provider == Provider::Antigravity {
             &["models"]
         } else {

@@ -194,6 +194,8 @@ export default function App() {
   const [usageClock, setUsageClock] = useState(Date.now());
   const [usageErrors, setUsageErrors] = useState<Record<string, string>>({});
   const usageRequests = useRef(new Map<string, Promise<void>>());
+  /** Last background quota query per account; -1 after a failure. */
+  const usageAttempts = useRef(new Map<string, number>());
   useEffect(() => {
     return visibleInterval(() => setUsageClock(Date.now()), 15_000);
   }, []);
@@ -312,15 +314,24 @@ export default function App() {
     await Promise.all(
       accounts
         .filter((a) => ['gpt', 'antigravity'].includes(a.provider))
+        .filter((a) => {
+          // Antigravity's quota query is a full CLI run, and an expired sign-in makes it open
+          // the browser. Ask it rarely, and not again after a failure until Lumen restarts.
+          if (a.provider !== 'antigravity') return true;
+          const last = usageAttempts.current.get(a.id);
+          return last !== -1 && (last === undefined || Date.now() - last > 15 * 60_000);
+        })
         .map((a) => {
           const pending = usageRequests.current.get(a.id);
           if (pending) return pending;
           const request = (async () => {
+            usageAttempts.current.set(a.id, Date.now());
             try {
               const row = await call<AccountUsage>('refresh_usage', { id: a.id });
               setUsage((old) => mergeUsage(old, [row]));
               setUsageErrors((old) => ({ ...old, [a.id]: '' }));
             } catch (error) {
+              usageAttempts.current.set(a.id, -1);
               setUsageErrors((old) => ({ ...old, [a.id]: errorText(error) }));
             }
           })().finally(() => usageRequests.current.delete(a.id));
