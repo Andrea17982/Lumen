@@ -19,9 +19,8 @@ pub fn command(p: &Provider) -> Result<Command, String> {
     let exe = executable(p)?;
     // Rust's Windows process implementation handles .cmd/.bat quoting itself.
     // Manually prefixing cmd /c breaks launchers under paths containing spaces.
-    let mut c = Command::new(exe);
-    #[cfg(windows)]
-    c.creation_flags(0x08000000);
+    #[allow(unused_mut)]
+    let mut c = crate::proc::command(exe);
     #[cfg(unix)]
     c.process_group(0);
     Ok(c)
@@ -51,12 +50,7 @@ pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
 pub async fn terminate(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         #[cfg(windows)]
-        {
-            let mut c = Command::new("taskkill.exe");
-            c.args(["/PID", &pid.to_string(), "/T", "/F"])
-                .creation_flags(0x08000000);
-            let _ = c.output().await;
-        }
+        crate::proc::taskkill(pid).await;
         #[cfg(unix)]
         {
             // Graceful first, so CLIs can flush their session files.
@@ -843,9 +837,8 @@ mod tests {
     }
     #[cfg(windows)]
     fn fixture(script: &str) -> Command {
-        let mut c = Command::new("powershell.exe");
-        c.args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .creation_flags(0x08000000);
+        let mut c = crate::proc::command("powershell.exe");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", script]);
         c
     }
     #[cfg(windows)]

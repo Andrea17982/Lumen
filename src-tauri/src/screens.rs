@@ -265,6 +265,20 @@ pub fn save_pasted_image(
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// The image as a `data:` URL; the webview CSP allows `data:` images only.
+fn data_url(file: &Path, bytes: &[u8]) -> String {
+    let mime = match file.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "image/png",
+    };
+    format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
+}
+
 #[tauri::command]
 pub fn attachment_image_data(folder: String, path: String) -> Result<String, String> {
     let root = root_of(&folder)?;
@@ -276,16 +290,7 @@ pub fn attachment_image_data(folder: String, path: String) -> Result<String, Str
     if bytes.len() > 12 * 1024 * 1024 {
         return Err("Image preview is limited to 12 MB".into());
     }
-    let mime = match file.extension().and_then(|e| e.to_str()).unwrap_or("") {
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        _ => "image/png",
-    };
-    Ok(format!(
-        "data:{mime};base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+    Ok(data_url(&file, &bytes))
 }
 
 /// Copies an existing image (for example a device capture) into the project's screenshots.
@@ -348,16 +353,7 @@ pub async fn screenshot_data(folder: String, path: String) -> Result<String, Str
     let root = root_of(&folder)?;
     let file = resolve(&root, &path)?;
     let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
-    let mime = match file.extension().and_then(|e| e.to_str()).unwrap_or("png") {
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        _ => "image/png",
-    };
-    Ok(format!(
-        "data:{mime};base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+    Ok(data_url(&file, &bytes))
 }
 
 #[cfg(test)]

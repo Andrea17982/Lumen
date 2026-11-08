@@ -1013,13 +1013,8 @@ fn cochange(root: &Path) -> Arc<CoChange> {
     type Heads = Mutex<HashMap<PathBuf, (String, Arc<CoChange>)>>;
     static C: OnceLock<Heads> = OnceLock::new();
     let git = |args: &[&str]| -> Option<String> {
-        let mut c = std::process::Command::new("git");
+        let mut c = crate::proc::std_command("git");
         c.arg("-C").arg(root).args(args);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            c.creation_flags(0x08000000);
-        }
         let out = c.output().ok()?;
         out.status
             .success()

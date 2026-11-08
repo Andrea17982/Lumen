@@ -339,21 +339,8 @@ pub async fn shell_output(
     cmd: &str,
     mut cancel: tokio::sync::watch::Receiver<bool>,
 ) -> Result<std::process::Output, String> {
-    #[cfg(windows)]
-    let mut c = {
-        let mut c = tokio::process::Command::new("cmd.exe");
-        c.args(["/D", "/S", "/C", cmd]).creation_flags(0x08000000);
-        c
-    };
-    #[cfg(not(windows))]
-    let mut c = {
-        let mut c = tokio::process::Command::new("sh");
-        c.args(["-c", cmd]);
-        c
-    };
-    c.current_dir(workspace)
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true);
+    let mut c = crate::proc::shell(cmd, workspace);
+    c.kill_on_drop(true);
     tokio::select! {
         biased;
         _ = cancel.changed() => Err("Cancelled".into()),

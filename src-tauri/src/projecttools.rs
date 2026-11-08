@@ -570,7 +570,7 @@ fn open_at_line(path: &Path, line: u32) -> bool {
             name.to_string()
         };
         let location = format!("{}:{line}", path.display());
-        let mut command = std::process::Command::new(program);
+        let mut command = crate::proc::std_command(program);
         if *goto {
             command.arg("--goto");
         }
@@ -579,11 +579,6 @@ fn open_at_line(path: &Path, line: u32) -> bool {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt as _;
-            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
         command.status().map(|s| s.success()).unwrap_or(false)
     })
 }
@@ -699,21 +694,8 @@ async fn run_bounded(
     cmd: &str,
     limit: std::time::Duration,
 ) -> Result<(std::process::ExitStatus, String, bool), String> {
-    #[cfg(windows)]
-    let mut c = {
-        let mut c = tokio::process::Command::new("cmd.exe");
-        c.args(["/D", "/S", "/C", cmd]).creation_flags(0x08000000);
-        c
-    };
-    #[cfg(not(windows))]
-    let mut c = {
-        let mut c = tokio::process::Command::new("sh");
-        c.args(["-c", cmd]);
-        c
-    };
-    c.current_dir(cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
+    let mut c = crate::proc::shell(cmd, cwd);
+    c.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     // A group of its own lets a timeout stop the shell and everything it started.

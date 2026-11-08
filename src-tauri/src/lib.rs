@@ -14,6 +14,7 @@ mod limits;
 mod models;
 mod ollama;
 mod orchestra;
+mod proc;
 mod projecttools;
 mod providers;
 mod repomap;
