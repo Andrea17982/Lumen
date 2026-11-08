@@ -3,6 +3,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { call, desktop } from '../lib/bridge';
 import type { McpServer } from '../lib/types';
 import { useI18n } from '../lib/i18n';
+import { useBusy } from '../lib/busy';
+import { errorText } from '../lib/util';
 interface Inventory {
   path: string;
   skills: string[];
@@ -15,7 +17,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [json, setJson] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useBusy(onError);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
@@ -26,19 +28,13 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
     setServers(await call<McpServer[]>('mcp_health'));
   }, []);
   useEffect(() => {
-    if (desktop) void refresh().catch((e) => onError(String(e)));
+    if (desktop) void refresh().catch((e) => onError(errorText(e)));
   }, [onError, refresh]);
-  async function act(fn: () => Promise<unknown>) {
-    setBusy(true);
-    try {
+  const act = (fn: () => Promise<unknown>) =>
+    run(async () => {
       await fn();
       await refresh();
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
   return (
     <section className="settings-section">
       <div className="section-title">

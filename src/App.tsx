@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Copy,
   Folder,
   MoreHorizontal,
   MessageSquare,
@@ -18,12 +17,9 @@ import {
   X,
   AlertCircle,
   Circle,
-  RotateCcw,
   Paperclip,
-  Repeat2,
   Shrink,
   Workflow,
-  MapPin,
 } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
@@ -44,11 +40,10 @@ import {
 import { formatResetCountdown } from './lib/usage';
 import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
-import { splitReasoning, workPhase } from './lib/reasoning';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
-import WorkingIndicator from './components/WorkingIndicator';
-import AttachmentPreview from './components/AttachmentPreview';
+import MessageView from './components/MessageView';
+import { laneOf, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
 import ModeControl from './components/ModeControl';
@@ -77,63 +72,16 @@ import type {
   RunEvent,
   Session,
   Status,
-  OrchestraState,
 } from './lib/types';
 import { errorText, IconButton, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 
-const MessageBody = lazy(() => import('./components/MessageBody'));
 // Loaded on first use, so starting Lumen parses less code.
-const OrchestraCard = lazy(() => import('./components/OrchestraCard'));
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
-const HIDDEN = [
-  'thinking',
-  'checkpoint',
-  'lane',
-  'worktree',
-  'applied',
-  'discarded',
-  'attachments',
-  'orchestra',
-  'orchestra-nogit',
-  'usage',
-  'references',
-  'native',
-  'resume',
-  'route',
-];
-function orchestraOf(m: Message): OrchestraState | null {
-  const a = m.activity.find((x) => x.kind === 'orchestra');
-  if (!a) return null;
-  try {
-    return JSON.parse(a.text) as OrchestraState;
-  } catch {
-    return null;
-  }
-}
-const laneOf = (m: Message) => m.activity.find((a) => a.kind === 'lane')?.text;
-/** Which provider wrote a message, from its lane or the writer's model activity. */
-function providerOf(m: Message): 'claude' | 'gpt' | null {
-  const lane = laneOf(m);
-  const models = m.activity.filter((a) => a.kind === 'model').map((a) => a.text);
-  const fell = m.activity.some((a) => a.kind === 'fallback');
-  const src = lane || (fell ? models.at(-1) : models[0]) || '';
-  if (src.startsWith('claude')) return 'claude';
-  if (src.startsWith('codex')) return 'gpt';
-  return null;
-}
 const tokens = estimateTokens;
 const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-function mergeUsage(current: AccountUsage[], incoming: AccountUsage[]): AccountUsage[] {
-  const merged = new Map(current.map((row) => [row.accountId, row]));
-  for (const row of incoming) {
-    const previous = merged.get(row.accountId);
-    if (!previous || row.updatedAt >= previous.updatedAt) merged.set(row.accountId, row);
-  }
-  return [...merged.values()];
-}
 
 export default function App() {
   const { t } = useI18n();
@@ -232,7 +180,6 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
-  const [copyState, setCopyState] = useState('');
   const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
   const [autoReview] = useState(() => localStorage.getItem('lumen-auto-review') === 'true');
   const [attached, setAttached] = useState<string[]>([]);
@@ -911,182 +858,25 @@ export default function App() {
       else groups.push([m]);
     } else groups.push(m);
   }
-  const renderMessage = (m: Message, inLane = false) => {
-    const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
-    const inline =
-      m.role === 'assistant' ? splitReasoning(m.text) : { reasoning: '', answer: m.text };
-    const reasoning = [
-      ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
-      inline.reasoning,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const isLive = running && m.role === 'assistant' && m.id === messages.at(-1)?.id;
-    const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
-    const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
-    const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
-    const from = providerOf(m);
-    const other = from === 'claude' ? 'gpt' : 'claude';
-    const orchestraState = m.role === 'assistant' ? orchestraOf(m) : null;
-    const nogit = m.activity.some((a) => a.kind === 'orchestra-nogit');
-    return (
-      <article
-        key={m.id}
-        className={`message ${m.role}${m.id === messages.at(-1)?.id ? ' is-latest' : ''}`}
-      >
-        <div className="message-author">
-          {m.role === 'assistant' ? (
-            <>
-              <Mark small />
-              <span>{inLane && from ? nameOf(from) : 'Lumen'}</span>
-            </>
-          ) : (
-            <span className="user-mark">You</span>
-          )}
-          <span className="message-actions">
-            {m.role === 'user' && session && !running && (
-              <button
-                className="icon-button"
-                aria-label="Rewind to here"
-                title="Rewind to here"
-                onClick={() => void askRewind(m)}
-              >
-                <RotateCcw size={13} />
-              </button>
-            )}
-            {m.role === 'assistant' && m.text && !running && from && (
-              <button
-                className="text-button audit-button"
-                title={`Send to ${nameOf(other)} for audit`}
-                onClick={() => audit(m)}
-              >
-                <Repeat2 size={13} />
-                Audit with {nameOf(other)}
-              </button>
-            )}
-            {m.role === 'assistant' && m.text && (
-              <button
-                className="icon-button"
-                aria-label="Copy response"
-                onClick={() => {
-                  void navigator.clipboard
-                    .writeText(inline.answer)
-                    .then(() => {
-                      setCopyState(m.id);
-                      setTimeout(() => setCopyState(''), 1800);
-                    })
-                    .catch((e) => setError(errorText(e)));
-                }}
-              >
-                {copyState === m.id ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            )}
-          </span>
-        </div>
-        {reasoning && (
-          <details className="reasoning">
-            <summary>
-              <ChevronDown size={13} />
-              Reasoning
-            </summary>
-            <pre>{reasoning}</pre>
-          </details>
-        )}
-        {visible.length > 0 && (
-          <details className="activity">
-            <summary>
-              <span className="activity-indicator" />
-              {visible.some((a) => a.kind === 'error')
-                ? 'Activity & diagnostics'
-                : visible.some((a) => a.kind === 'fallback')
-                  ? 'Switched provider · activity'
-                  : `${visible.length} activity ${visible.length === 1 ? 'event' : 'events'}`}
-              <ChevronDown size={13} />
-            </summary>
-            <div className="activity-content">
-              {visible.map((a, i) => (
-                <details key={i}>
-                  <summary>
-                    {a.kind === 'file'
-                      ? 'File changes'
-                      : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
-                  </summary>
-                  <pre>{a.text}</pre>
-                </details>
-              ))}
-            </div>
-          </details>
-        )}
-        {orchestraState && (
-          <Suspense fallback={null}>
-            <OrchestraCard
-              key={`${m.id}-${orchestraState.stage}`}
-              message={m}
-              state={orchestraState}
-              accounts={accounts}
-              busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
-              readOnly={accessMode === 'read-only'}
-              run={orchestra}
-            />
-          </Suspense>
-        )}
-        {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
-          <div className="prose">
-            <Suspense fallback={<p>{inline.answer}</p>}>
-              <MessageBody text={inline.answer} />
-            </Suspense>
-          </div>
-        )}
-        {nogit && !running && (
-          <p className="orchestra-closed">
-            Orchestra needs git in this folder.{' '}
-            <button
-              className="text-button"
-              onClick={() => void orchestra('orchestra_init_git', {})}
-            >
-              Initialize git
-            </button>
-          </p>
-        )}
-        {attachments && (
-          <div className="attachment-chips">
-            {attachments.map((f) => (
-              <span key={f}>
-                <Paperclip size={11} /> {f.split(/[\\/]/).filter(Boolean).at(-1) || f}
-                {/\.(png|jpe?g|webp|gif)$/i.test(f) && session?.workspace && (
-                  <AttachmentPreview folder={session.workspace} path={f} />
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-        {references && (
-          <div
-            className="attachment-chips"
-            aria-label="Repository map locations added to this request"
-            title="Added to the prompt from the repository map"
-          >
-            {references.map((r) => (
-              <span key={r}>
-                <MapPin size={11} /> {r}
-              </span>
-            ))}
-          </div>
-        )}
-        {lane?.kind === 'worktree' && !running && (
-          <button className="primary-button lane-apply" onClick={() => void resolveLanes(m, true)}>
-            Apply {from ? nameOf(from) : 'this'} version
-          </button>
-        )}
-        {lane && lane.kind !== 'worktree' && (
-          <small className="lane-state">
-            {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
-          </small>
-        )}
-        {isLive && <WorkingIndicator phase={workPhase(m.activity.map((a) => a.kind))} />}
-      </article>
-    );
-  };
+  const messageView = (m: Message, inLane = false) => (
+    <MessageView
+      key={m.id}
+      m={m}
+      inLane={inLane}
+      latest={m.id === messages.at(-1)?.id}
+      live={running && m.role === 'assistant' && m.id === messages.at(-1)?.id}
+      running={running}
+      busy={busy}
+      readOnly={accessMode === 'read-only'}
+      workspace={session?.workspace}
+      accounts={accounts}
+      onRewind={session ? (x) => void askRewind(x) : undefined}
+      onAudit={audit}
+      onApplyLane={(x) => void resolveLanes(x, true)}
+      onOrchestra={orchestra}
+      onError={setError}
+    />
+  );
   const newChat = () => {
     setSelected(null);
     setMessages([]);
@@ -1693,7 +1483,7 @@ export default function App() {
               {groups.map((g) =>
                 Array.isArray(g) ? (
                   <div className="lanes" key={g[0].id}>
-                    <div className="lane-grid">{g.map((m) => renderMessage(m, true))}</div>
+                    <div className="lane-grid">{g.map((m) => messageView(m, true))}</div>
                     {g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && !running && (
                       <button
                         className="text-button lane-discard"
@@ -1707,7 +1497,7 @@ export default function App() {
                     )}
                   </div>
                 ) : (
-                  renderMessage(g)
+                  messageView(g)
                 ),
               )}
               <div ref={bottom} />

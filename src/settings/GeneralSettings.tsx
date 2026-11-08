@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { call } from '../lib/bridge';
-import { saveSettings, useAppSettings } from '../lib/settings';
+import { useSettingsEditor } from '../lib/busy';
 import type { AppSettings } from '../lib/types';
-import { errorText } from '../lib/util';
 import { Switch } from './controls';
 import { useI18n } from '../lib/i18n';
 
@@ -22,8 +21,7 @@ export default function GeneralSettings({
   setBalanceUsage: (value: boolean) => void;
 }) {
   const { language, setLanguage, t } = useI18n();
-  const s = useAppSettings(onError);
-  const [busy, setBusy] = useState(false);
+  const { s, busy, run, save } = useSettingsEditor(onError);
   const [confirmReset, setConfirmReset] = useState(false);
   const [largerText, setLargerText] = useState(
     () => localStorage.getItem('lumen-larger-text') === 'true',
@@ -31,19 +29,8 @@ export default function GeneralSettings({
   useEffect(() => {
     document.documentElement.dataset.textSize = largerText ? 'large' : 'default';
   }, [largerText]);
-  async function save(next: AppSettings) {
-    setBusy(true);
-    try {
-      await saveSettings(next);
-    } catch (e) {
-      onError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function reset() {
-    setBusy(true);
-    try {
+  const reset = () =>
+    run(async () => {
       await call<AppSettings>('reset_settings');
       localStorage.setItem('lumen-theme', 'system');
       localStorage.setItem('lumen-larger-text', 'false');
@@ -55,12 +42,7 @@ export default function GeneralSettings({
       setBalanceUsage(false);
       setLargerText(false);
       setConfirmReset(false);
-    } catch (e) {
-      onError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
   return (
     <>
       <section className="settings-section">
@@ -111,7 +93,7 @@ export default function GeneralSettings({
             hint={t('Closing the window keeps running responses going. Quit from the tray icon.')}
             checked={s.closeToTray}
             disabled={busy}
-            onChange={(v) => void save({ ...s, closeToTray: v })}
+            onChange={(v) => save({ ...s, closeToTray: v })}
           />
           <Switch
             label={t('Open Lumen at login')}
@@ -122,7 +104,7 @@ export default function GeneralSettings({
             }
             checked={s.openAtLogin}
             disabled={busy}
-            onChange={(v) => void save({ ...s, openAtLogin: v })}
+            onChange={(v) => save({ ...s, openAtLogin: v })}
           />
         </section>
       )}

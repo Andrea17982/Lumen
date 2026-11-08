@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { saveSettings, useAppSettings } from '../lib/settings';
-import type { Account, AppSettings, Provider } from '../lib/types';
+import { useSettingsEditor } from '../lib/busy';
+import type { Account, Provider } from '../lib/types';
 import { NO_LIMITS, OrchestraLimitsSettings } from '../features/orchestra/scheduling';
 import { Switch } from './controls';
 import LocalAssistantSettings from '../features/local-assistant/LocalAssistantSettings';
@@ -20,18 +19,7 @@ export default function TeamworkSettings({
   simpleOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const s = useAppSettings(onError);
-  const [busy, setBusy] = useState(false);
-  async function save(next: AppSettings) {
-    setBusy(true);
-    try {
-      await saveSettings(next);
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { s, busy, save } = useSettingsEditor(onError);
   if (!s) return null;
   const providers = [...new Set(accounts.map((a) => a.provider))].filter(
     (p): p is Provider => p !== 'ollama',
@@ -46,7 +34,7 @@ export default function TeamworkSettings({
           hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
           checked={s.orchestra}
           disabled={busy}
-          onChange={(v) => void save({ ...s, orchestra: v })}
+          onChange={(v) => save({ ...s, orchestra: v })}
         />
       </section>
     );
@@ -61,14 +49,14 @@ export default function TeamworkSettings({
         hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
         checked={s.orchestra}
         disabled={busy}
-        onChange={(v) => void save({ ...s, orchestra: v })}
+        onChange={(v) => save({ ...s, orchestra: v })}
       />
       {s.orchestra && (
         <OrchestraLimitsSettings
           value={s.orchestraLimits ?? NO_LIMITS}
           providers={providers}
           disabled={busy}
-          onChange={(orchestraLimits) => void save({ ...s, orchestraLimits })}
+          onChange={(orchestraLimits) => save({ ...s, orchestraLimits })}
         />
       )}
       <h4>{t('Reliability')}</h4>
@@ -77,7 +65,7 @@ export default function TeamworkSettings({
         hint={t('If one provider hits its limit, another continues the same message.')}
         checked={s.autoFallback}
         disabled={busy}
-        onChange={(v) => void save({ ...s, autoFallback: v })}
+        onChange={(v) => save({ ...s, autoFallback: v })}
       />
       {advanced && (
         <>
@@ -88,7 +76,7 @@ export default function TeamworkSettings({
             )}
             checked={s.selfHeal}
             disabled={busy}
-            onChange={(v) => void save({ ...s, selfHeal: v })}
+            onChange={(v) => save({ ...s, selfHeal: v })}
           />
           <div className="switch-row">
             <span>
@@ -101,7 +89,7 @@ export default function TeamworkSettings({
                   key={n}
                   aria-pressed={s.reviewRounds === n}
                   disabled={busy}
-                  onClick={() => void save({ ...s, reviewRounds: n })}
+                  onClick={() => save({ ...s, reviewRounds: n })}
                 >
                   {n}
                 </button>
@@ -118,12 +106,12 @@ export default function TeamworkSettings({
         )}
         checked={s.repoContext}
         disabled={busy}
-        onChange={(v) => void save({ ...s, repoContext: v })}
+        onChange={(v) => save({ ...s, repoContext: v })}
       />
       <LocalAssistantSettings
         assistant={localAssistant}
         config={s.localAssistant}
-        onChange={(next) => void save({ ...s, localAssistant: next })}
+        onChange={(next) => save({ ...s, localAssistant: next })}
       />
     </section>
   );

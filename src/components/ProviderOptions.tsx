@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Pencil, RefreshCw, Settings2, X } from 'lucide-react';
 import { call } from '../lib/bridge';
 import type { Account, ModelInfo, Provider } from '../lib/types';
+import { errorText } from '../lib/util';
 
 export function AccountRename({
   account,
@@ -22,7 +23,7 @@ export function AccountRename({
         setSaving(true);
         void call('rename_account', { id: account.id, name: name.trim() })
           .then(done)
-          .catch((e) => onError(String(e)))
+          .catch((e) => onError(errorText(e)))
           .finally(() => setSaving(false));
       }}
     >
@@ -131,7 +132,7 @@ export default function ProviderOptions({
         onReady(rows.length > 0);
       })
       .catch((e) => {
-        if (!gone) setError(String(e));
+        if (!gone) setError(errorText(e));
       })
       .finally(() => {
         if (!gone) setLoading(false);

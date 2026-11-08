@@ -5,6 +5,7 @@ import ProjectTools from './ProjectTools';
 import VisualReview from './VisualReview';
 import RepoMap from './RepoMap';
 import type { FileEntry, ProjectContext } from '../lib/types';
+import { errorText } from '../lib/util';
 
 const formatTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
@@ -38,7 +39,7 @@ export default function ProjectPanel({
         setNotes(d.notes);
         onFiles(d.files);
       })
-      .catch((e) => onError(String(e)));
+      .catch((e) => onError(errorText(e)));
     return () => {
       gone = true;
     };
@@ -99,7 +100,7 @@ export default function ProjectPanel({
                       setData((d) => (d ? { ...d, notes } : d));
                       setSaved(true);
                     })
-                    .catch((e) => onError(String(e)))
+                    .catch((e) => onError(errorText(e)))
                 }
               >
                 {saved ? (
