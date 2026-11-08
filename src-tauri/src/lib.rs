@@ -794,7 +794,6 @@ pub fn run() {
             add_workspace,
             set_session_workspace,
             get_usage,
-            save_usage,
             refresh_usage,
             integration_status,
             install_skill,
@@ -840,23 +839,6 @@ fn read_usage_file(core: &Core) -> Result<Vec<AccountUsage>, String> {
 #[tauri::command]
 fn get_usage(core: tauri::State<Arc<Core>>) -> Result<Vec<AccountUsage>, String> {
     read_usage(&core)
-}
-#[tauri::command]
-fn save_usage(core: tauri::State<Arc<Core>>, mut usage: AccountUsage) -> Result<(), String> {
-    account(&core, &usage.account_id)?;
-    if usage.windows.len() > 10
-        || usage.windows.iter().any(|w| {
-            !w.used_percent.is_finite()
-                || !(0.0..=100.0).contains(&w.used_percent)
-                || w.window_minutes <= 0
-                || w.resets_at <= now()
-        })
-    {
-        return Err("Enter valid percentages and future reset times".into());
-    }
-    usage.updated_at = now();
-    usage.source = "manual".into();
-    write_usage(&core, usage).map(|_| ())
 }
 fn write_usage(core: &Core, mut usage: AccountUsage) -> Result<AccountUsage, String> {
     let _lock = core.usage_lock.lock().map_err(|_| "Usage lock failed")?;

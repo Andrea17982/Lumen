@@ -83,14 +83,6 @@ try {
   const officialQuota = await invoke('refresh_usage', { id: gpt.id });
   assert.equal(officialQuota.source, 'codex-cli');
   assert.equal(officialQuota.windows.length, 2);
-  await invoke('save_usage', {
-    usage: {
-      accountId: claude.id,
-      updatedAt: Date.now(),
-      source: 'manual',
-      windows: [{ usedPercent: 90, windowMinutes: 10080, resetsAt: Date.now() + 2 * 3600000 }],
-    },
-  });
   async function waitSession(id, status) {
     for (let i = 0; i < 200; i++) {
       const rows = await invoke('list_sessions', { search: '', offset: 0 });

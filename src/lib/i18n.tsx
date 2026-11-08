@@ -167,23 +167,11 @@ const it: Record<string, string> = {
   'Cross-audit rounds': 'Cicli di verifica incrociata',
   'How many review and revise cycles an audit may run.':
     'Numero di cicli di revisione e correzione che una verifica può eseguire.',
-  'Auto usage balancing': 'Bilanciamento dell’utilizzo di Auto',
-  'Balance remaining quota against time until reset. Fresh snapshots last 15 minutes. Unknown usage never counts as free capacity.':
-    'Bilancia la quota residua con il tempo al ripristino. I dati aggiornati restano validi per 15 minuti. L’utilizzo sconosciuto non viene considerato quota disponibile.',
   Account: 'Account',
-  'Usage account': 'Account per l’utilizzo',
-  'Choose account': 'Scegli un account',
-  'Refresh official quota': 'Aggiorna la quota ufficiale',
-  Stale: 'Dati non aggiornati',
   'Codex supports automatic quota queries. For Claude, copy the percentages and reset times from /usage. Leave a window blank if it is unavailable.':
     'Codex supporta la lettura automatica della quota. Per Claude, copia le percentuali e gli orari di ripristino da /usage. Lascia vuoto il periodo se non è disponibile.',
   '5-hour': '5 ore',
   Weekly: 'Settimanale',
-  'used %': 'utilizzo %',
-  'Reset (local time)': 'Ripristino (ora locale)',
-  'Enter at least one quota percentage and reset time.':
-    'Inserisci almeno una percentuale di quota e un orario di ripristino.',
-  'Save quota snapshot': 'Salva dati quota',
   'Tools (MCP)': 'Strumenti (MCP)',
   'Add MCP server': 'Aggiungi server MCP',
   'Turn a tool on once and both assistants can use it when edits are allowed.':
