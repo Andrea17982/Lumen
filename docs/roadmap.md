@@ -62,7 +62,7 @@ Verified on Windows, 2026-11-07: Lumen started the project's `godot-pro` server 
 - **Orchestra live validation** on an isolated copy of Lumen: concurrency and total caps, quota thresholds, provider/model switching, rate-limit cooldowns, restart and repeated Resume without duplicate effects.
 - **Interactive approvals**: Ask-first for Orchestra subtasks. Codex file-change callbacks are covered by fixtures only; a real model turn raised a command approval. Check approve, reject, cancel, the countdown and the working indicator in the real webview on Windows, and the approval panel after a restart.
 - **Native acceptance**: Windows clean-machine install; macOS login launch and clean install; Linux native behavior and clean install. Real macOS/Linux environments remain required.
-- **Performance**: batched IPC events, a virtualized transcript, warm CLI processes, startup and memory measurements.
+- **Performance**: streamed events are applied once per frame and earlier messages skip layout (`content-visibility`) until they scroll into view. Remaining: coalescing deltas in Rust before IPC, measuring long-transcript scrolling in the native webviews (a full virtualized list only if that shows a need), warm CLI processes, startup and memory measurements.
 - **Reliability**: signed Windows and macOS builds and an encrypted-at-rest option.
 
 ## Future
