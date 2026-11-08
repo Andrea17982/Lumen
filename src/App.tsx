@@ -385,8 +385,24 @@ export default function App() {
   useEffect(() => {
     let gone = false;
     let dispose = () => {};
+    // Streamed tokens arrive many times per frame. Apply them once per animation frame, so the
+    // transcript (and its markdown) renders at most once per frame instead of once per token.
+    let queued: RunEvent[] = [];
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const batch = queued.filter((e) => e.sessionId === selectedRef.current);
+      queued = [];
+      if (batch.length) setMessages((m) => batch.reduce(applyEvent, m));
+    };
     void subscribe((event: RunEvent) => {
-      if (event.sessionId === selectedRef.current) setMessages((m) => applyEvent(m, event));
+      queued.push(event);
+      if (event.kind === 'delta' || event.kind === 'thinking' || event.kind === 'orchestra-delta') {
+        if (!frame) frame = requestAnimationFrame(flush);
+      } else {
+        if (frame) cancelAnimationFrame(frame);
+        flush();
+      }
       if (event.kind === 'start' || event.kind === 'status' || event.kind === 'done') {
         const status = event.kind === 'start' ? 'waiting' : (event.text as Status);
         if (activeSession.current?.id === event.sessionId)
@@ -421,12 +437,18 @@ export default function App() {
     });
     return () => {
       gone = true;
+      if (frame) cancelAnimationFrame(frame);
       dispose();
     };
   }, []);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: reduced ? 'instant' : 'smooth', block: 'end' });
-  }, [messages, reduced]);
+    // While a reply streams, follow it without animation: a smooth scroll restarted every frame
+    // stutters and keeps the compositor busy.
+    bottom.current?.scrollIntoView({
+      behavior: reduced || running ? 'instant' : 'smooth',
+      block: 'end',
+    });
+  }, [messages, reduced, running]);
   // Shortcuts run registry commands through this ref, so the window listener sees current state.
   const commandsRef = useRef<Command[]>([]);
   useEffect(() => {

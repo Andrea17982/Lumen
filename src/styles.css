@@ -798,6 +798,12 @@ label {
 .message {
   margin-bottom: 35px;
 }
+/* Long chats: the browser skips layout and paint for earlier messages until they scroll near
+   the viewport. The latest message always renders, so streaming and scrolling stay exact. */
+.message:not(.is-latest) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
 .message.is-latest {
   animation: motion-message-in var(--motion-normal) var(--motion-ease-enter) both;
 }
