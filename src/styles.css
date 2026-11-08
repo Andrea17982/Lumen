@@ -63,6 +63,11 @@
 * {
   box-sizing: border-box;
 }
+html,
+body {
+  /* Reaching the end of a scroll area must not drag the whole window past its edges. */
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   color: var(--text);
@@ -470,6 +475,27 @@ html[data-text-size='large'] {
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+}
+.workspace-picker {
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.workspace-picker:hover:not(:disabled),
+.workspace-picker:focus-visible {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.workspace-picker:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.workspace-picker svg:last-child {
+  opacity: 0.65;
 }
 .topbar-divider {
   width: 1px;
@@ -1135,6 +1161,7 @@ label {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 28px 25px;
 }
 .settings-body > .settings-section:first-child,
@@ -1191,6 +1218,18 @@ label {
   line-height: 1.8;
   color: var(--muted);
   margin-top: 9px;
+}
+.settings-section > :is(h3, h4, p, .language-control, .theme-switch) + .switch-row {
+  /* Lines separate rows from each other, never a title from its first row. */
+  border-top: 0;
+}
+.settings-section h4 {
+  margin-top: 22px;
+  font-size: calc(11px * var(--text-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .section-title {
   display: flex;

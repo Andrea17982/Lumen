@@ -326,28 +326,6 @@ try {
   assert(handoff[0].text.includes('Handoff') && handoff[0].text.includes('Goal'));
 
   const prefs = await invoke('get_settings');
-  const apiPort = 18317;
-  await invoke('save_settings', { value: { ...prefs, apiEnabled: true, apiPort } });
-  const unauthorized = await fetch(`http://127.0.0.1:${apiPort}/v1/models`);
-  assert.equal(unauthorized.status, 401);
-  const completion = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${prefs.apiToken}` },
-    body: JSON.stringify({ model: 'lumen-chatgpt', messages: [{ role: 'user', content: 'Hi' }] }),
-  }).then((r) => r.json());
-  assert.equal(completion.object, 'chat.completion');
-  assert(completion.choices[0].message.content.includes('offline UI fixture'));
-  const stream = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${prefs.apiToken}` },
-    body: JSON.stringify({
-      model: 'lumen-chatgpt',
-      stream: true,
-      messages: [{ role: 'user', content: 'Hi' }],
-    }),
-  }).then((r) => r.text());
-  assert(stream.includes('chat.completion.chunk') && stream.trim().endsWith('data: [DONE]'));
-  await invoke('save_settings', { value: { ...prefs, apiEnabled: false } });
 
   // 0.4: Ollama through its official CLI, then Orchestra end to end on fixtures.
   const local = await invoke('add_account', { name: 'Local fixture', provider: 'ollama' });
@@ -360,7 +338,7 @@ try {
     localModels.map((m) => m.id),
     ['qwen-fixture:7b'],
   );
-  await invoke('save_settings', { value: { ...prefs, apiEnabled: false, orchestra: true } });
+  await invoke('save_settings', { value: { ...prefs, orchestra: true } });
   const orc = await invoke('create_session', { workspace: repo });
   const orcPlan = await invoke('send_message', {
     id: orc.id,
@@ -415,7 +393,7 @@ try {
     approvedUser.activity.some((a) => a.kind === 'checkpoint'),
     'Orchestra is rewindable',
   );
-  await invoke('save_settings', { value: { ...prefs, apiEnabled: false, orchestra: false } });
+  await invoke('save_settings', { value: { ...prefs, orchestra: false } });
 
   await writeFile(
     '.impeccable/review/native-results.json',

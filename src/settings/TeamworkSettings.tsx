@@ -39,8 +39,11 @@ export default function TeamworkSettings({
   if (simpleOnly) {
     return (
       <section className="settings-section">
+        <h3>{t('Teamwork')}</h3>
+        <p>{t('How Claude, ChatGPT and the other connected assistants help each other.')}</p>
         <Switch
           label="Orchestra"
+          hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
           checked={s.orchestra}
           disabled={busy}
           onChange={(v) => void save({ ...s, orchestra: v })}
@@ -52,6 +55,7 @@ export default function TeamworkSettings({
     <section className="settings-section">
       <h3>{t('Teamwork')}</h3>
       <p>{t('How Claude, ChatGPT and the other connected assistants help each other.')}</p>
+      <h4>Orchestra</h4>
       <Switch
         label="Orchestra"
         hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
@@ -67,26 +71,13 @@ export default function TeamworkSettings({
           onChange={(orchestraLimits) => void save({ ...s, orchestraLimits })}
         />
       )}
+      <h4>{t('Reliability')}</h4>
       <Switch
         label={t('Switch on rate limit')}
         hint={t('If one provider hits its limit, another continues the same message.')}
         checked={s.autoFallback}
         disabled={busy}
         onChange={(v) => void save({ ...s, autoFallback: v })}
-      />
-      <LocalAssistantSettings
-        assistant={localAssistant}
-        config={s.localAssistant}
-        onChange={(next) => void save({ ...s, localAssistant: next })}
-      />
-      <Switch
-        label={t('Code graph')}
-        hint={t(
-          "Claude and Codex get Lumen's code graph as tools: definitions with exact line ranges, callers, file outlines, related files and the impact of a change. They read only the lines they need instead of searching whole files.",
-        )}
-        checked={s.repoContext}
-        disabled={busy}
-        onChange={(v) => void save({ ...s, repoContext: v })}
       />
       {advanced && (
         <>
@@ -119,6 +110,21 @@ export default function TeamworkSettings({
           </div>
         </>
       )}
+      <h4>{t('Context')}</h4>
+      <Switch
+        label={t('Code graph')}
+        hint={t(
+          "Claude and Codex get Lumen's code graph as tools: definitions with exact line ranges, callers, file outlines, related files and the impact of a change. They read only the lines they need instead of searching whole files.",
+        )}
+        checked={s.repoContext}
+        disabled={busy}
+        onChange={(v) => void save({ ...s, repoContext: v })}
+      />
+      <LocalAssistantSettings
+        assistant={localAssistant}
+        config={s.localAssistant}
+        onChange={(next) => void save({ ...s, localAssistant: next })}
+      />
     </section>
   );
 }

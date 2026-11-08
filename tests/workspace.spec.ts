@@ -225,7 +225,7 @@ test('accounts can be renamed from Settings without changing identity', async ({
 test('settings, theme and support information persist across reloads', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Interface' })).toBeVisible();
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('tab', { name: 'About' }).click();
@@ -375,7 +375,7 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
   await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('tab', { name: 'Auto' }).click();
   await page.getByRole('button', { name: 'Budget', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Balance usage' }).check();
+  await page.getByRole('switch', { name: /Balance usage/ }).check();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Auto' }).click();
@@ -383,7 +383,7 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
     'aria-pressed',
     'true',
   );
-  await expect(page.getByRole('checkbox', { name: 'Balance usage' })).toBeChecked();
+  await expect(page.getByRole('switch', { name: /Balance usage/ })).toBeChecked();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await row.click();
   await expect(
@@ -605,7 +605,7 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
     page.evaluate(() => JSON.parse(localStorage.getItem('lumen-preview-settings') ?? '{}'));
   await expect.poll(async () => (await stored()).orchestraLimits?.maxConcurrent).toBe(2);
   await expect(agents).toBeEnabled();
-  const threshold = limits.getByRole('spinbutton', { name: /Claude quota threshold/ });
+  const threshold = limits.getByRole('spinbutton', { name: /Claude · quota threshold/ });
   await expect(threshold).toBeEnabled();
   await threshold.fill('80');
   await threshold.press('Enter');
@@ -617,7 +617,7 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Teamwork' }).click();
   await expect(limits.getByRole('spinbutton', { name: /Simultaneous agents/ })).toHaveValue('2');
-  await expect(limits.getByRole('spinbutton', { name: /Claude quota threshold/ })).toHaveValue(
+  await expect(limits.getByRole('spinbutton', { name: /Claude · quota threshold/ })).toHaveValue(
     '80',
   );
 });
@@ -781,4 +781,12 @@ test('the command palette opens with Ctrl K, filters, runs and restores focus', 
   await expect(palette.getByRole('status')).toHaveText('No matching commands');
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
+});
+
+test('a new conversation can change its folder from the top bar', async ({ page }) => {
+  await page.goto('/');
+  const picker = page.locator('.topbar').getByRole('button', { name: /^Change folder/ });
+  await expect(picker).toBeVisible();
+  await picker.click();
+  await expect(picker).toContainText('Browser preview');
 });

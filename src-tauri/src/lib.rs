@@ -1,4 +1,3 @@
-mod api;
 mod approvals;
 mod approvals_codex;
 mod assets;
@@ -28,7 +27,7 @@ mod turns;
 mod usage;
 use models::*;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -47,10 +46,8 @@ pub struct Core {
     usage_lock: Mutex<()>,
     limits: limits::Limits,
     settings: Mutex<settings::AppSettings>,
-    api: tokio::sync::Mutex<Option<api::Running>>,
     /// Approval journal for Ask-first turns; None when it could not be opened.
     approvals: Option<lumen_gatekeeper::Gatekeeper>,
-    api_log: Mutex<VecDeque<api::ApiLog>>,
     /// Extra subtasks the user admitted beyond the total cap, per running Orchestra message.
     orchestra_raises: Mutex<HashMap<String, usize>>,
 }
@@ -516,17 +513,6 @@ async fn save_settings(
         .unwrap_or(false);
     tray::sync_tray(&app, value.close_to_tray)?;
     tray::sync_autostart(&app, value.open_at_login)?;
-    let mut api = core.api.lock().await;
-    let restart = api.as_ref().map(|r| r.port) != Some(value.api_port) || !value.api_enabled;
-    if restart {
-        if let Some(r) = api.take() {
-            let _ = r.stop.send(());
-            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-        }
-    }
-    if value.api_enabled && api.is_none() {
-        *api = Some(api::start(core.inner().clone(), value.api_port).await?);
-    }
     value.save(&core.root)?;
     *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
     Ok(value)
@@ -537,42 +523,12 @@ async fn reset_settings(
     app: tauri::AppHandle,
     core: tauri::State<'_, Arc<Core>>,
 ) -> Result<settings::AppSettings, String> {
-    let value = settings::AppSettings {
-        api_token: format!("lumen-{}", models::id().replace('-', "")),
-        ..Default::default()
-    };
+    let value = settings::AppSettings::default();
     tray::sync_tray(&app, false)?;
     tray::sync_autostart(&app, false)?;
-    if let Some(running) = core.api.lock().await.take() {
-        let _ = running.stop.send(());
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-    }
     value.save(&core.root)?;
     *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
     Ok(value)
-}
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiStatus {
-    running: bool,
-    url: String,
-    log: Vec<api::ApiLog>,
-}
-#[tauri::command]
-async fn api_status(core: tauri::State<'_, Arc<Core>>) -> Result<ApiStatus, String> {
-    let port = core.api.lock().await.as_ref().map(|r| r.port);
-    Ok(ApiStatus {
-        running: port.is_some(),
-        url: format!(
-            "http://localhost:{}/v1",
-            port.unwrap_or_else(|| core.settings.lock().map(|s| s.api_port).unwrap_or(8317))
-        ),
-        log: core
-            .api_log
-            .lock()
-            .map(|l| l.iter().cloned().collect())
-            .unwrap_or_default(),
-    })
 }
 #[tauri::command]
 fn provider_health(core: tauri::State<Arc<Core>>) -> Result<Vec<limits::Health>, String> {
@@ -605,100 +561,6 @@ fn mcp_add(core: tauri::State<Arc<Core>>, name: String, target: String) -> Resul
 #[tauri::command]
 fn mcp_remove(core: tauri::State<Arc<Core>>, name: String) -> Result<(), String> {
     integrations::remove_server(&core.root, &name)
-}
-
-/// One read-only CLI turn for the local API. `lumen-auto` falls back across providers.
-pub(crate) async fn headless(
-    core: &Arc<Core>,
-    model: &str,
-    prompt: &str,
-    mut emit: impl FnMut(String) + Send,
-) -> Result<String, String> {
-    let accounts = core.store.accounts()?;
-    let order: Vec<Provider> = match model {
-        "lumen-claude" => vec![Provider::Claude],
-        "lumen-chatgpt" | "lumen-gpt" => vec![Provider::Gpt],
-        _ => {
-            let options = RunOptions {
-                mode: "auto".into(),
-                account_id: None,
-                model: None,
-                effort: String::new(),
-                write_access: false,
-                auto_policy: AutoPolicy::Default,
-                balance_usage: false,
-                access_mode: None,
-                auto_review: false,
-                attachments: vec![],
-                audit_of: None,
-            };
-            let first = router::route(prompt, &options, &accounts)?.provider;
-            let second = if first == Provider::Claude {
-                Provider::Gpt
-            } else {
-                Provider::Claude
-            };
-            vec![first, second]
-        }
-    };
-    let workspace = core.root.join("api-workspace");
-    std::fs::create_dir_all(&workspace).map_err(|e| e.to_string())?;
-    let mut last = "No connected account for this model. Add one in Lumen Settings.".to_string();
-    for p in order {
-        for a in accounts.iter().filter(|a| a.provider == p) {
-            if core.limits.cooling(&a.id, now()) {
-                continue;
-            }
-            let models = models_for(core, a, false, None).await?;
-            let selected = router::select_model(&models, prompt, &AutoPolicy::Default)?;
-            let effort = resolve_effort(selected, "low");
-            let (_tx, rx) = watch::channel(false);
-            let mut sent = String::new();
-            let result = providers::execute(
-                providers::Invocation {
-                    resume: None,
-                    account: a,
-                    config: &config_dir(core, a),
-                    workspace: &workspace,
-                    prompt,
-                    model: Some(&selected.id),
-                    effort: &effort,
-                    access: AccessMode::ReadOnly,
-                    approvals: None,
-                },
-                rx,
-                |act| match act.kind.as_str() {
-                    "delta" => {
-                        sent.push_str(&act.text);
-                        emit(act.text);
-                    }
-                    "replace" => {
-                        if let Some(rest) = act.text.strip_prefix(sent.as_str()) {
-                            if !rest.is_empty() {
-                                emit(rest.to_string());
-                            }
-                        }
-                        sent = act.text;
-                    }
-                    _ => {}
-                },
-            )
-            .await;
-            match result {
-                Ok(t) => {
-                    core.limits.record_turn(&a.id, now());
-                    return Ok(t);
-                }
-                Err(e) if e.starts_with(limits::RATE_LIMIT) => {
-                    let msg = e.trim_start_matches(limits::RATE_LIMIT).to_string();
-                    core.limits.cool(&a.id, limits::unlock_at(&msg, now()));
-                    last = format!("Rate limit: {msg}");
-                }
-                Err(e) => return Err(e),
-            }
-        }
-    }
-    Err(last)
 }
 
 /// GUI apps on macOS/Linux don't inherit the login shell PATH (node, claude, codex).
@@ -846,8 +708,6 @@ pub fn run() {
                 orchestra_raises: Mutex::new(HashMap::new()),
                 limits: Default::default(),
                 settings: Mutex::new(prefs.clone()),
-                api: tokio::sync::Mutex::new(None),
-                api_log: Mutex::new(VecDeque::new()),
                 approvals: journal,
             });
             app.manage(core.clone());
@@ -861,13 +721,6 @@ pub fn run() {
             let at_login = std::env::args().any(|a| a == tray::AUTOSTART_ARG);
             if !(at_login && prefs.close_to_tray) {
                 tray::show_main(&handle);
-            }
-            if prefs.api_enabled {
-                tauri::async_runtime::spawn(async move {
-                    if let Ok(r) = api::start(core.clone(), prefs.api_port).await {
-                        *core.api.lock().await = Some(r);
-                    }
-                });
             }
             Ok(())
         })
@@ -930,7 +783,6 @@ pub fn run() {
             orchestra::orchestra_raise,
             orchestra::orchestra_resume,
             orchestra::orchestra_init_git,
-            api_status,
             provider_health,
             mcp_health,
             mcp_toggle,

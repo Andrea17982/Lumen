@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Provider } from '../../../lib/types';
 import { nameOf } from '../../../lib/util';
+import { useI18n } from '../../../lib/i18n';
 import { DEFAULT_CONCURRENT, normalizeLimits, type OrchestraLimits } from './limits';
 import './scheduling.css';
 
@@ -72,13 +73,14 @@ export default function OrchestraLimitsSettings({
   disabled?: boolean;
   onChange: (next: OrchestraLimits) => void;
 }) {
+  const { t } = useI18n();
   const save = (patch: Partial<OrchestraLimits>) =>
     onChange(normalizeLimits({ ...value, ...patch }));
   return (
-    <div className="orchestra-limits" role="group" aria-label="Orchestra limits">
+    <div className="orchestra-limits" role="group" aria-label={t('Orchestra limits')}>
       <LimitField
-        label="Simultaneous agents"
-        hint="Sub-agents running at once. Others wait for a free slot."
+        label={t('Simultaneous agents')}
+        hint={t('Sub-agents running at once. Others wait for a free slot.')}
         value={value.maxConcurrent}
         placeholder={String(DEFAULT_CONCURRENT)}
         max={32}
@@ -86,10 +88,10 @@ export default function OrchestraLimitsSettings({
         onCommit={(maxConcurrent) => save({ maxConcurrent })}
       />
       <LimitField
-        label="Subtasks per run"
-        hint="Admitted in total. Finished subtasks still count; raise the limit to admit more."
+        label={t('Subtasks per run')}
+        hint={t('Admitted in total. Finished subtasks still count; raise the limit to admit more.')}
         value={value.maxSubtasks}
-        placeholder="No limit"
+        placeholder={t('No limit')}
         max={999}
         disabled={disabled}
         onCommit={(maxSubtasks) => save({ maxSubtasks })}
@@ -97,10 +99,12 @@ export default function OrchestraLimitsSettings({
       {providers.map((p) => (
         <LimitField
           key={p}
-          label={`${nameOf(p)} quota threshold`}
-          hint="Stop giving new work at this usage. Missing or outdated quota data is checked with one job first."
+          label={`${nameOf(p)} · ${t('quota threshold')}`}
+          hint={t(
+            'Stop giving new work at this usage. Missing or outdated quota data is checked with one job first.',
+          )}
           value={value.quotaThresholds[p]}
-          placeholder="Off"
+          placeholder={t('Off')}
           max={99}
           suffix="%"
           disabled={disabled}

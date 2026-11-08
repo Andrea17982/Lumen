@@ -82,6 +82,7 @@ fn requested_effort(task: TaskProfile, policy: &AutoPolicy) -> &'static str {
 }
 
 /// Keyword routing, for callers without a classifier verdict.
+#[cfg(test)]
 pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result<Plan, String> {
     route_with(profile(prompt), options, accounts)
 }

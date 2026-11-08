@@ -43,9 +43,6 @@ pub struct AppSettings {
     pub self_heal: bool,
     /// Cross-audit rounds for Auto-review (1–3).
     pub review_rounds: u8,
-    pub api_enabled: bool,
-    pub api_port: u16,
-    pub api_token: String,
     /// Orchestra: complex Auto tasks are planned, split and run by several agents.
     pub orchestra: bool,
     /// The window's X hides Lumen to the notification area.
@@ -67,9 +64,6 @@ impl Default for AppSettings {
             auto_fallback: true,
             self_heal: true,
             review_rounds: 1,
-            api_enabled: false,
-            api_port: 8317,
-            api_token: String::new(),
             orchestra: false,
             close_to_tray: false,
             open_at_login: false,
@@ -83,15 +77,10 @@ impl Default for AppSettings {
 }
 impl AppSettings {
     pub fn load(root: &Path) -> Self {
-        let mut s: Self = std::fs::read(root.join("settings.json"))
+        std::fs::read(root.join("settings.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        if s.api_token.is_empty() {
-            s.api_token = format!("lumen-{}", crate::models::id().replace('-', ""));
-            let _ = s.save(root);
-        }
-        s
+            .unwrap_or_default()
     }
     pub fn save(&self, root: &Path) -> Result<(), String> {
         std::fs::write(
@@ -102,12 +91,6 @@ impl AppSettings {
     }
     pub fn validate(&mut self) -> Result<(), String> {
         self.review_rounds = self.review_rounds.clamp(1, 3);
-        if self.api_port < 1024 {
-            return Err("Choose a port between 1024 and 65535".into());
-        }
-        if self.api_token.len() < 16 {
-            return Err("The API key must be at least 16 characters".into());
-        }
         self.ollama_model = self.ollama_model.trim().chars().take(120).collect();
         let a = &mut self.local_assistant;
         a.model = a.model.trim().chars().take(120).collect();

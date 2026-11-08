@@ -1,3 +1,4 @@
+import { visibleInterval } from '../lib/visible';
 import { useEffect, useState } from 'react';
 import {
   Check,
@@ -53,8 +54,7 @@ export default function OrchestraCard({
   const live = state.stage === 'running' || state.stage === 'asking' || state.stage === 'planning';
   useEffect(() => {
     if (!live) return;
-    const t = window.setInterval(() => tick((n) => n + 1), 1000);
-    return () => window.clearInterval(t);
+    return visibleInterval(() => tick((n) => n + 1), 1000);
   }, [live]);
   const act = (command: string, args: Record<string, unknown> = {}) =>
     void run(command, { message: message.id, ...args });

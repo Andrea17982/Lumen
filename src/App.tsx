@@ -27,9 +27,9 @@ import {
 } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
-import OrchestraCard from './components/OrchestraCard';
 import { saveSettings, useAppSettings } from './lib/settings';
-import SettingsPanel, { type SettingsTab } from './settings/SettingsPanel';
+import type { SettingsTab } from './settings/SettingsPanel';
+import { visibleInterval } from './lib/visible';
 import {
   applyEvent,
   approvalSnapshot,
@@ -41,7 +41,6 @@ import {
   subscribe,
   type ApprovalSnapshot,
 } from './lib/bridge';
-import { GatekeeperPanel } from './features/gatekeeper';
 import { formatResetCountdown } from './lib/usage';
 import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
@@ -84,6 +83,10 @@ import { errorText, IconButton, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 
 const MessageBody = lazy(() => import('./components/MessageBody'));
+// Loaded on first use, so starting Lumen parses less code.
+const OrchestraCard = lazy(() => import('./components/OrchestraCard'));
+const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
+const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
 const active = (s?: Status) => s === 'running' || s === 'waiting';
 const HIDDEN = [
   'thinking',
@@ -173,6 +176,9 @@ export default function App() {
   const [folderBusy, setFolderBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [settings, setSettings] = useState(false);
+  // The settings code loads the first time the panel opens, then stays mounted for its exit animation.
+  const [settingsUsed, setSettingsUsed] = useState(false);
+  if (settings && !settingsUsed) setSettingsUsed(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const openSettings = (tab: SettingsTab = 'general') => {
     setSettingsTab(tab);
@@ -189,8 +195,7 @@ export default function App() {
   const [usageErrors, setUsageErrors] = useState<Record<string, string>>({});
   const usageRequests = useRef(new Map<string, Promise<void>>());
   useEffect(() => {
-    const timer = window.setInterval(() => setUsageClock(Date.now()), 15_000);
-    return () => window.clearInterval(timer);
+    return visibleInterval(() => setUsageClock(Date.now()), 15_000);
   }, []);
   useEffect(() => {
     const now = Date.now();
@@ -285,10 +290,8 @@ export default function App() {
       settingsOpener.current?.focus();
       return;
     }
+    // The panel moves focus in itself once its code has loaded.
     settingsOpener.current = document.activeElement as HTMLElement | null;
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>('.settings-panel button:not(:disabled)')?.focus(),
-    );
   }, [settings]);
 
   const refresh = useCallback(async () => {
@@ -329,8 +332,7 @@ export default function App() {
   useEffect(() => {
     const refreshUsage = () => void loadUsage().catch(() => {});
     refreshUsage();
-    const timer = window.setInterval(refreshUsage, 30_000);
-    return () => window.clearInterval(timer);
+    return visibleInterval(refreshUsage, 30_000);
   }, [loadUsage]);
   useEffect(() => {
     void refresh().catch((e) => setError(errorText(e)));
@@ -341,11 +343,10 @@ export default function App() {
         .then(setHealth)
         .catch(() => {});
     load();
-    const t = window.setInterval(() => {
+    return visibleInterval(() => {
       load();
       setTick((n) => n + 1);
     }, 15_000);
-    return () => window.clearInterval(t);
   }, [accounts, sessions]);
   useEffect(() => {
     void loadAccounts().catch((e) => setError(errorText(e)));
@@ -984,15 +985,17 @@ export default function App() {
           </details>
         )}
         {orchestraState && (
-          <OrchestraCard
-            key={`${m.id}-${orchestraState.stage}`}
-            message={m}
-            state={orchestraState}
-            accounts={accounts}
-            busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
-            readOnly={accessMode === 'read-only'}
-            run={orchestra}
-          />
+          <Suspense fallback={null}>
+            <OrchestraCard
+              key={`${m.id}-${orchestraState.stage}`}
+              message={m}
+              state={orchestraState}
+              accounts={accounts}
+              busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
+              readOnly={accessMode === 'read-only'}
+              run={orchestra}
+            />
+          </Suspense>
         )}
         {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
           <div className="prose">
@@ -1615,6 +1618,8 @@ export default function App() {
           workspaceTitle={currentWorkspace || undefined}
           conversationTitle={session?.title || t('New conversation')}
           pills={providerPills}
+          onChooseFolder={!session ? () => void chooseFolder() : undefined}
+          folderBusy={folderBusy || running}
           onOpenSidebar={() => setSidebar(true)}
           onOpenSettings={() => openSettings()}
         />
@@ -1707,13 +1712,15 @@ export default function App() {
             approvals.requests.some(
               (r) => r.status === 'pending' || r.delivery === 'uncertain',
             ) && (
-              <GatekeeperPanel
-                requests={approvals.requests.filter(
-                  (r) => r.status === 'pending' || r.delivery === 'uncertain',
-                )}
-                sessions={approvals.sessions}
-                onDecide={decideApproval}
-              />
+              <Suspense fallback={null}>
+                <GatekeeperPanel
+                  requests={approvals.requests.filter(
+                    (r) => r.status === 'pending' || r.delivery === 'uncertain',
+                  )}
+                  sessions={approvals.sessions}
+                  onDecide={decideApproval}
+                />
+              </Suspense>
             )}
           {session && sheet && (
             <DraftSheet
@@ -1922,24 +1929,26 @@ export default function App() {
         </div>
       </main>
       <QuitConfirm />
-      <SettingsPanel
-        open={settings}
-        tab={settingsTab}
-        onClose={() => setSettings(false)}
-        error={error}
-        setError={setError}
-        accounts={accounts}
-        refreshAccounts={loadAccounts}
-        initialProvider={mode === 'gpt' ? 'gpt' : 'claude'}
-        autoPolicy={autoPolicy}
-        setAutoPolicy={setAutoPolicy}
-        balanceUsage={balanceUsage}
-        setBalanceUsage={setBalanceUsage}
-        theme={theme}
-        setTheme={setTheme}
-        workspace={workspace}
-        chooseFolder={chooseFolder}
-      />
+      {settingsUsed && (
+        <Suspense fallback={null}>
+          <SettingsPanel
+            open={settings}
+            tab={settingsTab}
+            onClose={() => setSettings(false)}
+            error={error}
+            setError={setError}
+            accounts={accounts}
+            refreshAccounts={loadAccounts}
+            initialProvider={mode === 'gpt' ? 'gpt' : 'claude'}
+            autoPolicy={autoPolicy}
+            setAutoPolicy={setAutoPolicy}
+            balanceUsage={balanceUsage}
+            setBalanceUsage={setBalanceUsage}
+            theme={theme}
+            setTheme={setTheme}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
