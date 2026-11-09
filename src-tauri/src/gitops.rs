@@ -186,6 +186,17 @@ pub async fn diff_since(top: &Path, tree: &str, limit: usize) -> Result<String, 
     Ok(truncate(diff, limit))
 }
 
+/// Exact paths changed by this turn, including new files, relative to its checkpoint.
+pub async fn paths_since(top: &Path, tree: &str) -> Result<Vec<String>, String> {
+    let current = write_tree(top).await?;
+    let changed = run(top, &["diff", "--name-only", "-z", tree, &current], None).await?;
+    Ok(changed
+        .split('\0')
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
 /// Summary of uncommitted work relative to HEAD, for compact handoffs.
 pub async fn diff_head(top: &Path, limit: usize) -> Result<String, String> {
     let stat = run(top, &["diff", "--stat", "HEAD"], None)

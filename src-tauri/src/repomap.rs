@@ -16,7 +16,7 @@ const MAX_FILES: usize = 20_000;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
 const BUILD_BUDGET: Duration = Duration::from_secs(8);
 const MAX_SYMBOLS_PER_FILE: usize = 400;
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 /// Distinct identifiers kept per file for the reference graph.
 const MAX_IDENTS_PER_FILE: usize = 4_000;
 const MAX_SPAN_LINES: usize = 4_000;
@@ -38,7 +38,7 @@ pub struct Symbol {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) struct FileRecord {
-    size: u64,
+    pub(crate) size: u64,
     pub(crate) modified: u64,
     pub(crate) symbols: Vec<Symbol>,
     /// `res://` paths a scene or resource depends on, resolved to project-relative paths.
@@ -573,7 +573,7 @@ fn modified(meta: &std::fs::Metadata) -> u64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
+        .map(|d| d.as_nanos().min(u64::MAX as u128) as u64)
         .unwrap_or_default()
 }
 

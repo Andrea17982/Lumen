@@ -4,6 +4,7 @@
 //! compact text with exact line ranges, so a model reads only the lines it needs.
 use crate::repomap::{with_index, Index, Symbol};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -12,7 +13,85 @@ use std::sync::{Arc, Mutex, OnceLock};
 const MAX_DEF_FILES: usize = 6;
 const MAX_BODY_LINES: usize = 150;
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ImpactFile {
+    pub path: String,
+    pub distance: usize,
+    pub test: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Impact {
+    pub targets: Vec<String>,
+    pub files: Vec<ImpactFile>,
+    pub unknown: Vec<String>,
+    pub contracts: Vec<String>,
+    pub truncated: bool,
+}
+
+impl Impact {
+    pub fn text(&self) -> String {
+        let affected: Vec<_> = self.files.iter().filter(|f| f.distance > 0).collect();
+        let mut out = if affected.is_empty() {
+            "No additional dependents were found in the approximate code graph.\n".into()
+        } else {
+            format!("{} files may be affected (by distance):\n", affected.len())
+        };
+        for file in affected.iter().take(40) {
+            out.push_str(&format!("- [{}] {}\n", file.distance, file.path));
+        }
+        let tests: Vec<_> = self
+            .files
+            .iter()
+            .filter(|f| f.test)
+            .map(|f| f.path.as_str())
+            .collect();
+        if !tests.is_empty() {
+            out.push_str(&format!(
+                "Tests to run: {}\n",
+                tests
+                    .iter()
+                    .take(20)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !self.contracts.is_empty() {
+            out.push_str(&format!(
+                "Shared declarations to preserve or update callers of:\n{}\n",
+                self.contracts
+                    .iter()
+                    .take(16)
+                    .map(|c| format!("- {c}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+        if self.truncated || affected.len() > 40 || tests.len() > 20 {
+            out.push_str("Impact listing is bounded; additional dependents may exist.\n");
+        }
+        for unknown in &self.unknown {
+            out.push_str(&format!("`{unknown}` is neither an indexed file nor a known symbol; its impact is unknown.\n"));
+        }
+        out.push_str(
+            "Graph edges are approximate; absence of an edge is not proof that a change is safe.\n",
+        );
+        out
+    }
+}
+
+fn test_path(path: &str) -> bool {
+    let path = path.to_lowercase();
+    path.split('/')
+        .any(|part| matches!(part, "test" | "tests" | "__tests__" | "spec" | "specs"))
+        || [".test.", ".spec.", "_test.", "_tests.", "test_"]
+            .iter()
+            .any(|marker| path.rsplit('/').next().unwrap_or("").contains(marker))
+}
+
 pub struct Graph {
+    partial: bool,
     root: PathBuf,
     files: Vec<String>,
     id: HashMap<String, usize>,
@@ -50,21 +129,24 @@ fn stamp(index: &Index) -> u64 {
     for (rel, r) in &index.files {
         rel.hash(&mut h);
         r.modified.hash(&mut h);
+        r.size.hash(&mut h);
     }
     h.finish()
 }
 
 /// The graph of `root`, rebuilt only when an indexed file changed.
 pub fn graph(data: &Path, root: &Path) -> Arc<Graph> {
-    with_index(data, root, |index, _| {
+    with_index(data, root, |index, stats| {
         let key = stamp(index);
         let mut c = cache().lock().unwrap_or_else(|e| e.into_inner());
         if let Some((k, g)) = c.get(root) {
-            if *k == key {
+            if *k == key && g.partial == stats.partial {
                 return g.clone();
             }
         }
-        let g = Arc::new(build(root, index));
+        let mut built = build(root, index);
+        built.partial = stats.partial;
+        let g = Arc::new(built);
         c.insert(root.to_path_buf(), (key, g.clone()));
         g
     })
@@ -215,6 +297,7 @@ fn build(root: &Path, index: &Index) -> Graph {
     }
     let rank = pagerank(&imports, &refs_out);
     Graph {
+        partial: false,
         root: root.to_path_buf(),
         lang: records.iter().map(|r| r.lang.clone()).collect(),
         symbols: records.iter().map(|r| r.symbols.clone()).collect(),
@@ -930,9 +1013,10 @@ impl Graph {
         out
     }
 
-    pub fn impact(&self, targets: &[String], depth: usize) -> String {
+    pub fn impact_details(&self, targets: &[String], depth: usize) -> Impact {
         let mut seeds: Vec<usize> = vec![];
         let mut notes = vec![];
+        let mut unknown = vec![];
         for t in targets {
             if let Some(f) = self.rel(t) {
                 seeds.push(f);
@@ -942,17 +1026,19 @@ impl Graph {
                 // Files that mention the symbol are affected directly.
                 notes.extend(self.users.get(short).cloned().unwrap_or_default());
             } else {
-                return format!("`{t}` is neither an indexed file nor a known symbol.");
+                unknown.push(t.clone());
             }
         }
         let mut dist: HashMap<usize, usize> = seeds.iter().map(|&s| (s, 0)).collect();
         for f in notes {
             dist.entry(f).or_insert(1);
         }
-        let mut queue: VecDeque<usize> = dist.keys().copied().collect();
+        let mut initial: Vec<_> = dist.keys().copied().collect();
+        initial.sort_by_key(|f| dist[f]);
+        let mut queue: VecDeque<usize> = initial.into();
         while let Some(f) = queue.pop_front() {
             let d = dist[&f];
-            if d >= depth {
+            if d >= depth.clamp(1, 4) {
                 continue;
             }
             let next = self.importers[f]
@@ -961,50 +1047,60 @@ impl Graph {
                 .filter(|&g| !self.mods[g].contains(&f) || self.refs_in[f].iter().any(|x| x.0 == g))
                 .chain(self.refs_in[f].iter().map(|x| x.0));
             for g in next {
-                if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(g) {
-                    e.insert(d + 1);
+                if dist.get(&g).is_none_or(|old| *old > d + 1) {
+                    dist.insert(g, d + 1);
                     queue.push_back(g);
                 }
             }
         }
-        let mut list: Vec<(usize, usize)> = dist.into_iter().filter(|(_, d)| *d > 0).collect();
+        let mut list: Vec<(usize, usize)> = dist.into_iter().collect();
         list.sort_by(|a, b| {
             a.1.cmp(&b.1)
                 .then(self.rank[b.0].total_cmp(&self.rank[a.0]))
+                .then(self.files[a.0].cmp(&self.files[b.0]))
         });
-        if list.is_empty() {
-            return "Nothing else depends on it.".into();
-        }
-        let tests: Vec<&str> = list
+        let contracts = seeds
             .iter()
-            .map(|(f, _)| self.files[*f].as_str())
-            .filter(|f| {
-                let l = f.to_lowercase();
-                l.contains("test") || l.contains("spec")
-            })
-            .collect();
-        let mut out = format!("{} files may be affected (by distance):\n", list.len());
-        for (f, d) in list.iter().take(40) {
-            out.push_str(&format!("- [{d}] {}\n", self.files[*f]));
-        }
-        if list.len() > 40 {
-            out.push_str(&format!(
-                "… {} more at greater distance.\n",
-                list.len() - 40
-            ));
-        }
-        if !tests.is_empty() {
-            out.push_str(&format!(
-                "Tests to run: {}\n",
-                tests
+            .flat_map(|&f| {
+                self.symbols[f]
                     .iter()
-                    .take(15)
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+                    .filter(move |s| {
+                        visible_outside(&self.lang[f], s)
+                            && referable(&s.kind)
+                            && self
+                                .users
+                                .get(&s.name)
+                                .is_some_and(|users| users.iter().any(|&g| g != f))
+                    })
+                    .map(move |s| {
+                        format!(
+                            "{}:{} {}",
+                            self.files[f],
+                            s.line,
+                            s.signature.chars().take(300).collect::<String>()
+                        )
+                    })
+            })
+            .take(20)
+            .collect();
+        Impact {
+            targets: targets.to_vec(),
+            files: list
+                .into_iter()
+                .map(|(f, d)| ImpactFile {
+                    path: self.files[f].clone(),
+                    distance: d,
+                    test: test_path(&self.files[f]),
+                })
+                .collect(),
+            unknown,
+            contracts,
+            truncated: self.partial,
         }
-        out
+    }
+
+    pub fn impact(&self, targets: &[String], depth: usize) -> String {
+        self.impact_details(targets, depth).text()
     }
 }
 

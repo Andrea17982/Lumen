@@ -629,6 +629,16 @@ pub async fn run_project_check(
                 .into(),
         );
     }
+    let (_tx, cancel) = tokio::sync::watch::channel(false);
+    execute_check(&root, &check, cancel).await
+}
+
+pub(crate) async fn execute_check(
+    root: &Path,
+    check: &CheckEntry,
+    cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<CheckResult, String> {
+    let root = dunce::canonicalize(root).map_err(|e| e.to_string())?;
     let cwd = dunce::canonicalize(root.join(&check.cwd))
         .map_err(|_| format!("{} is not available", check.cwd))?;
     if !cwd.starts_with(&root) {
@@ -652,7 +662,7 @@ pub async fn run_project_check(
             links,
         });
     }
-    let (status, text, cut) = run_bounded(&cwd, &check.command, CHECK_TIMEOUT).await?;
+    let (status, text, cut) = run_cancellable(&cwd, &check.command, CHECK_TIMEOUT, cancel).await?;
     let links = source_links(&root, &cwd, &text);
     let (output, truncated) = bound_output(&text);
     Ok(CheckResult {
@@ -689,12 +699,27 @@ async fn tail_of<R: tokio::io::AsyncRead + Unpin>(mut stream: R) -> (Vec<u8>, bo
 }
 
 /// Runs the command with piped streams read incrementally, so verbose output cannot exhaust memory.
+#[cfg(test)]
 async fn run_bounded(
     cwd: &Path,
     cmd: &str,
     limit: std::time::Duration,
 ) -> Result<(std::process::ExitStatus, String, bool), String> {
+    let (_tx, cancel) = tokio::sync::watch::channel(false);
+    run_cancellable(cwd, cmd, limit, cancel).await
+}
+
+async fn run_cancellable(
+    cwd: &Path,
+    cmd: &str,
+    limit: std::time::Duration,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<(std::process::ExitStatus, String, bool), String> {
+    if *cancel.borrow() {
+        return Err("Cancelled".into());
+    }
     let mut c = crate::proc::shell(cmd, cwd);
+    c.env("CI", "true");
     c.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -704,10 +729,20 @@ async fn run_bounded(
     let mut child = c.spawn().map_err(|e| e.to_string())?;
     let out = tokio::spawn(tail_of(child.stdout.take().ok_or("No output stream")?));
     let err = tokio::spawn(tail_of(child.stderr.take().ok_or("No error stream")?));
-    let status = match tokio::time::timeout(limit, child.wait()).await {
-        Ok(r) => r.map_err(|e| e.to_string())?,
-        Err(_) => {
+    let result = tokio::select! {
+        biased;
+        _ = cancel.changed() => None,
+        result = tokio::time::timeout(limit, child.wait()) => Some(result),
+    };
+    let status = match result {
+        Some(Ok(r)) => r.map_err(|e| e.to_string())?,
+        _ => {
             crate::providers::terminate(&mut child).await;
+            out.abort();
+            err.abort();
+            if result.is_none() {
+                return Err("Cancelled".into());
+            }
             return Err(format!(
                 "Check timed out after {} minutes",
                 limit.as_secs() / 60
@@ -727,6 +762,33 @@ async fn run_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn automatic_check_cancellation_stops_the_running_process() {
+        let fixture = crate::test_support::Fixture::new();
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        #[cfg(windows)]
+        let command = "ping -n 30 127.0.0.1";
+        #[cfg(unix)]
+        let command = "sleep 30";
+        let signal = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            let _ = tx.send(true);
+        });
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_cancellable(
+                &fixture.root,
+                command,
+                std::time::Duration::from_secs(60),
+                rx,
+            ),
+        )
+        .await
+        .unwrap();
+        signal.await.unwrap();
+        assert_eq!(result.unwrap_err(), "Cancelled");
+    }
 
     fn fixture(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("lumen-pt-{name}-{}", crate::models::id()));

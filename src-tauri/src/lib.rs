@@ -5,9 +5,11 @@ mod catalog;
 mod classify;
 mod codegraph;
 mod context;
+mod diagnostics;
 mod gitops;
 mod godot;
 mod graph_mcp;
+mod impact;
 mod integrations;
 mod layers;
 mod limits;
@@ -23,9 +25,14 @@ mod scheduling;
 mod screens;
 mod settings;
 mod store;
+#[cfg(test)]
+mod test_support;
 mod tray;
 mod turns;
 mod usage;
+mod validation;
+mod workspace;
+mod workstate;
 use models::*;
 use std::{
     collections::HashMap,
@@ -239,6 +246,7 @@ fn delete_session(core: tauri::State<Arc<Core>>, id: String) -> Result<(), Strin
     {
         return Err("Stop this conversation before deleting it".into());
     }
+    workstate::remove_snapshot(&core, &id)?;
     core.store.delete(&id)
 }
 #[tauri::command]
@@ -746,6 +754,7 @@ pub fn run() {
             turns::compact_session,
             turns::working_diff,
             turns::prompt_estimate,
+            workstate::session_work_state,
             gatekeeper_snapshot,
             gatekeeper_decide,
             cancel_run,

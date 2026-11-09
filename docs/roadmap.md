@@ -11,22 +11,24 @@ This file contains only remaining work. Remove items when implemented and verifi
 - Complete the review of the shell, conversation navigation, transcript, composer, Settings, project context, Orchestra, audit, Rewind, dialogs and status feedback. Validate keyboard and screen-reader access, focus containment/restoration, narrow layouts and light/dark themes in the native webviews.
 - Validate compact Usage rows, status details, the context indicator popover and the larger-text preference in native webviews. Validate conversation and message actions with keyboard and screen readers, including focus restoration. Keep the agreed minimal focus treatment documented in `DESIGN.md`.
 - Verify model-requested screen capture in the native Claude Ask-first flow: tool discovery, monitor/window choice, returned image, saved screenshot, cancellation/error handling and no capture without a tool call. Expand to Codex/other supported providers only through their documented tool protocols.
-- Verify Simple mode (Orchestra toggle only), Advanced disclosure and the Restore defaults flow in the native webview, including API shutdown/autostart reset and preservation of accounts/conversations.
+- Verify Simple mode (Orchestra toggle only), Advanced disclosure and the Restore defaults flow in the native webview, including the autostart reset and preservation of accounts/conversations.
 - Compare relevant accessibility and platform guidance using current official sources. Agree the remaining UI changes and acceptance criteria before implementing them in `components/` or `settings/`, keeping `App.tsx` as the shell.
 
 ### 2. Command palette
 
 - Check Ctrl/Cmd+K, Ctrl/Cmd+N, Ctrl/Cmd+P and `/` against macOS and Linux webview and system bindings. Verify keyboard navigation, focus restoration and screen-reader feedback for the palette and the conversation menu in the native webviews. The palette is custom (no library); revisit only if accessibility testing shows gaps.
 
-### 3. Repository map
+### 3. Code graph
 
-- The map uses per-language patterns (decided over tree-sitter for now: no native grammars to build. On Rodent Heroes, 289 files and 3,234 declarations, a debug build indexed in 2.1 s from a cold disk, 155 ms with a warm file cache and 40 ms when nothing changed; a request naming three declarations added 301 characters in 31 ms). Revisit tree-sitter only if missed or wrong declarations are found on real projects; record them as fixtures first.
-- Orchestra subtasks receive the orchestrator's plan, not their own map block; measure whether subtask prompts benefit before adding it.
+- Not yet available in Ask-first mode or in Gemini and Antigravity sessions.
+- Definitions come from per-language patterns, not a full parser. Revisit tree-sitter only if missed or wrong declarations are found on real projects; record them as fixtures first.
+- Validate the implemented worker impact handoffs, shared-contract context and affected-project checks on real tasks. Claude/Codex workers already receive the graph configuration; measure actual tool use and outcomes before expanding to other providers.
 
 ### 4. Context efficiency
 
 - Complete the code audit of context construction for every integrated provider and execution path: instructions, project notes, history, attachments, tool results, audit and Orchestra handoffs. Distinguish Lumen's behavior from context management performed inside the official CLIs.
-- Context indicator: Claude's window and CLI overhead are measured from its own reports. Codex reports turn totals (`turn.completed` usage) but not a per-request size or window; Gemini CLI, Antigravity and Ollama report neither in Lumen yet. Capture what each CLI offers and confirm the published windows used meanwhile. Image attachments are not counted.
+- Validate the implemented durable task ledger across long live conversations, native resumes, model switches, Compact and Rewind. Measure its prompt budget and full-state retrieval against a recorded baseline; isolated regression coverage is documented in [Task quality](task-quality.md).
+- Context indicator: Codex reports turn totals (`turn.completed` usage) but not a per-request size or window; Gemini CLI, Antigravity and Ollama report neither in Lumen yet. Capture what each CLI offers and confirm the published windows used meanwhile. Image attachments are not counted.
 - Verify each provider's supported token usage reporting, context limits, compaction and caching against current official documentation. Label local estimates separately from reported usage and leave unavailable metrics explicit.
 - Establish fixtures and baseline measurements for prompt size, relevance, latency and handoff quality. Evaluate budgets/output reserves, deduplication, truncation, compaction and cache invalidation while preserving instructions and coherent tool exchanges.
 - Compare compact serialization with JSON only for metadata Lumen owns, measuring parsing reliability as well as token savings. Preserve provider-native CLI/MCP formats. Agree changes from measured results before implementation.
@@ -35,7 +37,6 @@ This file contains only remaining work. Remove items when implemented and verifi
 
 Rodent Heroes is the first acceptance project. Integrations stay optional and project-scoped, without bundling the purchased addon or reading tokens into prompts/logs.
 
-Verified on Windows, 2026-11-07: Lumen started the project's `godot-pro` server (Godot MCP Pro 1.17.1, 187 tools) and read `get_project_info` from the open editor (Rodent Heroes, Godot 4.7.2, 360×640); with the editor closed it reported "not connected". Claude Code 2.1.314 and Codex 0.167.0-alpha.3.2 each called `get_project_info` in the project. Repository-map indexing, the `res://` check, the backend tests (270), simulation regressions (17) and the Godot .NET build ran through Lumen's check runner on an isolated clone.
 
 1. **Godot connection**
    - Codex `exec` turns decline project MCP tool calls unless the tool is pre-approved (`mcp_servers.<name>.tools.<tool>.approval_mode="approve"`). Decide whether Lumen pre-approves a reviewed list of read-only Godot tools for Codex turns, or leaves this to the project's `.codex/config.toml`.
@@ -59,11 +60,31 @@ Verified on Windows, 2026-11-07: Lumen started the project's `godot-pro` server 
 
 ## Other remaining work
 
-- **Orchestra live validation** on an isolated copy of Lumen: concurrency and total caps, quota thresholds, provider/model switching, rate-limit cooldowns, restart and repeated Resume without duplicate effects.
+- **Orchestra live validation** on an isolated copy of Lumen: concurrency and total caps, quota thresholds, provider/model switching, rate-limit cooldowns and the final-check handover added in 0.5.4 under real limits, restart and repeated Resume without duplicate effects.
+- **Diagnostics acceptance**: exercise the implemented LSP client with installed Rust, TypeScript, C# and the configured Godot server; verify partial coverage, cancellation and bounded correction in real ordinary/Orchestra turns on each OS. Controlled protocol/project-check tests do not establish live interoperability.
 - **Interactive approvals**: Ask-first for Orchestra subtasks. Codex file-change callbacks are covered by fixtures only; a real model turn raised a command approval. Check approve, reject, cancel, the countdown and the working indicator in the real webview on Windows, and the approval panel after a restart.
 - **Native acceptance**: Windows clean-machine install; macOS login launch and clean install; Linux native behavior and clean install. Real macOS/Linux environments remain required.
-- **Performance**: streamed events are applied once per frame and earlier messages skip layout (`content-visibility`) until they scroll into view. Remaining: coalescing deltas in Rust before IPC, measuring long-transcript scrolling in the native webviews (a full virtualized list only if that shows a need), warm CLI processes, startup and memory measurements.
+- **Performance**: coalescing deltas in Rust before IPC, measuring long-transcript scrolling in the native webviews (a full virtualized list only if that shows a need; per-frame rendering and `content-visibility` are in place), warm CLI processes, startup and memory measurements.
 - **Reliability**: signed Windows and macOS builds and an encrypted-at-rest option.
+
+## Ideas to evaluate
+
+Carried over from an older local note; none is agreed yet.
+
+- **Ollama helper**: conversation titles, commit messages and handoff summaries from the local model.
+- **Tokenizer**: a real tokenizer (for example `tiktoken-rs`) for local estimates, and blocking sends that paste a lockfile as text.
+- **Both mode**: a manual merge view instead of applying one version or discarding.
+- **Orchestra planning**: a spec-first task graph with drag-and-drop assignment of subtasks to worktrees.
+- **Capture**: a global hotkey that attaches a compressed screenshot to the composer.
+- **Rendering and isolation**: Markdown/ANSI rendering in Rust, and an OS-level path jail for CLI processes.
+- **Storage**: versioned database migrations.
+- **Background daemon**: run agents in a separate process that survives closing the window and reattaches to the GUI.
+- **Game visual loop**: send Play/Reload to the Godot editor, capture the game viewport and optionally overlay a pixel grid. Input automation must stay opt-in and visible.
+- **Inspector dock**: a side panel for a live web preview, a pixel-exact sprite viewer and a SQLite/JSON explorer.
+- **Layout canvas**: wireframe blocks turned into a structured layout spec that agents treat as a constraint.
+- **Visual comparison**: render the Both or Orchestra variants side by side from their worktrees.
+
+Not carried over: reading OAuth tokens or calling provider APIs directly, which contradicts Lumen's official-CLI model. Multiple accounts per provider and rate-limit fallback already exist.
 
 ## Future
 

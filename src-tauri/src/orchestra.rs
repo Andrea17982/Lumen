@@ -40,6 +40,8 @@ pub struct Subtask {
     pub title: String,
     pub detail: String,
     pub files: Vec<String>,
+    /// Shared contracts, dependents and relevant checks for this worker's owned files.
+    pub impact: String,
     /// "trivial", "normal" or "complex".
     pub difficulty: String,
     pub writes: bool,
@@ -78,6 +80,11 @@ pub struct State {
     /// questions · answered · plan · approved · cancelled · running · done · failed · kept · discarded
     pub stage: String,
     pub task: String,
+    /// Conversation snapshot shared with the planner and workers, including prior decisions.
+    pub context: String,
+    pub execution_authorized: bool,
+    /// Root where file ownership and the plan were determined.
+    pub workspace: String,
     pub questions: Vec<Question>,
     pub confirm: String,
     pub answers: String,
@@ -490,7 +497,7 @@ fn reviewer_for(core: &Core, writer: &Provider) -> Option<Account> {
 #[allow(clippy::too_many_arguments)]
 pub async fn ask(
     app: &tauri::AppHandle,
-    core: &Core,
+    core: &Arc<Core>,
     s: &Session,
     out: &mut Message,
     plan: &Plan,
@@ -510,12 +517,14 @@ pub async fn ask(
         orchestrator_model: model.id.clone(),
         effort: plan.effort.clone(),
         read_only: options.access() == AccessMode::ReadOnly,
+        workspace: s.workspace.clone(),
         ..Default::default()
     };
     publish(app, core, s, out, &st);
-    let (context, _) = turns::build_prompt(core, s, &[&out.id], options).await?;
+    let (context, history) = turns::build_prompt(core, s, &[&out.id], options).await?;
+    st.context = history;
     let prompt = format!(
-        "{context}\n\n---\nYou are the orchestrator of a team of AI agents that will work on the request above in parallel. Before planning, decide what you must clarify with the user. You may read the project files; do not edit anything.\nReply with JSON only, in one of these two shapes:\n{{\"questions\":[{{\"q\":\"a question that changes the result\",\"recommended\":\"your recommended answer\"}}]}}  (at most 6 questions, each with a recommendation)\n{{\"confirm\":\"I'd do X, Y and Z.\"}}  (when the request is already clear)"
+        "{context}\n\n---\nYou are the orchestrator of a team of AI agents that will work on the request above in parallel. Ask only for missing information that materially changes the result. Preserve the scope and authorizations already given in this conversation; a request to proceed continues that work. You may read project files during this preparation call; do not edit them in this call. This temporary restriction does NOT make the requested work read-only. Do not propose a separate read-only investigation when implementation was requested.\nReply with JSON only, in one of these two shapes:\n{{\"questions\":[{{\"q\":\"a question that changes the result\",\"recommended\":\"your recommended answer\"}}]}}  (at most 6 questions, each with a recommendation)\n{{\"confirm\":\"I'd do X, Y and Z.\"}}  (when the request is already clear)"
     );
     let reply = hidden(
         app,
@@ -526,32 +535,26 @@ pub async fn ask(
         &prompt,
         Some(&model.id),
         &plan.effort,
-        cancel,
+        cancel.clone(),
     )
     .await?;
     let (questions, confirm) = parse_questions(&reply);
     st.questions = questions;
-    st.confirm = if st.questions.is_empty() && confirm.is_empty() {
-        "I'll plan this task, split it into subtasks and assign each to the best available agent."
-            .into()
-    } else {
-        confirm
-    };
+    if st.questions.is_empty() {
+        return self::plan(app, core, s, out, st, options, cancel).await;
+    }
+    st.confirm = confirm;
     st.stage = "questions".into();
-    out.text = if st.questions.is_empty() {
-        format!("**Orchestra** · {}\n\nAgree?", st.confirm)
-    } else {
-        let mut t = "**Orchestra** · a few questions before planning:\n\n".to_string();
-        for (i, q) in st.questions.iter().enumerate() {
-            t.push_str(&format!(
-                "{}. {}\n   *Recommended:* {}\n",
-                i + 1,
-                q.q,
-                q.recommended
-            ));
-        }
-        t
-    };
+    let mut t = "**Orchestra** · a few questions before planning:\n\n".to_string();
+    for (i, q) in st.questions.iter().enumerate() {
+        t.push_str(&format!(
+            "{}. {}\n   *Recommended:* {}\n",
+            i + 1,
+            q.q,
+            q.recommended
+        ));
+    }
+    out.text = t;
     event(app, &s.id, &out.id, "replace", &out.text);
     publish(app, core, s, out, &st);
     Ok(())
@@ -585,11 +588,28 @@ pub fn answers_text(st: &State, answers: &[String], note: &str, skip: bool) -> S
 
 // ---------------------------------------------------------------- planning
 
+fn planning_prompt(st: &State, context: &str) -> String {
+    let schema = "Reply with JSON only:\n{\"summary\":\"one sentence\",\"subtasks\":[{\"id\":\"s1\",\"title\":\"short title\",\"detail\":\"precise, self-contained instructions\",\"files\":[\"paths this subtask owns\"],\"difficulty\":\"trivial|normal|complex\",\"writes\":true,\"dependsOn\":[]}]}";
+    let rules = "Rules: 1 to 8 subtasks, parallel only when useful, each in its own copy of the repository. Preserve the complete scope, decisions and authorizations in the conversation. A follow-up such as 'proceed' means implement the previously agreed work, not recover a missing plan. When implementation is requested and file edits are enabled, assign implementation and verification tasks with writes=true; include necessary inspection inside those tasks rather than making a plan consisting only of research. The restriction on edits applies ONLY to this planning call, not to the work being planned. Give each subtask clear file ownership and never let two subtasks edit the same file. Use dependsOn only when a subtask truly needs another one's result. difficulty is trivial (messages, text, renames, tiny edits), normal or complex. writes is false for research or text-only work. You will integrate the results yourself at the end, so do not add an integration subtask.";
+    format!(
+        "{context}\n\nYou are the orchestrator of a team of AI agents. Plan the work below. You may read project files; do not edit them during this planning call.\n\nRequest:\n{}\n\nClarifications from the user:\n{}\n\n{rules}\n{schema}",
+        st.task, st.answers
+    )
+}
+
+/// A ready plan is an execution boundary in Autopilot or after explicit approval.
+/// Do not briefly publish an actionable approval card while starting that execution.
+fn ready_plan(st: &mut State, options: &RunOptions) -> bool {
+    let authorized = options.access() == AccessMode::Autopilot || st.execution_authorized;
+    st.stage = if authorized { "approved" } else { "plan" }.into();
+    authorized
+}
+
 /// Stage 2: split into subtasks, assign agents, optionally audit the plan.
 #[allow(clippy::too_many_arguments)]
 pub async fn plan(
     app: &tauri::AppHandle,
-    core: &Core,
+    core: &Arc<Core>,
     s: &Session,
     out: &mut Message,
     mut st: State,
@@ -598,14 +618,12 @@ pub async fn plan(
 ) -> Result<(), String> {
     let orch = account(core, &st.orchestrator)?;
     st.stage = "planning".into();
+    st.workspace = s.workspace.clone();
     st.subtasks.clear();
     publish(app, core, s, out, &st);
-    let schema = "Reply with JSON only:\n{\"summary\":\"one sentence\",\"subtasks\":[{\"id\":\"s1\",\"title\":\"short title\",\"detail\":\"precise, self-contained instructions\",\"files\":[\"paths this subtask owns\"],\"difficulty\":\"trivial|normal|complex\",\"writes\":true,\"dependsOn\":[]}]}";
-    let rules = "Rules: 2 to 8 subtasks that can run in parallel, each in its own copy of the repository. Give each subtask clear file ownership and never let two subtasks edit the same file. Use dependsOn only when a subtask truly needs another one's result. difficulty is trivial (messages, text, renames, tiny edits), normal or complex. writes is false for research or text-only work. You will integrate the results yourself at the end, so do not add an integration subtask.";
-    let prompt = format!(
-        "You are the orchestrator of a team of AI agents. Plan the work below. You may read the project files; do not edit anything.\n\nRequest:\n{}\n\nClarifications from the user:\n{}\n\n{rules}\n{schema}",
-        st.task, st.answers
-    );
+    let (context, history) = turns::build_prompt(core, s, &[&out.id], options).await?;
+    st.context = history;
+    let prompt = planning_prompt(&st, &context);
     let model = Some(st.orchestrator_model.clone()).filter(|m| !m.is_empty());
     let reply = hidden(
         app,
@@ -635,7 +653,7 @@ pub async fn plan(
             publish(app, core, s, out, &st);
             let plan_json = serde_json::to_string_pretty(&st.subtasks).unwrap_or_default();
             let review_prompt = format!(
-                "You are auditing a work plan written by another AI orchestrator. Read-only: never edit files. Check that the split is complete, that file ownership does not overlap, that dependencies are right and that each assignment fits the difficulty. If the plan is sound, reply with the single word APPROVED on the first line; otherwise list concrete corrections.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nPlan:\n{plan_json}",
+                "{context}\n\nYou are auditing a work plan written by another AI orchestrator. Read-only during this audit call: never edit files. Check that the plan implements the full agreed request (not just research when changes were requested), that file ownership does not overlap, that dependencies are right and that each assignment fits the difficulty. If the plan is sound, reply with the single word APPROVED on the first line; otherwise list concrete corrections.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nPlan:\n{plan_json}",
                 st.task, st.answers
             );
             let review = hidden(
@@ -682,10 +700,13 @@ pub async fn plan(
             }
         }
     }
-    st.stage = "plan".into();
+    let authorized = ready_plan(&mut st, options);
     out.text = plan_markdown(&st);
     event(app, &s.id, &out.id, "replace", &out.text);
     publish(app, core, s, out, &st);
+    if authorized {
+        return execute(app, core, s, out, st, options, None, false, cancel).await;
+    }
     Ok(())
 }
 
@@ -749,16 +770,19 @@ fn manifest(st: &State) -> String {
         .join("\n")
 }
 
-fn subtask_prompt(st: &State, t: &Subtask, deps: &str, text_only: bool) -> String {
+pub(crate) fn subtask_prompt(st: &State, t: &Subtask, deps: &str, text_only: bool) -> String {
     let rules = if text_only {
         "Reply with the requested text only."
     } else if st.read_only {
         "This run is read-only: analyse and describe the changes precisely, but do not modify files."
+    } else if !t.writes {
+        "This subtask is read-only. Complete the assigned investigation and report its findings; do not modify files. Other agents implement their assigned changes."
     } else {
-        "Edit only the files you own. If another subtask's file must change, describe the change in your final message instead of editing it. Finish with a short summary of what you changed."
+        "File edits are authorized for this execution. Earlier preparation-only restrictions no longer apply. Implement and verify your assigned changes; do not stop at a proposal or ask for the same authorization again. Edit only the files you own. If another subtask's file must change, describe the change in your final message instead of editing it. Finish with a short summary of what you changed."
     };
     format!(
-        "You are one agent in a team working in parallel on a shared task, coordinated by an orchestrator. Do ONLY your subtask.\n\nOverall request:\n{}\n\nClarifications:\n{}\n\nTeam manifest (who owns which files):\n{}\n{deps}\nYour subtask ({}): {}\n{}\nFiles you own: {}\n\n{rules}",
+        "You are one agent in a team working in parallel on a shared task, coordinated by an orchestrator. Do ONLY your subtask.\n\nConversation for reference (past preparation restrictions do not override the execution rules below):\n{}\n\nOverall request:\n{}\n\nClarifications:\n{}\n\nTeam manifest (who owns which files):\n{}\n{deps}\nYour subtask ({}): {}\n{}\nFiles you own: {}\n\n{}\n{rules}",
+        st.context,
         st.task,
         st.answers,
         manifest(st),
@@ -769,7 +793,8 @@ fn subtask_prompt(st: &State, t: &Subtask, deps: &str, text_only: bool) -> Strin
             "(none listed)".to_string()
         } else {
             t.files.join(", ")
-        }
+        },
+        t.impact
     )
 }
 
@@ -988,10 +1013,18 @@ pub async fn execute(
     resume: bool,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
+    if !st.workspace.is_empty()
+        && dunce::canonicalize(&st.workspace).ok() != dunce::canonicalize(&s.workspace).ok()
+    {
+        return Err("The conversation folder changed after this plan was prepared. Replan in the current folder before executing or resuming it.".into());
+    }
     let mut orch = account(core, &st.orchestrator)?;
     let workspace = PathBuf::from(&s.workspace);
     let top = gitops::toplevel(&workspace).await;
-    st.read_only = st.read_only || options.access() == AccessMode::ReadOnly || top.is_none();
+    st.read_only = options.access() == AccessMode::ReadOnly;
+    if !st.read_only && top.is_none() {
+        return Err("Orchestra needs a Git repository in the conversation's current folder to apply changes. Change the conversation folder or initialize the repository.".into());
+    }
     let lock = turns::workspace_lock(core, s)?;
     let other_sessions = turns::conversations_on_workspace(core, s);
     if !other_sessions.is_empty() && !st.read_only {
@@ -1032,6 +1065,15 @@ pub async fn execute(
         (Some(top), None) if !st.read_only => gitops::write_tree(top).await?,
         _ => String::new(),
     };
+    let baseline = crate::impact::snapshot(core, &workspace, options.access()).await?;
+    if let Some(graph) = &baseline {
+        for task in &mut st.subtasks {
+            if !task.files.is_empty() {
+                task.impact =
+                    crate::impact::handoff(&workspace, &graph.impact_details(&task.files, 3));
+            }
+        }
+    }
     let rel = top
         .as_ref()
         .and_then(|t| workspace.strip_prefix(t).ok())
@@ -1203,7 +1245,10 @@ pub async fn execute(
                     )
                 })
                 .collect();
-            let prompt = subtask_prompt(&st, &t, &deps, text_only);
+            let prompt = format!(
+                "Execution workspace: {}. Use this directory for every tool call and apply your changes here, including when the conversation mentions the original repository by absolute path.\n\n{}",
+                job_dir.display(), subtask_prompt(&st, &t, &deps, text_only)
+            );
             set.spawn(run_job(Job {
                 pids: pid_tx.clone(),
                 app: app.clone(),
@@ -1396,8 +1441,8 @@ pub async fn execute(
                 })
                 .collect();
             let merge = format!(
-                "You are the orchestrator integrating your team's work. The changes of the other subtasks are already applied to the project. These patches could not be applied cleanly; apply their intent by hand, resolving conflicts with minimal edits, and keep every other change intact.\n\nRequest:\n{}\n{listing}",
-                st.task
+                "Conversation for reference:\n{}\n\nYou are the orchestrator integrating your team's work. The changes of the other subtasks are already applied to the project. These patches could not be applied cleanly; apply their intent by hand, resolving conflicts with minimal edits, and keep every other change intact.\n\nRequest:\n{}\n\nClarifications:\n{}\n{listing}",
+                st.context, st.task, st.answers
             );
             let mut scratch = Message {
                 id: out.id.clone(),
@@ -1490,8 +1535,16 @@ pub async fn execute(
             )
         })
         .collect();
+    let team_impact = st
+        .subtasks
+        .iter()
+        .filter(|t| !t.impact.is_empty())
+        .map(|t| format!("{}:\n{}", t.title, t.impact))
+        .collect::<Vec<_>>()
+        .join("\n");
     let final_prompt = format!(
-        "You are the orchestrator. Your team finished the subtasks below{}. {}Then write the final reply for the user: what was done, the files changed, and anything that failed or remains.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nSubtask results:{results}\n{}",
+        "Conversation for reference:\n{}\n\nShared contracts and affected tests:\n{team_impact}\n\nYou are the orchestrator. Your team finished the subtasks below{}. {}Then write the final reply for the user: what was done, the files changed, and anything that failed or remains.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nSubtask results:{results}\n{}",
+        st.context,
         if failed.is_empty() { String::new() } else { format!(" (failed: {})", failed.join(", ")) },
         if st.read_only { "Combine their findings into one coherent answer. ".to_string() } else { "Check the combined changes for inconsistencies between the parts and fix them with minimal edits. ".to_string() },
         st.task,
@@ -1559,7 +1612,7 @@ pub async fn execute(
                         .unwrap_or_default(),
                     _ => String::new(),
                 };
-                let review_prompt = format!("You are auditing the integrated result of a team of AI agents. Read-only: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with the single word APPROVED on the first line.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.task, st.answers);
+                let review_prompt = format!("Conversation for reference:\n{}\n\nYou are auditing the integrated result of a team of AI agents. Read-only during this audit call: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with the single word APPROVED on the first line.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.context, st.task, st.answers);
                 let review = match hidden(
                     app,
                     core,
@@ -1597,7 +1650,7 @@ pub async fn execute(
                 }
                 st.steps[step].detail = format!("Round {round}: revising");
                 publish(app, core, s, out, &st);
-                let revise = format!("Another assistant audited the integrated result. Address every valid point (ignore incorrect ones) with minimal edits and give the final answer. Do not claim to have run checks unless you actually did.\n\nRequest:\n{}\n\nYour answer:\n{draft}\n\nAudit:\n{review}", st.task);
+                let revise = format!("Conversation for reference:\n{}\n\nAnother assistant audited the integrated result. Address every valid point (ignore incorrect ones) with minimal edits and give the final answer. Do not claim to have run checks unless you actually did.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nYour answer:\n{draft}\n\nAudit:\n{review}", st.context, st.task, st.answers);
                 out.text.clear();
                 event(app, &s.id, &out.id, "replace", "");
                 draft = orchestrator_stage(
@@ -1619,7 +1672,7 @@ pub async fn execute(
         }
     }
     out.text = draft;
-    turns::self_heal(
+    let verification = turns::self_heal(
         app,
         core,
         s,
@@ -1628,9 +1681,15 @@ pub async fn execute(
         model.as_deref(),
         &st.effort,
         options,
+        baseline,
         cancel,
     )
-    .await?;
+    .await;
+    if let Err(error) = verification {
+        st.stage = "failed".into();
+        publish(app, core, s, out, &st);
+        return Err(error);
+    }
     st.stage = "done".into();
     publish(app, core, s, out, &st);
     Ok(())
@@ -1647,6 +1706,199 @@ async fn cleanup(top: &Option<PathBuf>, lanes: &HashMap<String, Lane>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn stored_plan(st: &State) -> Message {
+        Message {
+            id: "approved-work".into(),
+            role: "assistant".into(),
+            text: "Plan".into(),
+            activity: vec![Activity {
+                kind: "orchestra".into(),
+                text: serde_json::to_string(st).unwrap(),
+            }],
+        }
+    }
+
+    #[test]
+    fn chat_approval_keeps_the_pending_plan_instead_of_starting_over() {
+        let st = State {
+            stage: "plan".into(),
+            task: "Implement radius, menus and message queue".into(),
+            context: "The changes are approved; preserve existing work".into(),
+            subtasks: vec![Subtask {
+                id: "queue".into(),
+                writes: true,
+                files: vec!["App.tsx".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let history = vec![stored_plan(&st)];
+        for approval in [
+            "Ok procedi con le modifiche ora.",
+            "Agreed.",
+            "Approved the plan.",
+            "vai, fallo",
+            "proceed with the approved plan",
+            "Procedi secondo il piano approvato",
+        ] {
+            let (id, continued) = continuation(&history, approval).unwrap();
+            assert_eq!(id, history[0].id);
+            assert_eq!(continued, st, "{approval}");
+        }
+        for message in [
+            "Non procedere",
+            "Agreed, but remove the queue",
+            "Mostrami il piano",
+            "procedi?",
+            "Ecco una citazione: Agreed.",
+        ] {
+            assert!(continuation(&history, message).is_none(), "{message}");
+        }
+        for stage in ["done", "cancelled", "superseded", "running"] {
+            let other = State {
+                stage: stage.into(),
+                ..st.clone()
+            };
+            assert!(continuation(&[stored_plan(&other)], "procedi").is_none());
+        }
+        let questions = State {
+            stage: "questions".into(),
+            questions: vec![Question {
+                q: "Which project?".into(),
+                recommended: "Lumen".into(),
+            }],
+            ..st
+        };
+        assert!(continuation(&[stored_plan(&questions)], "procedi").is_none());
+    }
+
+    #[tokio::test]
+    async fn planner_and_workers_receive_prior_decisions_after_a_short_follow_up() {
+        use crate::test_support::Fixture;
+        let fixture = Fixture::new();
+        let directory = fixture.directory("Lumen");
+        let session = fixture
+            .core
+            .store
+            .create(directory.to_string_lossy().into())
+            .unwrap();
+        for (role, text) in [
+            (
+                "user",
+                "Implementa radius condiviso, menu contestuale e Ctrl+Invio",
+            ),
+            (
+                "assistant",
+                "La coda sarà FIFO e separata per conversazione",
+            ),
+            (
+                "user",
+                "Approvato. Mantieni Shift+F10 e sospendi la coda in caso di errore",
+            ),
+            ("user", "Ok procedi con le modifiche ora"),
+        ] {
+            fixture
+                .core
+                .store
+                .save_message(
+                    &session.id,
+                    &Message {
+                        id: crate::models::id(),
+                        role: role.into(),
+                        text: text.into(),
+                        activity: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        let options = Fixture::options(AccessMode::Autopilot);
+        let (context, history) = turns::build_prompt(&fixture.core, &session, &[], &options)
+            .await
+            .unwrap();
+        let st = State {
+            task: "Ok procedi con le modifiche ora".into(),
+            context: history,
+            ..Default::default()
+        };
+        let prompt = planning_prompt(&st, &context);
+        let worker = subtask_prompt(
+            &st,
+            &Subtask {
+                title: "Implement queue".into(),
+                writes: true,
+                ..Default::default()
+            },
+            "",
+            false,
+        );
+        for decision in ["radius condiviso", "FIFO", "Shift+F10", "sospendi la coda"] {
+            assert!(prompt.contains(decision), "planner lost {decision}");
+            assert!(worker.contains(decision), "worker lost {decision}");
+        }
+        assert!(prompt.contains("Autopilot is enabled"));
+        assert!(worker.contains("File edits are authorized for this execution"));
+    }
+
+    #[test]
+    fn changed_roots_and_upgraded_permissions_invalidate_preparation() {
+        use crate::test_support::Fixture;
+        let fixture = Fixture::new();
+        let old = fixture.directory("Rodent Heroes");
+        let new = fixture.directory("Lumen");
+        let mut session = fixture
+            .core
+            .store
+            .create(old.to_string_lossy().into())
+            .unwrap();
+        let mut st = State {
+            workspace: session.workspace.clone(),
+            ..Default::default()
+        };
+        let options = Fixture::options(AccessMode::Autopilot);
+        assert!(!needs_replan(&st, &session, &options));
+        session.workspace = new.to_string_lossy().into();
+        assert!(needs_replan(&st, &session, &options));
+        st.workspace = session.workspace.clone();
+        st.read_only = true;
+        assert!(needs_replan(&st, &session, &options));
+        assert!(!needs_replan(
+            &st,
+            &session,
+            &Fixture::options(AccessMode::ReadOnly)
+        ));
+    }
+
+    #[test]
+    fn autopilot_and_explicit_approval_do_not_publish_another_approval_gate() {
+        use crate::test_support::Fixture;
+        for (access, explicit, expected) in [
+            (AccessMode::Autopilot, false, true),
+            (AccessMode::FileEdits, true, true),
+            (AccessMode::FileEdits, false, false),
+            (AccessMode::ReadOnly, false, false),
+            (AccessMode::Ask, false, false),
+        ] {
+            let mut st = State {
+                execution_authorized: explicit,
+                ..Default::default()
+            };
+            assert_eq!(ready_plan(&mut st, &Fixture::options(access)), expected);
+            assert_eq!(st.stage, if expected { "approved" } else { "plan" });
+        }
+        let st = State {
+            read_only: true,
+            ..Default::default()
+        };
+        let task = Subtask {
+            writes: true,
+            ..Default::default()
+        };
+        assert!(subtask_prompt(&st, &task, "", false).ends_with("This run is read-only: analyse and describe the changes precisely, but do not modify files."));
+        let st = State::default();
+        assert!(subtask_prompt(&st, &Subtask::default(), "", false)
+            .contains("This subtask is read-only"));
+    }
 
     fn acc(id: &str, p: Provider) -> Account {
         Account {
@@ -2063,6 +2315,83 @@ pub fn supersede(app: &tauri::AppHandle, core: &Core, session: &str) {
     }
 }
 
+/// Explicit approval in chat is equivalent to the card button, not a new task.
+pub(crate) fn continuation(messages: &[Message], text: &str) -> Option<(String, State)> {
+    let approval = regex::Regex::new(
+        r"(?i)^\s*(?:(?:ok|sì|si|yes)[,\s]+)?(?:procedi(?:\s+(?:con\s+(?:le\s+)?modifiche|secondo\s+il\s+(?:piano|plan)(?:\s+(?:approvato|creato))?))?(?:\s+ora)?|vai[,\s]+fallo|agreed|approved(?:\s+the\s+plan)?|approvato(?:\s+il\s+piano)?|proceed(?:\s+with\s+the\s+(?:approved\s+)?plan)?|go ahead|ti ho dato tutti i permessi di scrittura ora,?\s*puoi procedere secondo il plan creato)[.!\s]*$",
+    ).unwrap();
+    if !approval.is_match(text) {
+        return None;
+    }
+    let m = messages.iter().rev().find(|m| m.role == "assistant")?;
+    let st = state_of(m)?;
+    // Real unanswered questions cannot be silently answered by a generic 'proceed'.
+    (st.stage == "plan" || (st.stage == "questions" && st.questions.is_empty()))
+        .then(|| (m.id.clone(), st))
+}
+
+fn needs_replan(st: &State, session: &Session, options: &RunOptions) -> bool {
+    (st.workspace.is_empty()
+        || dunce::canonicalize(&st.workspace).ok() != dunce::canonicalize(&session.workspace).ok())
+        || (st.read_only && options.access() != AccessMode::ReadOnly)
+}
+
+pub(crate) async fn continue_message(
+    app: tauri::AppHandle,
+    core: Arc<Core>,
+    id: String,
+    message: String,
+    text: String,
+    options: RunOptions,
+    workspace_changed: bool,
+) -> Result<Plan, String> {
+    let (mut m, mut st) = load(&core, &id, &message)?;
+    let a = account(&core, &st.orchestrator)?;
+    let routed = Plan {
+        provider: a.provider,
+        account_id: st.orchestrator.clone(),
+        model: Some(st.orchestrator_model.clone()),
+        effort: st.effort.clone(),
+        strategy: "orchestra".into(),
+        reason: "Continuing the agreed Orchestra task".into(),
+        partner_account: None,
+    };
+    let execute_existing = st.stage == "plan"
+        && !workspace_changed
+        && !needs_replan(&st, &core.store.session(&id)?, &options);
+    st.read_only = options.access() == AccessMode::ReadOnly;
+    st.execution_authorized = true;
+    st.answers.push_str(&format!("\n{text}"));
+    st.stage = if execute_existing {
+        "approved"
+    } else {
+        "answered"
+    }
+    .into();
+    save_state(&app, &core, &id, &mut m, &st)?;
+    turns::spawn_turn(
+        app,
+        core,
+        id,
+        user_message(text),
+        move |app, core, s, mut out, rx| async move {
+            let result = async {
+                if execute_existing {
+                    let (_, history) = turns::build_prompt(&core, &s, &[&out.id], &options).await?;
+                    st.context = history;
+                    execute(&app, &core, &s, &mut out, st, &options, None, false, rx).await
+                } else {
+                    plan(&app, &core, &s, &mut out, st, &options, rx).await
+                }
+            }
+            .await;
+            (out, result)
+        },
+    )
+    .await?;
+    Ok(routed)
+}
+
 /// After Rewind: if the conversation now ends on an answered question or an
 /// approved plan, open it again so it can be changed and approved anew.
 pub fn reopen(core: &Core, session: &str) -> bool {
@@ -2144,6 +2473,8 @@ pub async fn orchestra_answer(
     if st.stage != "questions" {
         return Err("These questions were already answered.".into());
     }
+    crate::workspace::apply(&app, &core, &id, note.as_deref().unwrap_or(""))?;
+    st.execution_authorized = st.questions.is_empty();
     st.answers = answers_text(&st, &answers, note.as_deref().unwrap_or(""), skip);
     let user = user_message(st.answers.clone());
     st.stage = "answered".into();
@@ -2178,8 +2509,10 @@ pub async fn orchestra_approve(
     let accounts = core.store.accounts()?;
     apply_edits(&mut st, &edits, &accounts)?;
     assign(&core, &mut st, &options.auto_policy).await?;
+    let replan = needs_replan(&st, &core.store.session(&id)?, &options);
     st.read_only = options.access() == AccessMode::ReadOnly;
     let mut run = st.clone();
+    run.execution_authorized = true;
     st.stage = "approved".into();
     save_state(&app, &core, &id, &mut m, &st)?;
     let user = user_message("Approved the plan.".into());
@@ -2190,7 +2523,11 @@ pub async fn orchestra_approve(
         id,
         user,
         move |app, core, s, mut out, rx| async move {
-            let r = execute(&app, &core, &s, &mut out, run, &options, None, false, rx).await;
+            let r = if replan {
+                plan(&app, &core, &s, &mut out, run, &options, rx).await
+            } else {
+                execute(&app, &core, &s, &mut out, run, &options, None, false, rx).await
+            };
             (out, r)
         },
     )

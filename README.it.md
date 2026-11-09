@@ -14,6 +14,10 @@ Il codice dell’applicazione, l’interfaccia, i test e la documentazione sono 
 
 Lumen è disponibile con licenza MIT: tutti possono scaricarla, utilizzarla e modificarla.
 
+## Ultima versione: 0.6.0
+
+Memoria persistente del lavoro, diagnostica e test sui progetti interessati, agenti Orchestra consapevoli dell'impatto delle modifiche, meno approvazioni ripetute e cambio esplicito della cartella della conversazione. Dettagli nel [changelog completo 0.6.0](docs/release-notes/0.6.0.md) e nella [documentazione tecnica](docs/task-quality.md).
+
 ## Novità 0.4: Orchestra
 
 - **Orchestra** (Settings → Teamwork, insieme ad Auto): per i compiti complessi un modello orchestratore fa le domande necessarie con le risposte consigliate, mostra il piano con l'agente assegnato a ogni sotto-attività da approvare, esegue le sotto-attività in parallelo in `git worktree` separati su tutti i provider collegati e integra il risultato, con Cross-Audit opzionale.

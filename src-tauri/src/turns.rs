@@ -31,8 +31,26 @@ pub async fn send_message(
         return Err("Enter a message of up to 100,000 bytes".into());
     }
     let mut session = core.store.session(&id)?;
+    let workspace_changed = crate::workspace::apply(&app, &core, &id, &text)?;
+    if workspace_changed {
+        session = core.store.session(&id)?;
+    }
     let accounts = core.store.accounts()?;
     let history = core.store.messages(&id)?;
+    if options.audit_of.is_none() {
+        if let Some((message, _)) = crate::orchestra::continuation(&history, &text) {
+            return crate::orchestra::continue_message(
+                app,
+                core.inner().clone(),
+                id,
+                message,
+                text,
+                options,
+                workspace_changed,
+            )
+            .await;
+        }
+    }
     let reused = (options.mode == "auto" && options.audit_of.is_none())
         .then(|| crate::classify::follow_up(crate::classify::previous(&history), &text))
         .flatten();
@@ -393,10 +411,11 @@ pub(crate) async fn resume_prompt(
         )
     };
     let text = context::spill(&workspace, &request.text).0;
+    let state = crate::workstate::context(core, s, options.access()).ok()?;
     Some(Resume {
         session,
         prompt: format!(
-            "[Lumen: {}]\n\n{text}{attached}",
+            "[Lumen: {}]\n{state}\n{text}{attached}",
             permission_text(options.access())
         ),
     })
@@ -817,7 +836,15 @@ pub(crate) async fn build_prompt(
         &attached,
         &audit,
     );
-    Ok((prompt, history))
+    let state = crate::workstate::context(core, s, options.access())?;
+    let prompt = format!("Current conversation workspace: {}\nAll relative paths and project tools use this directory. Explicit user directory changes are applied by Lumen before this turn; do not infer a switch from paths in quoted history or attachments.\n{state}\n{prompt}", s.workspace);
+    Ok((
+        prompt,
+        format!(
+            "{state}\n{}",
+            fit_history(&messages, &history, exclude, 100_000)
+        ),
+    ))
 }
 
 /// Points Claude and Codex at the code-graph tools when the setting is on. The CLIs query the
@@ -968,7 +995,7 @@ fn assemble_prompt(
         format!("{SKILLS_OPEN}{shared}{SKILLS_CLOSE}")
     };
     format!(
-        "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. {permission}\n\n{context_text}{attached}{audit}"
+        "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. Only claim checks that actually ran; Lumen's automatic validation is recorded separately after edits. {permission}\n\n{context_text}{attached}{audit}"
     )
 }
 
@@ -987,7 +1014,12 @@ pub(crate) fn prompt_chars(core: &Core, s: &Session) -> Result<usize, String> {
         "",
         "",
     );
-    Ok(prompt.chars().count())
+    let state = core
+        .store
+        .work_state(&s.id)?
+        .map(|s| s.prompt())
+        .unwrap_or_default();
+    Ok(prompt.chars().count() + state.chars().count())
 }
 
 /// Estimated prompt size of a chat, for the context meter.
@@ -1158,6 +1190,7 @@ async fn run_plan(
             checkpoint_message(core, s, &user.id).await?;
         }
     }
+    let baseline = crate::impact::snapshot(core, Path::new(&s.workspace), options.access()).await?;
     let (prompt, history) = build_prompt(core, s, &[&out.id], options).await?;
     let partner_model = if let Some(id) = &plan.partner_account {
         let partner = account(core, id)?;
@@ -1178,7 +1211,7 @@ async fn run_plan(
             &s.id,
             out,
             "resume",
-            "Continuing the CLI's own session: only the new message was sent.".into(),
+            "Continuing the CLI's own session with the new message and current task state.".into(),
         );
     }
     let (mut draft, writer) = stage_fallback(
@@ -1317,6 +1350,7 @@ async fn run_plan(
         writer_model.as_deref(),
         &plan.effort,
         options,
+        baseline,
         cancel,
     )
     .await
@@ -1333,43 +1367,87 @@ pub(crate) async fn self_heal(
     model: Option<&str>,
     effort: &str,
     options: &RunOptions,
+    baseline: Option<Arc<crate::codegraph::Graph>>,
     cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
-    let enabled = core.settings.lock().map(|s| s.self_heal).unwrap_or(true);
-    if !enabled
-        || options.access() == AccessMode::ReadOnly
-        || !out.activity.iter().any(|a| a.kind == "file")
-    {
+    if options.access() == AccessMode::ReadOnly {
         return Ok(());
     }
     let workspace = PathBuf::from(&s.workspace);
-    let Some(cmd) = context::verify_command(&workspace) else {
+    let mut files = crate::validation::changed_files(core, s, out).await?;
+    if files.is_empty() {
         return Ok(());
+    }
+    if options.access() == AccessMode::Ask {
+        let report = crate::diagnostics::Report::unavailable("Automatic validation".into(), "Ask-first mode: checks must be run through the agent's approved tools; backend checks were not started".into());
+        record_validation(app, s, out, &report)?;
+        out.text.push_str("\n\n> Lumen: automatic backend validation was not run in Ask-first mode. Only checks performed through approved tools can be claimed.");
+        event(app, &s.id, &out.id, "replace", &out.text);
+        return Ok(());
+    }
+    let repairs = if core.settings.lock().map(|s| s.self_heal).unwrap_or(true) {
+        3
+    } else {
+        0
     };
-    for attempt in 1..=3 {
-        let (ok, log) = context::run_shell(&workspace, &cmd, cancel.clone()).await?;
+    for attempt in 0..=repairs {
+        let mut verification_files = files.clone();
+        let impact = crate::impact::analyse(core, &workspace, &files, baseline.clone()).await?;
+        let impact_context = if let Some(report) = &impact {
+            for file in &report.files {
+                if !verification_files.contains(&file.path) {
+                    verification_files.push(file.path.clone());
+                }
+            }
+            note(app, &s.id, out, "impact", report.text());
+            crate::impact::handoff(&workspace, report)
+        } else {
+            String::new()
+        };
         note(
             app,
             &s.id,
             out,
-            "verify",
-            if ok {
-                format!("{cmd} · passed")
-            } else {
-                format!("{cmd} · failed\n{log}")
-            },
+            "tool",
+            "Running diagnostics and relevant project checks.".into(),
         );
-        if ok {
-            return Ok(());
+        let reports =
+            crate::validation::run(&workspace, &verification_files, cancel.clone()).await?;
+        for report in &reports {
+            record_validation(app, s, out, report)?;
+            note(
+                app,
+                &s.id,
+                out,
+                "verify",
+                format!(
+                    "{} · {}\n{}\n{}",
+                    report.label,
+                    report.status,
+                    report.errors(),
+                    report.detail
+                ),
+            );
         }
-        if attempt == 3 {
+        core.store.save_message(&s.id, out)?;
+        let failures = crate::validation::failure_text(&reports);
+        if failures.is_empty() || attempt == repairs {
             out.text.push_str(&format!(
-                "\n\n> Lumen: `{cmd}` still fails after 3 automatic fixes. Review the Verify activity."
+                "\n\n**Verification by Lumen**\n{}",
+                reports
+                    .iter()
+                    .map(|r| format!("- {}: {}", r.label, r.status))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             ));
             event(app, &s.id, &out.id, "replace", &out.text);
-            return Ok(());
+            if failures.is_empty() {
+                return Ok(());
+            }
+            return Err(format!("Validation still fails after {repairs} automatic corrections. See the recorded diagnostics and checks."));
         }
-        let fix = format!("The project check `{cmd}` failed after your changes. Fix the root cause with minimal edits, then summarize what you changed in one short paragraph.\n\nCheck output:\n{log}");
+        let (context, _) = build_prompt(core, s, &[&out.id], options).await?;
+        let fix = format!("Validation found concrete errors after your changes. Correct errors caused by this task with minimal edits, preserve unrelated existing work and all agreed requirements. Do not replace implementation with another plan or claim unavailable checks passed. Summarize the correction briefly.\n\n{impact_context}\nDiagnostics and check output:\n{failures}");
         let resume = continue_reply(out, writer, &s.workspace, fix.clone());
         let text = stage_with(
             app,
@@ -1377,7 +1455,7 @@ pub(crate) async fn self_heal(
             s,
             out,
             writer,
-            &fix,
+            &format!("{context}\n\n{fix}"),
             model,
             effort,
             options.access(),
@@ -1387,11 +1465,25 @@ pub(crate) async fn self_heal(
         )
         .await?;
         out.text.push_str(&format!(
-            "\n\n---\n**Self-healing · attempt {attempt}**\n\n{text}"
+            "\n\n---\n**Self-healing · attempt {}**\n\n{text}",
+            attempt + 1
         ));
         event(app, &s.id, &out.id, "replace", &out.text);
-        let _ = core.store.save_message(&s.id, out);
+        core.store.save_message(&s.id, out)?;
+        files = crate::validation::changed_files(core, s, out).await?;
     }
+    Ok(())
+}
+
+fn record_validation(
+    app: &tauri::AppHandle,
+    s: &Session,
+    out: &mut Message,
+    report: &crate::diagnostics::Report,
+) -> Result<(), String> {
+    let mut value = serde_json::to_value(report).map_err(|e| e.to_string())?;
+    value["workspace"] = serde_json::Value::String(s.workspace.clone());
+    note(app, &s.id, out, "validation", value.to_string());
     Ok(())
 }
 
@@ -1821,12 +1913,18 @@ pub async fn compact_session(
             .bind_workspace(&fresh.id, Some(w), &s.workspace)?;
     }
     fresh = core.store.set_access_mode(&fresh.id, s.access_mode)?;
+    let mut state = crate::workstate::refresh(&core.store, &id, None)?;
+    let handoff_id = crate::models::id();
+    if let Some(edited) = summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        state.decisions.push(crate::workstate::Fact { source: handoff_id.clone(), text: format!("User-supplied handoff; supersedes conflicting earlier task facts, but not live permissions:\n{edited}") });
+    }
+    core.store.seed_work_state(&fresh.id, &state)?;
     fresh.title = clip(&format!("{} · continued", s.title), 100);
     core.store.update(&fresh)?;
     core.store.save_message(
         &fresh.id,
         &Message {
-            id: crate::models::id(),
+            id: handoff_id,
             role: "assistant".into(),
             text: package,
             activity: vec![Activity {

@@ -19,6 +19,7 @@ export const HIDDEN = [
   'native',
   'resume',
   'route',
+  'validation',
 ];
 export function orchestraOf(m: Message): OrchestraState | null {
   const a = m.activity.find((x) => x.kind === 'orchestra');

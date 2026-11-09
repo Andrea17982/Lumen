@@ -22,7 +22,7 @@ src/
     SettingsPanel.tsx          Settings overlay: layout, appearance, folder, about
     AccountSettings.tsx        Connected accounts, sign-in, CLI detection
     AutoSettings.tsx           Manual Claude quota snapshot
-    AutomationSettings.tsx     Teamwork switches and local API panel
+    AutomationSettings.tsx     Teamwork switches
     IntegrationSettings.tsx    MCP hub and shared skills
 src-tauri/
   src/main.rs          Desktop entry
@@ -41,6 +41,11 @@ src-tauri/
   src/approvals_codex.rs  Ask-first Codex turns over `codex app-server`
   src/gitops.rs        Private-index checkpoints, restores and lane worktrees
   src/context.rs       LUMEN.md, file walker, attachments, log spill, verify
+  src/workstate.rs     Durable source-linked task ledger, prompt budgets, Compact state
+  src/workspace.rs     Explicit conversation-root changes before tools and planning
+  src/diagnostics.rs   Bounded stdio/loopback LSP diagnostics, without applying edits
+  src/validation.rs    Changed/affected project checks and recorded verification
+  src/impact.rs        Pre/post-edit graph impact and worker/check handoffs
   src/limits.rs        Rate-limit detection, cooldowns, turn counters
   src/api.rs           OpenAI-compatible localhost server (axum)
   src/settings.rs      Persisted backend preferences
@@ -73,11 +78,11 @@ Provider-owned configuration lives at `accounts/<generated UUID>/`. The child re
 3. Save the user message, generate a short first-message title if necessary, mark waiting.
 4. Acquire one of four job slots; queued work remains cancellable.
 5. For file-writing jobs, acquire a mutex keyed by canonical workspace path. Windows paths are normalized for case when used as lock keys. This coordinates Lumen turns, not external editors.
-6. Replay up to 100,000 recent characters of transcript as context. This alpha does not resume a provider-native thread.
+6. Continue supported native CLI sessions or replay bounded transcript context. Add the durable task ledger, project notes and the actual workspace/permission profile; full task facts remain retrievable independently of transcript truncation.
 7. Spawn the official CLI, pass prompt over stdin, drain stderr without publishing raw auth diagnostics, normalize JSONL stdout.
 8. Persist text/activity checkpoints and emit `lumen:run` events carrying session/message IDs.
 9. Complete remaining reviewer/parallel/synthesis stages if planned.
-10. Save final output and completed/error/interrupted state; release workspace/job slots.
+10. Validate changed/affected code and perform bounded corrections where permitted. Save final output and completed/error/interrupted state; release workspace/job slots. Known unresolved validation failures leave an error state.
 
 No shell command is assembled from a prompt. The prompt is stdin. Model identifiers use an allowlist of characters. Windows npm `.cmd` shims are invoked through `cmd.exe`; native executables are invoked directly. Cancellation uses a watch channel, kills the CLI process tree on Windows, and reaps the direct child. Unix uses a process group and SIGKILL. On app exit active jobs receive cancellation; abrupt termination of the application can leave descendants, so crash recovery marks persisted work interrupted rather than claiming clean shutdown.
 
@@ -98,7 +103,7 @@ Add providers by extending `Provider` (and its `fallback_rank`), command constru
 ## Changes after 0.4.5
 
 - The composer and turn lifecycle do not capture screenshots automatically. Claude Ask-first's session-bound MCP endpoint exposes `list_screens` and `capture_screen`; captures are scoped to that turn's working directory, saved under `.lumen/screenshots/`, and returned as MCP image content. User-started Visual review still uses the Tauri commands in `screens.rs`.
-- `reset_settings` restores `AppSettings::default()`, stops the optional local API, disables tray/autostart preferences and generates a fresh local API token. UI preferences (language, theme, text size, Auto policy and usage balance) reset in General settings. Provider accounts, conversations and workspace selection are kept.
+- `reset_settings` restores `AppSettings::default()` and disables tray/autostart preferences. UI preferences (language, theme, text size, Auto policy and usage balance) reset in General settings. Provider accounts, conversations and workspace selection are kept.
 
 - `repomap.rs` keeps one index per project in `<app-data>/repomap/<hash>.json`, never in the project or `LUMEN.md`. Files are walked with the same ignore rules as attachments (`.gitignore`, hidden folders, secrets, noise) and re-read only when size or modification time changes; deleted and renamed files drop out on the next refresh. Definitions come from per-language patterns, not a parser: it is a map of declarations, not a call graph. Limits: 20,000 files, 512 KB per file, 8 s per refresh. `turns::build_prompt` adds the declarations of identifiers the latest request names (at most 12, 2,400 characters) when `repoContext` is on and records them as a `references` activity on that request. Every path that builds its prompt there (single, Both, Orchestra's orchestrator, Ollama) gets the same block.
 - Context meter: the Claude parser keeps each request's input (`usage`) and the `contextWindow` of the result event's `modelUsage`. `turns::stage` stores one `usage` activity per reply as JSON `{latest, overhead, window}`, where `overhead` is the first request's input minus the local prompt estimate. The meter adds that overhead to the local estimate of the next prompt and uses the reported window. Other providers stay local estimates over published windows.

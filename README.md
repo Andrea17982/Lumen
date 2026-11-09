@@ -15,7 +15,11 @@ Also see the [model, workspace and permission controls](docs/images/provider-con
 
 Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Write a request, keep working across sessions, and let **Auto** choose an execution plan. Optional controls expose the provider, account, model and reasoning effort when you need them.
 
-**Status: v0.4 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+**Status: v0.6 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+
+## Latest: 0.6.0
+
+Durable task memory, diagnostics and affected-project checks, impact-aware Orchestra workers, fewer repeated approvals and explicit conversation-folder changes. Details: [Task continuity and code quality](docs/task-quality.md) and the [complete 0.6.0 changelog](docs/release-notes/0.6.0.md).
 
 ## New in 0.4: Orchestra
 
@@ -57,7 +61,7 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 - English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
 - Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI, Antigravity and Ollama are supported through their official local tools; Google providers and Ollama are Auto's emergency fallback and Orchestra helpers only.
-- **Auto** uses local, deterministic task heuristics to choose effort and a provider; complex tasks can use an independent reviewer, and comparison tasks can gather two perspectives in parallel before synthesizing.
+- **Auto** uses a small model (or the configured local helper), with deterministic heuristics as a fallback, to choose effort and a provider. Complex tasks can use Orchestra or an independent reviewer; native continuations and a durable task ledger preserve context.
 - **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Emergency providers run in Auto when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows, or when a rate limit hits while the other subscription is cooling down; in Orchestra they may also take trivial subtasks.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.
 
@@ -102,9 +106,8 @@ With both providers configured, demanding advanced requests or Quality coding re
 ## Current limits
 
 - Live paid inference, multi-account OAuth identity isolation and real provider file-edit behavior require user-driven acceptance testing. Local builds, mocked protocols or UI previews do not prove these flows.
-- Conversation context is replayed to the CLI on each turn, capped at the most recent 100,000 characters. **Compact and continue** creates a deterministic handoff; there is no native thread resume or interactive per-command approval UI (CLIs run headless with explicit permission profiles).
+- Claude and Codex can continue native CLI sessions; other paths replay bounded history. A source-linked task ledger preserves requirements and decisions beyond the transcript cutoff and through **Compact and continue**. Interactive per-action approval is available through the supported Claude/Codex protocols; Orchestra subtask approval remains separate acceptance work.
 - Rewind, worktrees and audit diffs need a git repository. Snapshots honor `.gitignore`, so ignored files are neither saved nor restored.
-- The local API runs every request read-only and counts against your CLI subscription like any other turn.
 - Read-only and File edits restrict provider tools; **Autopilot deliberately removes those restrictions**. It permits shell/network/filesystem operations and configured computer-automation tools, but does not supply a GUI automation engine or override OS/UAC/provider policy. Read-only is a provider permission mode, not an independent OS isolation boundary.
 - Account-directory isolation is not proof that every CLI version uses no shared OS credential-store state. Verify with distinct test accounts before relying on it. Account removal deletes the local directory; remote token revocation remains the provider's responsibility.
 - Stored conversations and CLI-owned credentials are local and **not encrypted by Lumen**. No telemetry is implemented in Lumen; the CLIs have their own network and privacy behavior.
@@ -115,7 +118,7 @@ With both providers configured, demanding advanced requests or Quality coding re
 | Guide | Contents |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Setup, first conversation, shortcuts, recovery |
-| [Teamwork features](docs/features.md) | Both, cross-audit, LUMEN.md, fallback, Rewind, self-healing, MCP, local API |
+| [Teamwork features](docs/features.md) | Both, cross-audit, LUMEN.md, fallback, Rewind, self-healing, MCP |
 | [Architecture](docs/architecture.md) | Rust modules, React components, storage, execution lifecycle |
 | [Accounts](docs/accounts.md) | Official authentication, isolation, provider requirements |
 | [Workspace, models & permissions](docs/workspace-models-permissions.md) | Conversation folders, account names, live CLI catalogs and Autopilot |

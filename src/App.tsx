@@ -334,6 +334,12 @@ export default function App() {
       if (batch.length) setMessages((m) => batch.reduce(applyEvent, m));
     };
     void subscribe((event: RunEvent) => {
+      if (event.kind === 'workspace') {
+        const updated = JSON.parse(event.text) as Session;
+        if (activeSession.current?.id === updated.id) activeSession.current = updated;
+        setSessions((list) => list.map((s) => (s.id === updated.id ? updated : s)));
+        return;
+      }
       queued.push(event);
       if (event.kind === 'delta' || event.kind === 'thinking' || event.kind === 'orchestra-delta') {
         if (!frame) frame = requestAnimationFrame(flush);

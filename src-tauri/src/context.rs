@@ -333,36 +333,6 @@ pub fn verify_command(workspace: &Path) -> Option<String> {
     None
 }
 
-/// Runs a shell command in `workspace` with a ten-minute limit; the caller keeps the cancel sender alive.
-pub async fn shell_output(
-    workspace: &Path,
-    cmd: &str,
-    mut cancel: tokio::sync::watch::Receiver<bool>,
-) -> Result<std::process::Output, String> {
-    let mut c = crate::proc::shell(cmd, workspace);
-    c.kill_on_drop(true);
-    tokio::select! {
-        biased;
-        _ = cancel.changed() => Err("Cancelled".into()),
-        r = tokio::time::timeout(std::time::Duration::from_secs(600), c.output()) => r.map_err(|_| "Command timed out after 10 minutes".to_string())?.map_err(|e| e.to_string()),
-    }
-}
-
-pub async fn run_shell(
-    workspace: &Path,
-    cmd: &str,
-    cancel: tokio::sync::watch::Receiver<bool>,
-) -> Result<(bool, String), String> {
-    let out = shell_output(workspace, cmd, cancel).await?;
-    let text = format!(
-        "{}
-{}",
-        String::from_utf8_lossy(&out.stderr),
-        String::from_utf8_lossy(&out.stdout)
-    );
-    Ok((out.status.success(), compress_log(&text, 60)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

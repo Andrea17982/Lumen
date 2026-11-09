@@ -1,6 +1,29 @@
 # Teamwork features
 
+## New in 0.6.0: task continuity and code quality
+
+- **Durable task ledger**: source-linked requirements, approved scope, actual permission/workspace state, pending work and checks survive context truncation and Compact. Rewind rebuilds state from retained messages.
+- **Diagnostics before completion**: bounded LSP diagnostics and relevant headless checks feed up to three corrections. Missing coverage is explicit; persistent failures leave an error state. Ask-first checks stay behind the agent's approval flow.
+- **Impact-aware execution**: workers receive shared contracts, potential callers and relevant tests. Validation combines pre/post-edit impact and checks affected project roots, including dependencies of deleted shared files.
+
+See [Task continuity and code quality](task-quality.md) for configuration, limits and verification scope.
+
+- **Orchestra continues approved work**: clear requests no longer require an initial “Agree?”; Autopilot executes the prepared plan without another approval gate. Explicit chat approvals continue the pending plan, while a changed folder or upgraded permissions refresh its preparation before execution.
+- **Conversation-folder changes**: `/workspace "absolute path"` and supported explicit directory directives update the session before planning or tools run, including changes entered on an Orchestra clarification card. Project identity and the interface follow the selected folder; quoted/attached paths do not switch it.
+
 Lumen lets Claude Code, Codex and the other connected CLIs work together. Every feature is one click or on by default, and runs through the official CLIs. Lumen never calls provider APIs or reads credentials.
+
+## New in 0.5.1–0.5.4
+
+- **Native CLI sessions** (0.5.1): Claude and Codex continue their own session (`--resume`, `exec resume`) instead of replaying the chat as text; global instructions and skills are copied into each account's folder.
+- **Auto rated by a small model** (0.5.1): Haiku or the local Ollama model rates each request; Auto stays on the account that answered last, and Orchestra takes over only for work that splits into independent parts.
+- **Code graph** (0.5.1, Settings → Teamwork): a read-only MCP server for Claude and Codex with `overview`, `find_symbol`, `symbol`, `file_outline`, `related_files` and `impact`. It replaces repository map references.
+- **Cheaper attachments** (0.5.2): text files over 16 KB are passed by path with a short preview. Background timers pause while Lumen is minimized; the folder is chosen from the top bar.
+- **Smoother streaming** (0.5.3): replies are drawn once per frame and earlier messages render only when scrolled into view. Antigravity usage is checked at most every 15 minutes; background processes start without console windows.
+- **Orchestra keeps its plan** (0.5.4): planned providers are kept while their quota is checked; on a rate limit the other provider finishes the final check, and the audit is skipped instead of failing the run.
+- **Removed**: the local API (0.5.2) and the manual quota snapshot editor (0.5.3).
+
+See the [release notes](release-notes/).
 
 ## New in 0.5.0
 
@@ -11,7 +34,7 @@ Lumen lets Claude Code, Codex and the other connected CLIs work together. Every 
 - **Orchestra multi-task routing**: three or more checklist items, or explicit long requests for multiple parallel tasks/features, route through Orchestra when it is enabled.
 
 - **Context indicator** beside Usage: a dot that is green under 50%, orange to 80% and red above. Clicking it shows the exact count (tokens used of the model's window), its parts and **Compact into a fresh session**. For Claude, the window and the CLI's own instructions and tools come from what Claude reported on its last reply; other providers show a local estimate.
-- **Repository map references** (Settings → Teamwork, on by default): when a request names a declaration, its location is added to the prompt (at most 12, about 600 tokens) and shown under the request.
+- **Repository map references**: replaced by the code graph in 0.5.1.
 - **Screenshots** are never captured automatically. In Claude Ask-first turns, the model can request a screen or a specific visible window through MCP when visual inspection is needed. The composer has no screenshot button; user initiated capture remains in Visual review.
 - **Settings** Simple mode contains only the Orchestra toggle. All other settings are under Advanced. General → Restore defaults resets local preferences and backend preferences while keeping accounts, conversations and project folders.
 - **Godot**: **Test connection** starts the project's Godot MCP server and reads the editor's project info; **Open editor** opens a nested project in the installed Godot.
@@ -38,8 +61,8 @@ Settings → Teamwork → **Orchestra** is a set-and-forget switch that works wi
 
 Orchestra takes over only when Auto scores a request as complex: architecture, security or migration work, or coding that is demanding or long. Simple prompts take the normal path.
 
-1. **Questions.** One orchestrator model reads the request (and the project, read-only) and asks what it needs to know. Each question comes with its recommended answer already filled in. **Continue** sends your answers, **Skip questions** accepts the recommendations. When the request is already clear, it asks a single "I'd do X, Y, Z — agree?" with **Agree** or **Change**.
-2. **Plan.** The orchestrator splits the work into subtasks, each with the files it owns, a difficulty and any dependency. Lumen assigns every subtask to an agent from all connected accounts that can load their models (a signed-out account is skipped), with the same model tiers Auto uses. Trivial work (messages, text, tiny edits) may go to Antigravity, Gemini CLI or Ollama even when Claude and ChatGPT have quota; Ollama only takes subtasks that write no files. The plan card lets you reassign an agent or remove a subtask, then **Approve** or **Cancel**. Nothing runs before you approve.
+1. **Questions.** The orchestrator asks only for missing information that changes the result. Each question has a recommended answer; **Continue** sends your answers and **Skip questions** accepts the recommendations. Clear requests proceed directly to planning.
+2. **Plan.** The orchestrator splits work into independent subtasks with file ownership, difficulty and dependencies. Connected accounts use the same model tiers as Auto; Ollama takes text-only work. In permission modes that need plan approval, the card supports reassignment/removal and **Approve** or **Cancel**. Autopilot and an explicit execution approval continue directly to the run without another gate.
 3. **Run.** Subtasks run in parallel, up to six at a time, each in its own git worktree seeded with your uncommitted work. Every agent receives the team manifest (who owns which files), so it stays aware of the others. A subtask that depends on another starts from that subtask's changes. The card shows each subtask's agent, status and elapsed time, with its live output in a disclosure. The stop button stops everything.
 4. **Integrate.** Lumen applies each subtask's changes to your folder. If a patch no longer applies cleanly, the orchestrator merges it by hand. The orchestrator then checks the combined diff for inconsistencies, fixes them and writes the final answer. Self-healing runs on the integrated result and the worktrees are removed.
 
@@ -49,9 +72,9 @@ With **Cross-audit** on, the provider opposite the orchestrator validates its de
 
 If a subtask fails or hits a rate limit, Lumen retries it once on another provider. If that also fails, the rest is still integrated and the final answer lists what failed. If integration itself fails, the work is kept in `lumen/orchestra-*` branches: **Keep branches** leaves them for a manual merge, **Discard** deletes them.
 
-If you write a new message while questions or a plan are waiting, the waiting card is marked as replaced and can no longer be used. A run interrupted by closing Lumen is marked **Interrupted** at the next start, and its temporary worktrees are removed. Rewind on "Approved the plan." restores your files and reopens the plan, so you can change it and approve it again.
+An explicit chat approval continues the pending plan. Other new requests replace the waiting card. Interrupted runs retain finished results and offer Resume; preparation is checked against the current workspace before execution. Rewind on "Approved the plan." restores files and reopens the plan for changes.
 
-Orchestra needs a git repository to isolate the subtasks. In a folder without git, the request runs normally and the answer offers **Initialize git**. In **Ask** (read-only) mode the agents only analyze: the plan card says so, and the orchestrator combines their findings. One Rewind checkpoint is taken before the run, on the "Approved the plan." message.
+Orchestra needs a Git repository to isolate writing subtasks. New requests outside Git use the ordinary path; an already prepared writable Orchestra run reports a missing repository rather than silently becoming read-only. Read-only runs combine findings without edits. A Rewind checkpoint is taken before changes.
 
 ### Ollama
 
@@ -109,7 +132,7 @@ The **↺ button** on any of your messages first previews which files will be re
 
 ## Self-healing
 
-After a turn that edited files, Lumen runs the project check. That is the `verify:` command from `LUMEN.md` if one is set. Otherwise Lumen picks one automatically: `cargo check`, `tsc --noEmit` or `go build`. If the check fails, the compressed error output goes back to the writer, which fixes it. Lumen makes at most 3 attempts. Settings → Teamwork → **Self-healing** turns this off.
+After a write turn, Lumen runs applicable diagnostics and project checks against changed and affected files, preserving `verify:` from `LUMEN.md` and detecting nested project build/test commands. Concrete failures return to the writer for at most three corrections, each followed by fresh validation. Persistent failures leave an error state; missing servers/checks are explicit. Settings → Teamwork → **Self-healing** disables corrections while keeping validation. See [Task quality](task-quality.md) for permissions and configuration.
 
 ## Token savings
 
@@ -127,23 +150,6 @@ Settings → **Tools (MCP)** keeps one list of MCP servers for both CLIs:
 - **Edit as JSON** opens the full configuration.
 
 Lumen passes enabled servers to Claude (`--mcp-config`) and Codex (`-c mcp_servers.*`) whenever edits are allowed. Your global CLI configuration is never modified.
-
-## Local API (OpenAI-compatible)
-
-Settings → **Local API** → **Serve on localhost** starts `http://localhost:8317/v1` on 127.0.0.1 only. It serves:
-
-- `GET /v1/models`
-- `POST /v1/chat/completions`, as a full JSON response or as SSE when `"stream": true`
-
-The available models are `lumen-auto`, which falls back across providers, `lumen-claude` and `lumen-chatgpt`. Requests run read-only in a private folder. Every request needs the API key shown in Settings. The panel shows recent requests.
-
-```bash
-curl http://localhost:8317/v1/chat/completions \
-  -H "Authorization: Bearer <key from Settings>" -H "Content-Type: application/json" \
-  -d '{"model":"lumen-auto","messages":[{"role":"user","content":"Hello"}]}'
-```
-
-Usage follows each provider's terms for its CLI and subscription.
 
 ## Cross-platform
 

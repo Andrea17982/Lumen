@@ -1,5 +1,5 @@
 use crate::models::*;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::{path::Path, sync::Mutex};
 
 pub struct Store(Mutex<Connection>);
@@ -12,6 +12,7 @@ impl Store {
           CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id,created_at);
           CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL,provider TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,folder TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS work_states(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,state TEXT NOT NULL,seed TEXT);
           UPDATE sessions SET status='interrupted' WHERE status IN ('running','waiting');")
           .map_err(|e| e.to_string())?;
         let columns = {
@@ -131,6 +132,56 @@ impl Store {
                 params![id, status, now()],
             )
         })?;
+        if matches!(status, "completed" | "error" | "interrupted") {
+            crate::workstate::refresh(self, id, None)?;
+        }
+        Ok(())
+    }
+    pub fn work_state(&self, id: &str) -> Result<Option<crate::workstate::WorkState>, String> {
+        let text: Option<String> = self.with(|c| {
+            c.query_row(
+                "SELECT state FROM work_states WHERE session_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+        })?;
+        text.map(|s| serde_json::from_str(&s).map_err(|e| e.to_string()))
+            .transpose()
+    }
+    pub fn work_seed(&self, id: &str) -> Result<Option<crate::workstate::WorkState>, String> {
+        let text: Option<String> = self.with(|c| {
+            c.query_row(
+                "SELECT seed FROM work_states WHERE session_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
+        })?;
+        text.map(|s| serde_json::from_str(&s).map_err(|e| e.to_string()))
+            .transpose()
+    }
+    pub fn save_work_state(
+        &self,
+        id: &str,
+        state: &crate::workstate::WorkState,
+    ) -> Result<(), String> {
+        let text = serde_json::to_string(state).map_err(|e| e.to_string())?;
+        self.with(|c| c.execute("INSERT INTO work_states(session_id,state) VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET state=excluded.state", params![id,text]))?;
+        Ok(())
+    }
+    pub fn seed_work_state(
+        &self,
+        id: &str,
+        state: &crate::workstate::WorkState,
+    ) -> Result<(), String> {
+        let mut seed = state.clone();
+        let session = self.session(id)?;
+        seed.access = session.access_mode;
+        seed.workspace = session.workspace;
+        let text = serde_json::to_string(&seed).map_err(|e| e.to_string())?;
+        self.with(|c| c.execute("INSERT INTO work_states(session_id,state,seed) VALUES(?1,?2,?2) ON CONFLICT(session_id) DO UPDATE SET state=excluded.state,seed=excluded.seed", params![id,text]))?;
         Ok(())
     }
     pub fn messages(&self, session: &str) -> Result<Vec<Message>, String> {
@@ -177,6 +228,7 @@ impl Store {
                 params![session, at, row],
             )
         })?;
+        crate::workstate::refresh(self, session, None)?;
         Ok(())
     }
     pub fn accounts(&self) -> Result<Vec<Account>, String> {
