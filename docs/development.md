@@ -34,6 +34,12 @@ JSONL fixtures belong next to `providers::normalize`. Never record real credenti
 
 ## Live acceptance (requires the user's own accounts)
 
+`tests/live-native-smoke.mjs` is opt-in: set `LUMEN_LIVE_NATIVE=1` and `LUMEN_LIVE_PROVIDERS=gpt` (or a comma-separated supported set), then run it with the debug app built and Vite running. It creates temporary project/app-data folders, uses junctions to the official CLI account directories without reading/copying credentials, and removes those junctions on exit. It verifies a structured question, an actual file write and resume of the same native session.
+
+Additional opt-in probes are `LUMEN_LIVE_GRAPH=1` and `LUMEN_LIVE_ORCHESTRA=1`. The isolated Rodent gameplay probe requires `LUMEN_LIVE_GAMEPLAY_ROOT` below this repository's `.codex/acceptance/`, `LUMEN_GODOT_EXE` and `LUMEN_GRAPHIFY_EXE`; it creates only the three standalone training-scene/check files. Keep those artifacts and the purchased addon out of version control. Live inference consumes the user's existing subscription quota; it is not part of CI.
+
+`tests/release-smoke.mjs` verifies real initialization/tool discovery from `LUMEN_RELEASE_EXE`. Packaging runs it against the silently installed Windows executable on a disposable runner. The local build-copy helper regenerates `builds/latest/SHA256SUMS.txt`, including any renamed portable executable retained because the previous copy was running.
+
 Use disposable folders and low-cost prompts. Complete official login for two distinct identities per provider and verify each status/billing identity through official tools without copying tokens. Test normal reply, follow-up context, wrong model, expired login, cancellation during queue/write-lock/streaming, connection loss, read-only denial and a small permitted edit. With both providers test writer/reviewer and parallel synthesis, including a failing second stage. Confirm no same-workspace simultaneous writes and no orphan process after ordinary cancellation.
 
 Keep acceptance evidence redacted and distinguish it from fixtures. This task does not authorize automatically using a developer's existing account for paid inference.

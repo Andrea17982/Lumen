@@ -10,10 +10,9 @@ Implemented capabilities and release history are in [Features](features.md). Det
 - Removed by the user: signing, Telegram, internal encryption, a separate daemon and an additional common OS filesystem jail. Use notification-area continuity, disk encryption and the official providers' sandbox capabilities. Autopilot retains full access.
 - Closing the window continues work in the tray. Crash/restart recovery requires explicit Resume; no automatic replay of interrupted actions.
 
-## Remaining delivery checks
+## Build acceptance completed
 
-- Complete packaging on the final source revision: Windows installer/portable, universal macOS DMG, Linux deb/AppImage. Ubuntu 24.04 is the Linux build baseline because the current capture dependency requires newer PipeWire headers than 22.04 supplies. CI has passed on Windows/macOS/Linux; packaging is tracked separately.
-- The Windows packaging workflow now includes a silent install on its disposable runner and an actual installed-release MCP initialization/tool-discovery probe. Record the final result after that run completes.
+Functional source d9ca0e3 passed CI on Windows/macOS/Ubuntu and packaging for Windows installer/portable, universal macOS DMG and Linux deb/AppImage. Ubuntu 24.04 is the Linux build baseline because the current capture dependency needs newer PipeWire headers than 22.04 supplies. The Windows runner silently installed the package and exercised actual installed-release MCP initialization/tool discovery. [Observed build evidence](implementation-status.md) links the runs. Real non-Windows machine acceptance remains below.
 
 ## Live provider acceptance requiring the user's account/environment
 
@@ -27,7 +26,7 @@ Implemented capabilities and release history are in [Features](features.md). Det
 - macOS/Linux native UI, login launch, clean install, accessibility and keyboard/system bindings await real testers. Linux screenshots need actual X11/Wayland runtime acceptance; a successful package/build is not capture evidence.
 - Windows keyboard/focus, questions, images, inspector, canvas, merging and native tray behavior are automated. Keep real screen-reader review and alternate editor caret-position checks separate from DOM/argument tests. VS Code is installed; Cursor/Zed/Sublime are not installed here.
 - Godot Play/specific-scene/Stop/Reload and MCP viewport capture have been exercised through the purchased addon in an ignored isolated Rodent Heroes copy. Runtime services were enabled explicitly only for that viewport probe and original configuration was restored. Two portrait game-window captures also passed. Physical-device review and non-Windows game/editor behavior await target devices/testers.
-- The isolated Rodent chat acceptance made a bounded presentation-resource change and passed real resource/.NET/manifest checks. Authoritative gameplay-balance acceptance requires a separately defined game scenario; no balance change or live-service deployment was inferred from the Lumen task.
+- Isolated Rodent chat acceptance also generated a standalone offline training scene with 3 HP, Hit/clamp/disable and Reset behavior. An independent actual Godot headless run exercised its button signals and verified state, label, zero-HP behavior and reset. The scene was played and captured through Lumen/MCP. Real portrait captures were compared side by side in Lumen. Production balance and live services remained outside this acceptance fixture.
 
 ## Performance follow-up criteria
 

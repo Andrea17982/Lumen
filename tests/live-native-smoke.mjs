@@ -185,6 +185,65 @@ try {
       elapsedMs: Date.now() - started,
     });
     console.log(JSON.stringify(results.at(-1)));
+    if (provider === 'gpt' && process.env.LUMEN_LIVE_GAMEPLAY_ROOT) {
+      const project = await import('node:fs/promises').then((fs) =>
+        fs.realpath(process.env.LUMEN_LIVE_GAMEPLAY_ROOT),
+      );
+      assert(
+        project
+          .toLowerCase()
+          .startsWith(path.join(root, '.codex', 'acceptance').toLowerCase() + path.sep),
+      );
+      const godot = process.env.LUMEN_GODOT_EXE;
+      assert(godot);
+      const session = await invoke('create_session', { workspace: project });
+      const graphify = process.env.LUMEN_GRAPHIFY_EXE;
+      assert(graphify, 'Set LUMEN_GRAPHIFY_EXE for gameplay acceptance');
+      await invoke('send_message', {
+        id: session.id,
+        text: `Implement the already authorized bounded offline gameplay acceptance probe in this isolated Rodent Heroes copy. Only create game/lumen_acceptance/training.gd, training.tscn and check.gd. Use ordinary built-in Godot controls, no art assets. The gameplay contract is: a training target starts at 3 HP, Hit reduces HP by 1 clamped at 0, Hit becomes disabled at 0, Reset restores 3 HP and enables Hit, and a label displays current/max HP. The standalone scene uses training.gd and never starts the actual client, contacts services or alters game balance. check.gd must run headlessly as SceneTree, load that scene, exercise the buttons' pressed signals, verify state, label, disabled-at-zero and reset behavior, and exit nonzero on failure. Follow CLAUDE.md. Graphify has already extracted the code-only graph; before code use '${graphify}' explain and affected on the existing project node game_rodentheroes_csproj_game_rodentheroes. This probe has no dependency on existing game code and no production UI/art changes, so no new product/visual approval is needed. Apply the code now, then actually run '${godot}' --headless --path game --script res://lumen_acceptance/check.gd and fix any error. Verify git diff --check. Do not edit any existing file, including project.godot, do not export/deploy/use paid tools or network, and do not start subagents. Reply with paths and the actual runtime-check result.`,
+        options,
+      });
+      let done = false;
+      for (let i = 0; i < 1800; i++) {
+        const status = (await invoke('list_sessions', { search: '', offset: 0 })).find(
+          (s) => s.id === session.id,
+        )?.status;
+        if (status === 'error')
+          throw Error(
+            'Gameplay acceptance failed: ' +
+              JSON.stringify((await invoke('get_messages', { id: session.id })).at(-1)),
+          );
+        if (status === 'completed') {
+          done = true;
+          break;
+        }
+        await sleep(200);
+      }
+      assert(done, 'Gameplay acceptance timed out');
+      const output = execFileSync(
+        godot,
+        [
+          '--headless',
+          '--path',
+          path.join(project, 'game'),
+          '--script',
+          'res://lumen_acceptance/check.gd',
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 30000 },
+      );
+      assert(
+        (await readFile(path.join(project, 'game/lumen_acceptance/training.gd'), 'utf8')).length >
+          0,
+      );
+      results.push({
+        project: 'Rodent Heroes isolated offline gameplay',
+        passed: true,
+        scene: 'res://lumen_acceptance/training.tscn',
+        runtimeCheck: output.slice(-2000),
+      });
+      console.log(JSON.stringify(results.at(-1)));
+    }
     if (provider === 'gpt' && process.env.LUMEN_LIVE_GRAPH === '1') {
       const graphRoot = path.join(data, 'graph-project');
       await mkdir(path.join(graphRoot, 'src'), { recursive: true });

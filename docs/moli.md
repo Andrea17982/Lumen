@@ -15,6 +15,8 @@ The official Windows x64 **v1.1.23** archive was downloaded without executing th
 
 This is about **1.5 times** the episode throughput in this small test, with no demonstrated startup advantage. It is not a statistically controlled browser-wide benchmark. RAM, site compatibility and full agent task latency were not measured in this probe. HTTPS Markdown extraction also returned real content from the Rust website. No cookies, existing browser profiles, provider credentials or cloud browser account were used.
 
+The whole conversation improves only in proportion to time spent browsing. For example, if browsing accounts for 20% of a task, a 1.5× faster browser reduces total elapsed time to roughly 93.3% of the original: about 6.7% saved, assuming everything else stays equal. This is an illustrative calculation, not a measured Lumen result. Less noisy page extraction may help the model use its context, but this probe did not measure model-quality improvement.
+
 To repeat, download/verify the official binary, set `LUMEN_MOLI_EXE` to its absolute path, then run `node tests/moli-probe.mjs`. The script closes its own browsers/processes and writes evidence below `.impeccable/review/`.
 
 ## Published performance versus guarantees
@@ -30,6 +32,19 @@ Compatibility remains material: the published five-engine comparison reports 81.
 The implementation should use a Lumen-owned browser service, exposed to official CLIs through a **single shared MCP adapter**. Moli currently provides CLI, CDP and WebDriver endpoints; its WebMCP support is not itself a replacement for the model-facing MCP adapter.
 
 Moli is not a search index. Its supplied search skill visits external search engines through `fetch`. Forcing those routes to replace native search can introduce CAPTCHA, consent pages and variable result quality/latency. Test search discovery and page navigation separately: replacing the browser process alone does not prove better research.
+
+The integration below is the proposed production architecture; the current delivery contains the feasibility probe.
+
+```mermaid
+flowchart LR
+    CLI["Claude / Codex / Gemini / Antigravity CLI"] --> MCP["Shared MCP adapter"]
+    O["Official local Ollama API"] --> T["Local tool loop"]
+    MCP --> L["Browser service in Lumen Core / tray"]
+    T --> L
+    L --> M["Moli CLI / CDP"]
+    M --> W["Web pages"]
+    L --> UI["Activity, source links and images"]
+```
 
 1. Package or acquire a pinned platform binary with digest verification and license notices. Do not download or execute an unpinned latest installer on every turn. Keep the browser process out of the GUI process so page crashes do not kill Lumen.
 2. Configure the adapter automatically for every applicable native account, including Orchestra workers. Use the same tool names and results for Claude, Codex, Gemini and Antigravity; preserve their authentication and original harness. Configuration alone is not provider acceptance: verify discovery, a real tool call, cancellation and resume on each installed CLI.
