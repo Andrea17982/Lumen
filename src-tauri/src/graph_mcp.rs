@@ -52,6 +52,11 @@ pub fn configure_google(
     }
     crate::browser::google_settings(&mut value)?;
     if *provider == crate::models::Provider::Gemini {
+        if value.get("tools").is_some_and(|v| !v.is_object()) {
+            return Err(
+                "Native tools settings must be an object; settings were not overwritten".into(),
+            );
+        }
         if value.get("tools").is_none() {
             value["tools"] = json!({});
         }

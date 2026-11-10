@@ -81,7 +81,7 @@ fn save(
 ) -> Result<Screenshot, String> {
     let dir = store(root)?;
     let captured = chrono_now();
-    let name = format!("shot-{captured}.png");
+    let name = format!("shot-{captured}-{}.png", uuid::Uuid::new_v4().simple());
     let file = dir.join(&name);
     image.save(&file).map_err(|e| e.to_string())?;
     let shot = Screenshot {
@@ -379,6 +379,34 @@ pub async fn screenshot_data(folder: String, path: String) -> Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parallel_browser_captures_never_overwrite_each_other() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("captures");
+        let files = std::thread::scope(|threads| {
+            let jobs = (0..16)
+                .map(|_| {
+                    let root = root.clone();
+                    threads.spawn(move || {
+                        save(
+                            &root,
+                            &xcap::image::RgbaImage::new(2, 2),
+                            "Moli",
+                            "Moli".into(),
+                        )
+                        .unwrap()
+                        .path
+                    })
+                })
+                .collect::<Vec<_>>();
+            jobs.into_iter()
+                .map(|job| job.join().unwrap())
+                .collect::<std::collections::HashSet<_>>()
+        });
+        assert_eq!(files.len(), 16);
+        assert_eq!(list(&root).len(), 16);
+        assert!(files.iter().all(|file| root.join(file).is_file()));
+    }
 
     #[test]
     fn saves_lists_and_confines_screenshots_to_their_folder() {
