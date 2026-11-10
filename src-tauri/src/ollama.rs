@@ -1,13 +1,9 @@
-//! Ollama: a local provider reached only through the official `ollama` CLI.
-//!
-//! It never edits files (prompt in, text out), so it serves as the last
-//! emergency fallback and as an Orchestra worker for trivially simple text
-//! subtasks. Lumen picks the largest installed model unless one is pinned.
+//! Ollama uses its official loopback API for discovery, helpers and agent turns.
+//! `ollama_agent` adds Moli tool execution without remote services or API keys.
 use crate::models::{ModelInfo, Provider};
 use crate::providers;
 use serde::Serialize;
-use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
+use serde_json::{json, Value};
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +22,7 @@ pub struct OllamaStatus {
     pub selected: Option<String>,
 }
 
+#[cfg(test)]
 fn size_bytes(number: &str, unit: &str) -> u64 {
     let n: f64 = number.parse().unwrap_or(0.0);
     let scale = match unit.to_ascii_uppercase().as_str() {
@@ -39,6 +36,7 @@ fn size_bytes(number: &str, unit: &str) -> u64 {
 }
 
 /// Parse `ollama list`: `NAME  ID  SIZE  MODIFIED`, size as "4.7 GB".
+#[cfg(test)]
 pub fn parse_list(text: &str) -> Vec<LocalModel> {
     text.lines()
         .skip_while(|l| !l.trim_start().starts_with("NAME"))
@@ -65,30 +63,60 @@ pub fn choose<'a>(models: &'a [LocalModel], pinned: &str) -> Option<&'a LocalMod
         .or_else(|| models.iter().max_by_key(|m| m.bytes))
 }
 
-pub async fn list() -> Result<Vec<LocalModel>, String> {
-    let mut c = providers::command(&Provider::Ollama)?;
-    c.arg("list").kill_on_drop(true);
-    let out = tokio::time::timeout(std::time::Duration::from_secs(20), c.output())
-        .await
-        .map_err(|_| "Ollama did not answer. Open the Ollama app and try again.".to_string())?
+fn local_http() -> Result<(reqwest::Client, reqwest::Url), String> {
+    let address = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://127.0.0.1:11434".into());
+    let endpoint = crate::ollama_agent::endpoint(&address)?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
         .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(
-            "Ollama is installed but not running. Open the Ollama app and try again.".into(),
-        );
-    }
-    Ok(parse_list(&String::from_utf8_lossy(&out.stdout)))
+    Ok((client, endpoint))
+}
+fn models_from_tags(value: &Value) -> Result<Vec<LocalModel>, String> {
+    let rows = value["models"]
+        .as_array()
+        .ok_or("Ollama returned an invalid model list")?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| {
+            let name = row["name"].as_str()?;
+            if !valid_model(name) || crate::ollama_agent::local_model(name, row).is_err() {
+                return None;
+            }
+            if row["capabilities"]
+                .as_array()
+                .is_some_and(|caps| !caps.iter().any(|c| c == "completion"))
+            {
+                return None;
+            }
+            let bytes = row["size"].as_u64().unwrap_or(0);
+            Some(LocalModel {
+                name: name.into(),
+                size: format!("{:.1} GB", bytes as f64 / 1e9),
+                bytes,
+            })
+        })
+        .collect())
+}
+pub async fn list() -> Result<Vec<LocalModel>, String> {
+    let (http, base) = local_http()?;
+    let value = http
+        .get(base.join("api/tags").map_err(|e| e.to_string())?)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|_| "Open the Ollama app to start its local API")?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json::<Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    models_from_tags(&value)
 }
 
 pub async fn status(pinned: &str) -> OllamaStatus {
-    if providers::executable(&Provider::Ollama).is_err() {
-        return OllamaStatus {
-            installed: false,
-            running: false,
-            models: vec![],
-            selected: None,
-        };
-    }
     match list().await {
         Ok(models) => OllamaStatus {
             installed: true,
@@ -97,7 +125,7 @@ pub async fn status(pinned: &str) -> OllamaStatus {
             models,
         },
         Err(_) => OllamaStatus {
-            installed: true,
+            installed: providers::executable(&Provider::Ollama).is_ok(),
             running: false,
             models: vec![],
             selected: None,
@@ -105,19 +133,22 @@ pub async fn status(pinned: &str) -> OllamaStatus {
     }
 }
 
-/// Catalog for routing: only the model Lumen will actually use.
+/// Every installed conversational model is selectable; the pin/largest model is the default.
 pub async fn catalog(pinned: &str) -> Result<Vec<ModelInfo>, String> {
     let models = list().await?;
     let chosen = choose(&models, pinned)
-        .ok_or("Ollama has no models yet. Run `ollama pull llama3.2` and try again.")?;
-    Ok(vec![ModelInfo {
-        id: chosen.name.clone(),
-        name: chosen.name.clone(),
-        description: format!("Local · {}", chosen.size),
-        efforts: vec![],
-        default_effort: String::new(),
-        is_default: true,
-    }])
+        .ok_or("Ollama has no local models yet. Install one in Ollama and try again.")?;
+    Ok(models
+        .iter()
+        .map(|model| ModelInfo {
+            id: model.name.clone(),
+            name: model.name.clone(),
+            description: format!("Local · {}", model.size),
+            efforts: vec![],
+            default_effort: String::new(),
+            is_default: model.name == chosen.name,
+        })
+        .collect())
 }
 
 /// Model names are passed as CLI arguments, so anything that could read as a flag is refused.
@@ -131,6 +162,7 @@ pub fn valid_model(name: &str) -> bool {
 }
 
 /// Drops terminal control sequences (cursor moves, colors) from CLI output.
+#[cfg(test)]
 pub fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars();
@@ -151,53 +183,61 @@ pub fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// One non-interactive answer from a local model. The prompt goes through stdin, so it
-/// never appears in the process arguments. Errors start with `model-missing:` or
-/// `unavailable:` so the frontend can tell them apart.
+/// A short local text helper. HTTP bodies keep prompts out of process arguments; never pulls.
 pub async fn generate(model: &str, prompt: &str, timeout_ms: u64) -> Result<String, String> {
     if !valid_model(model) {
         return Err("unavailable: Choose a valid local model in Settings.".into());
     }
-    // `ollama run` would pull a missing model from the registry, so check the local list first.
     let installed = list().await.map_err(|e| format!("unavailable: {e}"))?;
-    let known = |m: &LocalModel| m.name == model || m.name == format!("{model}:latest");
-    if !installed.iter().any(known) {
+    if !installed
+        .iter()
+        .any(|m| m.name == model || m.name == format!("{model}:latest"))
+    {
         return Err("model-missing: The selected model is not installed.".into());
     }
-    let mut c = providers::command(&Provider::Ollama).map_err(|e| format!("unavailable: {e}"))?;
-    c.arg("run")
-        .arg(model)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let mut child = c.spawn().map_err(|e| format!("unavailable: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(prompt.as_bytes())
+    let (http, base) = local_http()?;
+    let run = async {
+        let show = http
+            .post(base.join("api/show").unwrap())
+            .json(&json!({"model":model}))
+            .send()
             .await
-            .map_err(|e| format!("unavailable: {e}"))?;
-    }
-    let out = tokio::time::timeout(
-        std::time::Duration::from_millis(timeout_ms),
-        child.wait_with_output(),
-    )
-    .await
-    .map_err(|_| "unavailable: Ollama took too long.".to_string())?
-    .map_err(|e| format!("unavailable: {e}"))?;
-    if !out.status.success() {
-        return Err(
-            "unavailable: Ollama did not answer. Open the Ollama app and try again.".into(),
-        );
-    }
-    Ok(strip_ansi(&String::from_utf8_lossy(&out.stdout))
-        .trim()
-        .to_string())
+            .map_err(|e| e.to_string())?
+            .error_for_status()
+            .map_err(|e| e.to_string())?
+            .json::<Value>()
+            .await
+            .map_err(|e| e.to_string())?;
+        crate::ollama_agent::local_model(model, &show)?;
+        let value = http.post(base.join("api/chat").unwrap()).json(&json!({"model":model,"stream":false,"messages":[{"role":"user","content":prompt}]}))
+            .send().await.map_err(|e|e.to_string())?.error_for_status().map_err(|e|e.to_string())?.json::<Value>().await.map_err(|e|e.to_string())?;
+        crate::ollama_agent::local_model(model, &value)?;
+        value["message"]["content"]
+            .as_str()
+            .map(|s| s.trim().to_owned())
+            .ok_or_else(|| "Ollama returned no text".to_string())
+    };
+    tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), run)
+        .await
+        .map_err(|_| "unavailable: Ollama took too long.".to_string())?
+        .map_err(|e| format!("unavailable: {e}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_catalog_excludes_cloud_aliases_and_embedding_only_models() {
+        let rows = models_from_tags(&json!({"models":[
+            {"name":"local:8b","size":42,"capabilities":["completion","tools"]},
+            {"name":"alias:latest","remote_host":"https://ollama.com","size":0},
+            {"name":"large:cloud","size":0},
+            {"name":"embedding:latest","capabilities":["embedding"],"size":10}
+        ]}))
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "local:8b");
+    }
     const LIST: &str = "NAME               ID              SIZE      MODIFIED\n\
 llama3.2:latest    a80c4f17acd5    2.0 GB    3 weeks ago\n\
 qwen2.5:7b         845dbda0ea48    4.7 GB    2 days ago\n\

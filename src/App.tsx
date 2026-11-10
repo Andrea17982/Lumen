@@ -624,7 +624,7 @@ export default function App() {
   }
   /** Options shared by a new turn and by Orchestra's follow-up steps. */
   function runOptions(override?: { mode: Mode; auditOf: string }) {
-    const manual = !override && (mode === 'claude' || mode === 'gpt');
+    const manual = !override && mode !== 'auto' && mode !== 'both';
     return {
       mode: override?.mode ?? mode,
       accountId: manual && accountId ? accountId : null,
@@ -683,7 +683,7 @@ export default function App() {
       }
       return;
     }
-    if (desktop && !override && (mode === 'claude' || mode === 'gpt') && !catalogReady) {
+    if (desktop && !override && mode !== 'auto' && mode !== 'both' && !catalogReady) {
       setError('Load the official model catalog before sending.');
       return;
     }
@@ -1591,7 +1591,7 @@ export default function App() {
               paths={attached}
               onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}
             />
-            {(mode === 'claude' || mode === 'gpt') && (
+            {mode !== 'auto' && mode !== 'both' && (
               <ProviderOptions
                 provider={mode}
                 visible={advanced}
@@ -1612,6 +1612,7 @@ export default function App() {
             <ComposerToolbar
               mode={mode}
               bothAvailable={accessMode === 'read-only'}
+              providers={[...new Set(accounts.map((a) => a.provider))]}
               onMode={(next) => {
                 setMode(next);
                 setAccountId('');
@@ -1643,7 +1644,7 @@ export default function App() {
                 !!draft.trim() &&
                 !folderBusy &&
                 (draft.trim().toLowerCase() === '/compact' ||
-                  !(desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady))
+                  !(desktop && mode !== 'auto' && mode !== 'both' && !catalogReady))
               }
               onSend={() => {
                 if (running && selected)

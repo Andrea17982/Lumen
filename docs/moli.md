@@ -1,4 +1,4 @@
-# Moli in Lumen: feasibility verified on 10 November 2026
+# Moli in Lumen: implementation and evidence, 10 November 2026
 
 Moli is feasible as Lumen's shared browser engine. It is an independent Rust browser kernel with V8, rather than a Chromium launcher. Its main advantage is avoiding layout/paint for document extraction and producing Markdown or semantic trees directly. It cannot make the model itself more intelligent or shorten inference independently of the browser workload. [Architecture and scope](https://github.com/lexmount/moli#architecture).
 
@@ -29,11 +29,11 @@ Compatibility remains material: the published five-engine comparison reports 81.
 
 ## Native integration contract
 
-The implementation should use a Lumen-owned browser service, exposed to official CLIs through a **single shared MCP adapter**. Moli currently provides CLI, CDP and WebDriver endpoints; its WebMCP support is not itself a replacement for the model-facing MCP adapter.
+Lumen uses a browser service in its existing GUI/tray process, exposed to official CLIs through a **single shared MCP adapter** (`lumen_browser`). The same dispatcher serves the official local Ollama API tool loop. No separate daemon, remote browser service, API key or manual per-provider browser setup is needed.
 
 Moli is not a search index. Its supplied search skill visits external search engines through `fetch`. Forcing those routes to replace native search can introduce CAPTCHA, consent pages and variable result quality/latency. Test search discovery and page navigation separately: replacing the browser process alone does not prove better research.
 
-The integration below is the proposed production architecture; the current delivery contains the feasibility probe.
+The diagram below describes the implemented architecture. All conversation and Orchestra invocations register a short-lived, authenticated loopback capability before provider execution, including resume and provider fallback. Moli starts only when a browser tool is called.
 
 ```mermaid
 flowchart LR
@@ -46,19 +46,26 @@ flowchart LR
     L --> UI["Activity, source links and images"]
 ```
 
-1. Package or acquire a pinned platform binary with digest verification and license notices. Do not download or execute an unpinned latest installer on every turn. Keep the browser process out of the GUI process so page crashes do not kill Lumen.
-2. Configure the adapter automatically for every applicable native account, including Orchestra workers. Use the same tool names and results for Claude, Codex, Gemini and Antigravity; preserve their authentication and original harness. Configuration alone is not provider acceptance: verify discovery, a real tool call, cancellation and resume on each installed CLI.
-3. Use Markdown/semantic output without layout for one-shot reading/search. Start persistent CDP only for multi-step interaction. A persistent `serve --layout` exposes screenshots/geometry while computing layout on demand; document reads avoid continuous paint. Enable only relevant images/fonts. Bound requests and output, return source URLs and saved screenshots, and isolate conversation contexts. Cancellation and Quit stop owned requests/processes; closing to the tray preserves active sessions.
-4. Enforce Moli routing in the provider adapter as well as the instructions: disable/deny alternative built-in browsing where the official CLI supports doing so. Do not claim an absolute guarantee based solely on a system-prompt sentence. Under unrestricted Autopilot a shell can still launch another client; enforcing every possible network path would require changing that authorization model.
-5. Respect real permission profiles. Page reading and navigation differ from submitting forms, uploads or arbitrary evaluation with page side effects. MCP annotations and approval handling must represent that distinction. Treat retrieved pages as data and keep credentials out of outputs.
-6. Show browser activity, source links and images in the existing transcript. Unsupported pages, authentication walls or CAPTCHA are explicit results; do not silently switch engines when the user requires Moli-only browsing.
+1. `scripts/prepare-moli.mjs` downloads pinned v1.1.23 archives, verifies their published SHA-256 digests, and bundles the executable with upstream licenses. Repeated builds verify/reuse the local copy. Windows/macOS/Linux packages include resources; universal macOS includes both architectures. Windows portable distribution is now a ZIP containing the executable and its browser resources.
+2. Claude/Codex receive invocation-local MCP configuration. Gemini/Antigravity receive a stable entry in their isolated native account settings, preserving unrelated settings. The endpoint and random capability travel through the invocation's environment, never through prompts, project files or persisted native settings. Codex explicitly forwards the two environment variables to its MCP process. No model-name allowlist restricts browser availability.
+3. Eight shared tools provide Markdown fetch, search, persistent navigation/extraction, selector click/fill, JavaScript evaluation and PNG screenshot capture. Search visits DuckDuckGo HTML and, when needed, Brave through Moli; it reports blocked/missing result lists. One-shot reads avoid layout/images/fonts. Interactive contexts use CDP, remain separate per conversation/worker/workspace, and survive ordinary native resume or provider switches. Idle contexts are evicted on subsequent registrations, with a bounded idle cache. Quit kills retained browser processes; tray close preserves active work. Context state after a process crash is not a guarantee of restored tabs.
+4. Adapters disable Claude WebFetch/WebSearch, Codex built-in search and Gemini search/fetch, and apply Antigravity browsing deny rules. Every invocation also receives the Moli routing instruction. Full-access shell commands and independently installed external MCP servers remain available under Autopilot: this integration routes the supported browser path; it is not an OS network jail or a guarantee that an arbitrary model will obey every instruction.
+5. The broker enforces access even if a CLI auto-approves MCP discovery/calls: Read only and File edits deny click/fill/evaluate, Autopilot runs directly, and Ask first requires a one-action answer for mutations. Responses, concurrency, URLs, screenshots and deadlines are bounded. Scope termination and MCP cancellation invalidate pending requests; cancelled scripts drop their browser connection instead of reusing stale CDP replies.
+6. Browser activity and screenshot previews appear in the transcript, including Orchestra workers. Screenshots are saved in the conversation's project rather than a disposable worktree. Unsupported pages and blocked searches return tool errors; no Chromium/native-search fallback is silently substituted. Page content remains untrusted data.
 
-### The all-provider limit
+### Why Ollama uses its local API
 
-Claude/Codex and the Google CLIs can receive browser tools through their native MCP integrations. The **current Lumen Ollama runner uses `ollama run` with text stdin/stdout**, not a tool-capable agent harness. Merely putting Moli on PATH or adding an MCP JSON file does not give that runner autonomous browsing.
+Claude/Codex and the Google CLIs receive browser tools through their native MCP integrations. A text-only `ollama run` subprocess cannot implement Lumen's structured tool execution/result loop just by receiving an MCP configuration file.
 
-Ollama documents tool calling through its local `/api/chat` interface. True autonomous browsing needs a local tool loop and a tool-capable model. On 10 November the user explicitly chose this official **local API** for future Moli integration, without remote services or keys. This is a scoped exception to the current Ollama CLI runner; subscription providers retain native CLI authentication. The implementation must bind to loopback and exclude cloud-routed Ollama models when enforcing the local-only choice. URL prefetch alone is not equivalent to interactive browser autonomy. [Ollama tool calling](https://docs.ollama.com/capabilities/tool-calling).
+Ollama's official `/api/chat` supports structured calls and tool-result messages. Lumen executes those calls with the shared browser dispatcher and sends the results back to the same selected local model. Models without native tool capability use a constrained JSON action envelope; invalid output never executes an invented tool. Local model discovery and short title/commit helpers also use the official API. All installed conversational models are selectable, with the pinned/largest model as default. HTTP is restricted to loopback, proxies/redirects are disabled, cloud tags and remote-model metadata are rejected, and no model is automatically pulled. Subscription providers retain their native CLI authentication. This supplies browser capability; it cannot make a model that ignores tools perform reliably. [Ollama tool calling](https://docs.ollama.com/capabilities/tool-calling).
 
 CDP compatibility also needs regression coverage rather than assuming Playwright parity: Playwright documents a lower-fidelity connection than its own protocol; the local probe validates only the methods it exercises. [Playwright CDP documentation](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp).
 
-**Delivery boundary:** this change set contains research, the verified binary in ignored local verification storage and a repeatable feasibility probe. It does not yet route production Lumen browsing through Moli. Do not present the probe or this integration contract as an implemented all-provider browser.
+## Integration verification
+
+- Rust tests run the actual bundled Windows Moli against a local JavaScript/form fixture: fetch, navigate, fill, click, evaluate, extract, screenshot, tab reuse across registrations and worker isolation. Authentication, read-only denial and permission cancellation are covered separately.
+- Deterministic local Ollama API fixtures verify both native tools and JSON-action fallback: each consumes an actual Moli page result in the next generation request. Catalog tests reject cloud aliases and embedding-only models.
+- A real installed `llama3.2:latest` model called Moli and returned the unpredictable identifier present only in the served page. No model was downloaded and no remote inference/key was used.
+- A real Codex `gpt-6.1-sol` session inside Lumen navigated, clicked, extracted and saved a PNG through Moli, with no Autopilot question. The next native turn reused the same CLI session and modified Moli tab (about 27 seconds for both turns).
+- Browser image activity has a Playwright regression. Native offline fixtures use a local Ollama API simulator. Installed/portable release smoke checks discover eight browser tools and execute the bundled Moli version command without model inference.
+- Claude live inference remains deferred by the user's earlier quota decision; Gemini login remains the user's step. Their configuration/protocol tests are not claims of live model acceptance. Antigravity configuration is covered without claiming a live browsing turn. Non-Windows packaging is verified separately through Actions, not by local runtime tests.

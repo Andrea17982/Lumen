@@ -131,6 +131,10 @@ pub async fn execute(
     } else if input.access == AccessMode::Ask {
         return Err("The approval journal is unavailable".into());
     }
+    if let Some(browser) = input.browser {
+        browser.env(&mut c);
+        browser.args(&mut args, &Provider::Claude)?;
+    }
     c.current_dir(&cwd)
         .args(args)
         .stdin(std::process::Stdio::piped())

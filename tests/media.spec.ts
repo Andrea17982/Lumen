@@ -1,4 +1,50 @@
 import { expect, test } from '@playwright/test';
+
+test('Moli image activity renders its path and browser activity stays readable', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: [],
+        sessions: [
+          {
+            id: 'moli',
+            title: 'Moli image',
+            status: 'completed',
+            workspace: 'C:/Work',
+            updatedAt: 1,
+          },
+        ],
+        messages: {
+          moli: [
+            {
+              id: 'moli-answer',
+              role: 'assistant',
+              text: 'Page captured.',
+              activity: [
+                { kind: 'browser', text: 'Moli · browser_screenshot\nCurrent page' },
+                {
+                  kind: 'image',
+                  text: JSON.stringify({
+                    id: 'shot',
+                    path: 'https://example.test/moli-shot.png',
+                    folder: 'C:/Worker',
+                  }),
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /^(?!Actions for).*Moli image/ }).click();
+  await expect(page.getByRole('button', { name: 'Load image: moli-shot.png' })).toBeVisible();
+  await expect(page.locator('.prose')).not.toContainText('"folder"');
+});
 test('layout constraints support keyboard editing, persistence and removal', async ({ page }) => {
   await page.addInitScript(
     () =>

@@ -1,5 +1,5 @@
 import { Columns2, Sparkles } from 'lucide-react';
-import type { Mode } from '../lib/types';
+import type { Mode, Provider } from '../lib/types';
 import { nameOf } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
@@ -7,15 +7,25 @@ export interface ModeControlProps {
   mode: Mode;
   /** Read-only sessions can also compare both providers side by side. */
   bothAvailable: boolean;
+  providers?: Provider[];
   onChange: (mode: Mode) => void;
 }
 
 /** Segmented AI provider picker: Auto, Claude, GPT (and Both in read-only mode). */
-export default function ModeControl({ mode, bothAvailable, onChange }: ModeControlProps) {
+export default function ModeControl({
+  mode,
+  bothAvailable,
+  providers = [],
+  onChange,
+}: ModeControlProps) {
   const { t } = useI18n();
-  const options: Mode[] = bothAvailable
-    ? ['auto', 'claude', 'gpt', 'both']
-    : ['auto', 'claude', 'gpt'];
+  const options: Mode[] = [
+    'auto',
+    'claude',
+    'gpt',
+    ...providers.filter((p) => p !== 'claude' && p !== 'gpt'),
+  ];
+  if (bothAvailable) options.push('both');
   return (
     <div className="mode-control" role="group" aria-label={t('AI provider')}>
       {options.map((p) => (

@@ -286,6 +286,12 @@ pub async fn codex_turn(
     if cfg!(windows) {
         c.args(["-c", "windows.sandbox=\"unelevated\""]);
     }
+    if let Some(browser) = input.browser {
+        browser.env(&mut c);
+        let mut args = Vec::new();
+        browser.args(&mut args, &Provider::Gpt)?;
+        c.args(args);
+    }
     let mut child = c
         .spawn()
         .map_err(|e| format!("unavailable: cannot start Codex: {e}"))?;
@@ -736,6 +742,9 @@ mod tests {
         let (_tx, rx) = watch::channel(false);
         let result = codex_turn(
             Invocation {
+                browser: None,
+                browser_scope: None,
+                browser_artifacts: None,
                 resume: None,
                 account: &account,
                 config: &config,

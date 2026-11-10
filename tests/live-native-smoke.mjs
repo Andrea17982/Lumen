@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { createServer } from 'node:http';
 if (process.env.LUMEN_LIVE_NATIVE !== '1')
   throw Error('Set LUMEN_LIVE_NATIVE=1 to authorize the live CLI probe.');
 const original =
@@ -58,6 +59,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let browser;
 let invoke;
 const results = [];
+const moliFixture = createServer((_request, response) => {
+  response.setHeader('Content-Type', 'text/html; charset=utf-8');
+  response.end(
+    '<html><head><title>Moli native acceptance</title></head><body><h1>MOLI_NATIVE_RESULT_9173</h1><p id="out">before</p><button id="go" onclick="document.getElementById(\'out\').textContent=\'MOLI_CLICKED\'">Apply</button></body></html>',
+  );
+});
+await new Promise((resolve) => moliFixture.listen(0, '127.0.0.1', resolve));
+const moliAddress = `http://127.0.0.1:${moliFixture.address().port}/`;
 try {
   for (let i = 0; i < 100; i++) {
     try {
@@ -112,6 +121,70 @@ try {
       effort: 'low',
       accessMode: 'autopilot',
     };
+    if (process.env.LUMEN_LIVE_MOLI === '1') {
+      await invoke('send_message', {
+        id: s.id,
+        options,
+        text: `Bounded browser acceptance: use lumen_browser (Moli) browser_navigate to open ${moliAddress}, then browser_click with selector #go, then browser_extract and browser_screenshot. Reply with the exact final #out text. Do not use another browser, native web tools, shell network commands or subagents. Do not ask permission: this is already authorized in Autopilot.`,
+      });
+      let first;
+      for (let i = 0; i < 900; i++) {
+        const status = (await invoke('list_sessions', { search: '', offset: 0 })).find(
+          (row) => row.id === s.id,
+        )?.status;
+        const rows = await invoke('get_messages', { id: s.id });
+        assert.equal((await invoke('pending_questions')).length, 0, 'Autopilot issued a question');
+        if (status === 'error') throw Error(JSON.stringify(rows.at(-1)));
+        if (status === 'completed') {
+          first = rows.at(-1);
+          break;
+        }
+        await sleep(200);
+      }
+      assert(first?.text.includes('MOLI_CLICKED'), JSON.stringify(first));
+      assert(first.activity.some((a) => a.kind === 'browser' && a.text.includes('browser_click')));
+      const image = JSON.parse(first.activity.find((a) => a.kind === 'image').text);
+      assert(
+        (await readFile(path.join(image.folder, image.path)))
+          .subarray(0, 4)
+          .equals(Buffer.from([137, 80, 78, 71])),
+      );
+      const native = JSON.parse(first.activity.find((a) => a.kind === 'native').text);
+      await invoke('send_message', {
+        id: s.id,
+        options,
+        text: 'Use Moli browser_extract on the existing tab, without navigating again. Reply only with the #out text.',
+      });
+      let follow;
+      for (let i = 0; i < 600; i++) {
+        const status = (await invoke('list_sessions', { search: '', offset: 0 })).find(
+          (row) => row.id === s.id,
+        )?.status;
+        if (status === 'error')
+          throw Error(JSON.stringify((await invoke('get_messages', { id: s.id })).at(-1)));
+        if (status === 'completed') {
+          follow = (await invoke('get_messages', { id: s.id })).at(-1);
+          break;
+        }
+        await sleep(200);
+      }
+      assert(follow?.text.includes('MOLI_CLICKED'), JSON.stringify(follow));
+      assert.equal(
+        JSON.parse(follow.activity.find((a) => a.kind === 'native').text).session,
+        native.session,
+      );
+      results.push({
+        provider,
+        model: model.id,
+        moli: true,
+        image: true,
+        resumed: true,
+        passed: true,
+        elapsedMs: Date.now() - started,
+      });
+      console.log(JSON.stringify(results.at(-1)));
+      continue;
+    }
     const tool = provider === 'claude' ? 'AskUserQuestion' : 'lumen_request_user_input';
     await invoke('send_message', {
       id: s.id,
@@ -402,6 +475,7 @@ try {
     JSON.stringify(results, null, 2),
   );
 } finally {
+  moliFixture.close();
   if (invoke) await invoke('quit_app').catch(() => {});
   if (browser) await browser.close().catch(() => {});
   await sleep(1000);

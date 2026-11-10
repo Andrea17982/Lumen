@@ -11,7 +11,7 @@
 - Godot visual controls require project opt-in and verify the editor root before Play/Reload/Stop/Capture. Purchased addons are not bundled; runtime services are not enabled implicitly.
 - Versioned SQLite migrations are transactional and reject newer schemas. Linux and universal macOS packaging are configured in Actions. Evidence and remaining acceptance are tracked in [implementation status](implementation-status.md).
 
-The published 0.6.0 tag remains unchanged. These development changes are not retroactively part of that release. [Moli findings](moli.md) distinguish a tested feasibility probe from production integration.
+The published 0.6.0 tag remains unchanged. These development changes are not retroactively part of that release. [Moli integration](moli.md) provides automatic shared browsing tools across all providers, with real Codex/Ollama evidence and explicit compatibility/acceptance limits.
 
 ## New in 0.6.0: task continuity and code quality
 

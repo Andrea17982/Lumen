@@ -1,5 +1,30 @@
 import { expect, test } from '@playwright/test';
 
+test('every connected provider can be selected directly without changing its model family', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: ['claude', 'gpt', 'gemini', 'antigravity', 'ollama'].map((provider) => ({
+          id: provider,
+          name: provider,
+          provider,
+        })),
+        sessions: [],
+      }),
+    ),
+  );
+  await page.goto('/');
+  const picker = page.getByRole('group', { name: 'AI provider' });
+  for (const name of ['Gemini CLI', 'Antigravity', 'Ollama', 'Claude', 'GPT']) {
+    const button = picker.getByRole('button', { name, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+  }
+});
+
 test('slash commands can be filtered, selected and dismissed in the composer', async ({ page }) => {
   await page.goto('/');
   const input = page.getByRole('textbox', { name: 'Message', exact: true });

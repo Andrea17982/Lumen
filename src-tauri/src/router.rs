@@ -93,7 +93,17 @@ pub fn route_with(
     options: &RunOptions,
     accounts: &[Account],
 ) -> Result<Plan, String> {
-    if !["auto", "claude", "gpt", "both"].contains(&options.mode.as_str()) {
+    if ![
+        "auto",
+        "claude",
+        "gpt",
+        "gemini",
+        "antigravity",
+        "ollama",
+        "both",
+    ]
+    .contains(&options.mode.as_str())
+    {
         return Err("Unknown provider mode".into());
     }
     if options.effort.len() > 32 || !options.effort.chars().all(|c| c.is_ascii_lowercase()) {
@@ -111,6 +121,9 @@ pub fn route_with(
     let preferred = match options.mode.as_str() {
         "claude" | "both" => Provider::Claude,
         "gpt" => Provider::Gpt,
+        "gemini" => Provider::Gemini,
+        "antigravity" => Provider::Antigravity,
+        "ollama" => Provider::Ollama,
         _ if task.tier == 2 => Provider::Claude,
         _ => Provider::Gpt,
     };
@@ -392,6 +405,27 @@ mod tests {
         let mut o = opts();
         o.model = Some("x; calc".into());
         assert!(route("hi", &o, &accounts()).is_err());
+    }
+    #[test]
+    fn every_explicit_provider_preserves_the_selected_model() {
+        for (mode, provider) in [
+            ("gemini", Provider::Gemini),
+            ("antigravity", Provider::Antigravity),
+            ("ollama", Provider::Ollama),
+        ] {
+            let mut options = opts();
+            options.mode = mode.into();
+            options.model = Some("chosen-model:8b".into());
+            options.account_id = Some("selected".into());
+            let accounts = vec![Account {
+                id: "selected".into(),
+                name: "test".into(),
+                provider: provider.clone(),
+            }];
+            let routed = route("Implement architecture", &options, &accounts).unwrap();
+            assert_eq!(routed.provider, provider);
+            assert_eq!(routed.model.as_deref(), Some("chosen-model:8b"));
+        }
     }
     fn catalog(names: &[&str]) -> Vec<ModelInfo> {
         names

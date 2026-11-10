@@ -2,6 +2,7 @@ mod activity;
 mod approvals;
 mod approvals_codex;
 mod assets;
+mod browser;
 mod catalog;
 mod classify;
 mod codegraph;
@@ -24,6 +25,7 @@ mod migrations;
 mod models;
 mod native_claude;
 mod ollama;
+mod ollama_agent;
 mod orchestra;
 mod proc;
 mod projecttools;
@@ -670,6 +672,9 @@ fn gatekeeper_decide(
 }
 
 /// Entry for `lumen --lumen-graph-mcp <data> <root>`: the code graph as a stdio MCP server.
+pub async fn serve_browser() -> Result<(), String> {
+    browser::proxy_stdio().await
+}
 pub fn serve_graph(data: std::path::PathBuf, root: std::path::PathBuf) -> std::io::Result<()> {
     graph_mcp::serve(data, root)
 }
@@ -734,6 +739,9 @@ pub fn run() {
                 approvals: journal,
             });
             app.manage(core.clone());
+            if let Ok(resources) = app.path().resource_dir() {
+                browser::resources(resources);
+            }
             if let Some(keeper) = core.approvals.clone() {
                 relay_approvals(app.handle().clone(), keeper);
             }
@@ -847,6 +855,7 @@ pub fn run() {
         .expect("Could not start Lumen")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                browser::shutdown();
                 app.state::<Arc<Core>>().cancel_all();
             }
         });

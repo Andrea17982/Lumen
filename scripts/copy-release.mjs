@@ -1,4 +1,5 @@
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,9 +49,17 @@ try {
   copiedPortableName = updatedName;
   console.warn(`Portable executable is in use; updated copy saved as ${updatedName}`);
 }
+// A portable executable needs its pinned browser and notices alongside it. The ZIP is
+// the distributable; the loose copy is convenient when running directly from builds/latest.
+const moli = path.join(root, 'src-tauri/resources/moli', `${process.platform}-${process.arch}`);
+await cp(moli, path.join(destination, 'resources/moli', `${process.platform}-${process.arch}`), { recursive: true });
+const zipName = copiedPortableName.replace(/\.exe$/i, '.zip');
+execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(root, 'scripts/package-portable.ps1'),
+  '-Executable', path.join(portable, 'lumen.exe'), '-Moli', moli,
+  '-Destination', path.join(destination, zipName)], { windowsHide: true, stdio: 'pipe' });
 // The manifest belongs to this build, including the renamed copy when the old EXE is running.
 const checksums = await Promise.all(
-  [newest, copiedPortableName].map(async (name) => {
+  [newest, copiedPortableName, zipName].map(async (name) => {
     const hash = createHash('sha256')
       .update(await readFile(path.join(destination, name)))
       .digest('hex');

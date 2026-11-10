@@ -185,14 +185,32 @@ export default function MessageView({
       )}
       {m.activity
         .filter((a) => a.kind === 'image')
-        .map((a, i) => (
-          <ResponseImage
-            key={i}
-            href={a.text}
-            alt={a.text.split(/[\\/]/).at(-1) || 'Image'}
-            folder={messageFolder}
-          />
-        ))}
+        .map((a, i) => {
+          let path = a.text;
+          let folder = messageFolder;
+          try {
+            const image: unknown = JSON.parse(a.text);
+            if (
+              image &&
+              typeof image === 'object' &&
+              'path' in image &&
+              typeof image.path === 'string'
+            ) {
+              path = image.path;
+              if ('folder' in image && typeof image.folder === 'string') folder = image.folder;
+            }
+          } catch {
+            /* Native providers may emit a plain image path. */
+          }
+          return (
+            <ResponseImage
+              key={i}
+              href={path}
+              alt={path.split(/[\\/]/).at(-1) || 'Image'}
+              folder={folder}
+            />
+          );
+        })}
       {attachments && (
         <div className="attachment-chips">
           {attachments.map((f) => (

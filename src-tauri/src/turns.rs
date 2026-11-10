@@ -537,6 +537,9 @@ pub(crate) async fn stage_with(
     let retry_cancel = cancel.clone();
     let result = providers::execute(
         providers::Invocation {
+            browser: None,
+            browser_scope: Some(&s.id),
+            browser_artifacts: Some(std::path::Path::new(&s.workspace)),
             account: a,
             config: &config,
             workspace: &workspace,

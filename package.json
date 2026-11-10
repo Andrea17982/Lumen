@@ -6,8 +6,8 @@
   "scripts": {
     "format": "prettier --write src tests vite.config.ts playwright.config.ts",
     "format:check": "prettier --check src tests vite.config.ts playwright.config.ts",
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/prepare-moli.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/prepare-moli.mjs && tsc -b && vite build",
     "build:release": "tauri build && node scripts/copy-release.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",

@@ -1,5 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 fn main() {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "--lumen-browser-mcp")
+    {
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map(|rt| rt.block_on(lumen_lib::serve_browser()));
+        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
+    }
     // Claude starts this same executable as its permission-prompt MCP bridge (see approvals.rs).
     // It must print protocol frames only, so it returns before the window or any logging starts.
     if std::env::args_os()

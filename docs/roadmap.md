@@ -18,7 +18,7 @@ Functional source d9ca0e3 passed CI on Windows/macOS/Ubuntu and packaging for Wi
 
 - **Claude live turn:** deferred explicitly by the user after account quota exhaustion. Native initialization, controlled streaming/questions/approvals, cancellation and offline native UI paths are covered. Do not present fixtures as a live inference proof.
 - **Gemini live turn:** official Gemini CLI 0.67.0 is now installed and its version/help verified. The user will complete native Google sign-in personally. After that, verify the account's real model catalog, a graph tool call, cancellation and fallback through Lumen. Configure/login through Lumen's account slot so its native account directory is used.
-- **Provider/identity matrix:** extend actual multi-account and CLI-version coverage for Google-provider usage, quota parsing and fallback. Preserve unknown/stale metrics explicitly. Current Google print runners and Ollama text runner do not establish the same bidirectional UI capability set as the Claude/Codex adapters.
+- **Provider/identity matrix:** extend actual multi-account and CLI-version coverage for Google-provider usage, quota parsing and fallback. Preserve unknown/stale metrics explicitly. Google print runners do not establish the same bidirectional native UI capability set as the Claude/Codex adapters. Ollama now has a local API browser tool loop; it does not acquire those CLIs' filesystem/child-agent tools.
 - **Real-limit/restart matrix:** keep expanding controlled Orchestra coverage with observed live quota cooldown, repeated Resume and interrupted native approval delivery. A real Codex Autopilot run with concurrency 1 / total 2, actual writes and clean worktree integration has passed; it does not simulate every possible crash or provider outage.
 
 ## Target-environment acceptance
@@ -32,6 +32,6 @@ Functional source d9ca0e3 passed CI on Windows/macOS/Ubuntu and packaging for Wi
 
 Keep measured regressions as fixtures before adding complexity. The Windows 1,000-message synthetic transcript loaded in approximately 0.5–0.6 s; large synthetic scroll jumps still produced an isolated approximately 0.33–0.36 s frame interval. Memoized Markdown and browser content visibility are in place. Full virtualization, Rust Markdown/ANSI rendering, compact alternate metadata serialization and warm CLI pools require evidence that they improve actual workload latency/quality without damaging native formats or coherent tool exchanges.
 
-## Subsequent Moli request
+## Moli implementation
 
-The requested online feasibility study and Windows CLI/CDP probe are in [Moli findings](moli.md). Production automatic browser routing is not yet implemented. The user chose the official local Ollama API, with no keys or remote services, for its future tool loop; subscription providers retain official CLI authentication. The study describes the shared MCP/browser service and the limits of all-model guarantees.
+Automatic Moli routing is implemented in the common conversation/Orchestra path for all five providers. The shared MCP broker, pinned browser packaging, permission/cancellation handling, persistent isolated contexts, transcript images and official local Ollama API tool loop have targeted tests. Real Codex navigation/click/screenshot/resume and a real local Ollama model call passed. Remaining provider login/quota acceptance above still applies; see [Moli implementation and evidence](moli.md).

@@ -44,6 +44,11 @@ The published 0.6.0 tag is unchanged. These changes are on `codex/native-session
 - Local proof includes native UI fixtures, real Codex questions/resume/graph use, real Codex Orchestra writes/caps/integration, actual Rust/TypeScript/C#/Godot LSP errors, C# compiler links, real Godot editor actions and screenshots, plus the Rodent manifest corruption/restoration check. [Evidence](../implementation-status.md) records exact scope and remaining external/live acceptance.
 - Gemini CLI 0.67.0 is installed on the development machine; the user completes native sign-in. Claude live inference remains deferred as agreed. Physical-device, native non-Windows UI, screen-reader and uninstalled-editor acceptance are not implied by compilation or DOM tests.
 
-## Moli study
+## Moli browser integration
 
-The Windows v1.1.23 binary was digest-verified and passed CLI/CDP DOM/forms/JS and screenshot probes. [The study](../moli.md) covers actual and vendor benchmarks, compatibility limits, shared MCP integration and the user's chosen official local Ollama API tool loop. Production Moli routing is not part of this change set yet.
+- Automatic shared `lumen_browser` MCP tools for Claude, Codex, Gemini and Antigravity, including native resume, fallback and Orchestra workers. Official native authentication is retained; supported built-in browsing alternatives are disabled/denied.
+- Ollama uses its official loopback API for model discovery, helper text and a real tool/result loop. Native function calling and a constrained JSON-action fallback share Moli and the same permission enforcement. All installed conversational models are selectable. Remote endpoints/cloud aliases are rejected; no keys or automatic model downloads.
+- Pinned Moli v1.1.23 resources and upstream notices are bundled with digest verification for Windows/macOS/Linux. Windows portable delivery is a ZIP containing its required resources.
+- Markdown fetch/search, persistent CDP navigation/extraction, click/fill/evaluate and screenshots; isolated contexts per conversation/worker/workspace; cancellation, deadlines, bounded output and one-action mutation permissions in Ask mode. Autopilot proceeds directly.
+- Browser activity and screenshots appear in the existing transcript. Worker screenshots remain in the conversation project after worktree cleanup. Unsupported/blocked sites report an error instead of silently switching browsers.
+- Targeted real-engine tests passed, plus real Codex browsing/screenshot/native resume and an actual local Ollama model consuming a fetched page. [Evidence and compatibility limits](../moli.md) distinguish these results from deferred Claude/Google live acceptance and from model-intelligence claims.

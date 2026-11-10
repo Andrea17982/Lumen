@@ -6,17 +6,47 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 
 const root = process.cwd();
 const testData = await mkdtemp(path.join(tmpdir(), 'lumen-native-test-'));
 const workspace = path.join(testData, 'workspace');
 await mkdir(workspace);
+const ollamaFixture = createServer(async (request, response) => {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  response.setHeader('Content-Type', 'application/json');
+  if (request.url === '/api/tags')
+    response.end(
+      JSON.stringify({
+        models: [
+          { name: 'tiny-fixture:latest', size: 637000000, capabilities: ['completion', 'tools'] },
+          { name: 'qwen-fixture:7b', size: 4700000000, capabilities: ['completion', 'tools'] },
+        ],
+      }),
+    );
+  else if (request.url === '/api/show')
+    response.end(JSON.stringify({ capabilities: ['completion', 'tools'] }));
+  else if (request.url === '/api/chat')
+    response.end(
+      JSON.stringify({
+        message: { role: 'assistant', content: 'Local fixture answer.' },
+        done: true,
+      }) + '\n',
+    );
+  else {
+    response.statusCode = 404;
+    response.end('{}');
+  }
+});
+await new Promise((resolve) => ollamaFixture.listen(0, '127.0.0.1', resolve));
 const child = spawn(path.join(root, 'src-tauri/target/debug/lumen.exe'), [], {
   cwd: root,
   windowsHide: true,
   stdio: 'pipe',
   env: {
     ...process.env,
+    OLLAMA_HOST: `http://127.0.0.1:${ollamaFixture.address().port}`,
     LUMEN_TEST_DATA_DIR: testData,
     WEBVIEW2_USER_DATA_FOLDER: path.join(testData, 'webview'),
     PATH: `${path.join(root, 'tests/fixtures/cli')};${process.env.PATH}`,
@@ -490,7 +520,7 @@ try {
     'reset retains accounts',
   );
 
-  // 0.4: Ollama through its official CLI, then Orchestra end to end on fixtures.
+  // Ollama's official local API, then Orchestra end to end on fixtures.
   const local = await invoke('add_account', { name: 'Local fixture', provider: 'ollama' });
   const ollama = await invoke('ollama_status');
   assert(ollama.installed && ollama.running && ollama.models.length === 2, JSON.stringify(ollama));
@@ -499,8 +529,9 @@ try {
   const localModels = await invoke('list_models', { id: local.id, refresh: true });
   assert.deepEqual(
     localModels.map((m) => m.id),
-    ['qwen-fixture:7b'],
+    ['tiny-fixture:latest', 'qwen-fixture:7b'],
   );
+  assert(localModels.find((m) => m.id === 'qwen-fixture:7b').isDefault);
   await invoke('save_settings', { value: { ...prefs, orchestra: true } });
   const orc = await invoke('create_session', { workspace: repo });
   const orcPlan = await invoke('send_message', {
@@ -774,6 +805,7 @@ try {
   assert.notEqual(child.exitCode, null, 'Quit exits Lumen');
   console.log('Native offline checks passed. Temporary test data: ' + testData);
 } finally {
+  ollamaFixture.close();
   if (browser) await browser.close().catch(() => {});
   if (!child.killed) child.kill();
 }

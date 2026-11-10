@@ -843,8 +843,12 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
     };
     let config = config_dir(core, a);
     let (app, session, message, id) = (&job.app, &job.session, &job.message, &job.id);
+    let browser_artifacts = PathBuf::from(core.store.session(&job.session)?.workspace);
     let r = providers::execute(
         providers::Invocation {
+            browser: None,
+            browser_scope: Some(&job.id),
+            browser_artifacts: Some(&browser_artifacts),
             resume: None,
             account: a,
             config: &config,
@@ -873,7 +877,15 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
                 }
                 return;
             }
-            if ["interaction", "interaction-result", "child"].contains(&activity.kind.as_str()) {
+            if [
+                "interaction",
+                "interaction-result",
+                "child",
+                "browser",
+                "image",
+            ]
+            .contains(&activity.kind.as_str())
+            {
                 event(app, session, message, &activity.kind, &activity.text);
                 let _ = core
                     .store

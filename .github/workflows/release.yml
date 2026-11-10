@@ -39,7 +39,7 @@ jobs:
           New-Item -ItemType Directory -Force dist-release | Out-Null
           $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $setup.FullName dist-release/
-          Copy-Item src-tauri/target/release/lumen.exe ("dist-release/" + ($setup.Name -replace '-setup\.exe$', '-portable.exe'))
+          ./scripts/package-portable.ps1 -Executable src-tauri/target/release/lumen.exe -Moli src-tauri/resources/moli/win32-x64 -Destination ("dist-release/" + ($setup.Name -replace '-setup\.exe$', '-portable.zip'))
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -59,6 +59,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: node scripts/prepare-moli.mjs
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: npm run tauri build -- --target universal-apple-darwin --bundles dmg
       - uses: actions/upload-artifact@v4

@@ -161,7 +161,11 @@ impl Store {
             let mut activities=m.activity.clone();
             let previous:Option<String>=c.query_row("SELECT activity FROM messages WHERE id=?1 AND session_id=?2",params![m.id,s],|r|r.get(0)).optional()?;
             if let Some(previous)=previous.and_then(|text|serde_json::from_str::<Vec<Activity>>(&text).ok()) {
-                for activity in previous.into_iter().filter(|a|["interaction","interaction-result","child"].contains(&a.kind.as_str())) {
+                for activity in previous.into_iter().filter(|a|["interaction","interaction-result","child","image","browser"].contains(&a.kind.as_str())) {
+                    if activity.kind == "browser" && !activities.iter().any(|a|a.kind == activity.kind && a.text == activity.text) {
+                        activities.push(activity);
+                        continue;
+                    }
                     let id=serde_json::from_str::<serde_json::Value>(&activity.text).ok().and_then(|v|v["id"].as_str().map(str::to_owned));
                     if let Some(id)=id {
                         if !activities.iter().any(|a|a.kind==activity.kind && serde_json::from_str::<serde_json::Value>(&a.text).is_ok_and(|v|v["id"]==id)) { activities.push(activity); }

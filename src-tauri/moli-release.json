@@ -1,0 +1,11 @@
+{
+  "version": "1.1.23",
+  "assets": {
+    "win32-x64": ["moli-x86_64-pc-windows-msvc.zip", "674652caf89c217c28d988e8eac6e63b4b3991a8dc829124618ead374da11c26"],
+    "win32-arm64": ["moli-aarch64-pc-windows-msvc.zip", "04d6f74d6290313b052923d6f20b2c2f7cd431bb7b138f174216c2ba8301e4bb"],
+    "darwin-x64": ["moli-x86_64-apple-darwin.tar.gz", "90264a027e56474038adf3339e4721e28ef240fc30a99b86ad84598f60a729d7"],
+    "darwin-arm64": ["moli-aarch64-apple-darwin.tar.gz", "74b4076f62db49e9a10b77b46b67e3c360f0408476acac4def29e679b1838fe8"],
+    "linux-x64": ["moli-x86_64-unknown-linux-gnu.tar.gz", "df360c04e567ce2e56a8391a03dc677d794465848b5821f944d2de10f3f1f430"],
+    "linux-arm64": ["moli-aarch64-unknown-linux-gnu.tar.gz", "4239cc212bbf553d34779384748c2b03a8702cc3a5010b49e20f2edd377fc4c7"]
+  }
+}

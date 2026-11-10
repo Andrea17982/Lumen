@@ -2,7 +2,7 @@ import { ArrowUp, ChevronDown, ChevronUp, Paperclip, Square, Workflow } from 'lu
 import ModeControl from './ModeControl';
 import PermissionButton from './PermissionButton';
 import { useI18n } from '../lib/i18n';
-import type { AccessMode, Mode, Workspace } from '../lib/types';
+import type { AccessMode, Mode, Provider, Workspace } from '../lib/types';
 
 const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
@@ -10,6 +10,7 @@ const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : 
 export function ComposerToolbar(p: {
   mode: Mode;
   bothAvailable: boolean;
+  providers?: Provider[];
   onMode: (mode: Mode) => void;
   /** Auto mode with Orchestra turned on. */
   orchestra: boolean;
@@ -31,10 +32,15 @@ export function ComposerToolbar(p: {
   onSend: () => void;
 }) {
   const { t } = useI18n();
-  const direct = p.mode === 'claude' || p.mode === 'gpt';
+  const direct = p.mode !== 'auto' && p.mode !== 'both';
   return (
     <div className="composer-toolbar">
-      <ModeControl mode={p.mode} bothAvailable={p.bothAvailable} onChange={p.onMode} />
+      <ModeControl
+        mode={p.mode}
+        bothAvailable={p.bothAvailable}
+        providers={p.providers}
+        onChange={p.onMode}
+      />
       {p.orchestra && (
         <button
           className="orchestra-badge"

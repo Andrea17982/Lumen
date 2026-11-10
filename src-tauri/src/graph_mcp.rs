@@ -37,20 +37,37 @@ pub fn configure_google(
     if !value.is_object() {
         return Err("The native MCP configuration is not an object".into());
     }
+    let previous_settings = value.clone();
     if value.get("mcpServers").is_none() {
         value["mcpServers"] = json!({});
     }
     let servers = value["mcpServers"]
         .as_object_mut()
         .ok_or("The native mcpServers value is not an object")?;
-    let previous = servers.get(SERVER).cloned();
     if enabled {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         servers.insert(SERVER.into(),json!({"command":exe.to_string_lossy(),"args":[CONTEXT_FLAG,data.to_string_lossy()],"trust":true,"disabled":false}));
     } else {
         servers.remove(SERVER);
     }
-    if previous == servers.get(SERVER).cloned() {
+    crate::browser::google_settings(&mut value)?;
+    if *provider == crate::models::Provider::Gemini {
+        if value.get("tools").is_none() {
+            value["tools"] = json!({});
+        }
+        if value["tools"].get("exclude").is_none() {
+            value["tools"]["exclude"] = json!([]);
+        }
+        let excluded = value["tools"]["exclude"]
+            .as_array_mut()
+            .ok_or("Native tools.exclude must be an array")?;
+        for name in ["google_web_search", "web_fetch"] {
+            if !excluded.iter().any(|v| v == name) {
+                excluded.push(json!(name));
+            }
+        }
+    }
+    if previous_settings == value {
         return Ok(());
     }
     let parent = path.parent().ok_or("Invalid account settings path")?;
@@ -318,6 +335,17 @@ mod tests {
             let value: Value = serde_json::from_slice(&first).unwrap();
             assert_eq!(value["mcpServers"]["other"]["command"], "kept");
             assert_eq!(value["mcpServers"][SERVER]["args"][0], CONTEXT_FLAG);
+            assert_eq!(
+                value["mcpServers"][crate::browser::SERVER]["args"][0],
+                crate::browser::FLAG
+            );
+            if provider == crate::models::Provider::Gemini {
+                assert!(value["tools"]["exclude"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|v| v == "web_fetch"));
+            }
             assert!(!String::from_utf8(first)
                 .unwrap()
                 .contains("LUMEN_WORKSPACE_ROOT"));

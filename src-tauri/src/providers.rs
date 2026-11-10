@@ -245,6 +245,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
 }
 
 pub struct Invocation<'a> {
+    pub browser_scope: Option<&'a str>,
+    pub browser_artifacts: Option<&'a Path>,
+    pub browser: Option<&'a crate::browser::Registration>,
     pub account: &'a Account,
     pub config: &'a Path,
     pub workspace: &'a Path,
@@ -266,6 +269,22 @@ pub async fn execute(
     // IPC is limited to one text delta per frame. Control/diagnostic events flush pending text
     // first, so ordering and interactive questions are preserved without delaying decisions.
     let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
+    let browser = crate::browser::Registration::new(&input, send.clone()).await?;
+    let prompt = format!("{}\n\n{}", crate::browser::INSTRUCTIONS, input.prompt);
+    let input = Invocation {
+        account: input.account,
+        config: input.config,
+        workspace: input.workspace,
+        prompt: &prompt,
+        model: input.model,
+        effort: input.effort,
+        access: input.access,
+        approvals: input.approvals,
+        resume: input.resume,
+        browser_scope: input.browser_scope,
+        browser_artifacts: input.browser_artifacts,
+        browser: Some(&browser),
+    };
     let run = execute_inner(input, cancel, |activity| {
         let _ = send.send(activity);
     });
@@ -352,6 +371,9 @@ async fn execute_inner(
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
     crate::models::share_global_instructions(&input.account.provider, input.config);
+    if input.account.provider == Provider::Ollama {
+        return crate::ollama_agent::execute(input, cancel, emit).await;
+    }
     if matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
         // Lumen's shared skills become native skills, loaded only when a task needs them.
         if let Some(data) = input.config.parent().and_then(Path::parent) {
@@ -450,6 +472,10 @@ async fn execute_inner(
             crate::graph_mcp::configure_google(input.config, p, data, graph_enabled(data))?;
             c.env("LUMEN_WORKSPACE_ROOT", &workspace);
         }
+    }
+    if let Some(browser) = input.browser {
+        browser.env(&mut c);
+        browser.args(&mut args, p)?;
     }
     c.args(args);
     let prompt = if *p == Provider::Antigravity {

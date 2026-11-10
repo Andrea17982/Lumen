@@ -1150,6 +1150,8 @@ html[data-text-size='large'] {
 }
 .mode-control {
   display: flex;
+  min-width: 0;
+  overflow-x: auto;
   padding: 3px;
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -1157,6 +1159,7 @@ html[data-text-size='large'] {
   gap: 2px;
 }
 .mode-control button {
+  flex-shrink: 0;
   padding: 6px 11px;
   border-radius: 7px;
   display: flex;
