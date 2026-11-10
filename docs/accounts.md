@@ -1,45 +1,36 @@
-# Accounts and official authentication
+# Accounts and official authentication — 0.7
 
-## What Lumen does
+Use your own authorized provider account. Lumen delegates subscription authentication to the installed official CLI, without implementing OAuth endpoints, copying token contents or sending extracted credentials to provider APIs.
 
-You install the official, unmodified provider CLI. An account slot gives it a separate application-owned configuration directory. Choosing Sign in opens the CLI's official login command in a visible Windows PowerShell terminal with that directory set. The CLI owns its browser, callbacks, tokens and refresh logic. Lumen neither implements OAuth endpoints nor reads token files.
+| Provider | Configuration / login | Connection |
+| --- | --- | --- |
+| Claude Code | Per-account `CLAUDE_CONFIG_DIR`; `claude auth login` | Official auth status and initialized native metadata |
+| Codex | Per-account `CODEX_HOME`; `codex login` | Official login status and app-server metadata |
+| Gemini CLI | Per-account `GEMINI_CLI_HOME`; official CLI login | Installed CLI metadata |
+| Antigravity | Separate `HOME`/`USERPROFILE`; official `agy` login | `agy models` |
+| Ollama | Your installed local models; no login | Official loopback `/api/tags` |
 
-| Provider | Environment | Official login | Connection check |
-| --- | --- | --- | --- |
-| Claude Code | `CLAUDE_CONFIG_DIR=<app-data>/accounts/<id>` | `claude auth login` | `claude auth status` |
-| Codex | `CODEX_HOME=<app-data>/accounts/<id>` | `codex login` | `codex login status` |
-| Gemini CLI | `GEMINI_CLI_HOME=<app-data>/accounts/<id>` | `gemini` | `gemini --list-models` |
-| Antigravity CLI | isolated `HOME` / `USERPROFILE` | `agy` | `agy models` |
-| Ollama (local) | none: your own Ollama store | no sign-in | official loopback `/api/tags` |
+Add and name slots in Settings → Accounts, choose Sign in, finish the provider's native terminal/browser flow and check the connection. Renaming preserves the account UUID and configuration directory. Restart after installing a CLI or changing PATH. Native login launch uses platform terminal support; manual environment-based login remains an option if a terminal is unavailable.
 
-There is no application-set account count cap. This does not increase a provider's allowance, guarantee every authentication store is independent, or authorize credential sharing. One slot per identity is recommended; duplicate slots for the same identity still share provider-side limits. Auto uses Gemini CLI or Antigravity only when fresh quota snapshots explicitly show every configured Claude and Codex account exhausted. Missing or stale quota information never triggers this quota-based fallback. Separately, when a turn hits a rate limit and the other subscription is cooling down too, the turn continues on Antigravity, Gemini CLI, then Ollama (Settings → Teamwork → Switch on rate limit). Claude quota snapshots must be entered from `/usage`; Codex snapshots can be refreshed through its CLI.
+## Model and provider access
 
-## Provider rules matter
+All five providers can be selected directly. Catalog discovery is per account and does not itself establish entitlement to every returned model. Provider plans, organization policies, CLI versions and actual quotas still apply. Auto's optional balancing/fallback is described in [Auto policy](auto.md); duplicate account slots do not create additional allowance.
 
-Anthropic distinguishes hosting an unmodified Claude Code binary for users who authenticate for themselves from offering Claude.ai login or routing subscription credentials as a third-party inference service. Lumen takes the former local-CLI approach: it does not collect credentials, implement a Claude login service, modify the binary, resell usage or send direct requests using extracted tokens. This implementation choice is not a legal certification or a blanket permission for every deployment. Review [Anthropic's current legal and credential-use rules](https://code.claude.com/docs/en/legal-and-compliance), including the commercial-terms requirement for offering Claude Code in a product. Obtain provider authorization where your distribution or use requires it. Never adapt Lumen into a shared subscription gateway.
+Ollama conversations, discovery and helpers use its official local API. `OLLAMA_HOST` can select another loopback HTTP port; remote endpoints, proxy/redirect routing and cloud-model metadata are rejected. Lumen never pulls a missing model automatically. Install models through Ollama yourself. The browser loop does not add Claude/Codex filesystem or child-agent tools to Ollama.
 
-Codex CLI supports official ChatGPT sign-in, and its exec mode reuses CLI-managed authentication. Lumen delegates to these features; see [OpenAI authentication](https://developers.openai.com/codex/auth) and [noninteractive mode](https://developers.openai.com/codex/noninteractive). Availability depends on the user's plan and organization policy. No credentials are seeded in public CI.
+## Local directories and credentials
 
-## Isolation and storage
+Account metadata is stored in `lumen.db`; native configuration/history lives under `<app-data>/accounts/<UUID>`. Codex uses a file-backed store in its account home. Common inherited provider API-key/token environment variables are removed before subscription CLI execution to avoid silently selecting another identity/billing path.
 
-- Names are labels only. IDs are generated UUIDs; user names never become paths.
-- Common inherited API credentials are removed from provider children. Existing home-directory logins are not imported.
-- Codex account creation writes `cli_auth_credentials_store = "file"` in that isolated home. The CLI may store plaintext tokens there; protect the directory as you would a password.
-- Gemini CLI uses its documented `GEMINI_CLI_HOME`. Antigravity uses a separate home directory. Google CLIs are not included in quota balancing; once the primary accounts are confirmed exhausted, Auto prefers Antigravity when both Google tools are connected.
-- Antigravity receives the prompt as one stream-json message on stdin (`--print= --input-format stream-json`). In File edits it runs with `--mode=accept-edits` and an allow rule for every command, because its headless mode denies all commands otherwise; Read only uses `--mode=plan`, Autopilot `--dangerously-skip-permissions`.
-- Ollama uses its official HTTP API on this computer, with no account/login or API keys. Lumen lists local models through `/api/tags` and runs conversations through `/api/chat`, executing Moli tool calls locally and returning their results to the selected model. Cloud-routed models and non-loopback endpoints are rejected. Ollama's tools cover browsing; this does not add native Claude/Codex filesystem tools.
-- `CLAUDE_CONFIG_DIR` isolates Claude settings/history as documented in [Claude settings](https://code.claude.com/docs/en/settings). OS keychain behavior may vary. Distinct directories alone do not prove independent keychain identities; acceptance-test with two accounts on your OS.
-- Account directories use the current user's standard application-data permissions; Lumen does not create an additional encrypted credential vault or hardened ACL.
-- Removing an account deletes that Lumen-owned directory and metadata after user confirmation, while no jobs are active. It does not revoke remote authorizations or remove a possible shared OS-keychain item.
-- Log out/revoke access through the official provider tools when necessary. Do not manually share token files.
+Native OS keychains or provider-specific stores may still be shared across versions. Separate directories are not proof of independent identities; test distinct accounts on the relevant OS before relying on it. No extra encrypted credential vault is implemented. Removing an account deletes its Lumen-owned directory after confirmation while jobs are stopped; remote revocation and shared keychain cleanup remain with the provider.
 
-## Linux manual login
-
-On Linux the Sign in action reports that terminal launching is unsupported. Resolve the app-data location from Tauri's platform convention (typically `$XDG_DATA_HOME/io.github.andrea17982.lumen` or `~/.local/share/io.github.andrea17982.lumen`) and the account UUID from its folder, then run in your terminal:
+For manual login, use the actual isolated slot path, for example:
 
 ```sh
 CLAUDE_CONFIG_DIR='/path/to/lumen/accounts/account-uuid' claude auth login
 CODEX_HOME='/path/to/lumen/accounts/account-uuid' codex login
 ```
 
-Keep the quotes. Return to Lumen and check the connection. Linux is a secondary target, with no claim of real-device acceptance testing in this release.
+Do not paste tokens into conversations or upload account directories in bug reports. Provider terms and distribution requirements apply independently; Lumen's native-CLI implementation is not legal certification. Consult the providers' official terms and authentication documentation for your deployment.
+
+[Permissions](workspace-models-permissions.md) · [Security](../SECURITY.md) · [Observed provider acceptance](validation.md)

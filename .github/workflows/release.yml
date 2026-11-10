@@ -40,6 +40,12 @@ jobs:
           $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $setup.FullName dist-release/
           ./scripts/package-portable.ps1 -Executable src-tauri/target/release/lumen.exe -Moli src-tauri/resources/moli/win32-x64 -Destination ("dist-release/" + ($setup.Name -replace '-setup\.exe$', '-portable.zip'))
+          $portable = Get-ChildItem dist-release/*-portable.zip | Select-Object -First 1
+          $portableRoot = Join-Path $env:RUNNER_TEMP 'Lumen Portable Smoke'
+          Expand-Archive -LiteralPath $portable.FullName -DestinationPath $portableRoot
+          $env:LUMEN_RELEASE_EXE = Join-Path $portableRoot 'Lumen.exe'
+          node tests/release-smoke.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Portable package probe failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -96,14 +102,36 @@ jobs:
     needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - name: Checksums
-        run: cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
-      # The release is created by hand (author and written notes); CI only attaches
-      # the builds. Without name/body inputs the existing title and notes are kept.
+      - name: Prepare release metadata and flat assets
+        id: release
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          expected=$(node -p "require('./package.json').version")
+          test "$version" = "$expected"
+          test -f "docs/release-notes/$version.md"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "notes=docs/release-notes/$version.md" >> "$GITHUB_OUTPUT"
+          mkdir release-assets
+          while IFS= read -r -d '' asset; do
+            name=$(basename "$asset")
+            test ! -e "release-assets/$name"
+            cp -- "$asset" "release-assets/$name"
+          done < <(find artifacts -type f -print0)
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 5
+          cd release-assets
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Keep the assembled release reviewable until its assets/checks are verified.
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          name: Lumen ${{ steps.release.outputs.version }}
+          body_path: ${{ steps.release.outputs.notes }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: release-assets/*

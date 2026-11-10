@@ -1,4 +1,4 @@
-# Moli in Lumen: implementation and evidence, 10 November 2026
+# Moli in Lumen 0.7: implementation and evidence
 
 Moli is feasible as Lumen's shared browser engine. It is an independent Rust browser kernel with V8, rather than a Chromium launcher. Its main advantage is avoiding layout/paint for document extraction and producing Markdown or semantic trees directly. It cannot make the model itself more intelligent or shorten inference independently of the browser workload. [Architecture and scope](https://github.com/lexmount/moli#architecture).
 
@@ -75,4 +75,4 @@ CDP compatibility also needs regression coverage rather than assuming Playwright
 
 Functional revision **3ee4635** passed [CI on Windows, macOS and Ubuntu](https://github.com/Andrea17982/Lumen/actions/runs/42843169200): 135 Rust tests (13 environment/account-dependent opt-in tests excluded from the normal suite), 60 TypeScript tests, 29 Playwright tests, rustfmt and Clippy with warnings denied. The real local Ollama browser test was also run separately and passed.
 
-[Packaging on the same source](https://github.com/Andrea17982/Lumen/actions/runs/42843169596) passed for Windows installer/portable ZIP, universal macOS DMG and Linux deb/AppImage. The clean Windows runner installed the package, discovered the graph/browser MCP tools and executed the bundled Moli version check. The local final Windows portable ZIP was independently extracted; its helpers, actual Moli page retrieval and all three local SHA-256 manifest entries passed. This workflow run produced downloadable build artifacts and did not rewrite the existing published 0.6.0 release.
+[Packaging on the same source](https://github.com/Andrea17982/Lumen/actions/runs/42843169596) passed for Windows installer/portable ZIP, universal macOS DMG and Linux deb/AppImage. The clean Windows runner installed the package, discovered the graph/browser MCP tools and executed the bundled Moli version check. The local final Windows portable ZIP was independently extracted; its helpers, actual Moli page retrieval and all three local SHA-256 manifest entries passed. Those functional acceptance builds preceded the version bump. The 0.7 release repeats the pipeline and publishes its own packages; the old 0.6.0 tag remains historical. Current release checks and agreed scope are in [Validation](validation.md).

@@ -1,40 +1,40 @@
-# Projects, models and permissions — 0.3
+# Projects, models and permissions — 0.7
 
 ## Conversation location
 
-The sidebar has New conversation (Ctrl N) and New project (Ctrl P). A project is a named container, independent of working folders. The composer contains a Project selector and an adjacent conversation-folder button. Moving a conversation between projects preserves its actual folder. Existing named workspaces become project containers with their IDs and associations preserved.
+A project is a named container, independent of its conversation folders. Moving, dragging or regrouping a conversation preserves its actual working directory. The folder control exposes the path; `/workspace <absolute path>` applies an explicit change before planning or tools start. References to another project, quoted instructions and ambiguous prose do not silently switch roots. A running/queued turn must finish or stop before its folder changes.
 
-The header shows the project; the folder control exposes the full path in its tooltip. Each conversation persists both association and folder independently. Use the sidebar's project filters to browse, right-click a conversation to rename/delete/move, or drag a conversation onto a project (or Unsorted). Deletion asks for confirmation. Running conversations may be regrouped, but changing their working folder or deleting them requires stopping first. Old conversations retain their folders and messages through the existing SQLite migration.
+The session stores its project association, folder and permission profile. Messages retain workspace metadata for links and images. Spill files and browser captures use the appropriate conversation project; worker screenshots survive disposal of a worktree.
 
-## Accounts
+## Accounts and model catalogs
 
-In Settings, use + to add, the pencil to rename, the shield to check connection, Sign in for official CLI login, and the trash control to remove. Removal still asks before deleting local account files. Renaming changes only the display name, preserving the UUID, isolated configuration folder and login state.
+Rename changes only a label, keeping the account UUID, isolated configuration directory and login. Direct provider options support all connected providers. Catalogs are cached per account for five minutes and can be refreshed.
 
-When Claude or GPT is selected, Account also has a pencil for inline rename and a Settings button for account management. Switching providers opens these optional controls. Settings preserves your model choice when returning to the composer.
+| Provider | Catalog / execution |
+| --- | --- |
+| Claude | Native initialize model metadata; bidirectional stream-json turns |
+| Codex | app-server `model/list`, including pagination; app-server turns |
+| Gemini CLI | Official installed CLI metadata and print runner |
+| Antigravity | Official `agy models` metadata and print runner |
+| Ollama | Official loopback `/api/tags` and `/api/show`; local `/api/chat` tool loop |
 
-## Official model and reasoning catalogs
+Only advertised model/reasoning combinations are accepted. Missing metadata is a recoverable error rather than a fabricated list. The explicit choice is preserved; model availability still depends on account/organization policy. Ollama lists local conversational models, with the pinned/largest one marked default, and rejects cloud-routed metadata.
 
-Model is a dropdown, never a free-text field. Lumen queries the chosen account's installed CLI:
+## Permission profiles
 
-- **Codex:** initialize the official app-server over stdio, then call `model/list`, including pagination. The model's `supportedReasoningEfforts` and `defaultReasoningEffort` drive Reasoning.
-- **Claude Code:** initialize the official CLI streaming control protocol (the protocol used by Agent SDK `supportedModels`) and consume its returned `models`. `supportedEffortLevels` drives Reasoning. If no default level is supplied, Lumen offers Provider default and omits the effort flag.
+| Profile | Intended behavior |
+| --- | --- |
+| Read only | Initial profile. Provider read-only controls; Moli retrieval/navigation/extraction/capture, without page mutation. |
+| File edits | Workspace editing through supported native controls. Moli page mutations remain denied. Antigravity's headless profile also allows shell commands; the UI explains this difference. |
+| Autopilot | Full available provider tools under the current OS account, without CLI approval prompts or repeated Lumen planning approvals. Moli actions proceed directly. |
+| Approve each action | Native approval callbacks for Claude/Codex; supported requests wait for an immutable scoped decision. Ollama browser mutations use the shared browser decision path. Google print runners do not have equivalent general bidirectional approval support. |
 
-The lists are cached per account for five minutes. The refresh button queries again; changing account reloads the list. Failed or empty discovery shows a recoverable error, not a fabricated list. Changing model rebuilds the reasoning choices. The backend rejects a manually requested model/effort combination absent from the catalog. Auto resolves each stage to a supported effort and records the effective choice in activity.
+Read-only review/analysis workers stay restricted. Changing the current profile applies to subsequent work and native resumed turns; it does not rewrite an action already in flight.
 
-A returned catalog is not an entitlement guarantee. Provider plan, organization policy, authentication and per-request availability still apply. Discovery initializes metadata only: it does not submit a prompt or perform inference, and Lumen does not read credential contents.
+Autopilot does not override OS ACLs/UAC, provider policy or missing capabilities. Read-only mode is not an additional OS filesystem jail. Full-access shells and external MCP tools are not a hard network sandbox. Model questions, clarified requirements and historical approvals cannot elevate the actual permission profile.
 
-Sources: [OpenAI app-server model/list](https://learn.chatgpt.com/docs/app-server), [Claude SDK ModelInfo](https://code.claude.com/docs/en/agent-sdk/typescript), [Claude CLI flags](https://code.claude.com/docs/en/cli-reference).
+## Native questions and child agents
 
-## Permissions
+Questions can offer radio/checkbox choices, free text or secret input. Closed connections reject stale responses; secret answers are excluded from durable decision text. Claude/Codex expose native child-agent progress/output separately from the answer. Native child sessions are not the same as Orchestra workers.
 
-| Mode | Claude Code | Codex |
-| --- | --- | --- |
-| Ask (read-only) | Restricted Read/Glob/Grep; no Bash; strict MCP override | Read-only sandbox, approvals never |
-| File edits on | Restricted Read/Glob/Grep/Edit/Write; no Bash; strict MCP override | Workspace-write sandbox, approvals never |
-| Autopilot | `--dangerously-skip-permissions --tools default`; no restricted/strict-MCP override | `--dangerously-bypass-approvals-and-sandbox`; no sandbox override |
-
-Autopilot grants full access to the CLI's available tools, including filesystem changes, commands, network and configured computer-automation extensions, without CLI approval prompts. It applies to subsequent writer/synthesis turns. Review and parallel-analysis workers remain read-only. Ask (read-only) remains the startup default.
-
-Autopilot does not install a GUI automation engine or grant administrator privileges. Operating-system ACLs, UAC, provider-managed policy and tool availability still apply. Actual screen/mouse interaction requires a compatible automation tool, MCP extension or executable available to the provider. A failed capability is reported as a provider failure rather than claimed as successful PC control.
-
-No live unrestricted system operations were used to validate this feature. Tests verify official flag mapping and execute offline CLI fixtures. Real account inference, GUI automation and provider permission enforcement require acceptance testing.
+[Feature guide](features.md) · [Browser permissions](moli.md) · [Security](../SECURITY.md) · [Verification matrix](validation.md)

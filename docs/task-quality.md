@@ -1,6 +1,6 @@
-# Task continuity and code quality
+# Task continuity and code quality — 0.7
 
-These backend features use the existing official-CLI workflow and add no approval round.
+These backend features preserve the native execution workflow and add no repeated approval round. Ollama browsing uses the agreed official local API exception; subscription providers retain native CLI authentication.
 
 ## Durable task state
 
@@ -101,4 +101,4 @@ Structured impact includes targets, direct/transitive dependents, test candidate
 
 Automated tests cover persistence/reopen/Compact seeding/Rewind, decisions beyond the transcript cutoff, permissions, workspace-scoped evidence, LSP push/pull and stale versions, read-only callbacks, absent servers/timeouts, actual failing/passing shell checks, cancellation, nested checks, checkpoint detection and pre/post-edit impact in worker handoffs.
 
-These tests use isolated projects and controlled protocol peers. Real provider turns, installed Rust/TypeScript/C#/Godot interoperability, native UI acceptance and macOS/Linux execution remain separate work. This Windows machine has a rust-analyzer proxy but no available toolchain component; no installation was attempted.
+Controlled tests use isolated projects and protocol peers. Real installed Rust/TypeScript/C#/Godot language servers, native Windows UI, Codex/Antigravity browser turns and the local Ollama loop have also been exercised. Claude/Gemini account-dependent and broader non-Windows desktop acceptance remain distinct. See [Validation](validation.md) for observed scope, platform builds and remaining limits.

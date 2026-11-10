@@ -53,7 +53,7 @@ export function httpTransport(
 
 /**
  * The app's transport: the webview cannot reach the loopback daemon (CSP), so the
- * requests go through native commands that run the official `ollama` CLI.
+ * requests go through Rust commands using the official local Ollama HTTP API.
  */
 export function ollamaTransport(): OllamaTransport {
   const fail = (e: unknown): never => {

@@ -1,28 +1,39 @@
-# Security and privacy
+# Security and privacy — 0.7
 
-Lumen is an alpha, completely AI Written application. It has not received an independent security audit. Use a trusted project folder, keep provider tools current, and inspect edits before committing or deploying them.
+Lumen is an alpha, AI-written local desktop application without an independent security audit. Provider tools, project instructions and OS permissions remain part of its trust boundary.
 
-## Trust boundaries
+## Permissions and external tools
 
-- The webview has a restrictive CSP, no remote script loading and no shell/filesystem plugin. Rust exposes specific application commands rather than a generic process launcher.
-- Model Markdown does not render raw HTML, fetch remote images or open arbitrary links. Project-controlled CLI settings, instruction files and provider behavior are still relevant trust boundaries.
-- The provider binaries are installed by the user and discovered on PATH. A malicious PATH entry can substitute a binary. Prefer official installers and a trusted PATH.
-- Prompts are stdin, not shell command strings. Names never enter account paths. Models are validated before process creation.
-- Read-only and workspace-write are provider controls. Lumen does not provide an independent OS sandbox around the CLI. Claude is limited to Read/Glob/Grep in read-only turns and also Edit/Write in write-enabled turns, with `--restricted` confining file tools to the working directory. In these two profiles Claude receives no Bash tool from Lumen. Codex uses its read-only or workspace-write sandbox with noninteractive approvals disabled. **Autopilot is a separate, explicitly selected full-access profile:** Claude receives `--dangerously-skip-permissions --tools default` without restricted/strict-MCP overrides; Codex receives `--dangerously-bypass-approvals-and-sandbox` without a sandbox flag. It allows network, shell, filesystem and configured automation tools under the current OS account.
-- Autopilot deliberately allows the provider to act without CLI approval prompts, including shell commands and file changes. It does not override UAC, OS ACLs, managed provider policies or missing computer-use tools. Read-only reviewers remain restricted. Provider versions can change permission behavior. Auto cross-provider stages share the relevant task context with both configured providers.
+Read only, File edits, Autopilot and Approve each action map to supported native controls; they are not an additional common OS jail. Restricted Claude modes expose explicit read/check command allowances rather than arbitrary shell access. Codex uses its native sandbox/approval protocol. Antigravity File edits permits commands under its documented headless rules, with a UI notice. Google print runners do not provide the same general approval callback interface as Claude/Codex.
 
-## Data
+Autopilot authorizes available native tools, shell/network/filesystem actions and configured extensions under the current OS account without repeated Lumen plan approvals. It does not override UAC, OS ACLs or provider policy. Review/analysis workers stay read-only. Questions and historic approvals cannot elevate the actual profile. Unsupported native approval callbacks remain unavailable, not automatically accepted.
 
-`lumen.db` contains conversation text, workspace paths, titles and exposed activity. It is not encrypted by Lumen. Provider-owned directories may contain tokens and histories. Codex file-backed credentials are deliberately local to each account directory; secure the application-data directory and OS account. Lumen does not read credential contents or ship tokens in builds.
+Provider binaries come from PATH, so use trusted official installations. Subscription authentication remains inside their own CLI flows/directories. Lumen does not copy token contents, implement provider OAuth endpoints or turn subscriptions into a shared inference gateway.
 
-UI theme/default-folder preferences use webview local storage. There is no app analytics service, telemetry SDK, Lumen backend or inference proxy. Official CLIs communicate with their providers and may have their own telemetry and retention policies. PayPal opens externally only after the user chooses support; payment credentials never enter Lumen.
+## Browser and Ollama
 
-Conversation deletion is permanent locally, without deleting CLI history or remote provider records. Account deletion removes Lumen-owned files and metadata after confirmation; remote revocation is separate. Removing an app or uninstalling may leave application data. Back up only what you understand and never post an entire account directory in a bug report.
+Bundled Moli archives are pinned and SHA-256 verified at preparation time, with upstream notices retained. The browser broker is loopback-only, uses an invocation-specific capability and validates tool arguments, access, output/concurrency/deadlines and cancellation. Page content is untrusted data. Read only/File edits reject page mutations; Autopilot proceeds; Ask-first browser mutations require a scoped one-action decision.
+
+Moli routing disables supported native browsing alternatives. Full-access shells and independently configured MCP servers remain available; this is not an OS network firewall. Web browsing contacts external websites/search engines, whose own behavior and policies apply.
+
+Ollama inference/discovery/helpers use its official API on this computer. Non-loopback hosts, redirects/proxies and cloud-model metadata are rejected. No inference key or automatic model pull is used. An arbitrary local service running as the user remains within that user's trust boundary.
+
+## Data and interface
+
+`lumen.db` stores conversations, project paths, exposed activity and task decisions. Account directories contain provider-owned settings/history and may contain plaintext credentials. Moli keeps isolated local browser profile data. Captures are saved under the conversation project's `.lumen/screenshots/`; that directory ignores itself in Git. None of these stores is encrypted by Lumen. Protect the OS account/app-data directory and use disk encryption where required.
+
+The webview has a restrictive CSP, no remote script loading and specific Rust commands rather than a generic shell/filesystem plugin. Markdown excludes raw HTML. Remote response images load on user action, local image/link resolution stays within the supplied project root, and UI decisions do not carry executable approval inputs. Secret question answers are excluded from public durable decision text.
+
+There is no Lumen analytics service or general inference proxy/server. Native provider tools have their own network/retention policies. PayPal opens externally only on user action; Lumen receives no payment credentials.
+
+Conversation/account deletion is local and confirmed; remote revocation and CLI history are separate. Uninstalling may leave app data. Never upload entire account directories, private transcripts or unredacted logs.
 
 ## Process lifecycle
 
-Cancellation signals queued and active stages, kills the Windows CLI process tree and reaps it. The application requests cancellation on normal exit. OS crashes, power loss and forced termination may prevent cleanup. After restart, waiting/running persisted sessions become interrupted. Check for orphan provider processes if the application is force-killed.
+Closing to the notification area preserves active work. Stop/normal Quit request cancellation and owned process cleanup. Crashes, power loss and forced termination can prevent cleanup. Restart marks unfinished work interrupted and requires explicit Resume; recovery verifies old process identity instead of blindly acting on a reused PID.
 
-## Reporting a vulnerability
+## Reporting
 
-Use [GitHub private vulnerability reporting](https://github.com/Andrea17982/Lumen/security/advisories/new) if enabled. If unavailable, open an issue asking for a private contact without posting exploit details, credentials or private transcripts. Include OS, app version and CLI versions. There is no promised response SLA or paid bug bounty.
+Use [private vulnerability reporting](https://github.com/Andrea17982/Lumen/security/advisories/new) when available; otherwise request a private contact in an issue without exposing exploit details or secrets. Include the OS, app/CLI versions and a minimal redacted reproduction. There is no promised response SLA or paid bounty.
+
+[Permission guide](docs/workspace-models-permissions.md) · [Validation](docs/validation.md)

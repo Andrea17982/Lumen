@@ -1,137 +1,133 @@
 <div align="center">
-  <img src="public/lumen.svg" width="88" alt="Lumen" />
+  <img src="public/lumen.svg" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
-  <p>A clear space for a brighter idea.</p>
-  <p>A local desktop workspace for Claude Code and ChatGPT / Codex.<br/>Tauri 2 · Rust · React · TypeScript</p>
-  <p><a href="https://github.com/Andrea17982/Lumen/releases">Download</a> · <a href="docs/getting-started.md">Get started</a> · <a href="docs/architecture.md">Architecture</a> · <a href="README.it.md">Italiano</a></p>
-  <img alt="Completely AI Written" src="https://img.shields.io/badge/Completely-AI_Written-6d8eaf" />
-  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-687888" />
-  <p><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&amp;business=andreanastrobusiness1999%40gmail.com&amp;currency_code=EUR&amp;item_name=Support%20Lumen"><img alt="Support Lumen on PayPal" src="https://img.shields.io/badge/Support_Lumen-PayPal-0070ba?logo=paypal" /></a></p>
+  <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
+  <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
+  <p>
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.7</a> ·
+    <a href="docs/getting-started.md">Getting started</a> ·
+    <a href="docs/README.md">Documentation</a> ·
+    <a href="README.it.md">Italiano</a>
+  </p>
+  <p>
+    <a href="https://github.com/Andrea17982/Lumen/actions/workflows/ci.yml"><img src="https://github.com/Andrea17982/Lumen/actions/workflows/ci.yml/badge.svg" alt="Build and tests"></a>
+    <a href="https://github.com/Andrea17982/Lumen/releases"><img src="https://img.shields.io/github/v/release/Andrea17982/Lumen" alt="Latest release"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  </p>
 </div>
 
-![Lumen desktop interface](docs/images/desktop.png)
+![Lumen 0.7 conversation workspace](docs/images/desktop.png)
 
-Also see the [model, workspace and permission controls](docs/images/provider-controls-fixture.png), [dark theme](docs/images/dark.png) and a [native chat capture using explicitly labeled offline fixtures](docs/images/chat-fixture.png).
+*A capture of the Windows application with demonstration data. Screenshots show the implemented interface; they are not claims of live model performance.*
 
-Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Native direct sessions keep the selected provider, account, model and reasoning effort. Auto routing and Orchestra are explicit options.
+Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across every provider.
 
-**Status: v0.6 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
+Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.7 is an alpha release, not a claim of universal CLI or platform compatibility.
 
-## Latest: 0.6.0
+## What's new in 0.7
 
-Durable task memory, diagnostics and affected-project checks, impact-aware Orchestra workers, fewer repeated approvals and explicit conversation-folder changes. Details: [Task continuity and code quality](docs/task-quality.md) and the [complete 0.6.0 changelog](docs/release-notes/0.6.0.md).
+| Native work, with less friction | Tools that stay close to your project |
+| --- | --- |
+| Direct sessions are the default; your provider/model choice is preserved. | Moli is bundled and automatically connected, including Orchestra workers. |
+| Native questions, choices, child-agent output and real-time activity. | Project inspector, image zoom/grid, JSON/SQLite inspection and layout canvas. |
+| Autopilot proceeds without repeated Lumen planning approvals. | Manual Both merges and side-by-side static worktree previews. |
+| Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
+| Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
 
-## New in 0.4: Orchestra
+Read the [complete 0.7.0 changelog](docs/release-notes/0.7.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md).
 
-- **Orchestra**: for complex tasks in Auto, one orchestrator asks clarifying questions, shows a plan with the agent assigned to each subtask, runs the subtasks in parallel git worktrees across every connected provider and integrates the result, with optional cross-audit.
-- **Ollama**: a local provider using the official loopback API, with Moli tool calling, selectable installed models, emergency fallback and Orchestra helpers. No remote inference or API keys.
-- **Simpler Settings**: one section at a time, with a Simple/Advanced switch.
-- **Notification area and login**: keep Lumen running when the window is closed, and open it at login.
+## Choose how to work
 
-Details: [Teamwork features](docs/features.md#new-in-04) and the [0.4.0 release notes](docs/release-notes/0.4.0.md). Screenshots: [Orchestra plan](docs/images/orchestra-plan.png), [Orchestra run](docs/images/orchestra-progress.png), [Settings in Simple mode](docs/images/settings-simple.png) and [Advanced mode](docs/images/settings-advanced.png).
+**Direct session** — select Claude, GPT/Codex, Gemini CLI, Antigravity or Ollama. Pick an account, an available model and its supported reasoning level. Claude uses its bidirectional native stream; Codex uses app-server. Google providers retain their official print runners. Ollama uses its official local API.
 
-**Important fix:** on Windows, Codex in File edits could not write files; 0.4 fixes it. Antigravity now works too; in File edits it may run any command (Lumen tells you once).
+**Auto** — ask Lumen to choose a provider/model from the connected catalogs, with Budget, Default or Quality preferences and optional independent review. Additional stages consume provider quota.
 
-## New in 0.3: Claude and ChatGPT as a team
+**Orchestra** — explicitly enable the orchestrator for larger tasks. Review dependencies and agent assignments, then let workers use isolated Git worktrees. Approved execution and Autopilot do not create another plan-approval loop. Limits, stop, integration and interrupted-run recovery are visible.
 
-- **Both**: one prompt, two answers side by side (in Ask mode).
-- **Cross-audit**: **Audit with ChatGPT/Claude** on any answer, or an always-on toggle, so the other model reviews the turn's diff with up to 3 review rounds.
-- **Shared project notes** (`LUMEN.md`) and **file attachments** with token weights, read by both models every turn.
-- **Rate-limit fallback**: when one provider hits a limit, the same message continues on the other one. Status dots and cooldown countdowns appear in the top bar.
-- **Rewind**: invisible git checkpoints before every writing turn. Restore files and the conversation to any of your messages, after previewing the changes.
-- **Self-healing**: after edits, Lumen runs the project check and sends failures back for a fix, at most 3 times.
-- **Token savings**: a live token estimate, long logs reduced to their errors (the full log is saved to `.lumen/spill`), **Compact and continue** for long conversations, and lockfiles and secrets blocked.
-- **Tools (MCP) hub** with on/off switches for both CLIs, plus a **local OpenAI-compatible API** at `localhost:8317/v1`.
-- **macOS build** available alongside the Windows installer and the portable version.
+**Both** — compare Claude and Codex side by side in read-only mode. Retained worktree results can be inspected and merged through per-file/manual choices where applicable.
 
-Also included: calibrated Auto selection from live CLI catalogs, Budget/Default/Quality preferences, quota balancing and projects independent of folders. Details: [Teamwork features](docs/features.md), [Auto policy](docs/auto.md), [projects, models and permissions](docs/workspace-models-permissions.md).
+![Orchestra task graph and assignments](docs/images/orchestra-plan.png)
 
-## Completely AI Written
+*Demonstration task graph in the actual interface. Native child-agent sessions and Orchestra workers are distinct capabilities.*
 
-**Lumen's application code, interface, tests and documentation are completely AI Written**, generated by AI at the direction of Andrea ([Andrea17982](https://github.com/Andrea17982)). The original product brief and decisions are human. AI authorship is a disclosure, not a claim of independent security auditing or correctness.
+## One browser across providers
 
-> Thank you to everyone who wants to try Lumen and let me know how it feels to use. Your feedback, bug reports and ideas are very welcome. — Andrea
+Moli starts only when a browser tool is needed. It provides Markdown retrieval, search, persistent navigation, DOM interaction and screenshots through Lumen's shared browser service. Conversation/worker contexts are isolated; native authentication remains with each provider.
 
-Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or contribute. It is free to download, use and modify under the MIT license.
+Ollama gets a real tool/result loop through `localhost`, including a JSON-action fallback for conversational models without native function calling. No inference API key or remote Ollama service is required. Antigravity receives saved full-resolution image paths through its native file/image flow to avoid an observed inline-MCP image stall; Lumen still displays the complete PNG.
 
-## What works in this alpha
+![Moli page capture in a conversation](docs/images/moli-browser.png)
 
-- Persistent SQLite conversations, automatic first-message titles, rename, pin, search, deletion and paginated loading. No hard-coded conversation-count limit.
-- Independent concurrent sessions, with four active orchestration jobs and up to eight inference processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
-- English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
-- Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
-- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI, Antigravity and Ollama can be selected directly; Google/local providers also supply emergency fallback and Orchestra helpers. [Moli browsing](docs/moli.md) is configured automatically across all providers and models.
-- **Auto** uses a small model (or the configured local helper), with deterministic heuristics as a fallback, to choose effort and a provider. Complex tasks can use Orchestra or an independent reviewer; native continuations and a durable task ledger preserve context.
-- **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Emergency providers run in Auto when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows, or when a rate limit hits while the other subscription is cooling down; in Orchestra they may also take trivial subtasks.
-- An optional PayPal support button, in the app and here. Donations unlock nothing.
+*Moli browser capture displayed in Lumen. Website compatibility, CAPTCHA and rendering limits still apply. Moli is not a guarantee of better model reasoning or an exponential end-to-end speedup.*
 
-## Install and run
+See [browser tools, routing and measured limits](docs/moli.md).
 
-### Download
+## Inspect, refine and continue
 
-From [Releases](https://github.com/Andrea17982/Lumen/releases):
+![Project inspector and layout canvas](docs/images/inspector-canvas.png)
 
-- **Windows x64**: `Lumen_<version>_x64-setup.exe` (installer) or `Lumen_<version>_x64-portable.exe` (no installation). Lumen uses Microsoft Edge WebView2.
-- **macOS (Apple silicon)**: `Lumen_<version>_aarch64.dmg`. The build is unsigned: the first time, right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Lumen.app`.
+The project inspector brings source changes, project checks, visual review, image inspection, local web preview and a layout canvas beside the conversation. Godot controls are optional and verify the connected project before editor actions. Purchased addons are not bundled.
 
-Alpha builds are unsigned, so the OS may show a publisher warning. Provider CLIs are installed separately and are never modified.
+Context estimates use a local tokenizer; provider-reported usage remains distinct. A durable task ledger preserves requirements and decisions across truncation, Compact and Rewind. Native continuation sends the new request rather than replaying the entire conversation unnecessarily.
 
-1. Install [Claude Code](https://code.claude.com/docs/en/setup), [Codex CLI](https://developers.openai.com/codex/cli), [Gemini CLI](https://github.com/google-gemini/gemini-cli) or [Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli).
-2. Open Lumen → **Settings** → **Connected accounts** → **+**.
-3. Add a name and provider, then choose **Sign in**. Complete the provider's login in its own terminal/browser flow.
-4. Return to Lumen and choose the shield button to check the connection.
-5. Choose a trusted workspace folder and send a message. **Auto** is selected by default.
+## Download and start
 
-Each person uses their own accounts and pays their provider directly. Access to models and CLI features depends on their plan. See [account requirements and limitations](docs/accounts.md), including Anthropic's rules for third-party products and credential use.
+Get **[Lumen 0.7 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
-### From source
+| Platform | Package | Notes |
+| --- | --- | --- |
+| Windows x64 | `Lumen_0.7.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
+| Windows x64 portable | `Lumen_0.7.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources/moli` beside `Lumen.exe`. |
+| macOS | Universal `.dmg` | Intel and Apple silicon. |
+| Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 
-Prerequisites: Node.js 22.12+ (or supported Node 24), current stable Rust, Windows C++ Build Tools with a Windows SDK, WebView2, and at least one provider CLI on `PATH`. See [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/).
+Packages are unsigned. Verify downloads with the release's `SHA256SUMS.txt`. Provider CLIs and local Ollama models are installed separately; Moli is included.
 
-```powershell
+1. Install the official provider CLI you want to use, or start local Ollama with an installed model.
+2. Open **Settings → Accounts**, add an account and complete its official login. Ollama needs no login.
+3. Choose a project folder and a direct provider. Expand provider options to choose the model/reasoning level.
+4. Choose permissions and send your request. **Read only** is the initial permission mode; **Autopilot** authorizes the available tools under your OS account.
+5. Enable Orchestra separately when the task benefits from coordinated workers.
+
+[Setup and troubleshooting](docs/getting-started.md) · [Accounts](docs/accounts.md) · [Permissions and folders](docs/workspace-models-permissions.md)
+
+## Build from source
+
+Prerequisites: Node.js 22.12+ (or supported Node 24), stable Rust and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+```sh
 git clone https://github.com/Andrea17982/Lumen.git
 cd Lumen
 npm ci
 npm run tauri dev
 ```
 
-Create an installer with `npm run build:release`. It copies the latest local installer to `builds/latest/`; Tauri's original output remains under `src-tauri/target/release/bundle/nsis/`. A browser-only UI preview is available with `npm run dev`; **it does not connect accounts or generate AI responses**. macOS builds with `npm run tauri build -- --bundles dmg`; Linux needs Tauri's system dependencies and `npm run tauri build -- --bundles deb,appimage`. On both, **Sign in** opens a terminal with the isolated account folder.
+The build prepares the pinned, checksum-verified Moli binary and license notices automatically. `npm run dev` is a UI-only preview: it does not authenticate or generate AI responses. On Windows, `npm run build:release` creates the installer and portable ZIP in `builds/latest/`. See [development and release checks](docs/development.md) for all platforms.
 
-## Auto, honestly
+## What has been checked
 
-Auto is an explainable local router calibrated against concrete examples. Small text/translation requests prefer Haiku/Luna, coding and concurrency prefer Sonnet/Terra, and migration/security/architecture prefer Opus/Sol. Actual model IDs come from each account's official CLI catalog. Default effort is low or medium; Budget/Quality shift it by one step. A single provider uses a single-stage plan.
+The release preflight covers **135 Rust tests, 60 TypeScript tests and 29 UI tests**, formatting/Clippy, Windows native fixture runs, real Codex and Antigravity browser turns, and a real local Ollama model consuming Moli results. CI and packaging cover Windows, macOS and Linux. Clean Windows installation includes an installed-browser/helper smoke check.
 
-With both providers configured, demanding advanced requests or Quality coding requests can use writer → read-only reviewer → final answer. Comparison requests can use two read-only perspectives → synthesis. These are bounded worker calls, not recursive/native subagent spawning. Optional balancing compares fresh quota snapshots against reset times: Codex can refresh automatically; Claude currently requires manual values from `/usage`. Extra stages consume quota. See [Auto policy](docs/auto.md) for the formula, data freshness and integration limits.
+Claude live inference remains deferred after account quota exhaustion; Gemini CLI login is completed by the user. Real non-Windows desktop/accessibility/device testing and the broader account/version matrix remain explicit validation limits. Fixtures and successful builds are not substitutes for these checks. See [validation and the closed release scope](docs/validation.md).
 
-## Current limits
-
-- Live paid inference, multi-account OAuth identity isolation and real provider file-edit behavior require user-driven acceptance testing. Local builds, mocked protocols or UI previews do not prove these flows.
-- Claude and Codex can continue native CLI sessions; other paths replay bounded history. A source-linked task ledger preserves requirements and decisions beyond the transcript cutoff and through **Compact and continue**. Interactive per-action approval is available through the supported Claude/Codex protocols; Orchestra subtask approval remains separate acceptance work.
-- Rewind, worktrees and audit diffs need a git repository. Snapshots honor `.gitignore`, so ignored files are neither saved nor restored.
-- Read-only and File edits restrict provider tools; **Autopilot deliberately removes those restrictions**. It permits shell/network/filesystem operations and configured computer-automation tools, but does not supply a GUI automation engine or override OS/UAC/provider policy. Read-only is a provider permission mode, not an independent OS isolation boundary.
-- Account-directory isolation is not proof that every CLI version uses no shared OS credential-store state. Verify with distinct test accounts before relying on it. Account removal deletes the local directory; remote token revocation remains the provider's responsibility.
-- Stored conversations and CLI-owned credentials are local and **not encrypted by Lumen**. No telemetry is implemented in Lumen; the CLIs have their own network and privacy behavior.
-- Instant startup and low memory are design targets, not published benchmark results. Inactive sessions do not keep an AI process alive.
+Autopilot has broad access. Lumen does not add a common OS jail or encrypt its database; use OS permissions and disk encryption. Native CLIs retain their own policies. Moli routing disables supported built-in alternatives, but unrestricted shells/external tools are not an OS network sandbox. [Security and privacy](SECURITY.md).
 
 ## Documentation
 
-| Guide | Contents |
-| --- | --- |
-| [Getting started](docs/getting-started.md) | Setup, first conversation, shortcuts, recovery |
-| [Teamwork features](docs/features.md) | Both, cross-audit, LUMEN.md, fallback, Rewind, self-healing, MCP |
-| [Architecture](docs/architecture.md) | Rust modules, React components, storage, execution lifecycle |
-| [Accounts](docs/accounts.md) | Official authentication, isolation, provider requirements |
-| [Workspace, models & permissions](docs/workspace-models-permissions.md) | Conversation folders, account names, live CLI catalogs and Autopilot |
-| [Auto](docs/auto.md) | Routing rules, review, parallel workers, costs and boundaries |
-| [Design system](DESIGN.md) | Glass material, type, color, motion and accessibility |
-| [Roadmap](docs/roadmap.md) | Released work, the 0.4 plan and later ideas |
-| [Development](docs/development.md) | Building, tests, release process, protocol fixtures |
-| [Validation](docs/validation.md) | Observed checks and what remains unverified |
-| [Security](SECURITY.md) | Data storage, trust boundaries and vulnerability reporting |
-| [Contributing](CONTRIBUTING.md) | Feedback, code contributions and AI disclosure |
+- [Getting started](docs/getting-started.md) — install, first session, shortcuts and recovery.
+- [Features and working modes](docs/features.md) — direct sessions, Auto, Orchestra, Both and project tools.
+- [Moli](docs/moli.md) — browser integration, Ollama architecture and compatibility.
+- [Projects, models and permissions](docs/workspace-models-permissions.md) — workspace changes and native controls.
+- [Task quality](docs/task-quality.md) — durable context, diagnostics and impact-aware validation.
+- [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Release history](docs/release-notes/README.md).
+- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md).
 
-## Support the project
+## Completely AI Written
 
-Feedback is already a contribution. If you'd also like to help support development, you can make an optional [PayPal donation](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) to **andreanastrobusiness1999@gmail.com**. PayPal handles the transaction; Lumen receives no payment credentials. This is a voluntary personal contribution, not a charitable tax-deductibility claim.
+Lumen's application code, interface, tests and documentation are **completely AI Written**, generated by AI under Andrea's direction. Product vision and decisions are human. AI authorship is a disclosure, not an independent correctness/security audit. Later contributions should be credited accurately.
 
-MIT © 2026 Andrea17982. Third-party providers, runtimes and libraries retain their own licenses and terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+> Thank you to everyone who wants to try Lumen and share how it feels. Feedback, bug reports and ideas are welcome. — Andrea
+
+Lumen is free to download, use and modify under the MIT license. Feedback through [Issues](https://github.com/Andrea17982/Lumen/issues) is already a contribution. Optional [PayPal support](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) goes to **andreanastrobusiness1999@gmail.com** and unlocks no features.
+
+MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the other named providers.

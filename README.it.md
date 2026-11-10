@@ -1,73 +1,107 @@
-# Lumen
+<div align="center">
+  <img src="public/lumen.svg" width="76" height="76" alt="Lumen">
+  <h1>Lumen</h1>
+  <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
+  <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
+  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.7</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
+</div>
 
-Un’app desktop locale per gestire conversazioni Claude Code e ChatGPT / Codex in un’interfaccia essenziale ispirata ad Apple Liquid Glass. Tauri 2, core Rust, React e TypeScript. L’interfaccia è disponibile in inglese e italiano.
+![Lumen 0.7 su Windows](docs/images/desktop.png)
 
-**Versione 0.6 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
+*Schermata dell'app Windows con dati dimostrativi. Le immagini rappresentano l'interfaccia implementata, non un benchmark dei modelli.*
 
-![Interfaccia Lumen](docs/images/desktop.png)
+Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, continua la sessione nativa e lavora nella cartella corretta. Attiva **Orchestra** quando serve una squadra coordinata. **Moli** gestisce navigazione e ricerca web con ogni provider.
 
-## Completamente AI Written
+Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.7 resta una versione alpha di un progetto indipendente.
 
-Il codice dell’applicazione, l’interfaccia, i test e la documentazione sono **completamente AI Written**, generati da AI sotto la direzione di Andrea ([Andrea17982](https://github.com/Andrea17982)). La visione e le decisioni di prodotto sono umane. Questa dichiarazione non equivale a un audit di sicurezza indipendente.
+## Novità della 0.7
 
-> Ringrazio tutti quelli che avranno voglia di provarla e farmi sapere come si trovano. Feedback, segnalazioni e idee sono benvenuti! — Andrea
+| Lavorare con continuità | Strumenti vicini al progetto |
+| --- | --- |
+| Sessioni dirette predefinite, con provider e modello scelti dall'utente. | Moli incluso e configurato automaticamente, anche nei worker Orchestra. |
+| Domande native con opzioni, attività e output degli agenti figli. | Inspector, zoom/griglia immagini, JSON/SQLite e canvas dei layout. |
+| Autopilot senza ripetere le approvazioni dei piani già autorizzati. | Merge manuale di Both e confronto delle varianti statiche nei worktree. |
+| Resume nativo Claude/Codex, memoria del lavoro e cambio esplicito della cartella. | Diagnostica, controlli sui progetti interessati e integrazione Godot opzionali. |
+| Continuità tramite area di notifica. | Pacchetti Windows, macOS universale e Linux. |
 
-Lumen è disponibile con licenza MIT: tutti possono scaricarla, utilizzarla e modificarla.
+[Changelog completo 0.7.0](docs/release-notes/0.7.0.md) · [Guida alle funzioni](docs/features.md) · [Verifiche e limiti noti](docs/validation.md)
 
-## Ultima versione: 0.6.0
+## Scegli come lavorare
 
-Memoria persistente del lavoro, diagnostica e test sui progetti interessati, agenti Orchestra consapevoli dell'impatto delle modifiche, meno approvazioni ripetute e cambio esplicito della cartella della conversazione. Dettagli nel [changelog completo 0.6.0](docs/release-notes/0.6.0.md) e nella [documentazione tecnica](docs/task-quality.md).
+**Sessione diretta.** Seleziona Claude, GPT/Codex, Gemini CLI, Antigravity oppure Ollama. Account, modello e ragionamento provengono dai cataloghi disponibili. Claude usa lo stream nativo bidirezionale e Codex app-server; i provider Google mantengono le CLI ufficiali. Ollama usa l'API ufficiale sul computer.
 
-## Novità 0.4: Orchestra
+**Auto.** Affida a Lumen la selezione da catalogo con preferenze Budget, Default o Quality ed eventuale revisione indipendente. I passaggi aggiuntivi consumano quota.
 
-- **Orchestra** (Settings → Teamwork, insieme ad Auto): per i compiti complessi un modello orchestratore fa le domande necessarie con le risposte consigliate, mostra il piano con l'agente assegnato a ogni sotto-attività da approvare, esegue le sotto-attività in parallelo in `git worktree` separati su tutti i provider collegati e integra il risultato, con Cross-Audit opzionale.
-- **Ollama**: provider locale tramite la CLI ufficiale `ollama`, usato come ultimo fallback di emergenza e per le sotto-attività di solo testo più semplici.
-- **Impostazioni a sezioni** con l'interruttore **Simple / Advanced**.
-- **Area di notifica e avvio all'accesso**: Lumen resta attiva quando chiudi la finestra e può aprirsi al login.
+**Orchestra.** Attiva esplicitamente l'orchestratore per attività più grandi: dipendenze, assegnazioni, worker in worktree Git separati, limiti, integrazione e recupero dei lavori interrotti. Autopilot e l'esecuzione già approvata non producono un altro ciclo di autorizzazione del piano.
 
-**Correzione importante:** su Windows, Codex in modalità File edits non riusciva a scrivere file; la 0.4 lo corregge. Ora funziona anche Antigravity; in File edits può eseguire qualsiasi comando (Lumen lo segnala una volta).
+**Both.** Confronta Claude e Codex affiancati in sola lettura. I risultati conservati nei worktree possono essere ispezionati e uniti con scelte per file e modifiche manuali dove applicabile.
 
-Dettagli nelle [note di rilascio 0.4.0](docs/release-notes/0.4.0.md).
+![Piano e assegnazioni Orchestra](docs/images/orchestra-plan.png)
 
-## Novità 0.3: Claude e ChatGPT lavorano in squadra
+## Navigazione con Moli
 
-- **Both**: lo stesso prompt a entrambi, con le risposte affiancate. Con le modifiche abilitate ognuno lavora in un proprio `git worktree` e applichi la versione migliore con un clic.
-- **Cross-Audit**: «Audit with…» su ogni risposta, oppure un interruttore sempre attivo. L'altro modello revisiona il diff del turno, per un massimo di 3 cicli.
-- **Note di progetto condivise** (`LUMEN.md`) e **file allegati** con il loro peso in token, letti da entrambi a ogni turno.
-- **Fallback sui rate limit**: se un provider raggiunge il limite, lo stesso messaggio prosegue sull'altro. Indicatori di stato e conto alla rovescia nell'header.
-- **Rewind**: snapshot git invisibili prima di ogni turno che modifica file. Con un'anteprima, riporti file e conversazione a qualsiasi tuo messaggio.
-- **Self-healing**: dopo le modifiche Lumen esegue il controllo del progetto e rimanda gli errori all'assistente perché li corregga (al massimo 3 volte).
-- **Risparmio token**: stima live dei token, log lunghi compressi agli errori (log completo in `.lumen/spill`), «Compact and continue» per le conversazioni lunghe, lockfile e segreti bloccati.
-- **Hub MCP** con interruttori ON/OFF per entrambe le CLI e **API locale compatibile OpenAI** su `localhost:8317/v1`.
-- Build **macOS** oltre all'installer e alla versione portable per Windows.
+Moli si avvia quando viene chiamato uno strumento del browser. Offre lettura Markdown, ricerca, navigazione persistente, interazioni DOM e screenshot. I contesti sono separati per conversazione e worker.
 
-Dettagli in [Teamwork features](docs/features.md).
+Con Ollama, Lumen riceve le chiamate agli strumenti dall'API locale, esegue Moli e restituisce gli esiti allo stesso modello. È disponibile un formato JSON alternativo per modelli conversazionali senza function calling nativo. Nessuna chiave e nessuna inferenza Ollama remota.
 
-## Avvio rapido
+Per evitare un blocco osservato nella CLI Antigravity con le immagini MCP inline, questa riceve il percorso del PNG originale per il proprio visualizzatore nativo; Lumen mostra l'immagine completa.
 
-Installa separatamente i CLI ufficiali di [Claude Code](https://code.claude.com/docs/en/setup) e/o [Codex](https://developers.openai.com/codex/cli). In Lumen apri Settings, aggiungi un account e premi Sign in: l’autenticazione avviene nel terminale e nel browser ufficiali del provider. Verifica la connessione con il pulsante a scudo, scegli una cartella di lavoro fidata e avvia la conversazione.
+![Screenshot Moli nella conversazione](docs/images/moli-browser.png)
 
-Per compilare servono Node.js, Rust stable, C++ Build Tools, Windows SDK e WebView2. Dopo `npm run build:release`, l'installer più recente è in `builds/latest/`; l'output originale di Tauri resta in `src-tauri/target/release/bundle/nsis/`.
+Moli non rende un modello automaticamente più intelligente e non garantisce accelerazioni esponenziali. CAPTCHA, compatibilità dei siti e limiti di rendering restano reali. [Architettura, misure e limiti](docs/moli.md).
 
-```powershell
+## Dal contesto alla verifica
+
+![Inspector e canvas](docs/images/inspector-canvas.png)
+
+L'inspector affianca alla chat controlli di progetto, modifiche, anteprime locali, immagini e canvas dei layout. I controlli Godot sono opzionali e verificano il progetto connesso; gli addon acquistati non sono distribuiti con Lumen.
+
+Il registro persistente del lavoro conserva requisiti e decisioni attraverso troncamento del contesto, Compact e Rewind. Le sessioni native inviano la nuova richiesta senza ripetere inutilmente tutta la conversazione. Le stime locali dei token restano distinte dai dati riportati dal provider.
+
+## Scarica e avvia
+
+I pacchetti sono in **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
+
+- **Windows x64:** `Lumen_0.7.0_x64-setup.exe`, oppure `Lumen_0.7.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources/moli` accanto a `Lumen.exe`.
+- **macOS:** DMG universale per Intel e Apple silicon.
+- **Linux x64:** DEB e AppImage, compilati su Ubuntu 24.04.
+
+I pacchetti non sono firmati. Il rilascio include `SHA256SUMS.txt`. Installa separatamente le CLI ufficiali dei provider oppure Ollama con un modello locale; Moli è già incluso.
+
+1. Apri **Settings → Accounts**, aggiungi un account e completa il login ufficiale. Ollama non richiede login.
+2. Scegli la cartella del progetto e il provider diretto. Espandi i controlli per modello e ragionamento.
+3. Seleziona i permessi e invia la richiesta. **Read only** è il permesso iniziale; **Autopilot** autorizza gli strumenti disponibili con il tuo account del sistema operativo.
+4. Attiva Orchestra separatamente quando serve una squadra.
+
+[Avvio e risoluzione dei problemi](docs/getting-started.md) · [Account](docs/accounts.md) · [Cartelle e permessi](docs/workspace-models-permissions.md)
+
+## Compilazione
+
+Servono Node.js 22.12+ o una versione supportata di Node 24, Rust stable e i [prerequisiti Tauri](https://v2.tauri.app/start/prerequisites/).
+
+```sh
 git clone https://github.com/Andrea17982/Lumen.git
 cd Lumen
 npm ci
 npm run tauri dev
 ```
 
-`npm run build:release` genera l'installer e lo copia in `builds/latest/`. `npm run dev` apre soltanto un'anteprima UI nel browser, senza inferenza AI o login.
+La build prepara automaticamente Moli con versione e checksum fissati. `npm run dev` apre una sola anteprima UI, senza login o inferenza. Su Windows `npm run build:release` genera installer e ZIP in `builds/latest/`. [Guida per sviluppatori](docs/development.md).
 
-## Funzioni e limiti
+## Verifiche e confini
 
-Sessioni SQLite persistenti, ricerca, pin, rinomina, stati, attività collassabili, account con directory isolate, tema chiaro/scuro/sistema e selettore Auto / Claude / GPT. Auto usa euristiche locali per scegliere provider, modello, effort e, quando sono disponibili entrambi i provider, review indipendente o prospettive parallele con sintesi.
+Il preflight comprende **135 test Rust, 60 TypeScript e 29 UI**, formattazione/Clippy, prove native Windows con simulatori, turni reali Codex/Antigravity e un modello Ollama locale che usa i risultati di Moli. CI e packaging coprono Windows, macOS e Linux, con installazione pulita Windows sul runner.
 
-Nessun limite artificiale al numero di sessioni salvate; massimo quattro lavori attivi e otto processi di inferenza. Le scritture nella stessa cartella vengono serializzate. Accesso in sola lettura predefinito. Il contesto viene ripassato al CLI a ogni turno fino a 100.000 caratteri recenti. Codex aggiorna la chat a messaggi completati; Claude trasmette anche testo parziale.
+Rimangono le prove già rinviate: inferenza Claude per quota, login personale nella CLI Gemini, tester desktop/accessibilità/dispositivi sugli altri sistemi e matrice estesa account/versioni. Questi confini non vengono presentati come verifiche concluse. [Registro di validazione](docs/validation.md).
 
-L’inferenza reale, l’isolamento OAuth con più account e le modifiche ai file richiedono test di accettazione con account dell’utente. La compatibilità dipende dalle versioni CLI e dai piani dei provider. Non sono implementati proxy, aggiramenti dei limiti o login OAuth proprietari. Le conversazioni e i file credenziali gestiti dai CLI non vengono cifrati da Lumen. Le prestazioni non sono state oggetto di benchmark.
+Autopilot concede accesso ampio. Lumen non aggiunge una gabbia OS comune e non cifra internamente il database; usa permessi del sistema e cifratura del disco. Non sostituisce le politiche dei provider. [Sicurezza](SECURITY.md).
 
-Leggi il [README completo](README.md), la [documentazione](docs/getting-started.md), l’[architettura](docs/architecture.md), le [regole account](docs/accounts.md) e la [roadmap (0.4 e oltre)](docs/roadmap.md).
+## Completamente AI Written
 
-## Donazioni facoltative
+Codice, interfaccia, test e documentazione sono **completamente AI Written**, generati da AI sotto la direzione di Andrea. Visione e decisioni sono umane. È una dichiarazione di provenienza, non un audit indipendente.
 
-Se vuoi sostenere il progetto: [Dona con PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen), destinatario **andreanastrobusiness1999@gmail.com**. Nessuna funzione a pagamento e nessun obbligo di donare. Per il feedback usa le [Issues](https://github.com/Andrea17982/Lumen/issues).
+> Grazie a chi vorrà provare Lumen e raccontare come si trova. Feedback, segnalazioni e idee sono benvenuti! — Andrea
+
+Licenza MIT. Per il feedback usa le [Issues](https://github.com/Andrea17982/Lumen/issues). Il [sostegno PayPal facoltativo](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) va a **andreanastrobusiness1999@gmail.com** e non sblocca funzioni.
+
+[Documentazione](docs/README.md) · [Architettura](docs/architecture.md) · [Contribuire](CONTRIBUTING.md) · [Licenze terze parti](THIRD_PARTY_NOTICES.md)

@@ -1,51 +1,60 @@
-# Development and verification
+# Development, tests and releases — 0.7
 
-## Toolchain
+## Build
 
-Use Node 22.12+ / supported Node 24 and current stable Rust with the Windows MSVC toolchain. Install C++ Build Tools, Windows SDK and WebView2 per the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Resolved JavaScript and Rust versions are checked in via `package-lock.json` and `src-tauri/Cargo.lock`. Development initially used Node 24 and Rust 1.99.1; the package's minimum Rust field is not a claim that every future transitive dependency still supports an older toolchain.
+Use Node.js 22.12+ / supported Node 24, current stable Rust and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/). Windows needs the MSVC toolchain, Windows SDK and WebView2. Linux packaging uses Ubuntu 24.04 for the capture/PipeWire dependencies. Lockfiles are committed; a minimum Rust field is not a promise about future transitive dependencies.
 
-```powershell
+```sh
 npm ci
 npm run tauri dev
 ```
 
-Use `npm run dev` for the honest browser UI preview; it never performs inference. For an installer run `npm run build:release`. The default Windows target is NSIS; the script copies the newest installer to `builds/latest/`. Tauri's original output is under `src-tauri/target/release/bundle/nsis/`. Signing and automatic updates are not configured.
+`npm run dev` is a UI-only preview without login/inference. Both dev/build prepare Moli from the pinned platform manifest, verify archive hashes, retain license notices and reuse verified resources. A clean build needs network access to acquire those artifacts. Direct Rust tests require `node scripts/prepare-moli.mjs` first if resources are absent.
+
+| Target | Command / output |
+| --- | --- |
+| Windows | `npm run build:release` → installer, loose executable/resources, portable ZIP and checksums in `builds/latest/` |
+| macOS | `npm run tauri build -- --target universal-apple-darwin --bundles dmg` after installing both Rust targets |
+| Linux | `npm run tauri build -- --bundles deb,appimage` with system prerequisites |
+
+The Windows portable distributable is the ZIP, not an executable copied without its `resources/moli` directory. Signing and a separate updater are not configured.
 
 ## Checks
 
-```powershell
+```sh
 npm run check
+npm run format:check
 npx playwright install chromium
-npm run test:e2e
+npx playwright test --workers 2
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+node tests/docs-check.mjs
 ```
 
-Rust tests cover routing decisions/input validation, catalog parsing, rate-limit detection, checkpoints, spill, JSONL protocol fixtures, SQLite message deletion cascades, real subprocess stdin/stderr handling, nonzero exits and cancellation. Frontend unit tests cover stream reconciliation and diagnostic separation. Playwright tests cover first-run controls, provider advanced options, preview boundaries, theme persistence, keyboard focus containment/restoration and a narrow viewport. These tests do not log in, consume provider quotas or prove real-world model access.
+The docs check validates local Markdown links/images, the current release notes and version consistency across application manifests. Historical notes remain explicitly historical. Rust tests use real subprocesses, disposable Git projects, local protocol peers and the bundled Moli fixture. Opt-in live tests are excluded from ordinary CI; [Validation](validation.md) distinguishes these scopes.
 
-For the Windows native offline smoke test, leave `npm run dev` running, build with `cargo build --manifest-path src-tauri/Cargo.toml`, then run `npm run test:native`. This launches the debug Tauri executable with a fresh temporary app-data directory, a PATH prefixed with `tests/fixtures/cli`, and a local WebView2 debugging port. It tests account metadata/status adapters, persistence, both provider event formats, review, parallel synthesis, queueing and cancellation. Fixtures never authenticate or call providers. Temporary test data is reported and retained for diagnosis. `LUMEN_TEST_DATA_DIR` is honored only in debug builds; release always uses normal application data. Do not expose the debug port externally or use this harness with real account data.
+## Native Windows and screenshots
 
-## Provider adapter contract
+Keep Vite running, build `cargo build --manifest-path src-tauri/Cargo.toml`, then run `npm run test:native`. The harness uses fresh temporary app data, controlled CLI fixtures, a local Ollama API simulator and loopback WebView2 debugging. It does not authenticate or call remote inference. `LUMEN_TEST_DATA_DIR` is debug-only; release uses normal app data.
 
-Claude uses a bidirectional stream-json connection with initialize, native question/permission callbacks and a persistent stdin writer. Codex uses app-server with initialized schema evidence, thread start/resume, per-turn cwd/permission settings and native tools. Autopilot preserves native tools while supported built-in browsing alternatives are routed to Moli. Restricted profiles retain explicit tool/sandbox limits; an additional universal OS jail is not implemented. Report exact installed CLI versions when filing compatibility issues. Google providers use their official print runners with the shared browser MCP adapter; Ollama uses its official loopback API and the same Moli dispatcher through a native-tool/JSON-action loop. See [Moli integration](moli.md) for packaging and live tests.
+`node tests/capture-release.mjs` captures the 0.7 gallery from the native Windows application with isolated demonstration data. It never opens real account directories. Screenshots are actual UI captures; captions must disclose fixture data and distinguish them from live acceptance evidence. Close the owned app/server when finished. Do not expose test/debugging ports to the network.
 
-JSONL fixtures belong next to `providers::normalize`. Never record real credentials, private repositories or account-specific identifiers. `stderr` is drained but not displayed to avoid casually leaking raw auth diagnostics. This means some provider failures need investigation directly in the official CLI.
+## Live provider acceptance
 
-## Live acceptance (requires the user's own accounts)
+`tests/live-native-smoke.mjs` requires explicit `LUMEN_LIVE_NATIVE=1`. It uses the owner's existing CLI account directories via temporary junctions without reading/copying credentials, disposable projects and bounded prompts. Normal probes cover questions, writes and native continuation. `LUMEN_LIVE_MOLI=1` covers browser calls/capture; Google print runners do not claim Claude/Codex native continuation. A diagnostic no-image control is available through `LUMEN_LIVE_MOLI_NO_IMAGE=1`.
 
-`tests/live-native-smoke.mjs` is opt-in: set `LUMEN_LIVE_NATIVE=1` and `LUMEN_LIVE_PROVIDERS=gpt` (or a comma-separated supported set), then run it with the debug app built and Vite running. It creates temporary project/app-data folders, uses junctions to the official CLI account directories without reading/copying credentials, and removes those junctions on exit. It verifies a structured question, an actual file write and resume of the same native session.
+Live graph/Orchestra/gameplay probes remain opt-in through the harness environment variables. Game acceptance uses an ignored isolated project, existing user-provided Godot/Graphify executables and no paid generation/deployment. The local Ollama browser probe is an ignored Rust test requiring an installed model; it never downloads one. Live calls consume the user's own existing quota and are not automatic CI work.
 
-Additional opt-in probes are `LUMEN_LIVE_GRAPH=1` and `LUMEN_LIVE_ORCHESTRA=1`. The isolated Rodent gameplay probe requires `LUMEN_LIVE_GAMEPLAY_ROOT` below this repository's `.codex/acceptance/`, `LUMEN_GODOT_EXE` and `LUMEN_GRAPHIFY_EXE`; it creates only the three standalone training-scene/check files. Keep those artifacts and the purchased addon out of version control. Live inference consumes the user's existing subscription quota; it is not part of CI.
+Protocol changes need metadata from the installed official binary, initialize/schema evidence and controlled regressions. Unknown callbacks must fail explicitly rather than gain broader approval. Never record credential files or unredacted private logs.
 
-`tests/release-smoke.mjs` verifies real initialization/tool discovery from `LUMEN_RELEASE_EXE`. Packaging runs it against the silently installed Windows executable on a disposable runner. The local build-copy helper regenerates `builds/latest/SHA256SUMS.txt`, including any renamed portable executable retained because the previous copy was running.
+## Release procedure
 
-Use disposable folders and low-cost prompts. Complete official login for two distinct identities per provider and verify each status/billing identity through official tools without copying tokens. Test normal reply, follow-up context, wrong model, expired login, cancellation during queue/write-lock/streaming, connection loss, read-only denial and a small permitted edit. With both providers test writer/reviewer and parallel synthesis, including a failing second stage. Confirm no same-workspace simultaneous writes and no orphan process after ordinary cancellation.
+1. Synchronize `package.json`, root package-lock entries, the Lumen Cargo package/lock entry and `tauri.conf.json`. Keep dependency versions intact.
+2. Update current docs, release notes and the gallery; remove superseded work diaries, preserve historical changelogs and fix local links.
+3. Run local checks and branch CI on Windows/macOS/Linux. Inspect the exact tracked diff and keep account data, artifacts, debug folders and purchased addons out of Git.
+4. Fast-forward the default branch after verification. Create the annotated `v<version>` tag and push it.
+5. The tag workflow builds all platforms, tests clean Windows installation and prepares a **draft** release with the matching Markdown changelog and SHA-256 manifest.
+6. Verify all jobs, asset names, containers/checksums and portable resources, then publish the draft and mark it latest. A manual workflow run creates artifacts without publishing.
 
-Keep acceptance evidence redacted and distinguish it from fixtures. This task does not authorize automatically using a developer's existing account for paid inference.
-
-## CI and release
-
-`ci.yml` runs frontend checks and UI tests, Rust format/lint/tests on Windows, and Rust tests on macOS and Ubuntu, on every push and pull request. `release.yml` builds the Windows installer, the portable exe and the Apple silicon DMG; it runs on `v*` tags (and attaches the files plus `SHA256SUMS.txt` to a GitHub release) or manually from the Actions tab (artifacts only, no release). CI never contains provider credentials. Code signing is future work.
-
-Before publishing, inspect the exact staged file list and scan for credentials, application databases and CLI homes. Screenshots must show the actual implementation and must not contain private account data. The donation address is intentionally public per the project owner's request.
+[Release history](release-notes/README.md) · [Architecture](architecture.md) · [Security](../SECURITY.md)

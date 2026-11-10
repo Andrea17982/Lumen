@@ -1,11 +1,14 @@
 // Runs the installed release helper on a clean packaging runner; no model/credentials needed.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const executable = process.env.LUMEN_RELEASE_EXE;
+const expectedVersion = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 if (!executable)
   throw Error('Set LUMEN_RELEASE_EXE to the installed or portable release executable.');
 const root = await mkdtemp(path.join(tmpdir(), 'lumen-release-probe-'));
@@ -25,6 +28,7 @@ const replies = result.stdout
   .split(/\r?\n/)
   .map((line) => JSON.parse(line));
 assert.equal(replies[0].result.serverInfo.name, 'lumen_graph');
+assert.equal(replies[0].result.serverInfo.version, expectedVersion);
 assert.equal(replies[1].result.tools.length, 6);
 const browser = spawnSync(executable, ['--lumen-browser-mcp'], {
   input: requests.map((r) => JSON.stringify(r)).join('\n') + '\n',
@@ -43,6 +47,7 @@ const browserReplies = browser.stdout
   .split(/\r?\n/)
   .map((line) => JSON.parse(line));
 assert.equal(browserReplies[0].result.serverInfo.name, 'lumen_browser');
+assert.equal(browserReplies[0].result.serverInfo.version, expectedVersion);
 assert.equal(browserReplies[1].result.tools.length, 8);
 const moli = path.join(path.dirname(executable), 'resources/moli/win32-x64/moli.exe');
 assert(existsSync(moli), `Bundled browser missing: ${moli}`);

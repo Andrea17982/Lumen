@@ -1,17 +1,15 @@
 # Contributing
 
-Thank you for trying Lumen and sharing how it feels. Feedback is useful even if you do not write code.
+Feedback is useful even without code. Open an [issue](https://github.com/Andrea17982/Lumen/issues) with app/OS/provider versions, reproducible steps and expected/actual behavior. Distinguish UI preview, native fixture tests and real provider runs. Redact screenshots/logs; never upload credentials, account directories or private transcripts. Follow [Security](SECURITY.md) for vulnerabilities.
 
-## Bug reports
+## Changes
 
-Open an issue with your OS, Lumen version, provider CLI versions, reproducible steps, expected/actual result and a redacted screenshot if helpful. Distinguish browser preview from the Tauri desktop app. Never upload auth files, tokens, private transcripts, personal workspace files or unredacted provider logs. Security issues follow [SECURITY.md](SECURITY.md).
+1. Create a focused branch. Discuss substantial product or protocol changes before implementation.
+2. Read [Product](PRODUCT.md), [Design](DESIGN.md) and [Architecture](docs/architecture.md). Preserve explicit provider/model choices, real permissions, native authentication and workspace ownership.
+3. Keep UI in components/settings, native ownership in Rust and protocol decisions out of the renderer. Use fixtures for substantive regressions, not live credentials in CI.
+4. Run [development checks](docs/development.md), including documentation/version/link checks for doc or release changes.
+5. Explain resulting behavior, why it changed, evidence and remaining validation limits. Capture the actual interface with synthetic/private-safe data for UI changes.
 
-## Code contributions
+Historical release notes stay historical. Current feature/setup guides should describe the shipped product rather than append contradictory version-by-version instructions. Keep one canonical validation record; do not turn lack of live credentials into a fabricated pass.
 
-1. Fork the repository and create a branch.
-2. Keep changes focused. Discuss large design or orchestration changes in an issue first.
-3. Follow the architecture and design documents. Keep provider authentication in the official tools and preserve read-only defaults.
-4. Run the checks in [Development](docs/development.md). Add tests for substantive behavior and protocol changes.
-5. Describe what changed, why, how it was tested and what remains unverified. Screenshots help with UI work.
-
-Contributions are accepted under the MIT license. AI-assisted contributions are welcome; disclose tools and review performed. The initial project is completely AI Written; later human contributions should be credited accurately rather than silently rewriting authorship history.
+Contributions are MIT licensed. AI-assisted contributions are welcome; disclose the tools/review performed. The initial product is completely AI Written under human direction; later human work must be credited accurately.

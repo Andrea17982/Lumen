@@ -5,34 +5,36 @@
 ## Platform
 web
 
-Desktop application using a local Tauri webview: Windows and macOS (Apple silicon); Linux builds from source.
+Local Tauri desktop application. Windows x64 is the primary native acceptance target; universal macOS and Linux DEB/AppImage receive automated builds/tests, with further desktop/device testers tracked in validation.
 
 ## Stack
-Stack: Tauri 2, Rust core, React + TypeScript, Tailwind CSS, Framer Motion.
+Tauri 2, Rust, React, TypeScript, Tailwind CSS and Framer Motion. SQLite persistence; official subscription CLIs; official loopback Ollama API; pinned bundled Moli browser.
 
 ## Users
-People working with concurrent Claude Code and Codex sessions on their own computer.
+People working with concurrent Claude Code, Codex, Gemini CLI, Antigravity and local Ollama sessions in their own project folders.
 
 ## Product Purpose
-One quiet workspace for AI conversations, with automatic routing and optional advanced controls.
+A quiet workspace where direct native sessions preserve the user's model and permissions, with optional coordinated work and automatically available browser tools.
 
 ## Capabilities and Constraints
-Persistent searchable sessions, pins, streaming, collapsible activity, isolated account directories and official CLI authentication. No token copying, proxy or custom OAuth implementation. Auto chooses a bounded execution plan. Sessions have no artificial count limit; running processes must be bounded. Provider policies and actual hardware remain constraints.
+Persistent searchable conversations, independent project/folder association, native continuation/questions/child output where supported, explicit Auto/Orchestra, durable task state, bounded diagnostics/checks, Moli browsing, images/inspector/layout and manual variant merge. Native authentication stays with the provider. No credential extraction, custom provider OAuth or general inference proxy is implemented.
+
+Read only is the initial permission profile; Autopilot has full available access under the OS account. Isolation beyond the providers' own controls is optional/not a universal jail. Ollama stays local and rejects cloud models. Browser capability does not guarantee identical CLI interaction features or better model intelligence.
 
 ## Brand Commitments
-Lumen. Apple Liquid Glass, restrained controls, system typography, light and dark themes. Public GitHub repository under Andrea17982. Completely AI Written, with thanks to testers and optional PayPal support.
+Lumen, with the established restrained Liquid Glass identity, system typography and light/dark themes. English and Italian UI. Public GitHub repository under Andrea17982. Completely AI Written disclosure, thanks to testers and optional PayPal support remain in documentation/About.
 
 ## Evidence on Hand
-The original human brief defined the product; no benchmarks or testimonials are claimed.
+0.7 preflight: automated native/UI/backend suites, cross-platform CI/packaging, real Codex/Antigravity browser turns and a real local Ollama tool-result loop. Exact evidence, account-dependent deferrals and non-Windows native acceptance limits are in [Validation](docs/validation.md). No general exponential-performance or accessibility-certification claim.
 
 ## Product Principles
-- Make the next action obvious.
-- Keep orchestration inspectable without making it mandatory to configure.
-- Let the official providers own authentication.
-- Persist useful work and make failures recoverable.
 
-## Open decisions
-The interface supports English and Italian, with English as the initial language and the user's selection saved locally. No performance or provider compatibility claims until verified.
+- Preserve explicit provider/model/workspace choices and useful task decisions.
+- Keep direct work direct; use Orchestra only when selected.
+- Do not ask again for an already approved execution plan.
+- Keep real permission decisions scoped and distinct from model questions.
+- Show concrete results, errors and incomplete coverage honestly.
+- Continue in the tray; recover after crashes only on explicit Resume.
 
-## Confirmed 0.2 changes
-The user requested removal of alpha/promotional labels from the chat shell; named workspace plus per-conversation folder selection beside the AI selector; easy account renaming; model/effort selectors from official providers; and an explicit full-permission Autopilot mode. Authorship and thanks remain in About/README. Autopilot grants available CLI tools under OS permissions; it does not itself implement graphical computer control.
+## Release scope
+0.7 closes the agreed implementation scope. Signing, Telegram, internal encryption, a separate daemon and an additional common OS jail were removed by the owner. Conditional performance proposals were measured/evaluated; full virtualization, Rust Markdown/ANSI rendering, warm CLI pools and tuple-based provider metadata are not shipped. Keep native formats and measured lightweight optimizations until evidence justifies another implementation.

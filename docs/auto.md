@@ -1,48 +1,39 @@
-# Auto execution policy · 0.4
+# Auto and Orchestra policy — 0.7
 
-Auto routes locally without a classifier request. It selects an actual model ID from the selected account's official CLI catalog, including for reviewers and parallel workers. Unavailable model names are never manufactured. These are explainable heuristics calibrated against the user's examples.
+Direct provider sessions are the default and bypass Lumen's classifier/planner. Auto is an explicit routing mode; Orchestra is an additional opt-in setting. An explicit manual provider/model is not overridden merely because the request mentions architecture or security.
 
-| Request | Preferred model class | Default effort |
+## Classification and model selection
+
+Auto can use the enabled local Ollama helper or a small Claude model for classification. A bounded failure/timeout falls back to keyword heuristics. Short follow-ups can reuse the previous verdict so “continue” does not start an unrelated plan.
+
+| Task | Typical model class | Effort tendency |
 | --- | --- | --- |
-| Test, short text, translation/email | Haiku / Luna; Terra if no smaller model is available | Low |
-| CSS fix, coding, ordinary debugging | Sonnet / Terra | Low, or medium for longer requests |
-| Intermittent concurrency bug | Sonnet / Terra | Medium |
-| Database migration, architecture, authentication/security review | Opus / Sol | Low, or medium for complexity/production signals |
+| Short text or translation | Smaller available model | Low |
+| Coding/debugging | Mid-tier coding model | Low/medium |
+| Demanding architecture, migration or security | Stronger available model | Proportional to task complexity |
 
-Version numbers come from the account catalog. A long email can raise effort without automatically requiring a flagship. Unrecognized models fall into the middle class; catalog defaults break ties. Routing can misinterpret wording. Follow-ups are classified from the latest request; use manual controls when continuity requires a particular model.
+IDs, defaults and reasoning levels come from connected catalogs. Budget lowers effort and suppresses optional extra stages; Default uses calibrated routing; Quality raises effort and may add independent review. These are heuristics, not guarantees about task quality or cost.
 
-The three policies persist locally:
+## Review and comparison
 
-- **Budget:** one effort step lower, clamped at low; suppresses extra review/parallel stages.
-- **Default:** calibrated effort and independent review for demanding architecture/security/migration work or explicit validator requests.
-- **Quality:** one effort step higher; adds an independent reviewer for coding and advanced tasks when another provider is configured. Simple messages stay single-stage.
-
-Comparisons with both providers and Default/Quality gather two independent perspectives, then synthesize. Manual provider/model/effort selection uses a single stage, validated against official metadata. Each stage resolves effort to the nearest supported level or provider default and records the effective model/effort in activity.
+Independent review needs another configured provider. Writer/reviewer/final or comparison/synthesis stages are bounded, and their actual model/effort appears in activity. The writer follows the selected permissions; reviewers stay read-only. Native child agents remain available where the provider protocol supports them.
 
 ## Orchestra
 
-With Settings → Teamwork → **Orchestra** on, Auto hands complex requests to an orchestrator instead of a single writer. "Complex" uses the same local profile: the Opus/Sol class (architecture, security, migration), or the Sonnet/Terra class when the request is demanding or longer than about 600 characters. The orchestrator's model class is the task's class with a Sonnet/Terra floor under Budget and Default, and the strongest class under Quality. Each subtask gets a class from its difficulty (trivial → Haiku/Luna, normal → Sonnet/Terra, complex → Opus/Sol) and an effort of low, or medium for complex work, moved one step by Budget or Quality. Subtasks alternate between Claude and ChatGPT, starting with the provider that is not orchestrating; trivial ones prefer the emergency providers. See [Teamwork features](features.md#orchestra).
+Enabled Orchestra can handle complex Auto or approved multi-part work. Its coordinator uses an appropriate catalog model and preserves an explicit coordinator choice where supplied. A task graph records file ownership, dependencies and assignments; workers receive actual workspace/permissions, prior decisions and relevant graph/check context.
 
-## Quota balancing
+The scheduler enforces concurrency, admitted-subtask totals and optional quota thresholds. Finished work frees concurrency, not the total-admission budget. Workers use separate worktrees for writes, and integration/final checks operate on their combined result. A live run can be stopped; crash recovery requires explicit Resume. Autopilot and already approved execution do not ask for the same plan approval again.
 
-Enable **Balance usage** in Auto and manage snapshots in Settings. Codex uses official `account/rateLimits/read`, refreshing missing/stale snapshots before routing. Claude percentages/reset times must currently be copied from `/usage`. Snapshots expire after 15 minutes. Balancing runs only when all candidates have fresh usable data; otherwise activity explains why ordinary routing was used. Missing usage never counts as free capacity.
+## Usage and fallback
 
-For each active reported window:
+Codex quota refresh uses its official protocol. Claude streamed rate-limit events update supported windows during turns; manual snapshots remain available. Antigravity usage is parsed from its native headless output. Missing, stale and partial data are reported explicitly rather than assumed available.
 
-`pressure = fraction_of_window_time_remaining / fraction_of_quota_remaining`
+Balancing compares fresh usable windows against their reset times; absent data falls back to ordinary routing. Emergency providers can be used when confirmed primary quotas are exhausted or a running turn hits a limit while alternatives are cooling down. The configured order is Antigravity, Gemini CLI and local Ollama after primary subscription options. This does not multiply provider allowances or authorize credential sharing.
 
-An account's pressure is its tightest window (maximum); lower pressure is preferred. Thus 90% weekly usage with two hours until reset can be preferable to 40% usage with days remaining, unless the shorter window is tighter. Exhausted active windows block selection, including as reviewer, when all accounts have known usage. Expired windows are ignored rather than assumed reset. This balances subscription quota percentages, not currency or exact tokens; model-specific buckets and task cost prediction are not inferred.
+Optional fallback records provider changes and carries task context. It is distinct from local-helper failures, which preserve the manual flow without invoking remote inference.
 
-This is a Lumen heuristic inspired by remaining-budget pacing, not an implementation of Envoy or a proven cost optimizer. Existing global-quota systems regulate throughput; they do not directly solve subscription selection across providers with independent five-hour and weekly resets. See [Envoy global rate limiting](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting.html) and [official Codex App Server quota protocol](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt).
+## Shared context and tools
 
-## Workers and permissions
+Project `LUMEN.md`, attachments, durable task state and relevant skills/graph context are added according to the execution path. Native continuation avoids needless full replay. Shared skills and configured MCP adapters retain their provider-specific constraints. Moli is automatically injected through the common invocation path, regardless of the selected mode/provider/model.
 
-Writer → read-only reviewer → final writer and two read-only perspectives → synthesis are bounded worker workflows. They use separate official CLI calls, at most two simultaneously per job. Only the writer/final pass may edit, according to the permission profile. Another provider is required for independent review; a single provider uses one stage. Recursive/native subagent spawning and concurrent writers with isolated worktrees are not implemented.
-
-Four orchestration jobs can be active, with at most eight inference processes. Writing jobs sharing a canonical folder are serialized. Extra stages consume quota and receive task context. Reviewer/synthesis failure retains available draft/activity and marks the turn failed. There is no automatic retry/account rotation after inference errors. Selected model, effort, strategy and balancing reason appear in activity.
-
-## Shared skills and MCP
-
-Settings imports complete skill folders containing `SKILL.md` into `<Lumen data>/shared/skills`, including scripts/resources. Every model receives an inventory with descriptions/paths and instructions to read relevant skills. Shared MCP configuration lives in `<Lumen data>/shared/mcp.json`: Claude receives `--mcp-config`; Codex receives converted TOML `mcp_servers` entries. Stdio commands/args/env and HTTP URLs/headers are supported. Shared MCP runs in Autopilot; other permission modes keep restricted tools. Authentication may require separate provider setup.
-
-This shares portable skills and MCP definitions. Provider-specific plugin hooks, interfaces, OAuth storage and unsupported transports require adapters; they are not converted automatically. See [Claude MCP configuration](https://code.claude.com/docs/en/mcp).
+[Features](features.md) · [Accounts](accounts.md) · [Task quality](task-quality.md) · [Validation](validation.md)

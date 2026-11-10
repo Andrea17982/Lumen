@@ -150,7 +150,7 @@ Key characteristics:
 - One principal reading surface, with generous space in the empty state.
 - A frosted session rail and a soft intersecting three-bar mark.
 - Compact controls, subtle dividers, muted metadata, and a minimal visual treatment.
-- Auto routing selected by default, with provider controls disclosed progressively.
+- Direct native provider selected by default, with model/reasoning controls disclosed progressively; Auto/Orchestra remain explicit choices.
 
 This document records `src/styles.css` and the components in `src/App.tsx`, `src/components/` and `src/settings/`. Tokens above are extracted values; CSS remains the runtime source of truth. Screenshots of the current implementation are in `docs/images/`.
 
@@ -275,7 +275,7 @@ Orchestra steps render as a card inside the assistant message: `input` fill, 1px
 
 ## Do's and Don'ts
 
-- **Do** keep the user's Liquid Glass identity, English copy, system typography, and light/dark semantic pairing.
+- **Do** keep the user's Liquid Glass identity, English/Italian copy, system typography, and light/dark semantic pairing.
 - **Do** keep the aurora decorative and behind content, and keep text contrast readable over it in both themes.
 - **Do** keep the transcript dominant and the composer aligned with its 760px reading column.
 - **Do** preserve inert modal background, status text, disclosure controls, and reduced-motion preferences.
@@ -284,3 +284,7 @@ Orchestra steps render as a card inside the assistant message: `input` fill, 1px
 - **Don't** turn every secondary action into a prominent card or primary button.
 - **Don't** invent provider performance, native behavior, accessibility conformance, or live-account validation from a browser screenshot.
 - **Don't** treat the documentation sidecar's illustrative controls as replacements for application logic or accessible dialog behavior.
+
+## 0.7 documentation and capture contract
+
+The GitHub surface is Read mode: a concise bilingual introduction, actual application gallery, working-mode explanation, platform package table and links to canonical guides. Keep the existing mark/material identity; documentation is not a product redesign. Native questions, child streams, Moli captures and inspector/layout affordances should be represented by actual implemented UI with isolated demonstration data. The gallery is not live-inference or accessibility certification.

@@ -1,7 +1,7 @@
 [package]
 name = "lumen"
-version = "0.6.0"
-description = "A quiet desktop workspace for Claude Code and Codex"
+version = "0.7.0"
+description = "Native AI sessions, optional orchestration and Moli browsing"
 authors = ["Andrea17982"]
 edition = "2021"
 license = "MIT"

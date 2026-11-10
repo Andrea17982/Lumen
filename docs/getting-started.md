@@ -1,46 +1,56 @@
-# Getting started
+# Getting started — 0.7
 
-## Before you begin
+## Install
 
-Lumen runs installed, unmodified provider CLIs. You need access to Claude Code or Codex under your own provider agreement, an internet connection for inference, and a trusted local project directory. An account slot is metadata, not an authenticated identity until official sign-in succeeds.
+Download from [GitHub Releases](https://github.com/Andrea17982/Lumen/releases/latest). Windows offers an installer or a portable ZIP; extract the entire ZIP, including `resources/moli`. macOS uses a universal Intel/Apple silicon DMG. Linux offers DEB/AppImage built on Ubuntu 24.04. Packages are unsigned; checksums accompany the release. Moli is bundled.
 
-Install the Windows x64 alpha from [Releases](https://github.com/Andrea17982/Lumen/releases), or follow the source-build commands in [README](../README.md). Restart Lumen after installing a CLI so it inherits the new PATH. Use a current official CLI release supporting the flags in [development](development.md).
+Install the official CLI for each subscription provider you want to use, or start Ollama with an installed local model. Restart Lumen after changing PATH. You need your own authorized provider access and a trusted project directory. [Account setup](accounts.md).
 
 ## First conversation
 
-1. Open Settings using the top-right sliders button or the account control in the sidebar.
-2. Under Connected accounts choose +. Enter a label and provider, then Add account.
-3. Choose Sign in. Finish authentication in the terminal opened for that account. Lumen never asks you to paste a token. Close the terminal when done.
-4. Choose the shield button beside the account to query the official CLI login status.
-5. Choose Workspace folder. Use a project directory you trust, not your entire user profile.
-6. Return to the conversation and type a request. A native direct provider is selected by default, preserving your model/effort choice. Auto routing and Orchestra are explicit options. The first message supplies an initial local title; the optional Ollama helper can refine it.
-7. Expand activity to inspect exposed reasoning summaries, tools, edits, planning or errors.
+1. Open Settings → Accounts and add a named provider slot.
+2. Use Sign in and finish the provider's official terminal/browser login. Lumen never asks you to paste credentials. Ollama needs no sign-in.
+3. Check the account connection, choose a project folder and return to the conversation.
+4. Select a direct provider; expand its options to choose the available model/reasoning level.
+5. Select permissions, type a request and send. Direct sessions are the default; Auto and Orchestra are explicit choices.
+6. Expand activity for exposed tools, browser work, checks and provider summaries. Native questions appear as structured controls.
 
-**Ask** (read-only) is selected for each app launch. Both mode is available only in Ask. Enabling File edits on allows the provider's configured file tools or workspace-write sandbox. The Permissions selector also offers Autopilot, which disables CLI restrictions/approval prompts and enables available tools under your OS account. The setting applies to subsequent turns; it does not change an in-flight process. Workers used for review and parallel analysis are read-only. Multi-stage requests can consume several inference calls.
+**Read only** is the initial permission profile. **File edits**, **Autopilot** and **Approve each action** have different semantics and provider support; see [Permissions](workspace-models-permissions.md). Autopilot authorizes available tools under your OS account without additional Lumen plan-approval loops. It does not grant administrator privileges.
 
 ## Everyday controls
 
 | Action | Control |
 | --- | --- |
-| New conversation | Sidebar +, or Ctrl/Cmd N |
-| Send / new line | Enter / Shift Enter |
-| Stop generation or a queued turn | Square button in the composer |
-| Rename, pin, delete | Conversation header … menu |
-| Search | Sidebar search field; title search only |
-| Load older sessions | Load more conversations after each 100 rows |
-| Manual model/account/effort | Select Claude or GPT, then expand the chevron |
-| Close settings / mobile sidebar | Escape |
+| New conversation / project | Sidebar +; Ctrl/Cmd+N / Ctrl/Cmd+P |
+| Command palette | Ctrl/Cmd+K |
+| Send / new line | Enter / Shift+Enter |
+| Stop active or queued work | Square button in the composer |
+| Rename, pin, move, delete | Conversation menu or context actions |
+| Search | Sidebar search; title search |
+| Account/model/reasoning | Direct provider → advanced provider options |
+| Change the folder | Folder control or `/workspace <absolute path>` |
+| Compact | Context popover or `/compact` |
+| Close a dialog | Escape |
 
-Use Workspace and the adjacent folder picker beside the AI selector to bind the selected conversation to a named workspace and a specific working folder. Folder changes are disabled while the conversation has an active/queued turn. Legacy conversations retain their folder after migration. The default folder and appearance live in webview local storage; messages and account metadata live in SQLite.
+Projects organize conversations; moving a conversation between projects does not change its working folder. Folder changes are blocked while its turn is active. Earlier messages retain their original workspace association.
 
-## Recovery
+## Browser, images and inspector
 
-- **CLI not found:** install its official release, check `claude --version` / `codex --version`, restart Lumen.
-- **Not signed in:** use Sign in for that exact account slot, then check connection. Your pre-existing terminal login is intentionally not imported.
-- **Model not available:** clear a manually set model to use the provider default, or choose a model your account can access. Auto's Claude aliases require matching plan access.
-- **Quota / rate limit:** wait or change provider manually. Lumen does not rotate accounts to evade limits.
-- **Tool denied:** read-only and provider permissions may deny tools. Enable file edits only when appropriate. Claude shell tools are enabled only with Autopilot.
-- **Stuck work:** stop the turn. If you restart after a crash, previously running/waiting sessions become interrupted. Partial text is checkpointed roughly every 750ms when events arrive; the latest chunk may be lost.
-- **Linux login:** see [Accounts](accounts.md); the automatic terminal launcher currently targets Windows.
+Request web research or page interaction normally: Moli is automatically connected. Read-only profiles cannot submit page mutations. Captured images appear in the transcript; click to enlarge. The project inspector adds local previews, changes/checks, visual review, image/data inspection and layout constraints. Optional Godot actions require a compatible configured editor/addon.
 
-Deleting a conversation permanently removes its local messages; it does not delete CLI-owned history. Account removal asks for confirmation and deletes its local directory. It does not revoke the provider's remote authorization. See [Security](../SECURITY.md).
+## Background work and recovery
+
+By default X hides Lumen to the notification area and work continues. Use the tray menu to reopen or Quit. After a crash or computer restart, unfinished work is marked interrupted and resumes only when requested. Latest partial text may not have reached its next persistence checkpoint.
+
+## Troubleshooting
+
+- **CLI missing:** install its official distribution, confirm PATH and restart Lumen.
+- **Login unavailable:** sign in for that exact account slot. Existing terminal credentials are not automatically copied into Lumen.
+- **Model/reasoning rejected:** refresh the catalog and select a supported combination or provider default.
+- **Quota reached:** wait, choose another eligible provider or use the configured rate-limit fallback. Missing usage data is not proof of free quota.
+- **Tool denied:** check the actual permission mode and provider policy. Approvals cannot grant an unsupported native operation.
+- **Ollama offline:** start its local service and install a conversational model. Remote Ollama hosts/cloud aliases are rejected.
+- **Browser blocked:** Moli may encounter CAPTCHA, authentication or unsupported rendering. The error is explicit; it does not silently switch browsers.
+- **Stuck work:** Stop, inspect activity and retry with the native CLI if compatibility/login needs diagnosis.
+
+Deleting conversations/accounts removes their local Lumen data after confirmation; remote revocation and CLI-owned history are separate. [Security](../SECURITY.md) · [Known validation limits](validation.md).
