@@ -125,6 +125,7 @@ pub fn shutdown() {
     }
 }
 struct Scope {
+    provider: Provider,
     token: String,
     context: Arc<Context>,
     workspace: PathBuf,
@@ -198,6 +199,7 @@ impl Registration {
                 .clone()
         };
         let scope = Arc::new(Scope {
+            provider: input.account.provider.clone(),
             token: uuid::Uuid::new_v4().to_string(),
             context,
             workspace: dunce::canonicalize(input.browser_artifacts.unwrap_or(&workspace))
@@ -281,7 +283,7 @@ impl Registration {
                 args.splice(at..at, extra);
             }
             Provider::Antigravity => {
-                let denied = json!(["WebFetch", "WebSearch", "web_fetch", "google_web_search"]);
+                let denied = json!(["read_url(*)", "execute_url(*)"]);
                 if let Some(i) = args.iter().position(|a| a == "--settings") {
                     let mut settings: Value = serde_json::from_str(&args[i + 1])
                         .map_err(|_| "Invalid Antigravity settings")?;
@@ -456,9 +458,50 @@ async fn result(scope: Arc<Scope>, name: &str, args: &Value) -> Value {
     // Permission waits have no arbitrary timeout. Native cancellation or scope teardown
     // cancels the request; browser commands themselves have a bounded timeout.
     match run.await {
-        Ok(v) => v,
+        Ok(mut v) => match compact_native_result(&scope.provider, &mut v) {
+            Ok(()) => v,
+            Err(e) => failure(e),
+        },
         Err(e) => failure(e),
     }
+}
+
+/// Inline MCP image results stalled two real Antigravity print turns (PNG and a
+/// compact JPEG); the same DOM-only turn completed. Preserve the original PNG in
+/// Lumen and let that CLI's own file/image viewer open it, rather than hanging its
+/// MCP image handoff or degrading the saved screenshot. Other providers retain images.
+fn compact_native_result(provider: &Provider, value: &mut Value) -> Result<(), String> {
+    const WIRE_LIMIT: usize = 48 * 1024;
+    if *provider != Provider::Antigravity {
+        return Ok(());
+    }
+    if let Some(blocks) = value["content"].as_array_mut() {
+        let images = blocks.iter().any(|block| block["type"] == "image");
+        blocks.retain(|block| block["type"] != "image");
+        if images {
+            blocks.push(json!({"type":"text","text":"Lumen displays the original full-resolution PNG. To inspect its pixels, open the saved absolute path above using the CLI's native file/image viewer; this CLI's inline MCP image handoff did not complete reliably. The screenshot was captured with Moli."}));
+        }
+    }
+    // Quotes, control characters and backslashes can expand a bounded text extraction
+    // when serialized. Bound the serialized frame rather than just the source text.
+    while value.to_string().len() > WIRE_LIMIT {
+        let mut shortened = false;
+        if let Some(blocks) = value["content"].as_array_mut() {
+            for block in blocks {
+                if let Some(text) = block["text"].as_str().filter(|s| s.len() > 512) {
+                    let text: String = text.chars().take(text.chars().count() / 2).collect();
+                    block["text"] = json!(format!(
+                        "{text}\n[Result truncated for Antigravity CLI transport]"
+                    ));
+                    shortened = true;
+                }
+            }
+        }
+        if !shortened {
+            return Err("Browser result exceeds Antigravity's transport budget".into());
+        }
+    }
+    Ok(())
 }
 async fn fetch(address: &str) -> Result<String, String> {
     let mut c = crate::proc::command(executable()?);
@@ -718,7 +761,7 @@ impl Engine {
                         text: json!({"id":uuid::Uuid::new_v4().to_string(),"path":saved.path,"folder":workspace}).to_string(),
                 });
                 return Ok(
-                    json!({"content":[{"type":"image","mimeType":"image/png","data":data},{"type":"text","text":format!("Saved {}",saved.path)}]}),
+                    json!({"content":[{"type":"image","mimeType":"image/png","data":data},{"type":"text","text":format!("Saved full-resolution PNG: {}",workspace.join(&saved.path).display())}]}),
                 );
             }
             _ => return Err(format!("Unknown browser action: {name}")),
@@ -845,6 +888,39 @@ pub async fn proxy_stdio() -> Result<(), String> {
 pub(crate) mod tests {
     use super::*;
     #[test]
+    fn antigravity_transport_preserves_the_image_path_and_bounds_escaped_text() {
+        use base64::Engine as _;
+        let picture = image::RgbImage::from_fn(512, 512, |x, y| {
+            let n = (x + y * 512).wrapping_mul(2_654_435_761);
+            image::Rgb([(n >> 8) as u8, (n >> 16) as u8, (n >> 24) as u8])
+        });
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(picture)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let original = json!({"content":[{"type":"image","mimeType":"image/png","data":base64::engine::general_purpose::STANDARD.encode(bytes.into_inner())},{"type":"text","text":"Original PNG saved in project"}]});
+        let mut unchanged = original.clone();
+        compact_native_result(&Provider::Gpt, &mut unchanged).unwrap();
+        assert_eq!(unchanged, original);
+        let mut compact = original;
+        compact_native_result(&Provider::Antigravity, &mut compact).unwrap();
+        assert!(compact.to_string().len() <= 48 * 1024);
+        assert!(compact["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["type"] != "image"));
+        assert!(compact
+            .to_string()
+            .contains("Original PNG saved in project"));
+        assert!(compact.to_string().contains("native file/image viewer"));
+        let mut text = json!({"content":[{"type":"text","text":"\"\\\n".repeat(24_000)}]});
+        compact_native_result(&Provider::Antigravity, &mut text).unwrap();
+        assert!(text.to_string().len() <= 48 * 1024);
+        assert!(text.to_string().contains("truncated"));
+        assert!(!text.to_string().contains("PNG"));
+    }
+    #[test]
     fn permissions_and_urls() {
         for name in ["browser_click", "browser_fill", "browser_evaluate"] {
             assert!(permitted(AccessMode::ReadOnly, name).is_err());
@@ -920,6 +996,17 @@ pub(crate) mod tests {
         google_settings(&mut google).unwrap();
         assert_eq!(google["mcpServers"]["existing"]["command"], "keep");
         assert_eq!(google["mcpServers"][SERVER]["args"][0], FLAG);
+        let mut agy = vec![
+            "--settings".into(),
+            json!({"permissions":{"allow":["command(*)"]}}).to_string(),
+        ];
+        r.args(&mut agy, &Provider::Antigravity).unwrap();
+        let permissions: Value = serde_json::from_str(&agy[1]).unwrap();
+        assert_eq!(permissions["permissions"]["allow"][0], "command(*)");
+        assert_eq!(
+            permissions["permissions"]["deny"],
+            json!(["read_url(*)", "execute_url(*)"])
+        );
     }
     #[tokio::test]
     async fn broker_scopes_permissions_cancellation_and_auth() {

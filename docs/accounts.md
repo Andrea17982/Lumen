@@ -10,7 +10,7 @@ You install the official, unmodified provider CLI. An account slot gives it a se
 | Codex | `CODEX_HOME=<app-data>/accounts/<id>` | `codex login` | `codex login status` |
 | Gemini CLI | `GEMINI_CLI_HOME=<app-data>/accounts/<id>` | `gemini` | `gemini --list-models` |
 | Antigravity CLI | isolated `HOME` / `USERPROFILE` | `agy` | `agy models` |
-| Ollama (local) | none: your own Ollama store | no sign-in | `ollama list` |
+| Ollama (local) | none: your own Ollama store | no sign-in | official loopback `/api/tags` |
 
 There is no application-set account count cap. This does not increase a provider's allowance, guarantee every authentication store is independent, or authorize credential sharing. One slot per identity is recommended; duplicate slots for the same identity still share provider-side limits. Auto uses Gemini CLI or Antigravity only when fresh quota snapshots explicitly show every configured Claude and Codex account exhausted. Missing or stale quota information never triggers this quota-based fallback. Separately, when a turn hits a rate limit and the other subscription is cooling down too, the turn continues on Antigravity, Gemini CLI, then Ollama (Settings → Teamwork → Switch on rate limit). Claude quota snapshots must be entered from `/usage`; Codex snapshots can be refreshed through its CLI.
 
@@ -27,7 +27,7 @@ Codex CLI supports official ChatGPT sign-in, and its exec mode reuses CLI-manage
 - Codex account creation writes `cli_auth_credentials_store = "file"` in that isolated home. The CLI may store plaintext tokens there; protect the directory as you would a password.
 - Gemini CLI uses its documented `GEMINI_CLI_HOME`. Antigravity uses a separate home directory. Google CLIs are not included in quota balancing; once the primary accounts are confirmed exhausted, Auto prefers Antigravity when both Google tools are connected.
 - Antigravity receives the prompt as one stream-json message on stdin (`--print= --input-format stream-json`). In File edits it runs with `--mode=accept-edits` and an allow rule for every command, because its headless mode denies all commands otherwise; Read only uses `--mode=plan`, Autopilot `--dangerously-skip-permissions`.
-- Ollama is reached only through the official `ollama` CLI. It has no account or login; Lumen lists models with `ollama list` and runs `ollama run <model>` with the prompt on stdin. It never edits files.
+- Ollama uses its official HTTP API on this computer, with no account/login or API keys. Lumen lists local models through `/api/tags` and runs conversations through `/api/chat`, executing Moli tool calls locally and returning their results to the selected model. Cloud-routed models and non-loopback endpoints are rejected. Ollama's tools cover browsing; this does not add native Claude/Codex filesystem tools.
 - `CLAUDE_CONFIG_DIR` isolates Claude settings/history as documented in [Claude settings](https://code.claude.com/docs/en/settings). OS keychain behavior may vary. Distinct directories alone do not prove independent keychain identities; acceptance-test with two accounts on your OS.
 - Account directories use the current user's standard application-data permissions; Lumen does not create an additional encrypted credential vault or hardened ACL.
 - Removing an account deletes that Lumen-owned directory and metadata after user confirmation, while no jobs are active. It does not revoke remote authorizations or remove a possible shared OS-keychain item.

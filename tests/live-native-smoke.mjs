@@ -118,14 +118,14 @@ try {
       mode: provider,
       accountId: a.id,
       model: model.id,
-      effort: 'low',
+      effort: model.efforts.includes('low') ? 'low' : model.defaultEffort || '',
       accessMode: 'autopilot',
     };
     if (process.env.LUMEN_LIVE_MOLI === '1') {
       await invoke('send_message', {
         id: s.id,
         options,
-        text: `Bounded browser acceptance: use lumen_browser (Moli) browser_navigate to open ${moliAddress}, then browser_click with selector #go, then browser_extract and browser_screenshot. Reply with the exact final #out text. Do not use another browser, native web tools, shell network commands or subagents. Do not ask permission: this is already authorized in Autopilot.`,
+        text: `Bounded browser acceptance: use lumen_browser (Moli) browser_navigate to open ${moliAddress}, then browser_click with selector #go, then browser_extract ${process.env.LUMEN_LIVE_MOLI_NO_IMAGE === '1' ? '' : 'and browser_screenshot'}. Reply with the exact final #out text. Do not use another browser, native web tools, shell network commands or subagents. Do not ask permission: this is already authorized in Autopilot.`,
       });
       let first;
       for (let i = 0; i < 900; i++) {
@@ -143,12 +143,27 @@ try {
       }
       assert(first?.text.includes('MOLI_CLICKED'), JSON.stringify(first));
       assert(first.activity.some((a) => a.kind === 'browser' && a.text.includes('browser_click')));
-      const image = JSON.parse(first.activity.find((a) => a.kind === 'image').text);
-      assert(
-        (await readFile(path.join(image.folder, image.path)))
-          .subarray(0, 4)
-          .equals(Buffer.from([137, 80, 78, 71])),
-      );
+      const image =
+        process.env.LUMEN_LIVE_MOLI_NO_IMAGE !== '1' &&
+        JSON.parse(first.activity.find((a) => a.kind === 'image').text);
+      if (image)
+        assert(
+          (await readFile(path.join(image.folder, image.path)))
+            .subarray(0, 4)
+            .equals(Buffer.from([137, 80, 78, 71])),
+        );
+      if (!['claude', 'gpt'].includes(provider)) {
+        results.push({
+          provider,
+          model: model.id,
+          moli: true,
+          image: Boolean(image),
+          passed: true,
+          elapsedMs: Date.now() - started,
+        });
+        console.log(JSON.stringify(results.at(-1)));
+        continue;
+      }
       const native = JSON.parse(first.activity.find((a) => a.kind === 'native').text);
       await invoke('send_message', {
         id: s.id,

@@ -24,7 +24,7 @@ Durable task memory, diagnostics and affected-project checks, impact-aware Orche
 ## New in 0.4: Orchestra
 
 - **Orchestra**: for complex tasks in Auto, one orchestrator asks clarifying questions, shows a plan with the agent assigned to each subtask, runs the subtasks in parallel git worktrees across every connected provider and integrates the result, with optional cross-audit.
-- **Ollama**: a local provider for emergency fallback and trivial Orchestra subtasks, through the official `ollama` CLI.
+- **Ollama**: a local provider using the official loopback API, with Moli tool calling, selectable installed models, emergency fallback and Orchestra helpers. No remote inference or API keys.
 - **Simpler Settings**: one section at a time, with a Simple/Advanced switch.
 - **Notification area and login**: keep Lumen running when the window is closed, and open it at login.
 
@@ -60,7 +60,7 @@ Try it, [tell us how it goes](https://github.com/Andrea17982/Lumen/issues), or c
 - Independent concurrent sessions, with four active orchestration jobs and up to eight inference processes. Extra turns wait in a queue. File-writing turns in the same canonical workspace are serialized.
 - English interface, light / dark / system appearance, keyboard shortcuts, accessible labels and reduced-motion support.
 - Claude Code partial-text streaming; Codex JSONL activity and completed-message updates. Provider-exposed reasoning, tools, file changes and reviews appear in collapsible activity. Codex `exec --json` is not token-by-token text streaming.
-- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI, Antigravity and Ollama are supported through their official local tools; Google providers and Ollama are Auto's emergency fallback and Orchestra helpers only.
+- Multiple named accounts with isolated CLI configuration. Claude, Codex, Gemini CLI, Antigravity and Ollama can be selected directly; Google/local providers also supply emergency fallback and Orchestra helpers. [Moli browsing](docs/moli.md) is configured automatically across all providers and models.
 - **Auto** uses a small model (or the configured local helper), with deterministic heuristics as a fallback, to choose effort and a provider. Complex tasks can use Orchestra or an independent reviewer; native continuations and a durable task ledger preserve context.
 - **Ask** (read-only) by default, with File edits and **Autopilot** permission profiles. Autopilot disables CLI approval prompts/sandbox restrictions and exposes the provider's default tools and configured extensions under your OS account. Emergency providers run in Auto when fresh quota snapshots confirm every configured Claude and Codex account has exhausted its active windows, or when a rate limit hits while the other subscription is cooling down; in Orchestra they may also take trivial subtasks.
 - An optional PayPal support button, in the app and here. Donations unlock nothing.

@@ -34,4 +34,4 @@ Keep measured regressions as fixtures before adding complexity. The Windows 1,00
 
 ## Moli implementation
 
-Automatic Moli routing is implemented in the common conversation/Orchestra path for all five providers. The shared MCP broker, pinned browser packaging, permission/cancellation handling, persistent isolated contexts, transcript images and official local Ollama API tool loop have targeted tests. Real Codex navigation/click/screenshot/resume and a real local Ollama model call passed. Remaining provider login/quota acceptance above still applies; see [Moli implementation and evidence](moli.md).
+Automatic Moli routing is implemented in the common conversation/Orchestra path for all five providers. The shared MCP broker, pinned browser packaging, permission/cancellation handling, persistent isolated contexts, transcript images and official local Ollama API tool loop have targeted tests. Real Codex navigation/click/screenshot/resume, Antigravity browsing/capture/final response and a real local Ollama model call passed. Remaining provider login/quota acceptance above still applies; see [Moli implementation and evidence](moli.md).
