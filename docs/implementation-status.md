@@ -2,6 +2,10 @@
 
 This is the active work record, not a completion claim. Preserve user changes made by the other Lumen chat (composer slash autocomplete).
 
+## Moli acceptance completed
+
+Functional source **3ee4635** passed [CI on all three operating systems](https://github.com/Andrea17982/Lumen/actions/runs/42843169200) and [Windows/macOS/Linux packaging](https://github.com/Andrea17982/Lumen/actions/runs/42843169596). The suite passed 135 Rust tests, 60 TypeScript tests and 29 Playwright tests, plus formatting/Clippy; 13 opt-in environment/account probes remain excluded from the normal suite, with the live local Ollama browser probe executed separately. Real Codex and Antigravity browser turns passed. The final local Windows portable ZIP was extracted and passed MCP discovery, actual bundled Moli retrieval and checksum checks. [Moli evidence and provider-specific limits](moli.md) describe exactly what was exercised. The published 0.6.0 tag remains unchanged.
+
 ## Decisions
 
 - Main roadmap and previous ideas are in scope.
