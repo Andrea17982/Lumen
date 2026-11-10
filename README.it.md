@@ -1,8 +1,8 @@
 # Lumen
 
-Un’app desktop locale per gestire conversazioni Claude Code e ChatGPT / Codex in un’interfaccia essenziale ispirata ad Apple Liquid Glass. Tauri 2, core Rust, React e TypeScript. L’interfaccia è in inglese, come scelto dal creatore.
+Un’app desktop locale per gestire conversazioni Claude Code e ChatGPT / Codex in un’interfaccia essenziale ispirata ad Apple Liquid Glass. Tauri 2, core Rust, React e TypeScript. L’interfaccia è disponibile in inglese e italiano.
 
-**Versione 0.3 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
+**Versione 0.6 alpha.** [Scarica da Releases](https://github.com/Andrea17982/Lumen/releases) oppure compila il progetto. Progetto indipendente, senza affiliazione con Apple, Anthropic o OpenAI.
 
 ![Interfaccia Lumen](docs/images/desktop.png)
 

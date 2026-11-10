@@ -751,6 +751,83 @@ mod tests {
             "{report:?}"
         );
     }
+
+    /// Opt-in real Godot LSP, with an owned headless editor and a disposable project.
+    #[tokio::test]
+    #[ignore]
+    async fn installed_godot_reports_a_real_type_error() {
+        let fixture = Fixture::new();
+        std::fs::write(
+            fixture.root.join("project.godot"),
+            "config_version=5\n[application]\nconfig/name=\"Lumen diagnostic probe\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            fixture.root.join("probe.gd"),
+            "extends Node\nfunc _ready():\n\tvar value: int = \"wrong\"\n",
+        )
+        .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let exe = std::env::var("LUMEN_GODOT_EXE")
+            .ok()
+            .or_else(crate::godot::find_executable)
+            .expect("Install Godot or set LUMEN_GODOT_EXE");
+        let mut child = crate::proc::command(exe)
+            .args(["--headless", "--editor", "--path"])
+            .arg(&fixture.root)
+            .args(["--lsp-port", &address.port().to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let result = async {
+            let mut connected = false;
+            for _ in 0..200 {
+                if tokio::net::TcpStream::connect(address).await.is_ok() {
+                    connected = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            if !connected {
+                return Err("Godot did not start its loopback language server".to_string());
+            }
+            let root = dunce::canonicalize(&fixture.root).unwrap();
+            let (_tx, cancel) = watch::channel(false);
+            run_server(
+                &root,
+                &root,
+                &Server {
+                    name: "Godot live".into(),
+                    address: Some(address),
+                    timeout_seconds: 15,
+                    ..Default::default()
+                },
+                &["probe.gd".into()],
+                cancel,
+            )
+            .await
+        }
+        .await;
+        crate::providers::terminate(&mut child).await;
+        let report = result.unwrap();
+        eprintln!(
+            "Godot live: {} — {}\n{}",
+            report.status,
+            report.detail,
+            report.errors()
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|d| d.file == "probe.gd" && d.severity == 1),
+            "{report:?}"
+        );
+    }
     use super::*;
     use crate::test_support::Fixture;
 

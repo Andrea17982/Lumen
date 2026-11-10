@@ -340,10 +340,17 @@ pub fn set_godot_visual_settings(
     Ok(value)
 }
 fn connected_path(result: &Value) -> Option<PathBuf> {
-    let text = tool_text(result);
-    let start = text.find('{')?;
-    let end = text.rfind('}')?;
-    let value: Value = serde_json::from_str(&text[start..=end]).ok()?;
+    // Parse the bounded protocol data, not its truncated human-readable UI excerpt.
+    let value: Value = result["content"]
+        .as_array()?
+        .iter()
+        .filter_map(|p| p["text"].as_str())
+        .filter(|t| t.len() <= 1024 * 1024)
+        .find_map(|text| {
+            let start = text.find('{')?;
+            let end = text.rfind('}')?;
+            serde_json::from_str::<Value>(&text[start..=end]).ok()
+        })?;
     let path = [
         value.get("project_path"),
         value.get("projectPath"),
@@ -398,14 +405,28 @@ async fn visual_session(
             "The server cannot verify its connected project; no visual action was sent".into(),
         );
     }
-    let info = request(
-        &mut stdin,
-        &mut lines,
-        3,
-        "tools/call",
-        json!({"name":"get_project_info","arguments":{}}),
-    )
-    .await?;
+    // Each action owns a fresh MCP server. The editor reconnects on its timer, exactly
+    // as it does for the connection probe; wait before sending any state-changing tool.
+    let deadline = std::time::Instant::now() + CONNECT_WAIT;
+    let mut next_id = 3;
+    let info = loop {
+        let info = request(
+            &mut stdin,
+            &mut lines,
+            next_id,
+            "tools/call",
+            json!({"name":"get_project_info","arguments":{}}),
+        )
+        .await?;
+        next_id += 1;
+        if info["isError"] != true {
+            break info;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("The Godot editor has not connected. Open this project's editor with its MCP addon enabled.".into());
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
     let connected = connected_path(&info)
         .ok_or("The connected editor project could not be verified; no visual action was sent")?;
     if !connected.starts_with(root) {
@@ -436,11 +457,19 @@ async fn visual_session(
             }
             let key = ["scene_path", "path", "scene"]
                 .iter()
-                .find(|key| schema["properties"].get(**key).is_some())
-                .ok_or("This server does not accept a scene path")?;
-            arguments[*key] = json!(scene);
+                .find(|key| schema["properties"].get(**key).is_some());
+            if let Some(key) = key {
+                arguments[*key] = json!(scene);
+            } else if schema["properties"]["mode"]["type"] == "string"
+                && schema["properties"]["mode"].get("enum").is_none()
+            {
+                // Godot MCP Pro's documented mode is 'main', 'current', or the res:// path.
+                arguments["mode"] = json!(scene);
+            } else {
+                return Err("This server does not accept a scene path".into());
+            }
         }
-        if schema["properties"].get("mode").is_some() {
+        if schema["properties"].get("mode").is_some() && arguments.get("mode").is_none() {
             let preferred = if scene.is_empty() {
                 vec!["main"]
             } else {
@@ -469,12 +498,15 @@ async fn visual_session(
     let result = request(
         &mut stdin,
         &mut lines,
-        4,
+        next_id,
         "tools/call",
         json!({"name":name,"arguments":arguments}),
     )
     .await?;
     if result["isError"] == true {
+        if action == "capture" && tool_text(&result).contains("Screenshot timed out") {
+            return Err("Godot's game screenshot timed out. This project's MCPScreenshot autoload must be explicitly enabled for viewport capture; alternatively use Visual review → Choose game window.".into());
+        }
         return Err(
             "Godot rejected the action. Check the editor connection and selected scene.".into(),
         );
@@ -579,6 +611,17 @@ pub async fn open_godot_editor(folder: String, project: String) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn editor_identity_is_not_parsed_from_a_truncated_ui_excerpt() {
+        let fixture = crate::test_support::Fixture::new();
+        let metadata = json!({"large_metadata":"x".repeat(9000),"project_path":fixture.root});
+        let result = json!({"content":[{"type":"text","text":metadata.to_string()}]});
+        assert_eq!(
+            connected_path(&result),
+            Some(dunce::canonicalize(&fixture.root).unwrap())
+        );
+    }
 
     #[test]
     fn expands_environment_references() {

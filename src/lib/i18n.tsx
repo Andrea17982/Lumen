@@ -3,6 +3,18 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
+  'Connect and check actions': 'Collega e verifica le azioni',
+  'Controls are off until enabled for this project. Every action verifies that the connected editor belongs to this folder. No input is automated.':
+    'I controlli restano disattivati finché non li abiliti per questo progetto. Ogni azione verifica che l’editor collegato appartenga a questa cartella. Nessun comando di input viene automatizzato.',
+  'Declare a project Godot MCP server to use Play and Reload. Window capture remains available in Visual review.':
+    'Configura un server MCP Godot nel progetto per avviare e ricaricare il gioco. Puoi comunque catturare la finestra da Revisione visiva.',
+  'Enable visual controls for this project': 'Abilita i controlli visivi per questo progetto',
+  'Godot MCP server': 'Server MCP Godot',
+  'Godot visual controls': 'Controlli visivi Godot',
+  'Inspect pixels and grid': 'Esamina pixel e griglia',
+  Role: 'Ruolo',
+  'Scene path (empty uses main scene)': 'Percorso della scena (vuoto per la scena principale)',
+  'Waiting for Godot…': 'In attesa di Godot…',
   'Worktree visual comparison': 'Confronto visivo dei worktree',
   'Compare versions': 'Confronta versioni',
   'Choose a version': 'Scegli una versione',

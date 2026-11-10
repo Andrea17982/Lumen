@@ -8,6 +8,7 @@ import zlib
 from pathlib import Path
 
 root = Path.cwd()
+connection_attempts = 0
 def png():
     def chunk(name, data):
         return struct.pack('>I', len(data)) + name + data + struct.pack('>I', zlib.crc32(name + data))
@@ -21,14 +22,20 @@ for line in sys.stdin:
     if method == 'initialize':
         result = {'protocolVersion': '2025-06-18', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'Offline Godot fixture', 'version': '1'}}
     elif method == 'tools/list':
-        result = {'tools': [{'name': name, 'inputSchema': {'type': 'object', 'properties': {}, 'required': []}} for name in ['get_project_info', 'play_scene', 'stop_scene', 'reload_project', 'get_game_screenshot']]}
+        result = {'tools': [{'name': name, 'inputSchema': {'type': 'object', 'properties': {'mode': {'type': 'string'}} if name == 'play_scene' else {}, 'required': []}} for name in ['get_project_info', 'play_scene', 'stop_scene', 'reload_project', 'get_game_screenshot']]}
     elif method == 'tools/call':
         name = request['params']['name']
         if name == 'get_project_info':
-            result = {'content': [{'type': 'text', 'text': json.dumps({'project_path': os.environ.get('LUMEN_TEST_EDITOR_ROOT', str(root))})}]}
+            connection_attempts += 1
+            if connection_attempts == 1:
+                result = {'isError': True, 'content': [{'type': 'text', 'text': 'Editor reconnect pending'}]}
+            else:
+                result = {'content': [{'type': 'text', 'text': json.dumps({'project_path': os.environ.get('LUMEN_TEST_EDITOR_ROOT', str(root))})}]}
         else:
             with (root / 'visual-action-log.txt').open('a', encoding='utf8') as stream:
                 stream.write(name + '\n')
+                if name == 'play_scene':
+                    stream.write(json.dumps(request['params']['arguments']) + '\n')
             if name == 'get_game_screenshot':
                 result = {'content': [{'type': 'image', 'mimeType': 'image/png', 'data': png()}]}
             else:

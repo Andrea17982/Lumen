@@ -415,6 +415,11 @@ try {
   });
   assert(connected.available.includes('play'));
   await invoke('godot_visual_action', { folder: game, action: 'play', scene: '' });
+  await writeFile(
+    path.join(game, 'probe.tscn'),
+    '[gd_scene format=3]\n[node name="Probe" type="Node"]\n',
+  );
+  await invoke('godot_visual_action', { folder: game, action: 'play', scene: 'res://probe.tscn' });
   await invoke('godot_visual_action', { folder: game, action: 'reload', scene: '' });
   await invoke('godot_visual_action', { folder: game, action: 'stop', scene: '' });
   const captured = await invoke('godot_visual_action', {
@@ -429,6 +434,10 @@ try {
     ).startsWith('data:image/'),
   );
   const log = await readFile(path.join(game, 'visual-action-log.txt'), 'utf8');
+  assert(
+    log.includes('"mode": "res://probe.tscn"'),
+    'Specific scenes must use the actual advertised Godot mode schema',
+  );
   await writeFile(
     path.join(game, '.mcp.json'),
     JSON.stringify({

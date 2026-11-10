@@ -185,6 +185,43 @@ try {
       elapsedMs: Date.now() - started,
     });
     console.log(JSON.stringify(results.at(-1)));
+    if (provider === 'gpt' && process.env.LUMEN_LIVE_GRAPH === '1') {
+      const graphRoot = path.join(data, 'graph-project');
+      await mkdir(path.join(graphRoot, 'src'), { recursive: true });
+      await writeFile(path.join(graphRoot, 'src/lib.rs'), 'pub fn answer() -> u32 { 42 }\n');
+      const prefs = await invoke('get_settings');
+      await invoke('save_settings', { value: { ...prefs, repoContext: true } });
+      const s = await invoke('create_session', { workspace: graphRoot });
+      await invoke('send_message', {
+        id: s.id,
+        text: 'Use the configured lumen_graph MCP find_symbol tool to find answer. Report its file and line from the tool result. Do not use shell commands, change files, start subagents, search the internet or access other services. This is a read-only graph integration probe.',
+        options,
+      });
+      let answer;
+      for (let i = 0; i < 900; i++) {
+        const status = (await invoke('list_sessions', { search: '', offset: 0 })).find(
+          (row) => row.id === s.id,
+        )?.status;
+        if (status === 'error')
+          throw Error(
+            'Native graph probe failed: ' +
+              JSON.stringify((await invoke('get_messages', { id: s.id })).at(-1)),
+          );
+        if (status === 'completed') {
+          answer = (await invoke('get_messages', { id: s.id })).at(-1);
+          break;
+        }
+        await sleep(200);
+      }
+      assert(answer?.text.includes('src/lib.rs'));
+      assert(
+        answer.activity.some((a) => a.kind === 'tool' && /find_symbol/.test(a.text)),
+        JSON.stringify(answer.activity),
+      );
+      results.push({ provider, graph: true, passed: true });
+      console.log(JSON.stringify(results.at(-1)));
+      await invoke('save_settings', { value: prefs });
+    }
     if (provider === 'gpt' && process.env.LUMEN_LIVE_ACCEPTANCE_ROOT) {
       const acceptance = await import('node:fs/promises').then((fs) =>
         fs.realpath(process.env.LUMEN_LIVE_ACCEPTANCE_ROOT),
