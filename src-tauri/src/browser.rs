@@ -324,6 +324,7 @@ async fn handle(
         .ok_or(StatusCode::BAD_REQUEST)?
         .to_owned();
     let (stop, mut cancelled) = tokio::sync::watch::channel(false);
+    let mut closed = scope.stop.subscribe();
     {
         let mut pending = scope
             .pending
@@ -341,7 +342,6 @@ async fn handle(
         }
         pending.insert(key.clone(), stop);
     }
-    let mut closed = scope.stop.subscribe();
     let response = tokio::select! {biased;_=closed.changed()=>failure("Browser scope closed"),_=cancelled.changed()=>failure("Browser request cancelled"),value=result(scope.clone(),request["name"].as_str().unwrap_or(""),&request["arguments"])=>value};
     if let Ok(mut pending) = scope.pending.lock() {
         pending.remove(&key);
@@ -579,9 +579,11 @@ impl Engine {
         {
             return Err("Moli returned a non-local CDP address".into());
         }
-        let (socket, _) = tokio_tungstenite::connect_async(ws)
-            .await
-            .map_err(|e| e.to_string())?;
+        let (socket, _) =
+            tokio::time::timeout(Duration::from_secs(5), tokio_tungstenite::connect_async(ws))
+                .await
+                .map_err(|_| "Moli CDP handshake timed out")?
+                .map_err(|e| e.to_string())?;
         let mut e = Self {
             child,
             socket,
