@@ -31,7 +31,7 @@ This is the active work record, not a completion claim. Preserve user changes ma
 
 - Real Codex (`gpt-6.1-sol`): structured question → user response → actual file creation → follow-up resumed the same native thread; passed in ~27 s total for two turns. Auth stayed in its existing official CLI account directory, through a temporary junction, without reading/copying credentials.
 - Real installed LSP servers: Rust analyzer 1.99.1, typescript-language-server with the project's TypeScript 5.9 runtime, and csharp-ls 0.28.0 all detected actual type errors. Fixed diagnostic refresh/retrigger handling and equivalent Windows file-URI normalization. TypeScript 7 no longer provides the tsserver.js expected by typescript-language-server; the explicit 5.9 runtime was used, not a false success.
-- Latest complete functional Rust run: 123 passed, 11 ignored opt-in live tests. A subsequently added opt-in metadata benchmark also passed; it brings the normal ignored count to 12. Frontend: 60 unit tests and 27 Playwright tests passed. Separately invoked native probes are not included in these counts.
+- Functional Rust coverage now includes 124 passing tests and 12 opt-in tests excluded from the ordinary run. Individually requested live/metadata probes are recorded separately below. Frontend: 60 unit tests and 27 Playwright tests passed. Separately invoked native probes are not included in these counts.
 
 - Installed Claude acknowledges native stdio initialize without any model prompt (~1.1 s in local probe).
 - Full offline Windows native smoke passed, including native question-answer UI round trips, normal/write/Both/Orchestra/rewind/cancel/rate-limit paths, manual merge with stale-preview rejection, Godot opt-in/wrong-editor rejection, static worktree preview server lifecycle and capture-shortcut registration/reset without an accidental capture.
@@ -54,6 +54,7 @@ This is the active work record, not a completion claim. Preserve user changes ma
 - A real Codex turn used the configured graph MCP `find_symbol` tool and returned the actual src/lib.rs location. Tool activity, not only assistant prose, confirmed the call.
 - The owned-metadata probe round-tripped 100 synthetic task rows including quotes/Unicode/newlines exactly. Keyed JSON: 25,893 bytes / 6,509 local tokens / ~1,306 µs serialize+parse; fixed-schema tuples: 16,983 bytes / 4,408 tokens / ~708 µs. This debug-build synthetic result demonstrates ~32% token savings for this dataset, not model-generation reliability. Keep keyed/provider-native JSON: the sub-2-ms local serialization cost is not the dominant measured latency, native resume already avoids replaying that state, and tuple ordering would require a new generation/versioning contract. Repeat with `cargo test ... owned_metadata_serialization_probe -- --ignored --nocapture`.
 - Preview HTTP parsing now handles fragmented request headers with an 8 KB bound; a focused regression reproduces the partial-first-packet case.
+- Codex child-agent completion messages are preserved in the child body rather than expanded into its title; repeated native completion events do not duplicate the saved output. The installed official CLI reports its stable multi_agent feature enabled in both the normal and Lumen account profiles.
 
 ## Remaining work / acceptance
 

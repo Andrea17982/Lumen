@@ -182,7 +182,10 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
                 "collabAgentToolCall" => {
                     if let Some(agents) = item["agentsStates"].as_object() {
                         for (id, agent) in agents {
-                            push("child",json!({"id":id,"kind":"status","text":agent["message"].as_str().unwrap_or(""),"status":agent["status"],"tool":item["tool"],"sessionId":id}).to_string());
+                            push("child",json!({"id":id,"kind":"status","text":"","status":agent["status"],"tool":item["tool"],"sessionId":id}).to_string());
+                            if let Some(message)=agent["message"].as_str().filter(|s|!s.is_empty()) {
+                                push("child",json!({"id":id,"kind":"message","text":message,"sessionId":id}).to_string());
+                            }
                         }
                     }
                 }
@@ -636,6 +639,27 @@ mod tests {
     use crate::models::{AccessMode, Account};
     use lumen_gatekeeper::{Action, Decision, Gatekeeper, RequestStatus};
     use std::{path::PathBuf, time::Instant};
+
+    #[test]
+    fn completed_native_agent_output_is_a_body_and_survives_compaction() {
+        let mut rows = vec![];
+        let mut text = String::new();
+        let event = json!({"method":"item/completed","params":{"item":{"type":"collabAgentToolCall","tool":"wait","agentsStates":{"child-thread":{"status":"completed","message":"Checked the actual file.\nNo edits required."}}}}});
+        for _ in 0..2 {
+            activity(&event, &mut text, &mut |a| {
+                crate::activity::record(&mut rows, a)
+            });
+        }
+        assert!(text.is_empty());
+        assert_eq!(rows.len(), 1);
+        let snapshot: Value = serde_json::from_str(&rows[0].text).unwrap();
+        assert_eq!(snapshot["status"], "completed");
+        assert_eq!(snapshot["title"], "");
+        assert_eq!(
+            snapshot["text"].as_str().unwrap().trim(),
+            "Checked the actual file.\nNo edits required."
+        );
+    }
 
     #[test]
     fn maps_protocol_items_to_chat_activity() {
