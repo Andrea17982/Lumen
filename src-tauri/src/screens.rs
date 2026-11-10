@@ -28,6 +28,7 @@ pub struct Screenshot {
 #[serde(rename_all = "camelCase")]
 pub struct CaptureTarget {
     pub id: u32,
+    pub pid: u32,
     pub title: String,
     pub app: String,
 }
@@ -161,6 +162,7 @@ pub async fn capture_targets() -> Result<Vec<CaptureTarget>, String> {
                 (!title.trim().is_empty()).then_some(())?;
                 Some(CaptureTarget {
                     id: w.id().ok()?,
+                    pid: w.pid().ok()?,
                     title,
                     app: w.app_name().unwrap_or_default(),
                 })

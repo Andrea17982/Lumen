@@ -585,6 +585,83 @@ try {
     await writeFile('.impeccable/review/compiler-probe.json', JSON.stringify(report, null, 2));
   }
 
+  if (process.env.LUMEN_GODOT_ACCEPTANCE_ROOT && process.env.LUMEN_GODOT_EXE) {
+    const acceptance = await realpath(process.env.LUMEN_GODOT_ACCEPTANCE_ROOT);
+    assert(
+      acceptance
+        .toLowerCase()
+        .startsWith(path.join(root, '.codex', 'acceptance').toLowerCase() + path.sep),
+    );
+    const projectFile = path.join(acceptance, 'game/project.godot');
+    const original = await readFile(projectFile);
+    const title = 'Lumen isolated Rodent acceptance';
+    const captures = [];
+    try {
+      await writeFile(
+        projectFile,
+        original.toString('utf8').replace('config/name="Rodent Heroes"', `config/name="${title}"`),
+      );
+      for (const [width, height] of [
+        [360, 640],
+        [720, 1280],
+      ]) {
+        const game = spawn(
+          process.env.LUMEN_GODOT_EXE,
+          [
+            '--path',
+            path.join(acceptance, 'game'),
+            '--resolution',
+            `${width}x${height}`,
+            '--position',
+            '80,50',
+            '--rendering-method',
+            'gl_compatibility',
+          ],
+          { windowsHide: false, stdio: 'ignore' },
+        );
+        try {
+          let target;
+          for (let i = 0; i < 150; i++) {
+            target = (await invoke('capture_targets')).find((t) => t.pid === game.pid);
+            if (target) break;
+            assert.equal(game.exitCode, null, 'The isolated game exited before capture');
+            await sleep(100);
+          }
+          assert(target, 'The isolated Godot window was not available');
+          await sleep(1800);
+          const shot = await invoke('capture_screenshot', {
+            folder: acceptance,
+            label: `Godot requested ${width}x${height}`,
+            window: target.id,
+          });
+          assert(shot.width > 0 && shot.height > 0);
+          captures.push(shot);
+        } finally {
+          game.kill();
+          await new Promise((resolve) => {
+            if (game.exitCode !== null) resolve();
+            else game.once('exit', resolve);
+          });
+        }
+      }
+      assert.equal(captures.length, 2);
+      await writeFile(
+        '.impeccable/review/godot-captures.json',
+        JSON.stringify(
+          {
+            workspace: acceptance,
+            captures,
+            note: 'Actual desktop Godot windows in an isolated copy without local service credentials; requested portrait sizes, desktop/window chrome may affect recorded dimensions. Not physical-device acceptance.',
+          },
+          null,
+          2,
+        ),
+      );
+    } finally {
+      await writeFile(projectFile, original);
+    }
+  }
+
   // Seed only this harness's isolated database to measure a genuinely long native transcript.
   const long = await invoke('create_session', { workspace });
   await invoke('update_session', {

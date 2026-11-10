@@ -1,4 +1,4 @@
-# Roadmap implementation evidence — 9 November 2026
+# Roadmap implementation evidence - 10 November 2026
 
 This is the active work record, not a completion claim. Preserve user changes made by the other Lumen chat (composer slash autocomplete).
 
@@ -25,19 +25,25 @@ This is the active work record, not a completion claim. Preserve user changes ma
 - Optional global capture shortcut; no capture at registration. Notification-area continuation is the default.
 - Manual Both merge: immutable Git trees, per-file choices/manual text, private index, checked patch, preserved user index and unrelated changes.
 - Orchestra task specification and dependency graph with drag assignment and keyboard selectors.
-- Release workflow extended for Linux deb/AppImage and universal macOS; Unix clippy/fmt checks. Remote workflows not run yet.
+- Release workflow extended for Linux deb/AppImage and universal macOS; Unix clippy/fmt checks. Branch CI and manual packaging runs started on 10 November (42794155852 / 42794156400); final results are recorded below when observed.
 
 ## Verification already observed
 
 - Real Codex (`gpt-6.1-sol`): structured question → user response → actual file creation → follow-up resumed the same native thread; passed in ~27 s total for two turns. Auth stayed in its existing official CLI account directory, through a temporary junction, without reading/copying credentials.
 - Real installed LSP servers: Rust analyzer 1.99.1, typescript-language-server with the project's TypeScript 5.9 runtime, and csharp-ls 0.28.0 all detected actual type errors. Fixed diagnostic refresh/retrigger handling and equivalent Windows file-URI normalization. TypeScript 7 no longer provides the tsserver.js expected by typescript-language-server; the explicit 5.9 runtime was used, not a false success.
-- Latest complete Rust run: 114 passed, 10 ignored live tests. Latest complete Playwright run: 26 passed. Additional features/regression tests are still being added, so rerun at completion.
+- Latest complete Rust run: 121 passed, 10 ignored live tests. Frontend: 60 unit tests and 27 Playwright tests passed. The separately invoked native probes are not included in these counts.
 
 - Installed Claude acknowledges native stdio initialize without any model prompt (~1.1 s in local probe).
-- Full offline Windows native smoke passed after adapting fixture protocols, including both native question-answer round trips through the real UI and normal/write/Both/Orchestra/rewind/cancel/rate-limit paths. More features were added afterward, so rebuild and rerun before completion.
+- Full offline Windows native smoke passed, including native question-answer UI round trips, normal/write/Both/Orchestra/rewind/cancel/rate-limit paths, manual merge with stale-preview rejection, Godot opt-in/wrong-editor rejection, static worktree preview server lifecycle and capture-shortcut registration/reset without an accidental capture.
 - Image load/zoom/Escape/focus and inspector navigation/address-boundary Playwright tests passed.
-- Last full Playwright run: 24/26 passed; two old expectations (default native catalog check vs preview, Orchestra badge only in Auto) were corrected afterward; rerun required.
-- SQLite inspection and manual merge unit tests passed. Latest complete Rust suite still needs a rerun after the current changes. One expected default-tray assertion was updated.
+- Real Codex Orchestra on an isolated project passed with only one GPT account: Autopilot, two independent writing tasks, concurrency cap 1 / total cap 2, both actual files integrated, worktrees cleaned, no second approval. It exposed/fixed an old routing bug where an explicit GPT architecture request incorrectly selected Claude. The coordinator also now respects the selected model. Observed run: ~63 s.
+- Real Rodent Heroes isolated-copy chat acceptance changed only `game/scenes/components/resource-bar.tscn` separation 4 to 6, through Lumen/Codex. Lumen's actual `res://` check passed (ignored missing local config reported honestly), and .NET built with zero errors/warnings. This is a bounded presentation-resource edit, not gameplay-balance or device acceptance. The original checkout remained untouched.
+- The project's own `python tools/sync-client-art.py --check` verified 373 approved files. Intentionally corrupting one SHA failed with the expected mismatch; the manifest was restored byte-for-byte. Godot headless import of the isolated project also succeeded.
+- An actual C# compiler error (`CS0029`) in a disposable folder with spaces produced a source link to Probe.cs:1 in Lumen. Added coverage for unquoted absolute compiler paths containing spaces.
+- A native Windows WebView2 transcript of 1,000 synthetic messages loaded in ~599 ms. Median measured animation-frame interval was 11.9 ms, with one 361 ms worst interval during synthetic jumps. This does not establish smoothness for every project/transcript. Historical Markdown is memoized; native formats and React links/images remain intact. No measured case currently justifies moving Markdown to Rust or adding a new warm-process lifecycle.
+- Google graph configuration tests preserve unrelated servers/settings, prove stable repeated configuration, remove only Lumen's own entry when disabled and reject malformed native JSON. Per-process workspace context avoids cross-project config races. These tests are not a live Gemini model-turn proof.
+- Layout tests cover keyboard movement, save/reload/removal and changed/unchanged/removed context on native resume. LSP regression coverage now reproduces retrigger, refresh and equivalent encoded file URIs while preserving concrete error evidence.
+- Moli v1.1.23 Windows feasibility probe passed DOM/forms/JS and screenshot tests through CDP. Full findings, benchmark limits and the unimplemented production-integration boundary are in [moli.md](moli.md).
 
 ## Remaining work / acceptance
 

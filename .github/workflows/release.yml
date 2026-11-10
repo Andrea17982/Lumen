@@ -55,7 +55,8 @@ jobs:
           name: macos
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
   linux:
-    runs-on: ubuntu-22.04
+    # xcap/libspa need newer PipeWire headers than Ubuntu 22.04 provides.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
