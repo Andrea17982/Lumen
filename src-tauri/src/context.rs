@@ -372,6 +372,63 @@ pub fn verify_command(workspace: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// Opt-in synthetic comparison for Lumen-owned metadata only, never provider/MCP formats.
+    #[test]
+    #[ignore]
+    fn owned_metadata_serialization_probe() {
+        use serde_json::{json, Value};
+        let keys = [
+            "id",
+            "title",
+            "files",
+            "writes",
+            "dependsOn",
+            "accountId",
+            "model",
+            "effort",
+            "status",
+            "output",
+        ];
+        let rows=(0..100).map(|i|json!({"id":format!("task-{i}"),"title":format!("Implement approved change {i}: quotes \" and Unicode Ω"),"files":[format!("src/area_{i}.rs")],"writes":true,"dependsOn":[],"accountId":"account","model":"selected-native-model","effort":"medium","status":"done","output":"Result\nChecks passed"})).collect::<Vec<_>>();
+        let keyed = json!({"version":1,"tasks":rows});
+        let tuples = json!({"v":1,"t":rows.iter().map(|row|keys.iter().map(|key|row[*key].clone()).collect::<Vec<_>>()).collect::<Vec<_>>()});
+        let decode = |text: &str| {
+            let value: Value = serde_json::from_str(text).unwrap();
+            assert_eq!(value["v"], 1);
+            let rows = value["t"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| {
+                    let values = row.as_array().unwrap();
+                    assert_eq!(values.len(), keys.len());
+                    Value::Object(
+                        keys.iter()
+                            .zip(values)
+                            .map(|(key, value)| (key.to_string(), value.clone()))
+                            .collect(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            json!({"version":1,"tasks":rows})
+        };
+        let keyed_text = keyed.to_string();
+        let tuple_text = tuples.to_string();
+        assert_eq!(decode(&tuple_text), keyed);
+        let time = |value: &Value| {
+            let start = std::time::Instant::now();
+            for _ in 0..200 {
+                let text = serde_json::to_string(value).unwrap();
+                let parsed: Value = serde_json::from_str(&text).unwrap();
+                std::hint::black_box(parsed);
+            }
+            start.elapsed().as_micros() / 200
+        };
+        eprintln!(
+            "Metadata benchmark: {}",
+            json!({"tasks":100,"keyedBytes":keyed_text.len(),"tupleBytes":tuple_text.len(),"keyedTokens":super::estimate(&keyed_text),"tupleTokens":super::estimate(&tuple_text),"keyedRoundTripMicros":time(&keyed),"tupleRoundTripMicros":time(&tuples),"exactRoundTrip":true,"note":"Synthetic fixed-schema tuples; no model-generation reliability claim"})
+        );
+    }
     #[test]
     fn tokenizer_counts_unicode_and_lockfile_detection_keeps_normal_source() {
         assert_eq!(super::estimate("hello world"), 2);

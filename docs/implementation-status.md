@@ -31,7 +31,7 @@ This is the active work record, not a completion claim. Preserve user changes ma
 
 - Real Codex (`gpt-6.1-sol`): structured question → user response → actual file creation → follow-up resumed the same native thread; passed in ~27 s total for two turns. Auth stayed in its existing official CLI account directory, through a temporary junction, without reading/copying credentials.
 - Real installed LSP servers: Rust analyzer 1.99.1, typescript-language-server with the project's TypeScript 5.9 runtime, and csharp-ls 0.28.0 all detected actual type errors. Fixed diagnostic refresh/retrigger handling and equivalent Windows file-URI normalization. TypeScript 7 no longer provides the tsserver.js expected by typescript-language-server; the explicit 5.9 runtime was used, not a false success.
-- Latest complete Rust run: 122 passed, 11 ignored opt-in live tests. Frontend: 60 unit tests and 27 Playwright tests passed. The separately invoked native probes are not included in these counts.
+- Latest complete functional Rust run: 123 passed, 11 ignored opt-in live tests. A subsequently added opt-in metadata benchmark also passed; it brings the normal ignored count to 12. Frontend: 60 unit tests and 27 Playwright tests passed. Separately invoked native probes are not included in these counts.
 
 - Installed Claude acknowledges native stdio initialize without any model prompt (~1.1 s in local probe).
 - Full offline Windows native smoke passed, including native question-answer UI round trips, normal/write/Both/Orchestra/rewind/cancel/rate-limit paths, manual merge with stale-preview rejection, Godot opt-in/wrong-editor rejection, static worktree preview server lifecycle and capture-shortcut registration/reset without an accidental capture.
@@ -51,11 +51,13 @@ This is the active work record, not a completion claim. Preserve user changes ma
 - User decision on 10 November: install Gemini CLI and let the user complete native sign-in; use the official loopback Ollama API for the future Moli tool loop, with no cloud services or keys. Gemini CLI 0.67.0 was installed globally using the official npm package; version/help passed, authentication remains the user's step.
 - CI passed on Windows, macOS and Ubuntu for 574c6b7; it also passed for fb91e6d on the pinned Ubuntu 24.04 runner. Ubuntu 22.04 packaging failed because its PipeWire headers do not match libspa 0.9.2; packaging was moved to 24.04, consistently with CI. Final packaging results are recorded when observed.
 
+- A real Codex turn used the configured graph MCP `find_symbol` tool and returned the actual src/lib.rs location. Tool activity, not only assistant prose, confirmed the call.
+- The owned-metadata probe round-tripped 100 synthetic task rows including quotes/Unicode/newlines exactly. Keyed JSON: 25,893 bytes / 6,509 local tokens / ~1,306 µs serialize+parse; fixed-schema tuples: 16,983 bytes / 4,408 tokens / ~708 µs. This debug-build synthetic result demonstrates ~32% token savings for this dataset, not model-generation reliability. Keep keyed/provider-native JSON: the sub-2-ms local serialization cost is not the dominant measured latency, native resume already avoids replaying that state, and tuple ordering would require a new generation/versioning contract. Repeat with `cargo test ... owned_metadata_serialization_probe -- --ignored --nocapture`.
+- Preview HTTP parsing now handles fragmented request headers with an 8 KB bound; a focused regression reproduces the partial-first-packet case.
+
 ## Remaining work / acceptance
 
-- Finish and test Google-provider graph/native protocol capability handling (Gemini CLI absent; Antigravity and Ollama installed).
-- Finish Godot opt-in Play/Reload/capture controls and real isolated Rodent Heroes acceptance, compiler/source links, manifest failure fixture and portrait captures.
-- Real LSP interoperability with installable/configured servers, live native question/approval acceptance and isolated real Orchestra caps/resume tests.
-- Finish frontend/backend persistence/cancellation checks, snapshot resume/layout deltas, private-index/stale-merge tests, capture shortcut registration/reset checks and inspector/canvas/graph native visual review.
-- Measure context/token/IPC/rendering/startup/long transcript behavior; decide Markdown/ANSI placement from evidence, not assumption. Avoid adding speculative virtualization/warm-process complexity without a measured reason.
-- Complete documentation, full checks, Windows build, GitHub Actions build/packaging verification. Do not mark unavailable real macOS/Linux testing or physical-device review as passed.
+- Await final-revision Actions packaging and clean-runner installer results, then record artifact evidence. Local Windows installer/portable creation and the release executable's MCP initialization/tool discovery have passed.
+- The user will complete Gemini native sign-in; its real model turn cannot be claimed yet. Claude live inference remains explicitly deferred. Additional account/version/native-OS matrices are listed in [Roadmap](roadmap.md).
+- Real screen-reader, alternate uninstalled editor caret-position and physical-device/non-Windows UI acceptance remain separate from automated DOM, argument, build and desktop proofs.
+- Moli production routing remains the subsequent integration work described in the requested feasibility study; its Ollama local-API architecture choice is now agreed.

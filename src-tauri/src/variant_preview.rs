@@ -106,6 +106,23 @@ pub struct Started {
     id: String,
     url: String,
 }
+async fn read_headers(input: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<String> {
+    let mut request = Vec::with_capacity(1024);
+    loop {
+        let mut chunk = [0; 1024];
+        let n = input.read(&mut chunk).await?;
+        if n == 0 {
+            return Err(std::io::ErrorKind::UnexpectedEof.into());
+        }
+        request.extend_from_slice(&chunk[..n]);
+        if request.len() > 8192 {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        }
+        if request.windows(4).any(|w| w == b"\r\n\r\n") {
+            return Ok(String::from_utf8_lossy(&request).into_owned());
+        }
+    }
+}
 #[tauri::command]
 pub async fn start_variant_preview(
     core: tauri::State<'_, Arc<Core>>,
@@ -144,8 +161,7 @@ pub async fn start_variant_preview(
         while let Ok((mut socket,_))=listener.accept().await {
             let root=&root;
             let _=tokio::time::timeout(std::time::Duration::from_secs(3),async {
-                let mut request=vec![0;8192];let n=socket.read(&mut request).await?;
-                let request=String::from_utf8_lossy(&request[..n]);
+                let request=read_headers(&mut socket).await?;
                 let mut line=request.lines().next().unwrap_or("").split_whitespace();
                 let method=line.next().unwrap_or("");let target=line.next().unwrap_or("");
                 let (status,mime,body)=if method=="GET" {
@@ -179,6 +195,27 @@ pub fn stop_variant_preview(id: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn fragmented_http_requests_are_complete_and_bounded() {
+        let (mut input, mut output) = tokio::io::duplex(16384);
+        let peer = tokio::spawn(async move {
+            output.write_all(b"GE").await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            output
+                .write_all(b"T / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        let request = read_headers(&mut input).await.unwrap();
+        peer.await.unwrap();
+        assert!(request.starts_with("GET / HTTP/1.1\r\n"));
+        assert!(request.ends_with("\r\n\r\n"));
+        let mut oversized = std::io::Cursor::new(vec![b'x'; 10000]);
+        assert_eq!(
+            read_headers(&mut oversized).await.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidData
+        );
+    }
     #[test]
     fn serves_rendered_output_but_never_hidden_or_foreign_files() {
         let f = crate::test_support::Fixture::new();
