@@ -44,6 +44,9 @@ export default function VisualReview({
   const [shots, setShots] = useState<Screenshot[]>([]);
   const [baseline, setBaseline] = useState('');
   const [candidate, setCandidate] = useState('');
+  const [targets, setTargets] = useState<{ id: number; title: string; app: string }[]>([]);
+  const [windowId, setWindowId] = useState('');
+  const [capturing, setCapturing] = useState(false);
   const load = useCallback(
     () =>
       call<Screenshot[]>('list_screenshots', { folder })
@@ -58,12 +61,20 @@ export default function VisualReview({
   }, [load]);
 
   async function capture() {
+    if (capturing) return;
+    setCapturing(true);
     try {
-      const shot = await call<Screenshot>('capture_screenshot', { folder, label: '' });
+      const shot = await call<Screenshot>('capture_screenshot', {
+        folder,
+        label: '',
+        window: windowId ? Number(windowId) : null,
+      });
       setCandidate(shot.path);
       await load();
     } catch (e) {
       onError(errorText(e));
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -112,13 +123,37 @@ export default function VisualReview({
         Visual review <small>Saved in .lumen/screenshots · not committed</small>
       </div>
       <div className="panel-row">
-        <button className="text-button" onClick={() => void capture()}>
-          <Camera size={12} /> Capture screen
+        <button className="text-button" disabled={capturing} onClick={() => void capture()}>
+          <Camera size={12} />{' '}
+          {capturing ? 'Capturing…' : windowId ? 'Capture selected window' : 'Capture screen'}
         </button>
         <button className="text-button" onClick={() => void importImage()}>
           <ImagePlus size={12} /> Import image
         </button>
+        <button
+          className="text-button"
+          onClick={() =>
+            void call<typeof targets>('capture_targets')
+              .then(setTargets)
+              .catch((e) => onError(errorText(e)))
+          }
+        >
+          Choose game window
+        </button>
       </div>
+      {targets.length > 0 && (
+        <label className="native-custom">
+          Capture target
+          <select value={windowId} onChange={(e) => setWindowId(e.target.value)}>
+            <option value="">Current screen</option>
+            {targets.map((target) => (
+              <option key={target.id} value={target.id}>
+                {target.title} · {target.app}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {shots.length === 0 && (
         <p className="panel-hint">
           No screenshots yet. Capture a screen or window, or import a device capture.

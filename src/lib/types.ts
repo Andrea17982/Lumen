@@ -149,6 +149,8 @@ export interface OllamaStatus {
   selected: string | null;
 }
 export interface AppSettings {
+  verifyChanges?: boolean;
+  captureHotkey?: boolean;
   autoFallback: boolean;
   selfHeal: boolean;
   reviewRounds: number;

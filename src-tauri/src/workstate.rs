@@ -142,6 +142,9 @@ pub fn derive(
                 }
             }
         }
+        for clarification in crate::interactions::answer_context(&m.activity) {
+            add(&mut state.decisions, &m.id, clarification);
+        }
         if let Some(plan) = crate::orchestra::state_of(m) {
             last_plan = Some((m.id.clone(), plan));
         }

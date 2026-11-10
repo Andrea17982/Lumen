@@ -5,50 +5,15 @@ use std::{path::Path, sync::Mutex};
 pub struct Store(Mutex<Connection>);
 impl Store {
     pub fn open(path: &Path) -> Result<Self, String> {
-        let c = Connection::open(path).map_err(|e| e.to_string())?;
-        c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
-          CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,title TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL,workspace TEXT NOT NULL,updated_at INTEGER NOT NULL);
-          CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,role TEXT NOT NULL,text TEXT NOT NULL,activity TEXT NOT NULL,created_at INTEGER NOT NULL);
-          CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id,created_at);
-          CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL,provider TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,folder TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS work_states(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,state TEXT NOT NULL,seed TEXT);
-          UPDATE sessions SET status='interrupted' WHERE status IN ('running','waiting');")
-          .map_err(|e| e.to_string())?;
-        let columns = {
-            let mut q = c
-                .prepare("PRAGMA table_info(sessions)")
-                .map_err(|e| e.to_string())?;
-            let names = q
-                .query_map([], |r| r.get::<_, String>(1))
-                .map_err(|e| e.to_string())?;
-            names
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?
-        };
-        if !columns.iter().any(|n| n == "workspace_id") {
-            c.execute(
-                "ALTER TABLE sessions ADD COLUMN workspace_id TEXT REFERENCES workspaces(id)",
-                [],
-            )
+        let mut c = Connection::open(path).map_err(|e| e.to_string())?;
+        c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
             .map_err(|e| e.to_string())?;
-        }
-        if !columns.iter().any(|n| n == "access_mode") {
-            c.execute(
-                "ALTER TABLE sessions ADD COLUMN access_mode TEXT NOT NULL DEFAULT 'read-only'",
-                [],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        if !columns.iter().any(|n| n == "sort_order") {
-            c.execute(
-                "ALTER TABLE sessions ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
-                [],
-            )
-            .map_err(|e| e.to_string())?;
-            c.execute("UPDATE sessions SET sort_order=updated_at", [])
-                .map_err(|e| e.to_string())?;
-        }
+        crate::migrations::run(&mut c)?;
+        c.execute(
+            "UPDATE sessions SET status='interrupted' WHERE status IN ('running','waiting')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(Self(Mutex::new(c)))
     }
     fn with<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T, String> {
@@ -192,8 +157,45 @@ impl Store {
         })
     }
     pub fn save_message(&self, s: &str, m: &Message) -> Result<(), String> {
-        let activity = serde_json::to_string(&m.activity).map_err(|e| e.to_string())?;
-        self.with(|c| c.execute("INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity",params![m.id,s,m.role,m.text,activity,now()]))?;
+        self.with(|c| {
+            let mut activities=m.activity.clone();
+            let previous:Option<String>=c.query_row("SELECT activity FROM messages WHERE id=?1 AND session_id=?2",params![m.id,s],|r|r.get(0)).optional()?;
+            if let Some(previous)=previous.and_then(|text|serde_json::from_str::<Vec<Activity>>(&text).ok()) {
+                for activity in previous.into_iter().filter(|a|["interaction","interaction-result","child"].contains(&a.kind.as_str())) {
+                    let id=serde_json::from_str::<serde_json::Value>(&activity.text).ok().and_then(|v|v["id"].as_str().map(str::to_owned));
+                    if let Some(id)=id {
+                        if !activities.iter().any(|a|a.kind==activity.kind && serde_json::from_str::<serde_json::Value>(&a.text).is_ok_and(|v|v["id"]==id)) { activities.push(activity); }
+                    }
+                }
+            }
+            let activity=serde_json::to_string(&activities).unwrap_or_default();
+            c.execute("INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity",params![m.id,s,m.role,m.text,activity,now()])
+        })?;
+        Ok(())
+    }
+    pub fn record_external_activity(
+        &self,
+        session: &str,
+        message: &str,
+        activity: Activity,
+    ) -> Result<(), String> {
+        self.with(|c| {
+            let current: String = c.query_row(
+                "SELECT activity FROM messages WHERE session_id=?1 AND id=?2",
+                params![session, message],
+                |r| r.get(0),
+            )?;
+            let mut rows: Vec<Activity> = serde_json::from_str(&current).unwrap_or_default();
+            crate::activity::record(&mut rows, activity);
+            c.execute(
+                "UPDATE messages SET activity=?1 WHERE session_id=?2 AND id=?3",
+                params![
+                    serde_json::to_string(&rows).unwrap_or_default(),
+                    session,
+                    message
+                ],
+            )
+        })?;
         Ok(())
     }
     /// Every message that carries Orchestra state, with its session id.

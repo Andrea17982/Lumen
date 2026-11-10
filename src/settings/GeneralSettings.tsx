@@ -89,6 +89,15 @@ export default function GeneralSettings({
         <section className="settings-section">
           <h3>{t('Window')}</h3>
           <Switch
+            label={t('Global screenshot shortcut')}
+            hint={t(
+              'Ctrl/Cmd+Alt+Shift+S saves a compressed screen capture and attaches it to the current composer. Nothing is captured until you press it.',
+            )}
+            checked={!!s.captureHotkey}
+            disabled={busy}
+            onChange={(v) => save({ ...s, captureHotkey: v })}
+          />
+          <Switch
             label={t('Keep Lumen in the notification area when closed')}
             hint={t('Closing the window keeps running responses going. Quit from the tray icon.')}
             checked={s.closeToTray}

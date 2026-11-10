@@ -1,5 +1,33 @@
 import { expect, test } from '@playwright/test';
 
+test('slash commands can be filtered, selected and dismissed in the composer', async ({ page }) => {
+  await page.goto('/');
+  const input = page.getByRole('textbox', { name: 'Message', exact: true });
+  await input.fill('/');
+  const menu = page.getByRole('listbox', { name: 'Available commands' });
+  await expect(menu.getByRole('option')).toHaveCount(2);
+  await input.press('Enter');
+  await expect(input).toHaveValue('/workspace ');
+  await expect(menu).toBeHidden();
+  await input.press('Enter');
+  await expect(page.getByRole('alert')).toContainText('Enter an absolute path after /workspace.');
+  await input.fill('/comp');
+  await expect(menu.getByRole('option')).toHaveCount(1);
+  await input.press('Escape');
+  await expect(menu).toBeHidden();
+  await input.fill('/compact');
+  await input.press('Tab');
+  await expect(input).toHaveValue('/compact');
+  await expect(menu).toBeHidden();
+  await input.press('Enter');
+  await expect(page.getByRole('alert')).toContainText('Open a conversation with messages');
+  await expect(input).toHaveValue('/compact');
+  await input.fill('/comp');
+  await menu.getByRole('option', { name: /compact/i }).click();
+  await expect(input).toHaveValue('/compact');
+  await expect(menu).toBeHidden();
+});
+
 test('usage shows an empty state when no cloud account is configured', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
@@ -630,7 +658,7 @@ test('the Orchestra switch shows a composer badge that turns it off', async ({ p
   const badge = page.getByRole('button', { name: 'Orchestra', exact: true });
   await expect(badge).toBeVisible();
   await page.getByRole('button', { name: 'Claude', exact: true }).click();
-  await expect(badge).toHaveCount(0);
+  await expect(badge).toBeVisible();
   await page.getByRole('button', { name: 'Auto', exact: true }).click();
   await badge.click();
   await expect(badge).toHaveCount(0);

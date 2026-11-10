@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { recordActivity } from './activity';
 import type {
   Account,
   AccountUsage,
@@ -25,6 +26,7 @@ function read(): {
   workspaces?: Workspace[];
   messages?: Record<string, Message[]>;
   usage?: AccountUsage[];
+  layouts?: Record<string, unknown>;
 } {
   try {
     return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
@@ -35,11 +37,13 @@ function read(): {
 const settingsKey = 'lumen-preview-settings';
 function previewSettings(): AppSettings {
   const base: AppSettings = {
+    verifyChanges: false,
+    captureHotkey: false,
     autoFallback: true,
     selfHeal: true,
     reviewRounds: 1,
     orchestra: false,
-    closeToTray: false,
+    closeToTray: true,
     openAtLogin: false,
     ollamaModel: '',
     orchestraLimits: { maxConcurrent: null, maxSubtasks: null, quotaThresholds: {} },
@@ -58,6 +62,19 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
   const data = read();
   let result: unknown;
   switch (command) {
+    case 'load_layout':
+      result = data.layouts?.[String(args.folder)] || {
+        version: 1,
+        width: 800,
+        height: 600,
+        blocks: [],
+      };
+      break;
+    case 'save_layout':
+      data.layouts = { ...data.layouts, [String(args.folder)]: args.spec };
+      localStorage.setItem(key, JSON.stringify(data));
+      result = args.spec;
+      break;
     case 'list_workspaces':
       result = data.workspaces || [];
       break;
@@ -132,6 +149,7 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'project_tools':
     case 'project_checks':
     case 'list_screenshots':
+    case 'visual_variants':
     case 'capture_targets':
     case 'change_layers':
       result = [];
@@ -199,7 +217,7 @@ export function applyEvent(messages: Message[], event: RunEvent): Message[] {
         activity: [...m.activity.slice(0, -1), { kind: 'thinking', text: last.text + event.text }],
       };
     }
-    return { ...m, activity: [...m.activity, { kind: event.kind, text: event.text }].slice(-500) };
+    return { ...m, activity: recordActivity(m.activity, { kind: event.kind, text: event.text }) };
   });
 }
 export async function external(url: string) {

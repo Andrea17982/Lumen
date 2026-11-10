@@ -37,6 +37,9 @@ impl Default for LocalAssistantSettings {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
+    /// Optional Lumen validation after a native turn; CLI-run checks stay native and unaffected.
+    pub verify_changes: bool,
+    pub capture_hotkey: bool,
     /// Retry a rate-limited turn on the other provider.
     pub auto_fallback: bool,
     /// Run the project's check after file edits and send failures back (max 3 attempts).
@@ -61,11 +64,13 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            verify_changes: false,
+            capture_hotkey: false,
             auto_fallback: true,
             self_heal: true,
             review_rounds: 1,
             orchestra: false,
-            close_to_tray: false,
+            close_to_tray: true,
             open_at_login: false,
             ollama_model: String::new(),
             tray_hint_shown: false,
@@ -114,7 +119,7 @@ mod tests {
     #[test]
     fn old_settings_files_get_new_defaults() {
         let s: AppSettings = serde_json::from_str(r#"{"autoFallback":false}"#).unwrap();
-        assert!(!s.auto_fallback && !s.orchestra && !s.close_to_tray && !s.open_at_login);
+        assert!(!s.auto_fallback && !s.orchestra && s.close_to_tray && !s.open_at_login);
         assert!(s.ollama_model.is_empty() && s.self_heal);
         assert!(!s.local_assistant.enabled && s.local_assistant.auto_titles);
     }

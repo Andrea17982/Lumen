@@ -2,6 +2,10 @@
 
 ## Boundaries
 
+The current development build uses direct native sessions by default. `native_claude.rs` owns Claude's bidirectional control stream; `approvals_codex.rs` owns Codex app-server in normal and Orchestra runs. `interactions.rs` brokers provider questions, while `activity.rs` compacts child streams without evicting durable decisions. Provider text deltas are coalesced before IPC at 24 ms and flushed before control events.
+
+The inspector is implemented by `inspector.rs`, `media.rs`, `review.rs`, `layout.rs` and `variant_preview.rs`. The latter serves only explicit static web output from a retained project/worktree and owns its loopback server lifecycle; it does not execute project commands. `migrations.rs` owns transactional schema versions. `hotkeys.rs` registers capture only when enabled and never captures on registration. [Moli](moli.md) remains a feasibility probe, not production browser routing.
+
 Tauri 2 owns the desktop shell and command boundary. Rust owns session storage, accounts, process creation, routing, cancellation, concurrency and execution stages. React renders state and subscribes to normalized events. The browser UI has no shell or filesystem plugin permission and makes no inference HTTP requests.
 
 ```text

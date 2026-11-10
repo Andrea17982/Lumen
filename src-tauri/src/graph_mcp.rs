@@ -7,6 +7,69 @@ use std::path::{Path, PathBuf};
 
 pub const SERVER: &str = "lumen_graph";
 pub const FLAG: &str = "--lumen-graph-mcp";
+pub const CONTEXT_FLAG: &str = "--lumen-graph-mcp-context";
+/// A stable per-account configuration with a per-process workspace. Concurrent turns never
+/// overwrite one another's project path; the CLI passes its root to the helper through env.
+pub fn configure_google(
+    config: &Path,
+    provider: &crate::models::Provider,
+    data: &Path,
+    enabled: bool,
+) -> Result<(), String> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().map_err(|_| "Graph configuration lock failed")?;
+    let path = config.join(if *provider == crate::models::Provider::Gemini {
+        ".gemini/settings.json"
+    } else {
+        ".gemini/config/mcp_config.json"
+    });
+    let original = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+        Err(e) => return Err(e.to_string()),
+    };
+    let mut value: Value = if original.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_slice(&original)
+            .map_err(|_| "The native MCP configuration is invalid; it was not overwritten")?
+    };
+    if !value.is_object() {
+        return Err("The native MCP configuration is not an object".into());
+    }
+    if value.get("mcpServers").is_none() {
+        value["mcpServers"] = json!({});
+    }
+    let servers = value["mcpServers"]
+        .as_object_mut()
+        .ok_or("The native mcpServers value is not an object")?;
+    let previous = servers.get(SERVER).cloned();
+    if enabled {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        servers.insert(SERVER.into(),json!({"command":exe.to_string_lossy(),"args":[CONTEXT_FLAG,data.to_string_lossy()],"trust":true,"disabled":false}));
+    } else {
+        servers.remove(SERVER);
+    }
+    if previous == servers.get(SERVER).cloned() {
+        return Ok(());
+    }
+    let parent = path.parent().ok_or("Invalid account settings path")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    if std::fs::read(&path).ok().unwrap_or_default() != original {
+        return Err("Native settings changed while configuring the graph; retry the turn".into());
+    }
+    let temporary = parent.join(format!("lumen-graph-{}.tmp", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &temporary,
+        serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::rename(&temporary, &path) {
+        let _ = std::fs::remove_file(temporary);
+        return Err(e.to_string());
+    }
+    Ok(())
+}
 
 fn tools() -> Value {
     let read_only = json!({"readOnlyHint": true, "idempotentHint": true, "openWorldHint": false});
@@ -229,6 +292,44 @@ pub fn cli_args(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn google_configuration_is_stable_preserves_other_servers_and_rejects_invalid_json() {
+        let fixture = crate::test_support::Fixture::new();
+        for (provider, relative) in [
+            (crate::models::Provider::Gemini, ".gemini/settings.json"),
+            (
+                crate::models::Provider::Antigravity,
+                ".gemini/config/mcp_config.json",
+            ),
+        ] {
+            let account = fixture.directory(provider.binary());
+            let path = account.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(
+                &path,
+                r#"{"theme":"native","mcpServers":{"other":{"command":"kept"}}}"#,
+            )
+            .unwrap();
+            configure_google(&account, &provider, &fixture.root, true).unwrap();
+            let first = std::fs::read(&path).unwrap();
+            configure_google(&account, &provider, &fixture.root, true).unwrap();
+            assert_eq!(first, std::fs::read(&path).unwrap());
+            let value: Value = serde_json::from_slice(&first).unwrap();
+            assert_eq!(value["mcpServers"]["other"]["command"], "kept");
+            assert_eq!(value["mcpServers"][SERVER]["args"][0], CONTEXT_FLAG);
+            assert!(!String::from_utf8(first)
+                .unwrap()
+                .contains("LUMEN_WORKSPACE_ROOT"));
+            configure_google(&account, &provider, &fixture.root, false).unwrap();
+            let value: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            assert!(value["mcpServers"].get(SERVER).is_none());
+            assert_eq!(value["theme"], "native");
+            std::fs::write(&path, "invalid").unwrap();
+            assert!(configure_google(&account, &provider, &fixture.root, true).is_err());
+            assert_eq!(std::fs::read_to_string(path).unwrap(), "invalid");
+        }
+    }
 
     #[test]
     fn speaks_mcp() {

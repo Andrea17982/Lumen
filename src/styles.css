@@ -610,6 +610,509 @@ html[data-text-size='large'] {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   padding: 18px 18px 12px;
 }
+.slash-menu {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(380px, 100%);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 8px 25px -8px #0003;
+}
+
+.native-questions {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  display: grid;
+  gap: 16px;
+}
+.native-children {
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+.project-inspector.popup {
+  position: absolute;
+  right: 12px;
+  top: 64px;
+  bottom: 12px;
+  width: min(580px, calc(100% - 24px));
+  z-index: 35;
+  display: flex;
+  padding: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 12px 44px #0002;
+}
+.project-inspector > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+}
+.project-inspector > nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.project-inspector > nav button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.project-inspector > nav button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--hover);
+}
+.inspector-content {
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+.inspector-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.inspector-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.inspector-form input,
+.inspector-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+.inspector-form button {
+  justify-self: start;
+}
+.inspector-content iframe {
+  width: 100%;
+  min-height: 460px;
+  height: 70vh;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.sprite-viewport {
+  overflow: auto;
+  max-height: 60vh;
+  background: repeating-conic-gradient(#d7d7d7 0% 25%, #fff 0% 50%) 0 0/16px 16px;
+  border: 1px solid var(--line);
+}
+.sprite-viewport > div {
+  position: relative;
+}
+.sprite-viewport img {
+  image-rendering: pixelated;
+  max-width: none;
+  display: block;
+}
+.sprite-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, #0003 1px, transparent 1px),
+    linear-gradient(to bottom, #0003 1px, transparent 1px);
+  background-size: inherit;
+}
+.inspector-data {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.inspector-table {
+  overflow: auto;
+  max-height: 60vh;
+}
+.inspector-table table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.inspector-table td,
+.inspector-table th {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  min-width: 80px;
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+.manual-merge {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.manual-merge > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.manual-merge > details {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.manual-merge summary {
+  cursor: pointer;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.manual-merge label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.manual-merge textarea {
+  font-family: ui-monospace, monospace;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.merge-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.merge-sources strong {
+  font-size: 12px;
+  color: var(--muted);
+}
+.merge-sources pre {
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+}
+@media (max-width: 900px) {
+  .merge-sources {
+    grid-template-columns: 1fr;
+  }
+}
+.task-graph-scroll {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
+}
+.task-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.task-edges path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.5;
+}
+.task-node {
+  position: absolute;
+  width: 180px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px 10px;
+  cursor: grab;
+  overflow: hidden;
+}
+.task-node strong,
+.task-node small {
+  display: block;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-node small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+.task-drop-targets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.task-drop-target {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+}
+.task-drop-target:hover {
+  border-color: var(--accent);
+}
+.orchestra-spec pre {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.layout-canvas {
+  position: relative;
+  margin-top: 12px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, var(--line) 1px, transparent 1px),
+    linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.layout-block {
+  position: absolute;
+  touch-action: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  padding: 4px;
+  font-size: 11px;
+  overflow: hidden;
+  color: var(--muted);
+  cursor: move;
+}
+.layout-block.selected {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.layout-fields {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.layout-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.layout-fields input,
+.layout-fields select,
+.layout-fields textarea {
+  min-width: 0;
+  width: 100%;
+}
+.file-diff {
+  margin: 6px 0;
+  font-size: 12px;
+}
+.file-diff summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.file-diff pre {
+  white-space: pre;
+  overflow: auto;
+  max-height: 360px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 11px;
+}
+.native-children > details {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.native-children summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.native-children summary small {
+  color: var(--muted);
+  margin-left: 10px;
+}
+.native-children pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  max-height: 400px;
+  overflow: auto;
+}
+.native-questions fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.native-questions legend {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.native-questions legend small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.native-options {
+  display: grid;
+  gap: 6px;
+}
+.native-options label {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.native-options label:has(input:checked) {
+  border-color: var(--accent);
+}
+.native-options input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.native-options strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.native-options small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.native-custom {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.native-custom input {
+  width: 100%;
+  min-width: 0;
+}
+.native-answer {
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.native-questions > button {
+  justify-self: start;
+}
+.response-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.response-image {
+  display: block;
+  margin: 12px 0;
+}
+.response-image-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.response-image-open img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+.response-image-placeholder {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.response-image-placeholder small {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.response-image-dialog {
+  max-width: min(1200px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+.response-image-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.response-image-dialog > .icon-button {
+  display: block;
+  margin-left: auto;
+  margin-bottom: 8px;
+}
+.response-image-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 140px);
+  object-fit: contain;
+}
+.slash-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.slash-menu button:hover,
+.slash-menu button[aria-selected='true'] {
+  background: var(--hover);
+}
+.slash-menu strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.slash-menu span {
+  color: var(--muted);
+  font-size: 12px;
+}
 /* Bright highlight along the top edge, as on the Liquid Glass composer. */
 .composer::before {
   content: '';

@@ -160,6 +160,52 @@ try {
     await waitSession(run.id, 'completed');
   }
   const balanced = await invoke('create_session', { workspace });
+  // Native questions must work in Autopilot without granting permissions or starting a new turn.
+  for (const account of [gpt, claude]) {
+    const question = await invoke('create_session', { workspace });
+    await invoke('send_message', {
+      id: question.id,
+      text: `QUESTION_FIXTURE ${account.provider}`,
+      options: {
+        ...options,
+        mode: account.provider,
+        accountId: account.id,
+        accessMode: 'autopilot',
+      },
+    });
+    let request;
+    for (let i = 0; i < 150; i++) {
+      const messages = await invoke('get_messages', { id: question.id });
+      const event = messages.flatMap((m) => m.activity).find((a) => a.kind === 'interaction');
+      if (event) {
+        request = JSON.parse(event.text);
+        break;
+      }
+      await sleep(100);
+    }
+    assert(request, 'The native question must be persisted while the CLI waits');
+    assert((await invoke('pending_questions')).includes(request.id));
+    await page.reload();
+    await page
+      .getByRole('button', {
+        name: new RegExp('^(?!Actions for).*QUESTION_FIXTURE ' + account.provider),
+      })
+      .click();
+    await page.getByRole('radio', { name: /Native/ }).check();
+    await page.getByRole('button', { name: 'Send answers', exact: true }).click();
+    await waitSession(question.id, 'completed');
+    assert.equal(
+      (await readFile(path.join(workspace, `answer-${account.provider}.txt`), 'utf8')).trim(),
+      'Native',
+    );
+    assert(!(await invoke('pending_questions')).includes(request.id));
+    await assert.rejects(
+      invoke('answer_question', {
+        id: request.id,
+        answers: { [request.questions[0].id]: ['Custom'] },
+      }),
+    );
+  }
   const balancedPlan = await invoke('send_message', {
     id: balanced.id,
     text: 'Test',
@@ -170,7 +216,7 @@ try {
   await waitSession(balanced.id, 'completed');
   for (const [text, strategy] of [
     ['Refactor security architecture in production', 'review'],
-    ['Compare alternatives', 'parallel'],
+    ['Compare alternatives', 'single'],
   ]) {
     const run = await invoke('create_session', { workspace });
     const plan = await invoke('send_message', {
@@ -181,11 +227,12 @@ try {
     assert.equal(plan.strategy, strategy);
     await waitSession(run.id, 'completed');
     const transcript = await invoke('get_messages', { id: run.id });
-    assert(
-      transcript[1].activity.some(
-        (a) => a.kind === (strategy === 'review' ? 'review' : 'perspectives'),
-      ),
-    );
+    if (strategy === 'review')
+      assert(
+        transcript[1].activity.some(
+          (a) => a.kind === (strategy === 'review' ? 'review' : 'perspectives'),
+        ),
+      );
   }
   const queued = [];
   for (let i = 0; i < 5; i++) {
@@ -254,6 +301,7 @@ try {
   const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
   git('init', '-q');
   await writeFile(path.join(repo, 'shared.txt'), 'original\n');
+  await writeFile(path.join(repo, '.gitignore'), 'dist/\n');
   git('add', '.');
   git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init');
   const edits = { ...options, accessMode: 'file-edits' };
@@ -286,6 +334,28 @@ try {
   );
   assert.equal(lanes.length, 2);
   assert(lanes.every((m) => m.activity.some((a) => a.kind === 'worktree')));
+  const variants = await invoke('visual_variants', { session: both.id });
+  assert.equal(variants.length, 3);
+  const rendered = [];
+  for (const variant of variants.filter((v) => v.id !== 'project')) {
+    await mkdir(path.join(variant.path, 'dist'), { recursive: true });
+    await writeFile(path.join(variant.path, 'dist/index.html'), `<h1>${variant.id}</h1>`);
+    const preview = await invoke('start_variant_preview', {
+      session: both.id,
+      variant: variant.id,
+      directory: 'dist',
+    });
+    assert((await (await fetch(preview.url)).text()).includes(variant.id));
+    rendered.push(preview);
+    assert.equal((await fetch(preview.url + '.env')).status, 404);
+  }
+  for (const preview of rendered) {
+    await invoke('stop_variant_preview', { id: preview.id });
+    await assert.rejects(fetch(preview.url));
+  }
+  await assert.rejects(
+    invoke('start_variant_preview', { session: both.id, variant: 'project', directory: '../' }),
+  );
   assert.equal(await readFile(path.join(repo, 'shared.txt'), 'utf8'), 'original\n');
   const gptLane = lanes.find((m) =>
     m.activity.some((a) => a.kind === 'lane' && a.text === 'codex'),
@@ -293,6 +363,84 @@ try {
   await invoke('resolve_lanes', { session: both.id, message: gptLane.id, apply: true });
   assert.match(await readFile(path.join(repo, 'shared.txt'), 'utf8'), /edited by gpt/);
   assert.equal(git('worktree', 'list').trim().split('\n').length, 1, 'lanes are removed');
+  const merged = await invoke('create_session', { workspace: repo });
+  await invoke('send_message', {
+    id: merged.id,
+    text: 'WRITE_FIXTURE manual merge probe',
+    options: { ...edits, mode: 'both' },
+  });
+  await waitSession(merged.id, 'completed');
+  const mergeMessage = (await invoke('get_messages', { id: merged.id })).find((m) =>
+    m.activity.some((a) => a.kind === 'worktree'),
+  );
+  const mergePreview = await invoke('preview_manual_merge', {
+    session: merged.id,
+    message: mergeMessage.id,
+  });
+  const indexBefore = git('diff', '--cached');
+  await invoke('apply_manual_merge', {
+    session: merged.id,
+    preview: mergePreview.id,
+    edits: mergePreview.files.map((f) => ({
+      path: f.path,
+      side: f.path === 'shared.txt' ? 'manual' : 'left',
+      text: f.path === 'shared.txt' ? 'reviewed manual result\n' : null,
+    })),
+  });
+  assert.equal(
+    (await readFile(path.join(repo, 'shared.txt'), 'utf8')).trim(),
+    'reviewed manual result',
+  );
+  assert.equal(git('diff', '--cached'), indexBefore, 'manual merge preserves the user index');
+  await assert.rejects(
+    invoke('apply_manual_merge', { session: merged.id, preview: mergePreview.id, edits: [] }),
+  );
+
+  const game = path.join(testData, 'game-controls');
+  await mkdir(game);
+  const server = { command: 'python', args: [path.join(root, 'tests/fixtures/godot-mcp.py')] };
+  await writeFile(
+    path.join(game, '.mcp.json'),
+    JSON.stringify({ mcpServers: { 'godot-fixture': server } }),
+  );
+  await assert.rejects(invoke('godot_visual_action', { folder: game, action: 'play', scene: '' }));
+  await invoke('set_godot_visual_settings', {
+    folder: game,
+    value: { enabled: true, server: 'godot-fixture' },
+  });
+  const connected = await invoke('godot_visual_action', {
+    folder: game,
+    action: 'discover',
+    scene: '',
+  });
+  assert(connected.available.includes('play'));
+  await invoke('godot_visual_action', { folder: game, action: 'play', scene: '' });
+  await invoke('godot_visual_action', { folder: game, action: 'reload', scene: '' });
+  await invoke('godot_visual_action', { folder: game, action: 'stop', scene: '' });
+  const captured = await invoke('godot_visual_action', {
+    folder: game,
+    action: 'capture',
+    scene: '',
+  });
+  assert.equal(captured.screenshot.width, 1);
+  assert(
+    (
+      await invoke('response_image_data', { folder: game, href: captured.screenshot.path })
+    ).startsWith('data:image/'),
+  );
+  const log = await readFile(path.join(game, 'visual-action-log.txt'), 'utf8');
+  await writeFile(
+    path.join(game, '.mcp.json'),
+    JSON.stringify({
+      mcpServers: { 'godot-fixture': { ...server, env: { LUMEN_TEST_EDITOR_ROOT: workspace } } },
+    }),
+  );
+  await assert.rejects(invoke('godot_visual_action', { folder: game, action: 'play', scene: '' }));
+  assert.equal(
+    await readFile(path.join(game, 'visual-action-log.txt'), 'utf8'),
+    log,
+    'a different connected editor must receive no action',
+  );
 
   const limited = await invoke('create_session', { workspace });
   await invoke('send_message', {
@@ -318,6 +466,20 @@ try {
   assert(handoff[0].text.includes('Handoff') && handoff[0].text.includes('Goal'));
 
   const prefs = await invoke('get_settings');
+  assert.equal(await invoke('capture_hotkey_registered'), false);
+  await invoke('save_settings', { value: { ...prefs, captureHotkey: true } });
+  assert.equal(await invoke('capture_hotkey_registered'), true);
+  assert.deepEqual(
+    await invoke('list_screenshots', { folder: repo }),
+    [],
+    'registration must not capture',
+  );
+  await invoke('reset_settings');
+  assert.equal(await invoke('capture_hotkey_registered'), false);
+  assert(
+    (await invoke('list_accounts')).some((a) => a.id === gpt.id),
+    'reset retains accounts',
+  );
 
   // 0.4: Ollama through its official CLI, then Orchestra end to end on fixtures.
   const local = await invoke('add_account', { name: 'Local fixture', provider: 'ollama' });
@@ -386,6 +548,100 @@ try {
     'Orchestra is rewindable',
   );
   await invoke('save_settings', { value: { ...prefs, orchestra: false } });
+
+  if (process.env.LUMEN_REAL_COMPILER === '1') {
+    const compiler = path.join(testData, 'compiler probe with spaces');
+    await mkdir(path.join(compiler, '.lumen'), { recursive: true });
+    await writeFile(
+      path.join(compiler, 'Probe.csproj'),
+      '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>',
+    );
+    await writeFile(
+      path.join(compiler, 'Probe.cs'),
+      'class Probe { int n = "intentional type error"; }',
+    );
+    await writeFile(
+      path.join(compiler, '.lumen/checks.json'),
+      JSON.stringify([
+        { name: 'Compiler source links', command: 'dotnet build --nologo', cwd: '.' },
+      ]),
+    );
+    const check = (await invoke('project_checks', { folder: compiler })).find(
+      (c) => c.label === 'Compiler source links',
+    );
+    assert(check);
+    const report = await invoke('run_project_check', {
+      folder: compiler,
+      id: check.id,
+      command: check.command,
+      cwd: check.cwd,
+    });
+    assert.equal(report.ok, false);
+    assert(report.output.includes('CS0029'));
+    assert(
+      report.links.some((l) => l.file === 'Probe.cs' && l.line === 1),
+      JSON.stringify(report),
+    );
+    await writeFile('.impeccable/review/compiler-probe.json', JSON.stringify(report, null, 2));
+  }
+
+  // Seed only this harness's isolated database to measure a genuinely long native transcript.
+  const long = await invoke('create_session', { workspace });
+  await invoke('update_session', {
+    id: long.id,
+    title: 'Native transcript benchmark',
+    pinned: false,
+  });
+  execFileSync(
+    'python',
+    [
+      '-c',
+      'import sqlite3,sys,json; c=sqlite3.connect(sys.argv[1]); c.executemany("INSERT INTO messages VALUES(?,?,?,?,?,?)",[("bench-"+str(i),sys.argv[2],"assistant" if i%2 else "user","Recorded message "+str(i)+"\\n\\n```ts\\nconst result = 42;\\n```",json.dumps([]),i) for i in range(1000)]); c.commit()',
+      path.join(testData, 'lumen.db'),
+      long.id,
+    ],
+    { windowsHide: true },
+  );
+  await page.reload();
+  const target = page.getByRole('button', {
+    name: /^(?!Actions for).*Native transcript benchmark/,
+  });
+  await target.waitFor();
+  const started = performance.now();
+  await target.click();
+  await page.locator('.message').nth(999).waitFor();
+  const loadMs = performance.now() - started;
+  const frames = await page.evaluate(async () => {
+    const el = document.querySelector('.conversation');
+    const intervals = [];
+    let last = performance.now();
+    for (let i = 0; i < 60; i++) {
+      await new Promise(requestAnimationFrame);
+      const now = performance.now();
+      intervals.push(now - last);
+      last = now;
+      if (el) el.scrollTop = (i % 2) * el.scrollHeight;
+    }
+    return intervals;
+  });
+  await page.getByRole('button', { name: 'Project inspector', exact: true }).click();
+  await page.getByRole('button', { name: 'Layout canvas', exact: true }).click();
+  await page.getByRole('button', { name: 'Add block' }).click();
+  await page.screenshot({ path: '.impeccable/review/native-inspector-canvas.png' });
+  await writeFile(
+    '.impeccable/review/native-performance.json',
+    JSON.stringify(
+      {
+        messages: 1000,
+        loadMs,
+        frameP50Ms: [...frames].sort((a, b) => a - b)[30],
+        frameMaxMs: Math.max(...frames),
+        note: 'Synthetic local transcript in Windows WebView2, no inference. Frame intervals include display scheduling.',
+      },
+      null,
+      2,
+    ),
+  );
 
   await writeFile(
     '.impeccable/review/native-results.json',

@@ -455,8 +455,18 @@ pub fn source_links(root: &Path, cwd: &Path, output: &str) -> Vec<SourceLink> {
                     .map(|i| i + 1)
                     .unwrap_or(0);
                 let candidate = &line[start..end];
-                let Some(path) = [cwd.join(candidate), root.join(candidate)]
+                // .NET emits unquoted absolute paths, including spaces. Try the known
+                // project prefixes before the generic whitespace-delimited location.
+                let prefix = [root, cwd].into_iter().find_map(|base| {
+                    let base = base.to_string_lossy();
+                    line[..end]
+                        .to_lowercase()
+                        .find(&base.to_lowercase())
+                        .map(|at| PathBuf::from(&line[at..end]))
+                });
+                let Some(path) = prefix
                     .into_iter()
+                    .chain([cwd.join(candidate), root.join(candidate)])
                     .find_map(|p| dunce::canonicalize(p).ok())
                 else {
                     continue;
@@ -818,6 +828,26 @@ mod tests {
             outside.file_name().unwrap().to_string_lossy()
         );
         assert!(resolve_source(&root, &escape, 1).is_err());
+    }
+
+    #[test]
+    fn compiler_paths_with_spaces_keep_the_full_source_location() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("project with spaces");
+        write(&root, "Probe.cs", "class Probe {}\n");
+        let output = format!(
+            "{}(3,7): error CS0029: Cannot implicitly convert type 'string' to 'int' [{}]",
+            root.join("Probe.cs").display(),
+            root.join("Probe.csproj").display()
+        );
+        let links = source_links(&root, &root, &output);
+        assert_eq!(
+            links,
+            vec![SourceLink {
+                file: "Probe.cs".into(),
+                line: 3
+            }]
+        );
     }
 
     #[test]

@@ -110,6 +110,7 @@ pub fn route_with(
     }
     let preferred = match options.mode.as_str() {
         "claude" | "both" => Provider::Claude,
+        "gpt" => Provider::Gpt,
         _ if task.tier == 2 => Provider::Claude,
         _ => Provider::Gpt,
     };
@@ -183,7 +184,9 @@ pub fn route_with(
             options.effort.clone()
         },
         strategy: strategy.into(),
-        reason: if options.mode == "both" {
+        reason: if !automatic && strategy == "single" {
+            "Native session with the selected model and reasoning"
+        } else if options.mode == "both" {
             "Same prompt to Claude and ChatGPT, side by side"
         } else if strategy == "review" && options.mode != "auto" {
             "Answer, then cross-audit by the other model"
@@ -360,6 +363,28 @@ mod tests {
                 .strategy,
             "single"
         );
+    }
+
+    #[test]
+    fn explicit_gpt_architecture_never_requires_or_switches_to_claude() {
+        let mut options = opts();
+        options.mode = "gpt".into();
+        options.account_id = Some("g".into());
+        options.model = Some("selected-model".into());
+        let accounts = accounts()
+            .into_iter()
+            .filter(|a| a.provider == Provider::Gpt)
+            .collect::<Vec<_>>();
+        let result = route(
+            "Implement the architecture and security migration",
+            &options,
+            &accounts,
+        )
+        .unwrap();
+        assert_eq!(result.provider, Provider::Gpt);
+        assert_eq!(result.account_id, "g");
+        assert_eq!(result.model.as_deref(), Some("selected-model"));
+        assert_eq!(result.effort, "medium");
     }
     #[test]
     fn unavailable_and_injection() {

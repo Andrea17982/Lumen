@@ -109,10 +109,16 @@ export default function ContextMeter({
                   />
                   <p>
                     {use.source === 'measured'
-                      ? 'Window and CLI overhead as Claude reported them on its last reply; chat and draft text are counted locally. Attached files and images are excluded.'
-                      : 'Local estimate: the provider has not reported its own figures for this chat yet, so the window is the published size for the model. Attached files and images are excluded.'}{' '}
+                      ? 'Window and CLI overhead reported by the CLI on its last reply; chat and draft text are counted locally. Attached files and images are excluded.'
+                      : 'Local context estimate. The window uses a CLI report when available, otherwise the published model size. Native compaction and resume can differ from this estimate. Attached files and images are excluded.'}{' '}
                     Compact when the dot turns orange or red.
                   </p>
+                  {use.lastReported !== undefined && (
+                    <Part
+                      label="Last CLI input/turn usage (not next context size)"
+                      value={tokens(use.lastReported)}
+                    />
+                  )}
                 </>
               ) : (
                 <p>{summary}</p>

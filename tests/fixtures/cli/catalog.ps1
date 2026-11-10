@@ -7,6 +7,11 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
     $request=$line | ConvertFrom-Json
     if ($Provider -eq 'gpt') {
         if ($request.method -eq 'initialize') { Emit @{id=$request.id;result=@{userAgent='offline-fixture'}} }
+        if ($request.method -in @('thread/start','thread/resume')) { Emit @{id=$request.id;result=@{thread=@{id='fixture-thread'}}} }
+        if ($request.method -eq 'turn/start') {
+            Emit @{id=$request.id;result=@{turn=@{id='fixture-turn'}}}
+            & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $request.params.input[0].text -AppServer
+        }
         if ($request.method -eq 'model/list') {
             Emit @{id=$request.id;result=@{data=@(
                 @{id='gpt-fixture';model='gpt-fixture';displayName='GPT Sol fixture';isDefault=$true;defaultReasoningEffort='medium';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'},@{reasoningEffort='xhigh'},@{reasoningEffort='ultra'})},

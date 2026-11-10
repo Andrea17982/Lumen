@@ -28,7 +28,7 @@ For the Windows native offline smoke test, leave `npm run dev` running, build wi
 
 ## Provider adapter contract
 
-Claude: `auth login/status`, `--print --verbose --output-format stream-json --include-partial-messages`, effort/model overrides, `dontAsk`, explicit tools, strict MCP config and `--restricted` to confine file tools to working directories. Codex: `login/status`, `exec --json`, stdin prompt, sandbox override, approval policy and reasoning effort. Older versions may reject these flags, especially Claude restricted mode. Report exact CLI versions when filing a compatibility issue.
+Claude uses a bidirectional stream-json connection with initialize, native question/permission callbacks and a persistent stdin writer. Codex uses app-server with initialized schema evidence, thread start/resume, per-turn cwd/permission settings and native tools. Normal Autopilot preserves each provider's harness and default tools. Restricted profiles retain explicit tool/sandbox limits; an additional universal OS jail is not implemented. Report exact installed CLI versions when filing compatibility issues. Google providers still use their official print runners; Ollama uses `ollama run` and has no autonomous tool loop.
 
 JSONL fixtures belong next to `providers::normalize`. Never record real credentials, private repositories or account-specific identifiers. `stderr` is drained but not displayed to avoid casually leaking raw auth diagnostics. This means some provider failures need investigation directly in the official CLI.
 

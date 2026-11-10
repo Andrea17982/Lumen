@@ -17,7 +17,7 @@ These backend features use the existing official-CLI workflow and add no approva
 
 After a write turn, Lumen compares the working tree with that turn's checkpoint. This detects new files and edits even without provider `file` events and excludes unchanged pre-existing work. Provider-reported files are the fallback without a Git checkpoint.
 
-For an ordinary writer turn or integrated Orchestra result, validation:
+For ordinary turns, additional Lumen validation is opt-in (`verifyChanges`, default false); the native harness can still run its own checks. Integrated Orchestra results retain final validation. When enabled, validation:
 
 1. Queries applicable installed language servers for fresh diagnostics on changed/affected documents.
 2. Runs relevant headless checks in their project directories.

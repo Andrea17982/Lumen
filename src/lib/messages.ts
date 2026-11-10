@@ -5,6 +5,11 @@ export const active = (s?: Status) => s === 'running' || s === 'waiting';
 
 /** Activity kinds that feed the UI or the backend but are not listed under Activity. */
 export const HIDDEN = [
+  'interaction',
+  'interaction-result',
+  'child',
+  'workspace-root',
+  'image',
   'thinking',
   'checkpoint',
   'lane',

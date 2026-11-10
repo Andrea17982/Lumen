@@ -19,7 +19,7 @@ pub(crate) fn git_cmd(dir: &Path) -> Command {
     c
 }
 
-async fn run(dir: &Path, args: &[&str], index: Option<&Path>) -> Result<String, String> {
+pub(crate) async fn run(dir: &Path, args: &[&str], index: Option<&Path>) -> Result<String, String> {
     let mut c = git_cmd(dir);
     if let Some(i) = index {
         // Private-index plumbing is byte-exact: no CRLF conversion in snapshots or restores.

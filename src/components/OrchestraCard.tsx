@@ -13,6 +13,7 @@ import {
 import { QueueNotice } from '../features/orchestra/scheduling';
 import type { Account, Message, OrchestraState } from '../lib/types';
 import { nameOf } from '../lib/util';
+import OrchestraGraph from './OrchestraGraph';
 
 const seconds = (from: number, to: number) => {
   const s = Math.max(0, Math.round(((to || Date.now()) - from) / 1000));
@@ -186,6 +187,17 @@ export default function OrchestraCard({
       <section className="orchestra-card" aria-label="Orchestra plan">
         {header}
         {state.summary && <p>{state.summary}</p>}
+        <details className="orchestra-spec">
+          <summary>Task specification</summary>
+          <pre>{state.task}</pre>
+        </details>
+        <OrchestraGraph
+          tasks={kept}
+          accounts={accounts}
+          assign={assign}
+          onAssign={(id, accountId) => setAssign((current) => ({ ...current, [id]: accountId }))}
+          disabled={busy}
+        />
         {readOnly && (
           <p className="orchestra-warning">
             Orchestra needs File edits on to implement. With Read only, the agents only analyze.

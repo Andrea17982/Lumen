@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, Menu, Settings2 } from 'lucide-react';
+import { ChevronDown, Folder, Menu, Settings2, PanelRight } from 'lucide-react';
 import { IconButton } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
@@ -21,6 +21,7 @@ export interface TopbarProps {
   folderBusy?: boolean;
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
+  onOpenInspector?: () => void;
 }
 
 /** Breadcrumb on the left; provider status, project context and settings on the right. */
@@ -34,6 +35,7 @@ export default function Topbar({
   folderBusy,
   onOpenSidebar,
   onOpenSettings,
+  onOpenInspector,
 }: TopbarProps) {
   const { t } = useI18n();
   return (
@@ -69,6 +71,15 @@ export default function Topbar({
         <span className="conversation-label">{conversationTitle}</span>
       </div>
       <div className="topbar-actions">
+        {onOpenInspector && (
+          <IconButton
+            className="icon-button"
+            label={t('Project inspector')}
+            onClick={onOpenInspector}
+          >
+            <PanelRight size={17} />
+          </IconButton>
+        )}
         {!desktop && <span className="preview-label">{t('Browser preview')}</span>}
         {pills.map((pill) => (
           <span key={pill.key} className={`health-pill ${pill.state}`} title={pill.title}>

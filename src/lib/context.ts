@@ -75,6 +75,7 @@ export interface ContextUse extends ContextLevel {
   overhead: number | null;
   /** `measured` when the window and CLI overhead come from the provider's own report. */
   source: 'measured' | 'estimated';
+  lastReported?: number;
 }
 
 /**
@@ -95,5 +96,6 @@ export function contextUse(
     draft,
     overhead,
     source: overhead !== null && measurement?.window ? 'measured' : 'estimated',
+    lastReported: measurement?.latest,
   };
 }

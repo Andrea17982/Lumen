@@ -1,5 +1,18 @@
 # Teamwork features
 
+## Current development build (after 0.6.0)
+
+- Native direct sessions are the default. Claude uses bidirectional stream-json; Codex uses app-server in ordinary and Orchestra turns. Both retain their official harness, tools and authentication. Native questions have selectable options and custom answers; child agents have their own disclosures.
+- Orchestra is explicitly enabled and respects the selected coordinator provider/model. Autopilot does not ask for plan approval again. Native resume sends the new request and changed constraints; provider switches and missing sessions use durable replay.
+- Additional Lumen validation is opt-in. The native agent can still build/test normally. A real tokenizer estimates text; complete pasted lockfiles are rejected. Images remain outside the token estimate.
+- Response images enlarge with keyboard focus restoration. Links open project sources at a line or validated web URLs. The inspector includes localhost preview, pixel grid, bounded read-only JSON/SQLite inspection, scene/resource diffs, screenshot comparisons and a keyboard/pointer layout canvas.
+- Both supports per-file manual merges with immutable snapshots and a private Git index. The inspector compares built static web outputs from retained Both/Orchestra worktrees; servers stop when that view closes. Dynamic/backend applications need their own project servers in Web preview.
+- The task graph shows dependencies and drag/keyboard assignments. An optional global capture shortcut attaches a screenshot. Closing to the notification area is the default; crash recovery requires explicit Resume.
+- Godot visual controls require project opt-in and verify the editor root before Play/Reload/Stop/Capture. Purchased addons are not bundled; runtime services are not enabled implicitly.
+- Versioned SQLite migrations are transactional and reject newer schemas. Linux and universal macOS packaging are configured in Actions. Evidence and remaining acceptance are tracked in [implementation status](implementation-status.md).
+
+The published 0.6.0 tag remains unchanged. These development changes are not retroactively part of that release. [Moli findings](moli.md) distinguish a tested feasibility probe from production integration.
+
 ## New in 0.6.0: task continuity and code quality
 
 - **Durable task ledger**: source-linked requirements, approved scope, actual permission/workspace state, pending work and checks survive context truncation and Compact. Rewind rebuilds state from retained messages.

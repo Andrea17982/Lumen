@@ -4,7 +4,7 @@
 //! approvals go to the Gatekeeper panel; every reply is written once, after the journal confirms
 //! it is still current. Anything the adapters cannot represent is declined, never approved.
 use crate::approvals::Approvals;
-use crate::models::{Activity, Provider};
+use crate::models::{AccessMode, Activity, Provider};
 use crate::providers::{self, Invocation};
 use lumen_gatekeeper::{support, Availability, Provider as Engine, Scope};
 use serde_json::{json, Value};
@@ -77,6 +77,20 @@ async fn schemas(config: &Path) -> Result<(Value, Value, Value), String> {
     Ok(out)
 }
 
+async fn cached_schemas(config: &Path, version: &str) -> Result<(Value, Value, Value), String> {
+    type Evidence = (Value, Value, Value);
+    static CACHE: std::sync::OnceLock<
+        tokio::sync::Mutex<std::collections::HashMap<String, Evidence>>,
+    > = std::sync::OnceLock::new();
+    let mut cache = CACHE.get_or_init(Default::default).lock().await;
+    if let Some(evidence) = cache.get(version) {
+        return Ok(evidence.clone());
+    }
+    let evidence = schemas(config).await?;
+    cache.insert(version.to_owned(), evidence.clone());
+    Ok(evidence)
+}
+
 struct Wire {
     lines: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
     out: mpsc::Sender<Value>,
@@ -126,6 +140,15 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
         })
     };
     match v["method"].as_str().unwrap_or("") {
+        "thread/tokenUsage/updated" => {
+            let usage = &v["params"]["tokenUsage"];
+            if let Some(input) = usage["last"]["inputTokens"].as_u64() {
+                push("usage", input.to_string());
+            }
+            if let Some(window) = usage["modelContextWindow"].as_u64() {
+                push("window", window.to_string());
+            }
+        }
         "item/agentMessage/delta" => {
             if let Some(d) = v["params"]["delta"].as_str() {
                 text.push_str(d);
@@ -151,6 +174,19 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
                 ),
                 "fileChange" => push("file", item["changes"].to_string()),
                 "mcpToolCall" => push("tool", item["tool"].as_str().unwrap_or("Tool").into()),
+                "imageGeneration" | "imageView" => {
+                    if let Some(path) = item["savedPath"].as_str().or(item["path"].as_str()) {
+                        push("image", path.into());
+                    }
+                }
+                "collabAgentToolCall" => {
+                    if let Some(agents) = item["agentsStates"].as_object() {
+                        for (id, agent) in agents {
+                            push("child",json!({"id":id,"kind":"status","text":agent["message"].as_str().unwrap_or(""),"status":agent["status"],"tool":item["tool"],"sessionId":id}).to_string());
+                        }
+                    }
+                }
+                "subAgentActivity" => push("child",json!({"id":item["agentThreadId"],"kind":"status","text":item["agentPath"].as_str().unwrap_or(""),"status":item["kind"]}).to_string()),
                 "reasoning" => {
                     let summary = item["summary"]
                         .as_array()
@@ -225,7 +261,7 @@ pub async fn codex_turn(
     let cwd = dunce::canonicalize(input.workspace)
         .map_err(|_| "The conversation folder is no longer available")?;
     let version = version(input.config).await?;
-    let (requests, command_reply, file_reply) = schemas(input.config).await?;
+    let (requests, command_reply, file_reply) = cached_schemas(input.config, &version).await?;
 
     let mut c = providers::command(&Provider::Gpt)?;
     providers::isolate(&mut c, &Provider::Gpt, input.config);
@@ -235,6 +271,18 @@ pub async fn codex_turn(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
+    if let Some(data) = input.config.parent().and_then(Path::parent) {
+        let (extra, _) = crate::integrations::args(data, &Provider::Gpt)?;
+        c.args(extra);
+        if providers::graph_enabled(data) {
+            if let Some(extra) = crate::graph_mcp::cli_args(data, &cwd, &Provider::Gpt) {
+                c.args(extra);
+            }
+        }
+    }
+    if cfg!(windows) {
+        c.args(["-c", "windows.sandbox=\"unelevated\""]);
+    }
     let mut child = c
         .spawn()
         .map_err(|e| format!("unavailable: cannot start Codex: {e}"))?;
@@ -304,7 +352,7 @@ async fn run(
     let id = wire
         .send(
             "initialize",
-            json!({"clientInfo": {"name": "lumen", "version": env!("CARGO_PKG_VERSION")}}),
+            json!({"clientInfo": {"name": "lumen", "version": env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),
         )
         .await?;
     let init = expect(wire, id).await?;
@@ -317,22 +365,53 @@ async fn run(
         .await
         .map_err(|_| "Codex closed its input")?;
 
-    // 2. A fresh thread with the user-reviewed policy, then the turn.
+    // Native resumes retain tool exchanges, project instructions and agent state.
     let mut params = support::codex_thread_params(&cwd.to_string_lossy());
+    params["approvalPolicy"] = json!(if input.access == AccessMode::Ask {
+        "on-request"
+    } else {
+        "never"
+    });
+    params["sandbox"] = json!(match input.access {
+        AccessMode::Autopilot => "danger-full-access",
+        AccessMode::FileEdits => "workspace-write",
+        _ => "read-only",
+    });
     if let Some(model) = input.model {
         params["model"] = json!(model);
     }
-    let id = wire.send("thread/start", params).await?;
+    let method = if let Some(session) = input.resume {
+        params["threadId"] = json!(session);
+        "thread/resume"
+    } else {
+        params["dynamicTools"] = json!([{
+            "type":"function","name":"lumen_request_user_input",
+            "description":"Ask clear questions with selectable options in the Lumen UI when a missing user decision changes the result. This collects information, not permission. Use without changing to plan mode. The user can also write a custom answer.",
+            "inputSchema":{"type":"object","properties":{"questions":{"type":"array","minItems":1,"maxItems":6,"items":{"type":"object","properties":{"id":{"type":"string"},"header":{"type":"string"},"question":{"type":"string"},"options":{"type":"array","items":{"type":"object","properties":{"label":{"type":"string"},"description":{"type":"string"}},"required":["label","description"]}},"multiSelect":{"type":"boolean"}},"required":["id","header","question","options","multiSelect"]}}},"required":["questions"]}
+        }]);
+        "thread/start"
+    };
+    let id = wire.send(method, params).await?;
     let thread = expect(wire, id).await?;
     let thread_id = thread["result"]["thread"]["id"]
         .as_str()
         .ok_or("Codex did not return a thread id")?
         .to_string();
+    emit(Activity {
+        kind: "session".into(),
+        text: thread_id.clone(),
+    });
     let mut turn = json!({
         "threadId": thread_id,
         "input": [{"type": "text", "text": input.prompt}],
-        "approvalPolicy": "on-request",
+        "approvalPolicy": if input.access == AccessMode::Ask { "on-request" } else { "never" },
         "approvalsReviewer": "user",
+        "cwd": cwd.to_string_lossy(),
+        "sandboxPolicy": match input.access {
+            AccessMode::Autopilot => json!({"type":"dangerFullAccess"}),
+            AccessMode::FileEdits => json!({"type":"workspaceWrite","writableRoots":[cwd.to_string_lossy()],"networkAccess":false,"excludeTmpdirEnvVar":false,"excludeSlashTmp":false}),
+            _ => json!({"type":"readOnly"}),
+        },
     });
     if !input.effort.is_empty() {
         turn["effort"] = json!(input.effort);
@@ -343,6 +422,7 @@ async fn run(
     // held, so no approval request is handled without its real scope.
     let mut held: Vec<Value> = vec![];
     let mut text = String::new();
+    let questions = crate::interactions::Connection::default();
     loop {
         let message = tokio::select! {
             biased;
@@ -360,6 +440,7 @@ async fn run(
         let Some(message) = message else {
             return Err("Codex exited before the turn completed".into());
         };
+        questions.drain(emit);
         if scope.is_none() {
             if is_response(&message, id) {
                 if let Some(e) = message.get("error") {
@@ -380,8 +461,18 @@ async fn run(
                     availability.clone(),
                 )?);
                 for m in std::mem::take(&mut held) {
-                    if let Some(done) =
-                        handle(&m, scope, approvals, wire, deliver, &mut text, emit).await?
+                    if let Some(done) = handle(
+                        &m,
+                        scope,
+                        approvals,
+                        wire,
+                        deliver,
+                        &questions,
+                        input.access,
+                        &mut text,
+                        emit,
+                    )
+                    .await?
                     {
                         return done;
                     }
@@ -391,8 +482,18 @@ async fn run(
             }
             continue;
         }
-        if let Some(done) =
-            handle(&message, scope, approvals, wire, deliver, &mut text, emit).await?
+        if let Some(done) = handle(
+            &message,
+            scope,
+            approvals,
+            wire,
+            deliver,
+            &questions,
+            input.access,
+            &mut text,
+            emit,
+        )
+        .await?
         {
             return done;
         }
@@ -400,21 +501,72 @@ async fn run(
 }
 
 /// One protocol message after the scope exists. `Some` ends the turn with its result.
+#[allow(clippy::too_many_arguments)]
 async fn handle(
     message: &Value,
     scope: &Option<Scope>,
     approvals: &Approvals,
     wire: &mut Wire,
     deliver: &mpsc::Sender<lumen_gatekeeper::Delivery>,
+    questions: &crate::interactions::Connection,
+    access: AccessMode,
     text: &mut String,
     emit: &mut impl FnMut(Activity),
 ) -> Result<Option<Result<String, String>>, String> {
     let scope = scope.as_ref().ok_or("No approval scope")?;
     let method = message["method"].as_str().unwrap_or("");
     if message.get("id").is_some() && !method.is_empty() {
+        let dynamic =
+            method == "item/tool/call" && message["params"]["tool"] == "lumen_request_user_input";
+        if method == "item/tool/requestUserInput" || dynamic {
+            if message["params"]["threadId"] != scope.provider_session_id
+                || message["params"]["turnId"] != scope.turn_id
+            {
+                return Err("Codex question belongs to another turn".into());
+            }
+            let arguments = if dynamic {
+                message["params"]["arguments"]
+                    .as_str()
+                    .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                    .unwrap_or_else(|| message["params"]["arguments"].clone())
+            } else {
+                message["params"].clone()
+            };
+            let (activity, receive) = questions.ask(
+                crate::interactions::codex_questions(&arguments)?,
+                message["id"].to_string(),
+            )?;
+            emit(activity);
+            let out = wire.out.clone();
+            let id = message["id"].clone();
+            tokio::spawn(async move {
+                if let Ok(answers) = receive.await {
+                    if dynamic {
+                        let _=out.send(json!({"id":id,"result":{"success":true,"contentItems":[{"type":"inputText","text":json!({"answers":answers}).to_string()}]}})).await;
+                        return;
+                    }
+                    let answers: serde_json::Map<String, Value> = answers
+                        .into_iter()
+                        .map(|(id, answers)| (id, json!({"answers":answers})))
+                        .collect();
+                    let _ = out
+                        .send(json!({"id":id,"result":{"answers":answers}}))
+                        .await;
+                }
+            });
+            return Ok(None);
+        }
         // A server request: approvals go to the panel; anything else is declined.
         match approvals.keeper.request_codex(scope, message) {
             Ok(pending) => {
+                if access == AccessMode::Autopilot {
+                    approvals.keeper.decide(lumen_gatekeeper::Decision {
+                        request_id: pending.request_id.clone(),
+                        scope: scope.clone(),
+                        action: lumen_gatekeeper::Action::Approve,
+                        note: Some("Autopilot: current user authorization".into()),
+                    })?;
+                }
                 let deliver = deliver.clone();
                 // Waiting never blocks this reader: cancellations and other approvals keep flowing.
                 tokio::spawn(async move {
@@ -438,6 +590,10 @@ async fn handle(
     }
     if OBSERVED.contains(&method) {
         approvals.keeper.observe_codex(scope, message)?;
+    }
+    if method == "serverRequest/resolved" {
+        questions.cancel(&message["params"]["requestId"].to_string());
+        questions.drain(emit);
     }
     activity(message, text, emit);
     if method == "turn/completed" {

@@ -17,6 +17,16 @@ fn main() {
     }
     // Claude Code and Codex start it as the code-graph MCP server (see graph_mcp.rs).
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if args
+        .get(1)
+        .is_some_and(|a| a == "--lumen-graph-mcp-context")
+    {
+        let result = args
+            .get(2)
+            .zip(std::env::var_os("LUMEN_WORKSPACE_ROOT"))
+            .map(|(data, root)| lumen_lib::serve_graph(data.into(), root.into()));
+        std::process::exit(if matches!(result, Some(Ok(()))) { 0 } else { 1 });
+    }
     if args.get(1).is_some_and(|a| a == "--lumen-graph-mcp") && args.len() >= 4 {
         let ok = lumen_lib::serve_graph(args[2].clone().into(), args[3].clone().into());
         std::process::exit(if ok.is_ok() { 0 } else { 1 });

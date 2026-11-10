@@ -288,6 +288,256 @@ fn canonical_root(folder: &str) -> Result<PathBuf, String> {
     }
 }
 
+#[derive(Clone, Default, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualControls {
+    pub enabled: bool,
+    pub server: String,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualResult {
+    available: Vec<String>,
+    detail: String,
+    screenshot: Option<crate::screens::Screenshot>,
+}
+#[tauri::command]
+pub fn godot_visual_settings(folder: String) -> Result<VisualControls, String> {
+    let root = canonical_root(&folder)?;
+    let path = root.join(".lumen/visual-controls.json");
+    if !path.exists() {
+        return Ok(VisualControls::default());
+    }
+    let path = crate::context::jail(&root, ".lumen/visual-controls.json")?;
+    serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn set_godot_visual_settings(
+    folder: String,
+    value: VisualControls,
+) -> Result<VisualControls, String> {
+    let root = canonical_root(&folder)?;
+    if value.enabled && !godot_servers(&root).contains(&value.server) {
+        return Err("Choose a Godot server declared in this project".into());
+    }
+    let dir = root.join(".lumen");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = dunce::canonicalize(dir).map_err(|e| e.to_string())?;
+    if !dir.starts_with(&root) {
+        return Err("Project settings folder is outside the project".into());
+    }
+    let file = dir.join(format!("visual-controls-{}.tmp", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &file,
+        serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::rename(&file, dir.join("visual-controls.json")) {
+        let _ = std::fs::remove_file(file);
+        return Err(e.to_string());
+    }
+    Ok(value)
+}
+fn connected_path(result: &Value) -> Option<PathBuf> {
+    let text = tool_text(result);
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    let value: Value = serde_json::from_str(&text[start..=end]).ok()?;
+    let path = [
+        value.get("project_path"),
+        value.get("projectPath"),
+        value.get("path"),
+        value.pointer("/project/path"),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(Value::as_str)
+    .and_then(|s| dunce::canonicalize(s).ok());
+    path
+}
+fn visual_tool(action: &str) -> Option<&'static str> {
+    match action {
+        "play" => Some("play_scene"),
+        "reload" => Some("reload_project"),
+        "stop" => Some("stop_scene"),
+        "capture" => Some("get_game_screenshot"),
+        _ => None,
+    }
+}
+async fn visual_session(
+    root: &Path,
+    child: &mut tokio::process::Child,
+    action: &str,
+    scene: &str,
+) -> Result<VisualResult, String> {
+    let mut stdin = child.stdin.take().ok_or("No Godot MCP input")?;
+    let mut lines = BufReader::new(child.stdout.take().ok_or("No Godot MCP output")?).lines();
+    request(&mut stdin,&mut lines,1,"initialize",json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"lumen","version":env!("CARGO_PKG_VERSION")}})).await?;
+    stdin
+        .write_all(
+            format!(
+                "{}\n",
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+            )
+            .as_bytes(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let list = request(&mut stdin, &mut lines, 2, "tools/list", json!({})).await?;
+    let tools = list["tools"]
+        .as_array()
+        .ok_or("Godot did not return a tool list")?;
+    let available = ["play", "reload", "stop", "capture"]
+        .iter()
+        .filter(|a| tools.iter().any(|t| t["name"] == visual_tool(a).unwrap()))
+        .map(|a| a.to_string())
+        .collect();
+    if !tools.iter().any(|t| t["name"] == "get_project_info") {
+        return Err(
+            "The server cannot verify its connected project; no visual action was sent".into(),
+        );
+    }
+    let info = request(
+        &mut stdin,
+        &mut lines,
+        3,
+        "tools/call",
+        json!({"name":"get_project_info","arguments":{}}),
+    )
+    .await?;
+    let connected = connected_path(&info)
+        .ok_or("The connected editor project could not be verified; no visual action was sent")?;
+    if !connected.starts_with(root) {
+        return Err("The editor is connected to a different project. Open this project's editor before using visual controls.".into());
+    }
+    if action == "discover" {
+        return Ok(VisualResult {
+            available,
+            detail: "Connected editor matches this project".into(),
+            screenshot: None,
+        });
+    }
+    let name = visual_tool(action).ok_or("Unsupported Godot visual action")?;
+    let tool = tools
+        .iter()
+        .find(|t| t["name"] == name)
+        .ok_or("The installed Godot server does not offer this action")?;
+    let mut arguments = json!({});
+    let schema = &tool["inputSchema"];
+    if action == "play" {
+        if !scene.is_empty() {
+            let rel = scene
+                .strip_prefix("res://")
+                .ok_or("Use a res:// scene path")?;
+            let path = crate::context::jail(&connected, rel)?;
+            if !path.extension().is_some_and(|e| e == "tscn" || e == "scn") {
+                return Err("Choose a Godot scene".into());
+            }
+            let key = ["scene_path", "path", "scene"]
+                .iter()
+                .find(|key| schema["properties"].get(**key).is_some())
+                .ok_or("This server does not accept a scene path")?;
+            arguments[*key] = json!(scene);
+        }
+        if schema["properties"].get("mode").is_some() {
+            let preferred = if scene.is_empty() {
+                vec!["main"]
+            } else {
+                vec!["specific", "custom", "path"]
+            };
+            let mode = preferred
+                .into_iter()
+                .find(|m| {
+                    schema["properties"]["mode"]["enum"]
+                        .as_array()
+                        .is_none_or(|items| items.iter().any(|i| i == m))
+                })
+                .ok_or("This server does not offer the selected play mode")?;
+            arguments["mode"] = json!(mode);
+        }
+    }
+    if let Some(required) = schema["required"].as_array() {
+        for key in required.iter().filter_map(Value::as_str) {
+            if arguments.get(key).is_none() {
+                return Err(format!(
+                    "The installed tool requires '{key}'; no action was sent"
+                ));
+            }
+        }
+    }
+    let result = request(
+        &mut stdin,
+        &mut lines,
+        4,
+        "tools/call",
+        json!({"name":name,"arguments":arguments}),
+    )
+    .await?;
+    if result["isError"] == true {
+        return Err(
+            "Godot rejected the action. Check the editor connection and selected scene.".into(),
+        );
+    }
+    let screenshot = if action == "capture" {
+        let image = result["content"]
+            .as_array()
+            .and_then(|items| items.iter().find(|i| i["type"] == "image"))
+            .ok_or("Godot returned no image")?;
+        Some(crate::screens::save_mcp_image(
+            root,
+            image["data"]
+                .as_str()
+                .ok_or("Godot returned invalid image data")?,
+            "Godot game viewport",
+        )?)
+    } else {
+        None
+    };
+    Ok(VisualResult {
+        available,
+        detail: format!("Godot {action} completed"),
+        screenshot,
+    })
+}
+#[tauri::command]
+pub async fn godot_visual_action(
+    folder: String,
+    action: String,
+    scene: String,
+) -> Result<VisualResult, String> {
+    if action != "discover" && visual_tool(&action).is_none() {
+        return Err("Unsupported Godot visual action".into());
+    }
+    let root = canonical_root(&folder)?;
+    let settings = godot_visual_settings(folder)?;
+    if !settings.enabled {
+        return Err("Enable visual controls for this project first".into());
+    }
+    let (command, args, env) =
+        declared(&root, &settings.server).ok_or("The selected Godot MCP server is not declared")?;
+    let program = which::which(&command).unwrap_or_else(|_| PathBuf::from(command));
+    let mut c = crate::proc::command(program);
+    c.args(args)
+        .envs(env)
+        .current_dir(&root)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    c.process_group(0);
+    let mut child = c.spawn().map_err(|e| e.to_string())?;
+    let result = tokio::time::timeout(
+        PROBE_LIMIT,
+        visual_session(&root, &mut child, &action, &scene),
+    )
+    .await
+    .map_err(|_| "Godot visual action timed out".to_string());
+    crate::providers::terminate(&mut child).await;
+    result?
+}
+
 #[tauri::command]
 pub async fn godot_connection_test(
     folder: String,

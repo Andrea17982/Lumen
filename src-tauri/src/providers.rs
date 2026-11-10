@@ -118,6 +118,25 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             );
         }
     } else if *p == Provider::Claude {
+        if let Some(parent) = v["parent_tool_use_id"].as_str() {
+            let event = &v["event"];
+            let text = event["delta"]["text"]
+                .as_str()
+                .or_else(|| {
+                    v["message"]["content"]
+                        .as_array()
+                        .and_then(|a| a.iter().find_map(|b| b["text"].as_str()))
+                })
+                .unwrap_or("");
+            push("child", serde_json::json!({"id":parent,"kind":if v["type"] == "stream_event" { "delta" } else { "message" },"text":text,"event":v["type"]}).to_string());
+            return out;
+        }
+        if v["type"] == "system"
+            && ["task_started", "task_progress", "task_notification"]
+                .contains(&v["subtype"].as_str().unwrap_or(""))
+        {
+            push("child", serde_json::json!({"id":v["tool_use_id"].as_str().or(v["task_id"].as_str()).unwrap_or("agent"),"kind":"status","text":v["description"].as_str().or(v["summary"].as_str()).unwrap_or(""),"status":v["status"],"taskId":v["task_id"],"sessionId":v["session_id"]}).to_string());
+        }
         if v["type"] == "system" && v["subtype"] == "init" {
             push("session", v["session_id"].as_str().unwrap_or("").into());
         }
@@ -242,6 +261,94 @@ pub struct Invocation<'a> {
 pub async fn execute(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
+    mut emit: impl FnMut(Activity),
+) -> Result<String, String> {
+    // IPC is limited to one text delta per frame. Control/diagnostic events flush pending text
+    // first, so ordering and interactive questions are preserved without delaying decisions.
+    let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
+    let run = execute_inner(input, cancel, |activity| {
+        let _ = send.send(activity);
+    });
+    tokio::pin!(run);
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(24));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut text = String::new();
+    loop {
+        tokio::select! {
+            result = &mut run => {
+                while let Ok(activity) = receive.try_recv() { buffered(activity, &mut text, &mut emit); }
+                flush_delta(&mut text, &mut emit);
+                return result;
+            }
+            Some(activity) = receive.recv() => buffered(activity, &mut text, &mut emit),
+            _ = interval.tick() => flush_delta(&mut text, &mut emit),
+        }
+    }
+}
+fn flush_delta(text: &mut String, emit: &mut impl FnMut(Activity)) {
+    if !text.is_empty() {
+        emit(Activity {
+            kind: "delta".into(),
+            text: std::mem::take(text),
+        });
+    }
+}
+fn buffered(activity: Activity, text: &mut String, emit: &mut impl FnMut(Activity)) {
+    if activity.kind == "delta" {
+        text.push_str(&activity.text);
+        if text.len() >= 8192 {
+            flush_delta(text, emit);
+        }
+    } else {
+        flush_delta(text, emit);
+        emit(activity);
+    }
+}
+
+#[cfg(test)]
+mod buffering_tests {
+    use super::*;
+    #[test]
+    fn questions_cannot_overtake_text_and_no_final_text_is_lost() {
+        let mut text = String::new();
+        let mut output = vec![];
+        let mut emit = |a| output.push(a);
+        for _ in 0..2000 {
+            buffered(
+                Activity {
+                    kind: "delta".into(),
+                    text: "à".into(),
+                },
+                &mut text,
+                &mut emit,
+            );
+        }
+        buffered(
+            Activity {
+                kind: "interaction".into(),
+                text: "question".into(),
+            },
+            &mut text,
+            &mut emit,
+        );
+        buffered(
+            Activity {
+                kind: "delta".into(),
+                text: "tail".into(),
+            },
+            &mut text,
+            &mut emit,
+        );
+        flush_delta(&mut text, &mut emit);
+        assert_eq!(output.len(), 3);
+        assert_eq!(output[0].text, "à".repeat(2000));
+        assert_eq!(output[1].kind, "interaction");
+        assert_eq!(output[2].text, "tail");
+    }
+}
+async fn execute_inner(
+    input: Invocation<'_>,
+    cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
     crate::models::share_global_instructions(&input.account.provider, input.config);
@@ -253,6 +360,14 @@ pub async fn execute(
                     crate::models::mirror_dir(&dir, &input.config.join("skills").join(name), 0);
                 }
             }
+        }
+    }
+    if input.account.provider == Provider::Claude && input.access != AccessMode::Ask {
+        return crate::native_claude::execute(input, cancel, emit).await;
+    }
+    if input.account.provider == Provider::Gpt {
+        if let Some(approvals) = input.approvals.clone() {
+            return crate::approvals_codex::codex_turn(input, approvals, cancel, emit).await;
         }
     }
     if input.access == AccessMode::Ask {
@@ -330,6 +445,12 @@ pub async fn execute(
             }
         }
     }
+    if matches!(p, Provider::Gemini | Provider::Antigravity) {
+        if let Some(data) = input.config.parent().and_then(Path::parent) {
+            crate::graph_mcp::configure_google(input.config, p, data, graph_enabled(data))?;
+            c.env("LUMEN_WORKSPACE_ROOT", &workspace);
+        }
+    }
     c.args(args);
     let prompt = if *p == Provider::Antigravity {
         format!(
@@ -387,7 +508,7 @@ pub(crate) fn graph_enabled(data: &Path) -> bool {
 }
 
 /// Adds the code-graph MCP server and, in restricted Claude modes, allows its tools.
-fn add_graph(args: &mut Vec<String>, extra: Vec<String>, p: &Provider) {
+pub(crate) fn add_graph(args: &mut Vec<String>, extra: Vec<String>, p: &Provider) {
     let tools = format!("mcp__{}", crate::graph_mcp::SERVER);
     if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
         args[i + 1] = format!("{},{tools}", args[i + 1]);
@@ -495,23 +616,26 @@ pub fn invocation_args(
                 // prefixes run; anything else is refused without a prompt.
                 let (tools, allowed) = if access == AccessMode::FileEdits {
                     (
-                        "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Bash",
+                        "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Agent,AskUserQuestion,Bash",
                         format!(
-                            "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,{},{}",
+                            "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Agent,{},{}",
                             READ_COMMANDS.join(","),
                             CHECK_COMMANDS.join(",")
                         ),
                     )
                 } else {
                     (
-                        "Read,Glob,Grep,TodoWrite,Task,Bash",
-                        format!("Read,Glob,Grep,TodoWrite,Task,{}", READ_COMMANDS.join(",")),
+                        "Read,Glob,Grep,TodoWrite,Task,Agent,AskUserQuestion,Bash",
+                        format!(
+                            "Read,Glob,Grep,TodoWrite,Task,Agent,{}",
+                            READ_COMMANDS.join(",")
+                        ),
                     )
                 };
                 args.extend(
                     [
                         "--permission-mode",
-                        "dontAsk",
+                        "default",
                         "--strict-mcp-config",
                         "--restricted",
                         "--tools",
@@ -522,8 +646,11 @@ pub fn invocation_args(
                     .map(str::to_owned),
                 );
             }
-            // Secrets and lockfiles are denied even in Autopilot: they burn context or leak keys.
-            args.extend(["--disallowedTools".into(), DENY.join(",")]);
+            // Autopilot must expose the native toolset and the user's native policies.
+            // A wrapper-wide deny rule otherwise silently defeats full access.
+            if access != AccessMode::Autopilot {
+                args.extend(["--disallowedTools".into(), DENY.join(",")]);
+            }
             if !effort.is_empty() {
                 args.extend(["--effort".into(), effort.into()]);
             }
@@ -769,6 +896,7 @@ mod tests {
             "max",
         );
         assert!(claude.iter().any(|a| a == "--dangerously-skip-permissions"));
+        assert!(!claude.iter().any(|a| a == "--disallowedTools"));
         assert!(!claude
             .iter()
             .any(|a| a == "--restricted" || a == "--strict-mcp-config"));
@@ -834,6 +962,13 @@ mod tests {
             &json!({"type":"stream_event","event":{"delta":{"text":"hi"}}}),
         );
         assert_eq!(b[0].kind, "delta");
+        let child = normalize(
+            &Provider::Claude,
+            &json!({"type":"stream_event","parent_tool_use_id":"child-1","event":{"delta":{"text":"child answer"}}}),
+        );
+        assert_eq!(child.len(), 1);
+        assert_eq!(child[0].kind, "child");
+        assert!(child[0].text.contains("child answer"));
     }
     #[cfg(windows)]
     fn fixture(script: &str) -> Command {

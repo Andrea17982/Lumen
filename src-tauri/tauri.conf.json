@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [{"title": "Lumen", "width": 1240, "height": 820, "minWidth": 720, "minHeight": 540, "visible": false}],
-    "security": {"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'"}
+    "security": {"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https: http:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src http://localhost:* http://127.0.0.1:*"}
   },
   "bundle": {"active": true, "targets": ["nsis"], "icon": ["icons/icon.ico", "icons/icon.icns", "icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"]}
 }

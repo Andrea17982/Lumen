@@ -8,6 +8,16 @@ const e = (kind: string, text: string): RunEvent => ({
   text,
 });
 describe('stream reconciliation', () => {
+  it('coalesces nested agent streams without evicting pending questions or checkpoints', () => {
+    let m = applyEvent([], e('checkpoint', 'base'));
+    m = applyEvent(m, e('interaction', '{"id":"question"}'));
+    for (let i = 0; i < 1200; i++)
+      m = applyEvent(m, e('child', JSON.stringify({ id: 'agent', kind: 'delta', text: 'x' })));
+    expect(m[0].activity).toHaveLength(3);
+    expect(m[0].activity[0].text).toBe('base');
+    expect(JSON.parse(m[0].activity[2].text).text).toHaveLength(1200);
+    expect(m[0].text).toBe('');
+  });
   it('creates an assistant, applies chunks and authoritative replacement without duplication', () => {
     let m: Message[] = applyEvent([], e('start', ''));
     m = applyEvent(m, e('delta', 'Hello'));

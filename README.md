@@ -13,7 +13,7 @@
 
 Also see the [model, workspace and permission controls](docs/images/provider-controls-fixture.png), [dark theme](docs/images/dark.png) and a [native chat capture using explicitly labeled offline fixtures](docs/images/chat-fixture.png).
 
-Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Write a request, keep working across sessions, and let **Auto** choose an execution plan. Optional controls expose the provider, account, model and reasoning effort when you need them.
+Lumen brings separate AI conversations into one restrained, glass-inspired desktop interface. Native direct sessions keep the selected provider, account, model and reasoning effort. Auto routing and Orchestra are explicit options.
 
 **Status: v0.6 alpha.** Provider availability, subscription terms, CLI compatibility and system resources still apply. It is an independent community project, unaffiliated with Apple, Anthropic or OpenAI.
 

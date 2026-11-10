@@ -508,7 +508,19 @@ pub async fn ask(
     let orch = account(core, &plan.account_id)?;
     let models = models_for(core, &orch, false, Some(cancel.clone())).await?;
     let tier = orchestrator_tier(&options.auto_policy, router::task_tier(task));
-    let model = router::select_tier(&models, tier).ok_or("No orchestrator model available")?;
+    let model = if options.mode != "auto" {
+        if let Some(id) = plan.model.as_deref() {
+            models.iter().find(|m| m.id == id)
+        } else {
+            models
+                .iter()
+                .find(|m| m.is_default)
+                .or_else(|| models.first())
+        }
+    } else {
+        router::select_tier(&models, tier)
+    }
+    .ok_or("No orchestrator model available")?;
     let mut st = State {
         stage: "asking".into(),
         task: task.into(),
@@ -841,7 +853,13 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
             model: Some(&selected.id),
             effort: &effort,
             access: job.access,
-            approvals: None,
+            approvals: core
+                .approvals
+                .clone()
+                .map(|keeper| crate::approvals::Approvals {
+                    keeper,
+                    chat: job.session.clone(),
+                }),
         },
         job.cancel.clone(),
         |activity| {
@@ -853,6 +871,13 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
                 if let Ok(pid) = activity.text.parse() {
                     let _ = job.pids.send((id.clone(), pid));
                 }
+                return;
+            }
+            if ["interaction", "interaction-result", "child"].contains(&activity.kind.as_str()) {
+                event(app, session, message, &activity.kind, &activity.text);
+                let _ = core
+                    .store
+                    .record_external_activity(session, message, activity);
                 return;
             }
             if activity.kind == "delta" || activity.kind == "replace" {

@@ -1,12 +1,15 @@
 //! "Ask first" Claude turns. Claude runs with `--permission-prompt-tool`, so each action that
 //! needs permission waits for a decision in the Gatekeeper panel. Codex: `approvals_codex`.
-use crate::models::{Activity, Provider};
-use crate::providers::{self, Invocation};
-use lumen_gatekeeper::{
-    mcp::ClaudeEndpoint, support, Availability, Gatekeeper, Provider as Engine,
-};
-use serde_json::json;
-use std::{path::Path, time::Duration};
+use crate::models::Activity;
+use crate::providers::Invocation;
+#[cfg(test)]
+use crate::{models::Provider, providers};
+use lumen_gatekeeper::Gatekeeper;
+#[cfg(test)]
+use lumen_gatekeeper::{mcp::ClaudeEndpoint, support, Availability, Provider as Engine};
+use std::path::Path;
+#[cfg(test)]
+use std::time::Duration;
 use tokio::sync::watch;
 
 /// The app chat that owns a turn, and the journal that records its approvals.
@@ -17,7 +20,9 @@ pub struct Approvals {
     pub chat: String,
 }
 
+#[cfg(test)]
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(test)]
 const VERSION_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Runs one Claude turn in ask-first mode. Each turn gets a fresh provider session, approval
@@ -30,51 +35,13 @@ pub async fn claude_turn(
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
-    let cwd = dunce::canonicalize(input.workspace)
-        .map_err(|_| "The conversation folder is no longer available")?;
-    let version = cli_version(input.config).await?;
-    probe(&approvals, exe, &cwd, input.config, &version).await?;
-
-    let session = uuid::Uuid::new_v4().to_string();
-    let turn = uuid::Uuid::new_v4().to_string();
-    let availability = support::claude(&version, true, true);
-    let scope = approvals.keeper.start_session(
-        &approvals.chat,
-        Engine::Claude,
-        &session,
-        &turn,
-        &cwd,
-        availability,
-    )?;
-    let endpoint = ClaudeEndpoint::bind(approvals.keeper.clone(), scope.clone()).await?;
-    let config = endpoint.config(exe, true)?;
-    let mut args = support::claude_args(&config, &session);
-    args.extend(["--include-partial-messages".into()]);
-    if let Some(model) = input.model {
-        args.extend(["--model".into(), model.into()]);
-    }
-    if !input.effort.is_empty() {
-        args.extend(["--effort".into(), input.effort.into()]);
-    }
-    args.extend(["--disallowedTools".into(), providers::DENY.join(",")]);
-
-    let mut c = providers::command(&Provider::Claude)?;
-    providers::isolate(&mut c, &Provider::Claude, input.config);
-    c.current_dir(&cwd).args(args);
-    let line = format!(
-        "{}\n",
-        json!({"type": "user", "message": {"role": "user", "content": input.prompt}})
-    );
-    // The bridge is supervised: it must outlive the child and is aborted with it.
-    let serve = tokio::spawn(endpoint.serve());
-    let result = providers::run_command(c, &line, &Provider::Claude, cancel, emit).await;
-    serve.abort();
-    let _ = approvals.keeper.disconnect(&scope, "Claude turn finished");
-    result
+    let _ = (approvals, exe);
+    crate::native_claude::execute(input, cancel, emit).await
 }
 
 /// Starts Claude with the approval bridge and waits until its MCP client has discovered the
 /// permission tool. No prompt is sent, so no model turn runs. Failure means no turn starts.
+#[cfg(test)]
 async fn probe(
     approvals: &Approvals,
     exe: &Path,
@@ -126,6 +93,7 @@ async fn probe(
     }
 }
 
+#[cfg(test)]
 async fn cli_version(config_dir: &Path) -> Result<String, String> {
     let mut c = providers::command(&Provider::Claude)?;
     providers::isolate(&mut c, &Provider::Claude, config_dir);

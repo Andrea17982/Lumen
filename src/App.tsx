@@ -7,6 +7,7 @@ import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
 import type { SettingsTab } from './settings/SettingsPanel';
 import { visibleInterval } from './lib/visible';
+import { useCaptureHotkey } from './lib/useCaptureHotkey';
 import {
   applyEvent,
   approvalSnapshot,
@@ -40,7 +41,6 @@ import {
   estimateTokens,
   lastMeasurement,
   contextUse as measureContext,
-  tokensForChars,
 } from './lib/context';
 import type {
   Account,
@@ -62,6 +62,8 @@ import { useI18n } from './lib/i18n';
 // Loaded on first use, so starting Lumen parses less code.
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
+const ProjectInspector = lazy(() => import('./components/ProjectInspector'));
+const ManualMerge = lazy(() => import('./components/ManualMerge'));
 const tokens = estimateTokens;
 
 export default function App() {
@@ -74,6 +76,8 @@ export default function App() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [draft, setDraft] = useState('');
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
   const [autoPolicy, setAutoPolicy] = useState(
     () => localStorage.getItem('lumen-auto-policy') || 'default',
   );
@@ -91,7 +95,14 @@ export default function App() {
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [agyNotice, setAgyNotice] = useState(false);
   const [agyHide, setAgyHide] = useState(false);
-  const [mode, setMode] = useState<Mode>('auto');
+  const [mode, setMode] = useState<Mode>(() => {
+    const saved = localStorage.getItem('lumen-provider-mode');
+    return ['claude', 'gpt', 'gemini', 'antigravity', 'ollama', 'auto', 'both'].includes(
+      saved || '',
+    )
+      ? (saved as Mode)
+      : 'claude';
+  });
   const [accountId, setAccountId] = useState('');
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
@@ -104,6 +115,7 @@ export default function App() {
   const [folderBusy, setFolderBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [inspector, setInspector] = useState(false);
   // The settings code loads the first time the panel opens, then stays mounted for its exit animation.
   const [settingsUsed, setSettingsUsed] = useState(false);
   if (settings && !settingsUsed) setSettingsUsed(true);
@@ -185,17 +197,38 @@ export default function App() {
     (activeSession.current?.id === selected ? activeSession.current : undefined);
   if (session) activeSession.current = session;
   const running = active(session?.status) || busy;
+  const slashMatch = /^\/([a-z]*)$/i.exec(draft);
+  const slashCommands = [
+    { name: 'workspace', description: t('Change the conversation folder') },
+    { name: 'compact', description: t('Continue in a fresh session with a summary') },
+  ].filter((command) => command.name.startsWith(slashMatch?.[1].toLowerCase() ?? ''));
+  const showSlash = !!slashMatch && !slashDismissed && slashCommands.length > 0;
   // The backend sizes the prompt the next turn would send. It refreshes when a run ends, the
   // chat changes or its permission mode changes; until then the meter uses visible text.
-  const [promptEstimate, setPromptEstimate] = useState<{ id: string; chars: number } | null>(null);
+  const [promptEstimate, setPromptEstimate] = useState<{ id: string; tokens: number } | null>(null);
+  const [draftEstimate, setDraftEstimate] = useState<{ text: string; tokens: number } | null>(null);
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      void call<number>('count_tokens', { text: draft })
+        .then((count) => {
+          if (active) setDraftEstimate({ text: draft, tokens: count });
+        })
+        .catch(() => {});
+    }, 150);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [draft]);
   const sessionId = session?.id;
   const sessionAccess = session?.accessMode;
   useEffect(() => {
     if (!sessionId || running) return;
     let gone = false;
     void call<number>('prompt_estimate', { id: sessionId })
-      .then((chars) => {
-        if (!gone) setPromptEstimate({ id: sessionId, chars });
+      .then((tokens) => {
+        if (!gone) setPromptEstimate({ id: sessionId, tokens });
       })
       .catch(() => {
         if (!gone) setPromptEstimate(null);
@@ -205,6 +238,11 @@ export default function App() {
     };
   }, [sessionId, sessionAccess, running]);
   const currentWorkspace = session?.workspace || workspace;
+  const attachCapture = useCallback(
+    (path: string) => setAttached((previous) => [...new Set([...previous, path])]),
+    [],
+  );
+  useCaptureHotkey(currentWorkspace, attachCapture, setError);
   const currentWorkspaceId = session ? session.workspaceId || '' : workspaceId;
   const namedWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
   useEffect(() => {
@@ -235,6 +273,22 @@ export default function App() {
     async () => setAccounts(await call<Account[]>('list_accounts')),
     [],
   );
+  useEffect(() => {
+    localStorage.setItem('lumen-provider-mode', mode);
+  }, [mode]);
+  useEffect(() => {
+    if (
+      accounts.length &&
+      mode !== 'auto' &&
+      mode !== 'both' &&
+      !accounts.some((a) => a.provider === mode)
+    ) {
+      setMode(
+        accounts.find((a) => ['claude', 'gpt'].includes(a.provider))?.provider ||
+          accounts[0].provider,
+      );
+    }
+  }, [accounts, mode]);
   const loadUsage = useCallback(async () => {
     const saved = await call<AccountUsage[]>('get_usage');
     setUsage((old) => mergeUsage(old, saved));
@@ -598,11 +652,38 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function send(override?: { text: string; mode: Mode; auditOf: string }) {
-    const text = override?.text ?? draft.trim();
+  async function send(
+    override?: { text: string; mode: Mode; auditOf: string },
+    commandText?: string,
+  ) {
+    const text = override?.text ?? commandText ?? draft.trim();
     const runMode = override?.mode ?? mode;
-    if (!text || running || folderBusy) return;
-    if (!override && (mode === 'claude' || mode === 'gpt') && !catalogReady) {
+    if (!text || folderBusy) return;
+    if (running) {
+      if (!override && /^\/(compact|workspace)(?:\s|$)/i.test(text))
+        setError(t('Wait for the current response to finish before using this command.'));
+      return;
+    }
+    if (!override && text.toLowerCase() === '/workspace') {
+      setError(t('Enter an absolute path after /workspace.'));
+      return;
+    }
+    if (!override && text.toLowerCase() === '/compact') {
+      if (!session || !messages.length) {
+        setError(t('Open a conversation with messages before compacting.'));
+        return;
+      }
+      setBusy(true);
+      setError('');
+      try {
+        if (await compact()) setDraft('');
+      } finally {
+        setBusy(false);
+        input.current?.focus();
+      }
+      return;
+    }
+    if (desktop && !override && (mode === 'claude' || mode === 'gpt') && !catalogReady) {
       setError('Load the official model catalog before sending.');
       return;
     }
@@ -751,15 +832,22 @@ export default function App() {
     }
   }
   async function compact(summary?: string) {
-    if (!session) return;
+    if (!session) return false;
     try {
       const next = await call<Session>('compact_session', { id: session.id, summary });
       await refresh();
       setSelected(next.id);
       setSheet(null);
+      return true;
     } catch (e) {
       setError(errorText(e));
+      return false;
     }
+  }
+  function selectSlash(name: string) {
+    setSlashDismissed(true);
+    setDraft(name === 'workspace' ? '/workspace ' : '/compact');
+    input.current?.focus();
   }
   // A draft belongs to the chat it was opened in.
   useEffect(() => {
@@ -810,7 +898,8 @@ export default function App() {
   }
   const historyTokens = messages.reduce((n, m) => n + tokens(m.text), 0);
   const attachedTokens = 0; // Arbitrary external files are not read merely to estimate context.
-  const draftTokens = tokens(draft) + attachedTokens;
+  const draftTokens =
+    (draftEstimate?.text === draft ? draftEstimate.tokens : tokens(draft)) + attachedTokens;
   const contextProvider =
     mode !== 'auto' && mode !== 'both'
       ? mode
@@ -821,16 +910,14 @@ export default function App() {
           ? accounts[0].provider
           : null));
   const promptTokens =
-    promptEstimate && promptEstimate.id === session?.id
-      ? tokensForChars(promptEstimate.chars)
-      : historyTokens;
+    promptEstimate && promptEstimate.id === session?.id ? promptEstimate.tokens : historyTokens;
   // Only Claude reports its window and CLI overhead; other providers stay a local estimate.
   const contextUse = contextProvider
     ? measureContext(
         promptTokens,
         draftTokens,
         contextWindow(contextProvider, model || plan?.model || ''),
-        contextProvider === 'claude' ? lastMeasurement(messages) : null,
+        ['claude', 'gpt'].includes(contextProvider) ? lastMeasurement(messages) : null,
       )
     : null;
   const blob = /[A-Za-z0-9+/=]{4000,}/.test(draft);
@@ -900,6 +987,7 @@ export default function App() {
     commit: () => void openCommit(),
     usage: () => setUsageOpen(true),
     settings: openSettings,
+    inspector: currentWorkspace ? () => setInspector((v) => !v) : undefined,
     access: (mode) => void changeAccessMode(mode),
     theme: setTheme,
     sessionCommands,
@@ -1282,7 +1370,18 @@ export default function App() {
           folderBusy={folderBusy || running}
           onOpenSidebar={() => setSidebar(true)}
           onOpenSettings={() => openSettings()}
+          onOpenInspector={currentWorkspace ? () => setInspector((v) => !v) : undefined}
         />
+        {inspector && currentWorkspace && (
+          <Suspense fallback={null}>
+            <ProjectInspector
+              folder={currentWorkspace}
+              session={session?.id}
+              onClose={() => setInspector(false)}
+              onError={setError}
+            />
+          </Suspense>
+        )}
         {renaming && session && (
           <form
             className="rename-bar"
@@ -1321,6 +1420,24 @@ export default function App() {
                 Array.isArray(g) ? (
                   <div className="lanes" key={g[0].id}>
                     <div className="lane-grid">{g.map((m) => messageView(m, true))}</div>
+                    {session &&
+                      !running &&
+                      g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && (
+                        <Suspense fallback={null}>
+                          <ManualMerge
+                            session={session.id}
+                            message={
+                              g.find((m) => m.activity.some((a) => a.kind === 'worktree'))!.id
+                            }
+                            onApplied={async () => {
+                              setMessages(
+                                await call<Message[]>('get_messages', { id: session.id }),
+                              );
+                              await refresh();
+                            }}
+                          />
+                        </Suspense>
+                      )}
                     {g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && !running && (
                       <button
                         className="text-button lane-discard"
@@ -1399,14 +1516,70 @@ export default function App() {
           )}
           {plan && <PlanLine plan={plan} />}
           <div className="composer">
+            {showSlash && (
+              <div
+                className="slash-menu"
+                id="slash-menu"
+                role="listbox"
+                aria-label={t('Available commands')}
+              >
+                {slashCommands.map((command, index) => (
+                  <button
+                    key={command.name}
+                    id={`slash-${command.name}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === Math.min(slashIndex, slashCommands.length - 1)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectSlash(command.name)}
+                  >
+                    <strong>/{command.name}</strong>
+                    <span>{command.description}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={input}
               aria-label="Message"
+              aria-autocomplete="list"
+              aria-controls={showSlash ? 'slash-menu' : undefined}
+              aria-activedescendant={
+                showSlash
+                  ? `slash-${slashCommands[Math.min(slashIndex, slashCommands.length - 1)].name}`
+                  : undefined
+              }
               placeholder={t("What's on your mind?")}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setSlashDismissed(false);
+                setSlashIndex(0);
+              }}
               onPaste={(e) => void pasteImage(e)}
               onKeyDown={(e) => {
+                if (showSlash && !e.nativeEvent.isComposing) {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSlashDismissed(true);
+                    return;
+                  }
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSlashIndex(
+                      (current) =>
+                        (current + (e.key === 'ArrowDown' ? 1 : -1) + slashCommands.length) %
+                        slashCommands.length,
+                    );
+                    return;
+                  }
+                  if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+                    e.preventDefault();
+                    selectSlash(slashCommands[Math.min(slashIndex, slashCommands.length - 1)].name);
+                    return;
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   void send();
@@ -1447,7 +1620,7 @@ export default function App() {
                 setCatalogReady(false);
                 setAdvanced(false);
               }}
-              orchestra={mode === 'auto' && !!appSettings?.orchestra}
+              orchestra={mode !== 'both' && !!appSettings?.orchestra}
               onOrchestraOff={() =>
                 appSettings &&
                 void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
@@ -1469,7 +1642,8 @@ export default function App() {
               canSend={
                 !!draft.trim() &&
                 !folderBusy &&
-                !(desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady)
+                (draft.trim().toLowerCase() === '/compact' ||
+                  !(desktop && (mode === 'claude' || mode === 'gpt') && !catalogReady))
               }
               onSend={() => {
                 if (running && selected)

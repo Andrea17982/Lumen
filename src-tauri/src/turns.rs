@@ -30,6 +30,9 @@ pub async fn send_message(
     if text.trim().is_empty() || text.len() > 100_000 {
         return Err("Enter a message of up to 100,000 bytes".into());
     }
+    if context::pasted_lockfile(&text) {
+        return Err("This message contains a complete lockfile. Send the relevant entries or describe the dependency change instead.".into());
+    }
     let mut session = core.store.session(&id)?;
     let workspace_changed = crate::workspace::apply(&app, &core, &id, &text)?;
     if workspace_changed {
@@ -109,8 +112,7 @@ pub async fn send_message(
     }
     // Orchestra: complex Auto work is planned and split across agents.
     let mut orchestra_nogit = false;
-    if options.mode == "auto"
-        && options.audit_of.is_none()
+    if options.audit_of.is_none()
         && plan.strategy != "broadcast"
         && core.settings.lock().map(|s| s.orchestra).unwrap_or(false)
         && verdict.complex
@@ -333,6 +335,7 @@ fn continue_reply(
         .map(|n| Resume {
             session: n.session,
             prompt,
+            replay: None,
         })
 }
 
@@ -343,6 +346,8 @@ pub(crate) struct Native {
     pub account: String,
     pub session: String,
     pub workspace: String,
+    #[serde(default)]
+    pub layout_revision: Option<String>,
 }
 
 /// A native session to continue, and the prompt that carries only the new request.
@@ -350,6 +355,7 @@ pub(crate) struct Native {
 pub(crate) struct Resume {
     pub session: String,
     pub prompt: String,
+    pub replay: Option<RunOptions>,
 }
 
 fn native_of(m: &Message) -> Option<Native> {
@@ -368,9 +374,9 @@ pub(crate) fn resumable(
     exclude: &[&str],
     account: &Account,
     workspace: &str,
-    access: AccessMode,
+    _access: AccessMode,
 ) -> Option<(String, Message)> {
-    if access == AccessMode::Ask || !matches!(account.provider, Provider::Claude | Provider::Gpt) {
+    if !matches!(account.provider, Provider::Claude | Provider::Gpt) {
         return None;
     }
     let shown: Vec<&Message> = messages
@@ -411,11 +417,23 @@ pub(crate) async fn resume_prompt(
         )
     };
     let text = context::spill(&workspace, &request.text).0;
-    let state = crate::workstate::context(core, s, options.access()).ok()?;
+    let (revision, mut layout) = crate::layout::context(&workspace);
+    let previous = messages
+        .iter()
+        .rev()
+        .filter(|m| !exclude.contains(&m.id.as_str()))
+        .find_map(native_of)
+        .and_then(|n| n.layout_revision);
+    if revision == previous {
+        layout.clear();
+    } else if revision.is_none() {
+        layout = "\nThe user removed the saved layout constraints. No previous canvas constraint remains active.\n".into();
+    }
     Some(Resume {
         session,
+        replay: Some(options.clone()),
         prompt: format!(
-            "[Lumen: {}]\n{state}\n{text}{attached}",
+            "[Lumen: {}]\n{layout}{text}{attached}",
             permission_text(options.access())
         ),
     })
@@ -460,17 +478,14 @@ pub(crate) async fn stage_with(
     resume: Option<&Resume>,
 ) -> Result<String, String> {
     let config = config_dir(core, a);
-    let resume = resume.filter(|_| {
-        access != AccessMode::Ask && matches!(a.provider, Provider::Claude | Provider::Gpt)
-    });
+    let resume = resume.filter(|_| matches!(a.provider, Provider::Claude | Provider::Gpt));
     let native_skills = matches!(a.provider, Provider::Claude | Provider::Gpt);
     let stripped = if native_skills {
         without(prompt, SKILLS_OPEN, SKILLS_CLOSE)
     } else {
         prompt.to_owned()
     };
-    // Only Claude and Codex outside Ask first get the graph server.
-    let stripped = if native_skills && access != AccessMode::Ask {
+    let stripped = if !matches!(a.provider, Provider::Ollama) {
         stripped
     } else {
         without(&stripped, GRAPH_OPEN, GRAPH_CLOSE)
@@ -479,7 +494,11 @@ pub(crate) async fn stage_with(
     let full_prompt = prompt;
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let workspace = PathBuf::from(&s.workspace);
+    let layout_revision = crate::layout::context(&workspace).0;
     let mut checkpoint = std::time::Instant::now();
+    if !out.activity.iter().any(|a| a.kind == "workspace-root") {
+        note(app, &s.id, out, "workspace-root", s.workspace.clone());
+    }
     let models = models_for(core, a, false, Some(cancel.clone())).await?;
     let selected = model
         .and_then(|id| models.iter().find(|m| m.id == id))
@@ -512,7 +531,7 @@ pub(crate) async fn stage_with(
     // Context measurement for the meter: the first request of the turn carries the prompt plus
     // the CLI's own instructions and tools, so the difference from the local estimate is the
     // overhead every later prompt will also pay.
-    let prompt_tokens = (prompt.chars().count() as u64).div_ceil(4);
+    let prompt_tokens = context::estimate(prompt);
     let mut measured = Measured::default();
     let mut native: Option<String> = None;
     let retry_cancel = cancel.clone();
@@ -536,6 +555,8 @@ pub(crate) async fn stage_with(
         },
         cancel,
         |activity| {
+            let input_needed =
+                activity.kind == "interaction" || activity.kind == "interaction-result";
             if activity.kind == "quota" {
                 crate::record_claude_usage(core, app, &a.id, &activity.text);
                 return;
@@ -554,9 +575,11 @@ pub(crate) async fn stage_with(
                 if activity.kind == "window" {
                     measured.window = Some(n);
                 } else {
-                    measured
-                        .overhead
-                        .get_or_insert(n.saturating_sub(prompt_tokens));
+                    if a.provider == Provider::Claude && resume.is_none() {
+                        measured
+                            .overhead
+                            .get_or_insert(n.saturating_sub(prompt_tokens));
+                    }
                     measured.latest = n;
                 }
                 // Only the latest measurement matters: each request replaces the last one.
@@ -576,14 +599,9 @@ pub(crate) async fn stage_with(
                 event(app, &s.id, &out.id, &activity.kind, &activity.text);
             } else if !["delta", "replace"].contains(&activity.kind.as_str()) {
                 event(app, &s.id, &out.id, &activity.kind, &activity.text);
-                if out.activity.len() < 500 {
-                    out.activity.push(Activity {
-                        kind: activity.kind,
-                        text: activity.text.chars().take(16000).collect(),
-                    });
-                }
+                crate::activity::record(&mut out.activity, activity);
             }
-            if visible && checkpoint.elapsed().as_millis() > 750 {
+            if visible && (input_needed || checkpoint.elapsed().as_millis() > 750) {
                 let _ = core.store.save_message(&s.id, out);
                 checkpoint = std::time::Instant::now();
             }
@@ -591,16 +609,25 @@ pub(crate) async fn stage_with(
     )
     .await;
     if let (Some(_), Err(e)) = (resume, &result) {
-        if e != "Cancelled" && !e.starts_with(limits::RATE_LIMIT) && out.text.trim().is_empty() {
+        if resume_unavailable(e) && out.text.trim().is_empty() {
             drop(permit);
             out.activity.retain(|x| x.kind != "native");
+            let replay = if full_prompt.is_empty() {
+                if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
+                    Some(build_prompt(core, s, &[&out.id], options).await?.0)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             return Box::pin(stage_with(
                 app,
                 core,
                 s,
                 out,
                 a,
-                full_prompt,
+                replay.as_deref().unwrap_or(full_prompt),
                 model,
                 effort,
                 access,
@@ -613,7 +640,7 @@ pub(crate) async fn stage_with(
     }
     if result.is_ok() {
         core.limits.record_turn(&a.id, now());
-        if (visible || resume.is_some()) && access != AccessMode::Ask {
+        if visible || resume.is_some() {
             // Codex may not repeat the id on resume; the continued session keeps its own.
             if let Some(session) = native.or_else(|| resume.map(|r| r.session.clone())) {
                 out.activity.retain(|x| x.kind != "native");
@@ -623,6 +650,7 @@ pub(crate) async fn stage_with(
                         account: a.id.clone(),
                         session,
                         workspace: s.workspace.clone(),
+                        layout_revision,
                     })
                     .unwrap_or_default(),
                 });
@@ -630,6 +658,20 @@ pub(crate) async fn stage_with(
         }
     }
     result
+}
+
+fn resume_unavailable(error: &str) -> bool {
+    let error = error.to_lowercase();
+    [
+        "session not found",
+        "thread not found",
+        "no conversation found",
+        "could not find thread",
+        "unknown session",
+        "unknown thread",
+    ]
+    .iter()
+    .any(|s| error.contains(s))
 }
 
 /// Run follow-up work (Orchestra steps) as this conversation's job: saves the
@@ -773,8 +815,27 @@ async fn stage_fallback(
             } else {
                 None
             };
+            let replay = if prompt.is_empty() {
+                if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
+                    Some(build_prompt(core, s, &[&out.id], options).await?.0)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let t = stage(
-                app, core, s, out, &b, prompt, model, effort, access, cancel, visible,
+                app,
+                core,
+                s,
+                out,
+                &b,
+                replay.as_deref().unwrap_or(prompt),
+                model,
+                effort,
+                access,
+                cancel,
+                visible,
             )
             .await?;
             Ok((t, b))
@@ -830,7 +891,11 @@ pub(crate) async fn build_prompt(
     let map = repo_references(core, s, &workspace, &messages).await;
     let prompt = assemble_prompt(
         &shared,
-        &format!("{}{map}", notes_block(&workspace)),
+        &format!(
+            "{}{map}{}",
+            notes_block(&workspace),
+            crate::layout::context(&workspace).1
+        ),
         permission_text(options.access()),
         &fit_history(&messages, &history, exclude, 100_000),
         &attached,
@@ -906,7 +971,18 @@ fn history_text(messages: &[Message], workspace: &Path, exclude: &[&str], write:
             } else {
                 format!("\n[files changed in this turn: {}]", files.join("; "))
             };
-            format!("{}:\n{}{}", m.role, text, files)
+            let answers = crate::interactions::answer_context(&m.activity).join("\n");
+            format!(
+                "{}:\n{}{}{}",
+                m.role,
+                text,
+                files,
+                if answers.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{answers}")
+                }
+            )
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -995,13 +1071,13 @@ fn assemble_prompt(
         format!("{SKILLS_OPEN}{shared}{SKILLS_CLOSE}")
     };
     format!(
-        "{shared}{notes}\nYou are working in Lumen, alongside another assistant that may have produced earlier turns. Never read lockfiles, .env files or credentials. Respond to the final user request. Only claim checks that actually ran; Lumen's automatic validation is recorded separately after edits. {permission}\n\n{context_text}{attached}{audit}"
+        "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {permission}\n\n{context_text}{attached}{audit}"
     )
 }
 
 /// Characters in the prompt the next turn would send, for the context meter. Attachments and
 /// audit diffs are left out, and nothing is written or read from git, so the estimate is cheap.
-pub(crate) fn prompt_chars(core: &Core, s: &Session) -> Result<usize, String> {
+pub(crate) fn prompt_tokens(core: &Core, s: &Session) -> Result<usize, String> {
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
     let history = history_text(&messages, &workspace, &[], false);
@@ -1019,7 +1095,7 @@ pub(crate) fn prompt_chars(core: &Core, s: &Session) -> Result<usize, String> {
         .work_state(&s.id)?
         .map(|s| s.prompt())
         .unwrap_or_default();
-    Ok(prompt.chars().count() + state.chars().count())
+    Ok(context::estimate(&format!("{prompt}{state}")) as usize)
 }
 
 /// Estimated prompt size of a chat, for the context meter.
@@ -1029,7 +1105,7 @@ pub async fn prompt_estimate(
     id: String,
 ) -> Result<usize, String> {
     let s = core.store.session(&id)?;
-    prompt_chars(&core, &s)
+    prompt_tokens(&core, &s)
 }
 
 pub(crate) fn workspace_lock(
@@ -1190,8 +1266,22 @@ async fn run_plan(
             checkpoint_message(core, s, &user.id).await?;
         }
     }
-    let baseline = crate::impact::snapshot(core, Path::new(&s.workspace), options.access()).await?;
-    let (prompt, history) = build_prompt(core, s, &[&out.id], options).await?;
+    let verify = core
+        .settings
+        .lock()
+        .map(|s| s.verify_changes)
+        .unwrap_or(false);
+    let baseline = if verify {
+        crate::impact::snapshot(core, Path::new(&s.workspace), options.access()).await?
+    } else {
+        None
+    };
+    let resume = resume_prompt(core, s, &[&out.id], &writer, options).await;
+    let (prompt, history) = if resume.is_some() && plan.strategy == "single" {
+        (String::new(), String::new())
+    } else {
+        build_prompt(core, s, &[&out.id], options).await?
+    };
     let partner_model = if let Some(id) = &plan.partner_account {
         let partner = account(core, id)?;
         let models = models_for(core, &partner, false, Some(cancel.clone())).await?;
@@ -1204,14 +1294,13 @@ async fn run_plan(
     } else {
         None
     };
-    let resume = resume_prompt(core, s, &[&out.id], &writer, options).await;
     if resume.is_some() {
         note(
             app,
             &s.id,
             out,
             "resume",
-            "Continuing the CLI's own session with the new message and current task state.".into(),
+            "Continuing the native session with the new request and current permissions.".into(),
         );
     }
     let (mut draft, writer) = stage_fallback(
@@ -1370,6 +1459,15 @@ pub(crate) async fn self_heal(
     baseline: Option<Arc<crate::codegraph::Graph>>,
     cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
+    if !out.activity.iter().any(|a| a.kind == "orchestra")
+        && !core
+            .settings
+            .lock()
+            .map(|s| s.verify_changes)
+            .unwrap_or(false)
+    {
+        return Ok(());
+    }
     if options.access() == AccessMode::ReadOnly {
         return Ok(());
     }
@@ -1487,14 +1585,14 @@ fn record_validation(
     Ok(())
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Lane {
-    top: String,
-    path: String,
-    branch: String,
-    base: String,
-    files: usize,
+pub(crate) struct Lane {
+    pub top: String,
+    pub path: String,
+    pub branch: String,
+    pub base: String,
+    pub files: usize,
 }
 
 /// Same prompt to Claude and ChatGPT in parallel, each in its own message.
@@ -1663,7 +1761,7 @@ async fn run_broadcast(
     }
 }
 
-fn lane_of(m: &Message) -> Option<Lane> {
+pub(crate) fn lane_of(m: &Message) -> Option<Lane> {
     m.activity
         .iter()
         .find(|a| a.kind == "worktree")
@@ -1955,6 +2053,7 @@ mod resume_tests {
                 account: account.into(),
                 session: "sid".into(),
                 workspace: workspace.into(),
+                layout_revision: None,
             })
             .unwrap(),
         }
@@ -1979,10 +2078,60 @@ mod resume_tests {
             resumable(&chat, &["out"], &claude(), "/w", AccessMode::FileEdits).unwrap();
         assert_eq!((sid.as_str(), req.id.as_str()), ("sid", "u2"));
         assert!(resumable(&chat, &["out"], &claude(), "/other", AccessMode::FileEdits).is_none());
-        assert!(resumable(&chat, &["out"], &claude(), "/w", AccessMode::Ask).is_none());
+        assert!(resumable(&chat, &["out"], &claude(), "/w", AccessMode::Ask).is_some());
         let mut other = claude();
         other.id = "b".into();
         assert!(resumable(&chat, &["out"], &other, "/w", AccessMode::FileEdits).is_none());
+    }
+
+    #[tokio::test]
+    async fn native_resume_sends_only_changed_or_removed_layout_constraints() {
+        use crate::test_support::Fixture;
+        let f = Fixture::new();
+        let folder = dunce::canonicalize(&f.root)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let s = f.core.store.create(folder.clone()).unwrap();
+        let request = msg("u2", "user", vec![]);
+        let save = |revision: Option<String>| {
+            let mut reply = msg("a1", "assistant", vec![]);
+            reply.activity.push(Activity {
+                kind: "native".into(),
+                text: serde_json::to_string(&Native {
+                    account: "acc".into(),
+                    session: "sid".into(),
+                    workspace: folder.clone(),
+                    layout_revision: revision,
+                })
+                .unwrap(),
+            });
+            f.core.store.save_message(&s.id, &reply).unwrap();
+            f.core.store.save_message(&s.id, &request).unwrap();
+        };
+        let options = Fixture::options(AccessMode::Autopilot);
+        save(None);
+        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
+            .await
+            .unwrap();
+        assert!(!p.prompt.contains("layout constraint"));
+        let spec=serde_json::from_value(serde_json::json!({"version":1,"width":800,"height":600,"blocks":[{"id":"nav","label":"Navigation","role":"navigation","x":0,"y":0,"width":200,"height":600,"notes":"Keep visible"}]})).unwrap();
+        crate::layout::save_layout(folder.clone(), spec).unwrap();
+        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
+            .await
+            .unwrap();
+        assert!(p.prompt.contains("Keep visible"));
+        assert!(!p.prompt.contains("text a1"));
+        save(crate::layout::context(&f.root).0);
+        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
+            .await
+            .unwrap();
+        assert!(!p.prompt.contains("Keep visible"));
+        std::fs::remove_file(f.root.join(".lumen/layout.json")).unwrap();
+        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
+            .await
+            .unwrap();
+        assert!(p.prompt.contains("removed the saved layout"));
     }
 
     #[test]

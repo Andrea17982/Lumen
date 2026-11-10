@@ -2,6 +2,9 @@ import { lazy, Suspense, useState } from 'react';
 import { Check, ChevronDown, Copy, MapPin, Paperclip, Repeat2, RotateCcw } from 'lucide-react';
 import AttachmentPreview from './AttachmentPreview';
 import WorkingIndicator from './WorkingIndicator';
+import NativeQuestions from './NativeQuestions';
+import ChildSessions from './ChildSessions';
+import ResponseImage from './ResponseImage';
 import { HIDDEN, orchestraOf, providerOf } from '../lib/messages';
 import { splitReasoning, workPhase } from '../lib/reasoning';
 import type { Account, Message } from '../lib/types';
@@ -55,6 +58,7 @@ export default function MessageView({
     .filter(Boolean)
     .join('\n\n');
   const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
+  const messageFolder = m.activity.find((a) => a.kind === 'workspace-root')?.text || workspace;
   const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
   const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
   const from = providerOf(m);
@@ -146,6 +150,8 @@ export default function MessageView({
           </div>
         </details>
       )}
+      <NativeQuestions activity={m.activity} live={live} />
+      <ChildSessions activity={m.activity} />
       {orchestraState && (
         <Suspense fallback={null}>
           <OrchestraCard
@@ -162,7 +168,7 @@ export default function MessageView({
       {!(orchestraState && ['questions', 'plan'].includes(orchestraState.stage)) && (
         <div className="prose">
           <Suspense fallback={<p>{inline.answer}</p>}>
-            <MessageBody text={inline.answer} />
+            <MessageBody text={inline.answer} folder={messageFolder} />
           </Suspense>
         </div>
       )}
@@ -177,6 +183,16 @@ export default function MessageView({
           </button>
         </p>
       )}
+      {m.activity
+        .filter((a) => a.kind === 'image')
+        .map((a, i) => (
+          <ResponseImage
+            key={i}
+            href={a.text}
+            alt={a.text.split(/[\\/]/).at(-1) || 'Image'}
+            folder={messageFolder}
+          />
+        ))}
       {attachments && (
         <div className="attachment-chips">
           {attachments.map((f) => (

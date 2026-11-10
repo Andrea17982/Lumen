@@ -1,3 +1,4 @@
+mod activity;
 mod approvals;
 mod approvals_codex;
 mod assets;
@@ -9,17 +10,26 @@ mod diagnostics;
 mod gitops;
 mod godot;
 mod graph_mcp;
+mod hotkeys;
 mod impact;
+mod inspector;
 mod integrations;
+mod interactions;
 mod layers;
+mod layout;
 mod limits;
+mod media;
+mod merge;
+mod migrations;
 mod models;
+mod native_claude;
 mod ollama;
 mod orchestra;
 mod proc;
 mod projecttools;
 mod providers;
 mod repomap;
+mod review;
 mod router;
 mod scheduling;
 mod screens;
@@ -31,6 +41,7 @@ mod tray;
 mod turns;
 mod usage;
 mod validation;
+mod variant_preview;
 mod workspace;
 mod workstate;
 use models::*;
@@ -522,6 +533,7 @@ async fn save_settings(
         .unwrap_or(false);
     tray::sync_tray(&app, value.close_to_tray)?;
     tray::sync_autostart(&app, value.open_at_login)?;
+    hotkeys::sync(&app, value.capture_hotkey)?;
     value.save(&core.root)?;
     *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
     Ok(value)
@@ -533,8 +545,9 @@ async fn reset_settings(
     core: tauri::State<'_, Arc<Core>>,
 ) -> Result<settings::AppSettings, String> {
     let value = settings::AppSettings::default();
-    tray::sync_tray(&app, false)?;
+    tray::sync_tray(&app, value.close_to_tray)?;
     tray::sync_autostart(&app, false)?;
+    hotkeys::sync(&app, false)?;
     value.save(&core.root)?;
     *core.settings.lock().map_err(|_| "Settings lock failed")? = value.clone();
     Ok(value)
@@ -678,6 +691,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![tray::AUTOSTART_ARG]),
@@ -727,6 +741,7 @@ pub fn run() {
             let handle = app.handle().clone();
             let _ = tray::sync_tray(&handle, prefs.close_to_tray);
             let _ = tray::sync_autostart(&handle, prefs.open_at_login);
+            let _ = hotkeys::sync(&handle, prefs.capture_hotkey);
             let at_login = std::env::args().any(|a| a == tray::AUTOSTART_ARG);
             if !(at_login && prefs.close_to_tray) {
                 tray::show_main(&handle);
@@ -734,6 +749,23 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            godot::godot_visual_settings,
+            godot::set_godot_visual_settings,
+            godot::godot_visual_action,
+            merge::preview_manual_merge,
+            variant_preview::visual_variants,
+            variant_preview::start_variant_preview,
+            variant_preview::stop_variant_preview,
+            merge::apply_manual_merge,
+            layout::load_layout,
+            layout::save_layout,
+            hotkeys::capture_hotkey_registered,
+            inspector::inspect_json,
+            inspector::inspect_sqlite,
+            review::file_change_diff,
+            context::count_tokens,
+            interactions::pending_questions,
+            interactions::answer_question,
             list_sessions,
             create_session,
             update_session,
@@ -771,6 +803,8 @@ pub fn run() {
             screens::capture_screenshot,
             screens::save_pasted_image,
             screens::attachment_image_data,
+            media::response_image_data,
+            media::open_response_link,
             screens::import_screenshot,
             screens::list_screenshots,
             screens::rename_screenshot,

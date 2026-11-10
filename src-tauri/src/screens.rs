@@ -104,6 +104,24 @@ fn write_sidecar(image: &Path, shot: &Screenshot) -> Result<(), String> {
     std::fs::write(sidecar(image), text).map_err(|e| e.to_string())
 }
 
+pub(crate) fn save_mcp_image(root: &Path, data: &str, label: &str) -> Result<Screenshot, String> {
+    if data.len() > 20 * 1024 * 1024 {
+        return Err("The viewport image exceeds 20 MB".into());
+    }
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+        .map_err(|_| "Invalid viewport image")?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    reader.limits(limits);
+    let image = reader.decode().map_err(|e| e.to_string())?;
+    save(root, &image.to_rgba8(), label, label.into())
+}
+
 fn chrono_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

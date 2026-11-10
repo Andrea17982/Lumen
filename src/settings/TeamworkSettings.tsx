@@ -31,7 +31,9 @@ export default function TeamworkSettings({
         <p>{t('How Claude, ChatGPT and the other connected assistants help each other.')}</p>
         <Switch
           label="Orchestra"
-          hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
+          hint={t(
+            'When enabled, split complex tasks across agents. Turn off for direct native sessions.',
+          )}
           checked={s.orchestra}
           disabled={busy}
           onChange={(v) => save({ ...s, orchestra: v })}
@@ -46,7 +48,9 @@ export default function TeamworkSettings({
       <h4>Orchestra</h4>
       <Switch
         label="Orchestra"
-        hint={t('For complex tasks, plan and split work across agents. Works with Auto.')}
+        hint={t(
+          'When enabled, split complex tasks across agents. Turn off for direct native sessions.',
+        )}
         checked={s.orchestra}
         disabled={busy}
         onChange={(v) => save({ ...s, orchestra: v })}
@@ -60,6 +64,15 @@ export default function TeamworkSettings({
         />
       )}
       <h4>{t('Reliability')}</h4>
+      <Switch
+        label={t('Verify changes after native turns')}
+        hint={t(
+          'Run additional Lumen project checks after the CLI finishes. Native sessions otherwise use the CLI’s own tools and checks.',
+        )}
+        checked={!!s.verifyChanges}
+        disabled={busy}
+        onChange={(v) => save({ ...s, verifyChanges: v })}
+      />
       <Switch
         label={t('Switch on rate limit')}
         hint={t('If one provider hits its limit, another continues the same message.')}

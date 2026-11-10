@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Play, PlugZap, RefreshCw, SquareArrowOutUpRight } from 'lucide-react';
 import { call } from '../lib/bridge';
+import FileDiff from './FileDiff';
 import { errorText, IconButton, nameOf } from '../lib/util';
 import type {
   ChangeLayer,
@@ -187,16 +188,18 @@ export default function ProjectTools({
                 {layer.name} <small>{layer.files.length} file(s)</small>
               </strong>
               {layer.files.slice(0, 12).map((f) => (
-                <button
-                  key={f.path}
-                  className="text-button"
-                  disabled={f.status === 'D'}
-                  onClick={() => void open(f.path, 1)}
-                >
-                  <small>
-                    {f.status} {f.path}
-                  </small>
-                </button>
+                <div key={f.path}>
+                  <button
+                    className="text-button"
+                    disabled={f.status === 'D'}
+                    onClick={() => void open(f.path, 1)}
+                  >
+                    <small>
+                      {f.status} {f.path}
+                    </small>
+                  </button>
+                  <FileDiff folder={folder} file={f.path} />
+                </div>
               ))}
               {layer.files.length > 12 && <small>and {layer.files.length - 12} more</small>}
               {layer.checks.length === 0 ? (

@@ -62,12 +62,20 @@ export function appCommands(c: {
   handoff: () => void;
   commit: () => void;
   usage: () => void;
+  inspector?: () => void;
   settings: (tab: SettingsTab) => void;
   access: (mode: AccessMode) => void;
   theme: (name: string) => void;
   sessionCommands: (s: Session) => Command[];
 }): Command[] {
   return [
+    {
+      id: 'project-inspector',
+      label: 'Project inspector',
+      group: 'Project',
+      available: !!c.inspector,
+      run: () => c.inspector?.(),
+    },
     {
       id: 'new-chat',
       label: 'New conversation',

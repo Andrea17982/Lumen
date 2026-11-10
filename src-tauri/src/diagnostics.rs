@@ -271,7 +271,8 @@ async fn collect(
         .to_string();
     write(&mut output, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
         "processId":std::process::id(), "rootUri":uri,"workspaceFolders":[{"uri":uri,"name":"Lumen project"}],
-        "capabilities":{"window":{"workDoneProgress":true},"workspace":{"configuration":true,"applyEdit":false},"textDocument":{"publishDiagnostics":{"versionSupport":true},"diagnostic":{"dynamicRegistration":false}}},
+        "clientInfo":{"name":"Lumen","version":env!("CARGO_PKG_VERSION")},
+        "capabilities":{"window":{"workDoneProgress":true},"workspace":{"configuration":true,"applyEdit":false,"diagnostics":{"refreshSupport":true}},"textDocument":{"publishDiagnostics":{"versionSupport":true},"diagnostic":{"dynamicRegistration":false}}},
         "initializationOptions":server.initialization_options
     }})).await?;
     let initialized = loop {
@@ -280,7 +281,12 @@ async fn collect(
             .map_err(|_| "Diagnostics timed out during initialization")??;
         if message["id"] == 1 && message.get("method").is_none() {
             if message.get("error").is_some() {
-                return Err("Language server rejected initialization".into());
+                return Err(format!(
+                    "Language server rejected initialization: {}",
+                    message["error"]["message"]
+                        .as_str()
+                        .unwrap_or("Unknown protocol error")
+                ));
             }
             break message;
         }
@@ -296,8 +302,15 @@ async fn collect(
     let pull = initialized["result"]["capabilities"]
         .get("diagnosticProvider")
         .is_some_and(|v| v != &Value::Bool(false) && !v.is_null());
+    #[cfg(test)]
+    if std::env::var_os("LUMEN_LSP_TRACE").is_some() {
+        eprintln!("LSP pull={pull}");
+    }
     let mut documents = BTreeMap::new();
+    let mut document_paths = BTreeMap::new();
     let mut requests = BTreeMap::new();
+    let mut next_request = 10_u64;
+    let mut latest_request = BTreeMap::new();
     for file in files.iter().take(24) {
         let path = crate::context::jail(root, file)?;
         if !path.is_file()
@@ -310,10 +323,16 @@ async fn collect(
             .map_err(|_| "Invalid document URI")?
             .to_string();
         documents.insert(uri.clone(), file.clone());
+        document_paths.insert(
+            dunce::canonicalize(&path).map_err(|e| e.to_string())?,
+            file.clone(),
+        );
         write(&mut output, json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":uri,"languageId":language(&path),"version":1,"text":text}}})).await?;
         if pull {
-            let id = requests.len() as u64 + 10;
+            let id = next_request;
+            next_request += 1;
             requests.insert(id, file.clone());
+            latest_request.insert(file.clone(), id);
             write(&mut output, json!({"jsonrpc":"2.0","id":id,"method":"textDocument/diagnostic","params":{"textDocument":{"uri":uri}}})).await?;
         }
     }
@@ -321,10 +340,32 @@ async fn collect(
         return Err("No readable changed documents for this language server".into());
     }
     let mut observed: BTreeMap<String, Vec<Diagnostic>> = BTreeMap::new();
+    let mut published: BTreeMap<String, Vec<Diagnostic>> = BTreeMap::new();
+    let mut refreshes = 0;
+    let mut retry_pending: BTreeSet<String> = BTreeSet::new();
+    let mut retry_count: BTreeMap<String, u8> = BTreeMap::new();
+    let mut retry_at = tokio::time::Instant::now();
     let mut progress = BTreeSet::new();
     let mut incomplete = false;
     loop {
-        let done = observed.len() == documents.len() && requests.is_empty() && progress.is_empty();
+        if !retry_pending.is_empty()
+            && progress.is_empty()
+            && tokio::time::Instant::now() >= retry_at
+        {
+            for file in std::mem::take(&mut retry_pending) {
+                if let Some((uri, _)) = documents.iter().find(|(_, path)| **path == file) {
+                    let id = next_request;
+                    next_request += 1;
+                    requests.insert(id, file.clone());
+                    latest_request.insert(file, id);
+                    write(&mut output,json!({"jsonrpc":"2.0","id":id,"method":"textDocument/diagnostic","params":{"textDocument":{"uri":uri}}})).await?;
+                }
+            }
+        }
+        let done = observed.len() == documents.len()
+            && requests.is_empty()
+            && progress.is_empty()
+            && retry_pending.is_empty();
         let message = if done {
             match tokio::time::timeout(Duration::from_millis(500), read(&mut input)).await {
                 Ok(Ok(message)) => message,
@@ -335,21 +376,50 @@ async fn collect(
                 Err(_) => break,
             }
         } else {
-            match tokio::time::timeout_at(deadline, read(&mut input)).await {
+            let waiting = if !retry_pending.is_empty() && progress.is_empty() {
+                deadline.min(retry_at)
+            } else {
+                deadline
+            };
+            match tokio::time::timeout_at(waiting, read(&mut input)).await {
                 Ok(Ok(message)) => message,
+                Err(_) if waiting < deadline => continue,
                 _ => {
                     incomplete = true;
                     break;
                 }
             }
         };
+        #[cfg(test)]
+        if std::env::var_os("LUMEN_LSP_TRACE").is_some()
+            && message["params"]["value"]["kind"] != "report"
+        {
+            eprintln!(
+                "LSP {} id={} progress={} error={}",
+                message["method"], message["id"], message["params"]["value"], message["error"]
+            );
+        }
         if message["method"] == "textDocument/publishDiagnostics" {
             let params = &message["params"];
             if params["version"].as_u64().is_some_and(|v| v != 1) {
                 continue;
             }
-            if let Some(file) = params["uri"].as_str().and_then(|u| documents.get(u)) {
-                observed.insert(file.clone(), diagnostic_items(file, &params["diagnostics"]));
+            let canonical = params["uri"]
+                .as_str()
+                .and_then(|u| tauri::Url::parse(u).ok())
+                .and_then(|u| u.to_file_path().ok())
+                .and_then(|p| dunce::canonicalize(p).ok());
+            if let Some(file) = params["uri"]
+                .as_str()
+                .and_then(|u| documents.get(u))
+                .or_else(|| canonical.as_ref().and_then(|p| document_paths.get(p)))
+            {
+                let diagnostics = diagnostic_items(file, &params["diagnostics"]);
+                if pull {
+                    published.insert(file.clone(), diagnostics);
+                } else {
+                    observed.insert(file.clone(), diagnostics);
+                }
             }
         } else if message["method"] == "$/progress" {
             let token = message["params"]["token"].to_string();
@@ -367,7 +437,21 @@ async fn collect(
             .filter(|_| message.get("method").is_none())
         {
             if let Some(file) = requests.remove(&id) {
+                if latest_request.get(&file) != Some(&id) {
+                    continue;
+                }
                 if message.get("error").is_some() {
+                    if [-32800, -32801, -32802]
+                        .contains(&message["error"]["code"].as_i64().unwrap_or(0))
+                    {
+                        let count = retry_count.entry(file.clone()).or_default();
+                        *count += 1;
+                        if *count <= 6 {
+                            retry_pending.insert(file);
+                            retry_at = tokio::time::Instant::now() + Duration::from_millis(250);
+                            continue;
+                        }
+                    }
                     incomplete = true;
                     break;
                 }
@@ -379,6 +463,20 @@ async fn collect(
                     file.clone(),
                     diagnostic_items(&file, &message["result"]["items"]),
                 );
+            }
+        } else if message["method"] == "workspace/diagnostic/refresh" && pull {
+            callback(&mut output, &message, &server.initialization_options).await?;
+            refreshes += 1;
+            if refreshes > 12 {
+                incomplete = true;
+                break;
+            }
+            for (uri, file) in &documents {
+                let id = next_request;
+                next_request += 1;
+                requests.insert(id, file.clone());
+                latest_request.insert(file.clone(), id);
+                write(&mut output,json!({"jsonrpc":"2.0","id":id,"method":"textDocument/diagnostic","params":{"textDocument":{"uri":uri}}})).await?;
             }
         } else if message.get("method").is_some()
             && callback(&mut output, &message, &server.initialization_options)
@@ -409,6 +507,15 @@ async fn collect(
         })
         .await;
         let _ = write(&mut output, json!({"jsonrpc":"2.0","method":"exit"})).await;
+    }
+    for (file, mut diagnostics) in published {
+        let rows = observed.entry(file).or_default();
+        diagnostics.retain(|d| {
+            !rows
+                .iter()
+                .any(|row| row.line == d.line && row.column == d.column && row.message == d.message)
+        });
+        rows.extend(diagnostics);
     }
     let observed_count = observed.len();
     let diagnostics: Vec<Diagnostic> = observed.into_values().flatten().collect();
@@ -566,6 +673,84 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+    /// Installed servers, real protocol and real semantic errors; no mock transport.
+    /// Set LUMEN_LIVE_LSP=rust|typescript|csharp and optionally LUMEN_LSP_EXE.
+    #[tokio::test]
+    #[ignore]
+    async fn installed_server_reports_a_real_type_error() {
+        let kind = std::env::var("LUMEN_LIVE_LSP").expect("LUMEN_LIVE_LSP");
+        let fixture = crate::test_support::Fixture::new();
+        let (command, args, file, source) = match kind.as_str() {
+            "rust" => {
+                std::fs::create_dir_all(fixture.root.join("src")).unwrap();
+                std::fs::write(
+                    fixture.root.join("Cargo.toml"),
+                    "[package]\nname=\"lumen_lsp_probe\"\nversion=\"0.1.0\"\nedition=\"2021\"\n",
+                )
+                .unwrap();
+                (
+                    "rust-analyzer",
+                    vec![],
+                    "src/lib.rs",
+                    "pub fn value() -> u32 { \"wrong\" }\n",
+                )
+            }
+            "typescript" => {
+                std::fs::write(
+                    fixture.root.join("tsconfig.json"),
+                    r#"{"compilerOptions":{"strict":true},"include":["*.ts"]}"#,
+                )
+                .unwrap();
+                (
+                    "typescript-language-server",
+                    vec!["--stdio"],
+                    "main.ts",
+                    "export const value: number = 'wrong';\n",
+                )
+            }
+            "csharp" => {
+                std::fs::write(fixture.root.join("Probe.csproj"),"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>").unwrap();
+                (
+                    "csharp-ls",
+                    vec![],
+                    "Hero.cs",
+                    "public class Hero { public static int Value = \"wrong\"; }\n",
+                )
+            }
+            _ => panic!("Unknown test language"),
+        };
+        std::fs::write(fixture.root.join(file), source).unwrap();
+        let mut server = Server {
+            name: kind,
+            command: std::env::var("LUMEN_LSP_EXE").unwrap_or_else(|_| command.into()),
+            args: args.into_iter().map(str::to_owned).collect(),
+            extensions: vec![],
+            timeout_seconds: 30,
+            ..Default::default()
+        };
+        if let Ok(path) = std::env::var("LUMEN_TYPESCRIPT_PATH") {
+            server.initialization_options = json!({"tsserver":{"path":path}});
+        }
+        let (_tx, cancel) = watch::channel(false);
+        let root = dunce::canonicalize(&fixture.root).unwrap();
+        let report = run_server(&root, &root, &server, &[file.into()], cancel)
+            .await
+            .unwrap();
+        eprintln!("{}: {} — {}", report.label, report.status, report.detail);
+        for diagnostic in &report.diagnostics {
+            eprintln!(
+                "{}:{} {}",
+                diagnostic.file, diagnostic.line, diagnostic.message
+            );
+        }
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|d| d.severity == 1 && d.file == file),
+            "{report:?}"
+        );
+    }
     use super::*;
     use crate::test_support::Fixture;
 
@@ -659,6 +844,71 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    #[tokio::test]
+    async fn pull_retries_refreshes_and_preserves_published_uri_aliases() {
+        let fixture = Fixture::new();
+        std::fs::write(fixture.root.join("probe.ts"), "const n: number = 'wrong';").unwrap();
+        let (client, server) = tokio::io::duplex(64 * 1024);
+        let peer = tokio::spawn(async move {
+            let (mut input, mut output) = wire(server);
+            let init = read(&mut input).await.unwrap();
+            write(&mut output,json!({"jsonrpc":"2.0","id":init["id"],"result":{"capabilities":{"diagnosticProvider":{}}}})).await.unwrap();
+            let mut attempts = 0;
+            loop {
+                let m = read(&mut input).await.unwrap();
+                match m["method"].as_str() {
+                    Some("textDocument/diagnostic") => {
+                        attempts += 1;
+                        let diagnostic = |text: &str| json!({"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":7}},"severity":1,"message":text});
+                        if attempts == 1 {
+                            write(&mut output,json!({"jsonrpc":"2.0","id":m["id"],"error":{"code":-32802,"message":"Server cancelled; retrigger requested"}})).await.unwrap();
+                        } else if attempts == 2 {
+                            let uri = m["params"]["textDocument"]["uri"]
+                                .as_str()
+                                .unwrap()
+                                .replace(':', "%3A")
+                                .replacen("file%3A", "file:", 1);
+                            write(&mut output,json!({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":uri,"version":1,"diagnostics":[diagnostic("Published type mismatch")]}})).await.unwrap();
+                            write(&mut output,json!({"jsonrpc":"2.0","id":m["id"],"result":{"kind":"full","items":[]}})).await.unwrap();
+                            write(&mut output,json!({"jsonrpc":"2.0","id":55,"method":"workspace/diagnostic/refresh"})).await.unwrap();
+                        } else {
+                            write(&mut output,json!({"jsonrpc":"2.0","id":m["id"],"result":{"kind":"full","items":[diagnostic("Refreshed type mismatch")]}})).await.unwrap();
+                        }
+                    }
+                    Some("shutdown") => write(
+                        &mut output,
+                        json!({"jsonrpc":"2.0","id":m["id"],"result":null}),
+                    )
+                    .await
+                    .unwrap(),
+                    Some("exit") => {
+                        assert_eq!(attempts, 3);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+        let (input, output) = wire(client);
+        let report = collect(
+            &fixture.root,
+            &fixture.root,
+            &Server {
+                name: "refresh".into(),
+                ..Default::default()
+            },
+            &["probe.ts".into()],
+            input,
+            output,
+        )
+        .await
+        .unwrap();
+        peer.await.unwrap();
+        assert_eq!(report.status, "failed");
+        assert!(report.errors().contains("Published type mismatch"));
+        assert!(report.errors().contains("Refreshed type mismatch"));
     }
 
     #[tokio::test]

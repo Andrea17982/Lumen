@@ -2,6 +2,14 @@
 
 This file contains only remaining work. Remove items when implemented and verified; keep release history in [Features](features.md) and the release notes. The review order below is agreed; technical choices remain proposals until validated and discussed.
 
+Scope agreed on 9 November 2026: implement the main sections and the ideas below. Native direct sessions are the default; Orchestra is explicitly selected. Windows is the local acceptance target. macOS (Apple silicon and Intel) and Linux receive GitHub Actions builds and automated checks; real-machine acceptance awaits future testers and is not a delivery gate for this work. Code signing and Telegram remote control were explicitly removed from scope because the required external resources are unavailable.
+
+Additional decisions: filesystem isolation is optional; Autopilot retains full access. Background work continues when the window closes. After a crash or a computer restart, show the interrupted state and require an explicit Resume; never replay unfinished actions automatically.
+
+Internal database encryption and a separate daemon process were subsequently removed from scope. Use Windows disk encryption for at-rest protection and the notification-area process for background continuity.
+
+A common additional OS jail was also removed: it does not improve model intelligence or establish a measured performance benefit. Preserve the official providers' sandbox capabilities and expose their actual platform limits; Autopilot remains unrestricted.
+
 ## Review and implementation order
 
 ### 1. Interface
@@ -65,29 +73,25 @@ Rodent Heroes is the first acceptance project. Integrations stay optional and pr
 - **Interactive approvals**: Ask-first for Orchestra subtasks. Codex file-change callbacks are covered by fixtures only; a real model turn raised a command approval. Check approve, reject, cancel, the countdown and the working indicator in the real webview on Windows, and the approval panel after a restart.
 - **Native acceptance**: Windows clean-machine install; macOS login launch and clean install; Linux native behavior and clean install. Real macOS/Linux environments remain required.
 - **Performance**: coalescing deltas in Rust before IPC, measuring long-transcript scrolling in the native webviews (a full virtualized list only if that shows a need; per-frame rendering and `content-visibility` are in place), warm CLI processes, startup and memory measurements.
-- **Reliability**: signed Windows and macOS builds and an encrypted-at-rest option.
+- Builds remain unsigned by the user's decision. At-rest protection is provided by the user's Windows disk encryption.
 
-## Ideas to evaluate
+## Additional implementation scope
 
-Carried over from an older local note; none is agreed yet.
+Included in the implementation scope on 9 November 2026. Implementation choices remain subject to measured behavior and the user's answers.
 
 - **Ollama helper**: conversation titles, commit messages and handoff summaries from the local model.
 - **Tokenizer**: a real tokenizer (for example `tiktoken-rs`) for local estimates, and blocking sends that paste a lockfile as text.
 - **Both mode**: a manual merge view instead of applying one version or discarding.
 - **Orchestra planning**: a spec-first task graph with drag-and-drop assignment of subtasks to worktrees.
 - **Capture**: a global hotkey that attaches a compressed screenshot to the composer.
-- **Rendering and isolation**: Markdown/ANSI rendering in Rust, and an OS-level path jail for CLI processes.
+- **Rendering**: evaluate Markdown/ANSI rendering in Rust against measured rendering and IPC cost; preserve the native providers' formats.
 - **Storage**: versioned database migrations.
-- **Background daemon**: run agents in a separate process that survives closing the window and reattaches to the GUI.
+- **Background continuity**: keep jobs and interactive questions alive in the notification-area process when the window closes; interrupted work resumes only on request after a crash/restart.
 - **Game visual loop**: send Play/Reload to the Godot editor, capture the game viewport and optionally overlay a pixel grid. Input automation must stay opt-in and visible.
 - **Inspector dock**: a side panel for a live web preview, a pixel-exact sprite viewer and a SQLite/JSON explorer.
 - **Layout canvas**: wireframe blocks turned into a structured layout spec that agents treat as a constraint.
 - **Visual comparison**: render the Both or Orchestra variants side by side from their worktrees.
 
 Not carried over: reading OAuth tokens or calling provider APIs directly, which contradicts Lumen's official-CLI model. Multiple accounts per provider and rate-limit fallback already exist.
-
-## Future
-
-- **Remote control**: optional Telegram bot for notifications, approvals and queued prompts.
 
 The roadmap describes intent, not a delivery promise. Update it as decisions are agreed and remove completed work.
