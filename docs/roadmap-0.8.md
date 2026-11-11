@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sei tranche integrate o valutate localmente; baseline release Windows, chat lunghe e avvio CLI misurati**, 11 novembre 2026. Le decisioni sotto sono approvate dal proprietario. Le ottimizzazioni superano i criteri sul lavoro UI durante la digitazione e sull'apertura iniziale; il prototipo di virtualizzazione è escluso per perdita di ricerca/selezione/accessibilità. La nuova attribuzione CLI non misura inferenza/TTFT live. Tempi assoluti stabili e virtualizzazione compatibile restano aperti. La versione pubblicata resta 0.7.0.
+Stato: **sette tranche integrate o valutate; checkpoint completati raccolti nella 0.7.1 — Performance Update**, 11 novembre 2026. Pubblicazione autorizzata dal proprietario dopo verifiche e CI; questa roadmap 0.8 resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri. Virtualizzazione con perdita di ricerca/selezione/accessibilità esclusa; inferenza/TTFT live, tempi assoluti stabili e candidati rimasti non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -95,6 +95,12 @@ CLI reali: processo→ack di inizializzazione 531 ms Claude / 186 ms Codex; chia
 
 Passano 152 test Rust, Clippy, 4 turni smoke, 8 scenari execution e 7 quality/account/audit; gli 80 turni release verificano anche persistenza dei confini e continuazione. [Dati aggregati](data/turn-latency-0.8-results.json). Nessuna nuova inferenza: registro live invariato a 13 slot. Pool, TTFT dei provider, classificazione Auto e scheduling worker Orchestra restano da validare; nessuna modifica a policy native, permessi o autenticazione.
 
+### Settima tranche — chiusura dei metadati e 0.7.1
+
+Confronto A/B/A/B delle CLI installate, 40 campioni per provider/variante: chiamata completa −37,2% Claude / −57,4% Codex, inclusa la supervisione. Conferma separata sul sorgente finale 0.7.1: −30,2%/−50,2% contro le mediane preservate. La chiusura usa un Job Object assegnato a processo sospeso, EOF con massimo 80 ms di grazia e arresto/reaping del gruppo residuo; cancellazione, abort, padre già uscito e gruppi indipendenti sono verificati. Modelli, altre piattaforme e policy native mantengono i percorsi precedenti.
+
+Passano 158 test Rust Windows, 72 unitari frontend, 29 browser, 22 scenari nativi offline, build e controlli formali. [Misure, compromesso di avvio e limiti](metadata-shutdown-0.8.md). Il proprietario autorizza push/merge e release **0.7.1 — Performance Update** delle tranche concluse dopo CI e verifica dei pacchetti. Questa autorizzazione sostituisce il precedente rinvio della pubblicazione, senza chiudere l'intera roadmap 0.8. Budget live invariato a 13 slot; nessuna nuova inferenza.
+
 ## Decisioni concordate
 
 - Bilanciare fluidità, tempi di attesa e qualità del codice prodotto.
@@ -150,7 +156,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 2. Attesa tra turni e processi riutilizzabili
 
-**Stato: attribuzione locale e startup/metadati CLI misurati senza inferenza; prototipo condizionato alle lacune rimaste.** Vedi [misure tra turni](turn-latency-0.8.md). Il costo di chiusura Windows dei metadati è un candidato ristretto; tempi dei modelli, classificazione Auto e scheduling Orchestra non sono ancora separati. Nessun pool introdotto.
+**Stato: attribuzione locale misurata e chiusura metadati Windows ottimizzata.** Vedi [misure tra turni](turn-latency-0.8.md) e [confronto A/B/A/B della chiusura](metadata-shutdown-0.8.md): chiamata completa −37,2% Claude / −57,4% Codex, includendo la supervisione. Tempi dei modelli, classificazione Auto e scheduling Orchestra non sono ancora separati. Nessun pool introdotto; la pulizia dei turni modello e delle altre piattaforme non cambia.
 
 - Misurare quanto dell'attesa deriva da Lumen, avvio CLI, handshake, provider e strumenti. Confrontare con un controllo tramite CLI ufficiale quando le condizioni sono comparabili.
 - Prima eliminare lavoro duplicato dimostrato; sperimentare processi mantenuti pronti solo se avvio/inizializzazione pesano sul percorso reale.

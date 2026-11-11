@@ -1,5 +1,7 @@
 # Lumen
 
+0.7.1 — Performance Update packages the completed 0.8 performance/reliability checkpoints, including supervised Windows metadata shutdown. The remaining 0.8 roadmap and approved future visual composition stay open. [Release scope and measured limits](docs/release-notes/0.7.1.md).
+
 <!-- impeccable:product-schema 1 -->
 
 ## Platform

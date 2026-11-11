@@ -147,10 +147,28 @@ pub(crate) async fn discover_observed(
             "",
         ]);
     }
+    native_query(c, &account.provider, cancel, observe).await
+}
+
+pub(crate) async fn native_query(
+    c: tokio::process::Command,
+    provider: &Provider,
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
+    mut observe: impl FnMut(&'static str),
+) -> Result<Vec<ModelInfo>, String> {
+    if cancel.as_ref().is_some_and(|rx| *rx.borrow()) {
+        return Err("Cancelled".into());
+    }
+    #[cfg(not(windows))]
+    let mut c = c;
     observe("spawn-start");
+    #[cfg(not(windows))]
     let mut child = c
         .spawn()
         .map_err(|e| format!("Cannot load the official model catalog: {e}"))?;
+    #[cfg(windows)]
+    let mut child = crate::metadata_windows::MetadataChild::spawn(c)
+        .map_err(|e| format!("Cannot supervise the official model catalog: {e}"))?;
     observe("process-started");
     let mut stdin = child
         .stdin
@@ -172,7 +190,7 @@ pub(crate) async fn discover_observed(
         while let Ok(Some(_)) = l.next_line().await {}
     });
     let query = async {
-        let init = if account.provider == Provider::Gpt {
+        let init = if *provider == Provider::Gpt {
             json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"lumen","title":"Lumen","version":env!("CARGO_PKG_VERSION")}}})
         } else {
             json!({"type":"control_request","request_id":"lumen-models","request":{"subtype":"initialize"}})
@@ -189,7 +207,7 @@ pub(crate) async fn discover_observed(
             let Ok(v) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
-            if account.provider == Provider::Claude {
+            if *provider == Provider::Claude {
                 if v["type"] == "control_response" && v["response"]["request_id"] == "lumen-models"
                 {
                     observe("initialize-acknowledged");
@@ -198,10 +216,7 @@ pub(crate) async fn discover_observed(
                             "Claude rejected model discovery. Check CLI version and login.".into(),
                         );
                     }
-                    return Ok(parse_models(
-                        &account.provider,
-                        &v["response"]["response"]["models"],
-                    ));
+                    return Ok(parse_models(provider, &v["response"]["response"]["models"]));
                 }
             } else if v["id"] == 1 {
                 observe("initialize-acknowledged");
@@ -217,7 +232,7 @@ pub(crate) async fn discover_observed(
                         "Codex could not list models. Check CLI version and official login.".into(),
                     );
                 }
-                models.extend(parse_models(&account.provider, &v["result"]["data"]));
+                models.extend(parse_models(provider, &v["result"]["data"]));
                 if let Some(cursor) = v["result"]["nextCursor"].as_str() {
                     page_id += 1;
                     if page_id > 102 {
@@ -234,6 +249,8 @@ pub(crate) async fn discover_observed(
             }
         }
     };
+    #[cfg(windows)]
+    let cleanup_cancel = cancel.clone();
     let interrupted = async move {
         if let Some(mut rx) = cancel {
             if *rx.borrow() {
@@ -247,9 +264,24 @@ pub(crate) async fn discover_observed(
     let result = tokio::select! {biased;_=interrupted=>Err("Cancelled".into()),result=tokio::time::timeout(std::time::Duration::from_secs(45),query)=>result.map_err(|_|"Official model catalog timed out. Check CLI installation and login.".to_string()).and_then(|r|r)};
     observe("query-ended");
     drop(stdin);
+    #[cfg(windows)]
+    let cleanup = child.finish(result.is_ok(), cleanup_cancel).await;
+    #[cfg(not(windows))]
     providers::terminate(&mut child).await;
     diagnostics.abort();
     observe("cleanup-ended");
+    #[cfg(windows)]
+    {
+        let cleanup = cleanup?;
+        observe(if cleanup.graceful {
+            "graceful-root-exit"
+        } else {
+            "forced-job-cleanup"
+        });
+        if cleanup.cancelled {
+            return Err("Cancelled".into());
+        }
+    }
     let models = result?;
     if models.is_empty() {
         return Err("The official CLI returned no selectable models. Sign in or update the CLI, then refresh.".into());

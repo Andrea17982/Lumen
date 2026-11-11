@@ -58,6 +58,8 @@ The separate [initial-opening experiment](initial-open-0.8.md) uses `LUMEN_PERF_
 
 ## Turn waiting and CLI metadata
 
+The metadata-only shutdown comparison freezes separate baseline/candidate Rust test executables and runs the installed-CLI probe in A/B/A/B blocks. `tests/metadata-shutdown-report.mjs` validates complete raw records and reports net metadata-call time including Windows job setup. `cargo test --manifest-path src-tauri/Cargo.toml --lib metadata_windows` runs real EOF, stubborn/orphaned child, cancellation, abort and concurrent-job isolation fixtures on Windows. [Fixed protocol and final confirmation](metadata-shutdown-0.8.md).
+
 `tests/native-turn-latency.mjs` collects the separate turn-attribution matrix with offline CLI fixtures. Its default debug smoke/full reports are distinct from release evidence: set `LUMEN_LATENCY_EXE` to the frozen release built with the `.impeccable/turn-latency` overlay for the fixed 80-turn collection. Workspaces remain outside the original repository. `latency_probe::installed_cli_metadata_latency` is an ignored Rust test selected individually with an explicit `LUMEN_CLI_LATENCY_OUTPUT`; it launches installed CLI version/initialize/model-metadata commands only, in fresh configuration, without credential copying, login or model turns. `tests/turn-latency-report.mjs` requires both complete series and emits sanitized aggregates. Never run all ignored tests to select this probe. [Protocol, reproduction and remaining gaps](turn-latency-0.8.md).
 
 ## Live provider acceptance

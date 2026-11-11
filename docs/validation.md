@@ -1,5 +1,15 @@
 # Validation, release scope and known limits — 0.7
 
+The completed checkpoints below are included in **0.7.1 — Performance Update**. Earlier sections retain their 0.7.0/checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
+
+## 0.7.1 metadata shutdown acceptance
+
+The fixed installed-CLI A/B/A/B experiment completes 160 metadata calls plus 160 version probes, without inference. Complete-call medians decrease 37.2% for Claude and 57.4% for Codex, including roughly 42 ms extra supervised-spawn setup. Cleanup medians fall from 428/423 to 44/18 ms. A separate final-source/version confirmation completes another 20 samples per provider: 30.2%/50.2% lower complete-call medians against the preserved baseline. All raw blocks, first samples, hashes, model counts, p95 and setup tradeoffs are retained in the [sanitized record](data/metadata-shutdown-0.8-results.json).
+
+The Windows metadata process starts suspended, joins a kill-on-close Job Object and resumes hidden. Successful EOF receives up to 80 ms root grace; remaining job members are stopped/reaped, including descendants of an exited parent. Cancelled/error queries skip grace; cancellation during grace stays cancellation; task abort drops the job. Assignment failure does not run an unsupervised retry. Non-Windows/model-turn shutdown and native account/auth/permission policy remain unchanged.
+
+Six real-process Windows tests cover EOF, stubborn descendants, exited parents, cleanup cancellation, abort/concurrent group isolation and actual catalog-query cancellation/abort. Local checks pass: 158 Rust tests (14 opt-in probes ignored), Clippy with denied warnings, debug build, production frontend build, 72 unit tests and 29 browser regressions, rustfmt/Prettier/docs. All seven composer, eight execution and seven account/quality/audit native offline scenarios pass with the 0.7.1 backend. Cross-platform CI, packaged installation and publication are separate release gates. [Full scope and reproduction](metadata-shutdown-0.8.md). No new live slot was spent.
+
 This is the 0.7 acceptance record. Implementation, automated proof and environment-dependent live testing are distinct. The previous roadmap was retired prematurely; conditional performance proposals and acceptance work were not all completed. The [0.8 roadmap](roadmap-0.8.md) tracks their evaluation and targeted functional gaps without treating them as delivered features.
 
 ## Delivered implementation areas

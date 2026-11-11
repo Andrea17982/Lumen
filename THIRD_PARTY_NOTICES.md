@@ -4,6 +4,10 @@ Lumen's original code/documentation is MIT licensed. Dependencies retain their o
 
 The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, tiktoken-rs, React, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide, react-markdown, remark-gfm, Vitest and Playwright.
 
+## Windows metadata process supervision
+
+Windows metadata process supervision additionally uses [process-wrap](https://github.com/watchexec/process-wrap) 10.0.1 (Apache-2.0 OR MIT) and the Microsoft `windows` Rust bindings (MIT OR Apache-2.0). Job Objects supervise metadata process lifetime; they do not change provider permissions.
+
 ## Bundled Moli
 
 Lumen 0.7 bundles [Moli](https://github.com/lexmount/moli) **1.1.23**, licensed **Apache-2.0 OR MIT** according to its release metadata. The platform package retains `LICENSE-APACHE`, `LICENSE-MIT`, `license-metadata.json` and the upstream `licenses/` notices, including the Chromium BSD and Selenium notices distributed with that release. These notices remain beside the browser in installed/portable resources.

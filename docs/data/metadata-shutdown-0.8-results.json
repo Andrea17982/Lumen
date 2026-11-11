@@ -1,0 +1,627 @@
+{
+  "at": "2026-11-11T17:02:41.113Z",
+  "protocol": "docs/metadata-shutdown-0.8.md",
+  "order": [
+    "baseline-1",
+    "candidate-1",
+    "baseline-2",
+    "candidate-2"
+  ],
+  "metadataSamples": 160,
+  "versionSamples": 160,
+  "driver": "Windows debug Rust test drivers; actual installed CLIs; isolated configuration",
+  "hashes": {
+    "baseline": "72c46cc54d9dbb3474ab34e3afc481e0c61f41adcddce7d03f46f74dfc8653a2",
+    "candidate": "bcf048dbe0394f485eaadac8de901484531e4eedff57f99acbe2c365e8b0c323"
+  },
+  "providers": [
+    {
+      "provider": "claude",
+      "version": "2.1.314 (Claude Code)",
+      "baseline": {
+        "versionMs": {
+          "samples": 40,
+          "median": 120.19614999999999,
+          "p95": 141.4706,
+          "min": 85.3134,
+          "max": 147.0345
+        },
+        "catalogMs": {
+          "samples": 40,
+          "median": 1082.0644499999999,
+          "p95": 1213.3438,
+          "min": 915.0217,
+          "max": 1288.605
+        },
+        "cleanupMs": {
+          "samples": 40,
+          "median": 427.6096999999999,
+          "p95": 508.9438,
+          "min": 373.02549999999997,
+          "max": 534.3785
+        },
+        "spawnMs": {
+          "samples": 40,
+          "median": 8.705599999999997,
+          "p95": 15.528999999999996,
+          "min": 4.3788,
+          "max": 22.5175
+        },
+        "processToInitializeAckMs": {
+          "samples": 40,
+          "median": 617.6367499999999,
+          "p95": 706.6635,
+          "min": 524.6239,
+          "max": 731.3153000000001
+        },
+        "gracefulRootExit": 0,
+        "modelCounts": [
+          5
+        ]
+      },
+      "candidate": {
+        "versionMs": {
+          "samples": 40,
+          "median": 95.65735,
+          "p95": 129.4384,
+          "min": 83.0476,
+          "max": 156.6528
+        },
+        "catalogMs": {
+          "samples": 40,
+          "median": 679.0348,
+          "p95": 853.3844,
+          "min": 623.9735,
+          "max": 987.159
+        },
+        "cleanupMs": {
+          "samples": 40,
+          "median": 44.2054,
+          "p95": 89.17099999999994,
+          "min": 37.1264000000001,
+          "max": 94.17110000000002
+        },
+        "spawnMs": {
+          "samples": 40,
+          "median": 50.40965,
+          "p95": 91.3237,
+          "min": 47.6688,
+          "max": 97.74009999999998
+        },
+        "processToInitializeAckMs": {
+          "samples": 40,
+          "median": 572.5279499999999,
+          "p95": 703.2773,
+          "min": 525.7962,
+          "max": 864.4368000000001
+        },
+        "gracefulRootExit": 36,
+        "modelCounts": [
+          5
+        ]
+      },
+      "reduction": 0.37246362728209015,
+      "blocks": {
+        "baseline-1": {
+          "versionMs": {
+            "samples": 20,
+            "median": 124.00065,
+            "p95": 142.4111,
+            "min": 112.4083,
+            "max": 147.0345
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 1132.0348,
+            "p95": 1244.8206,
+            "min": 1013.9914000000001,
+            "max": 1288.605
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 423.43135,
+            "p95": 508.9438,
+            "min": 373.02549999999997,
+            "max": 534.3785
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 9.13675,
+            "p95": 15.528999999999996,
+            "min": 8.025399999999998,
+            "max": 22.1457
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 664.0514000000001,
+            "p95": 722.8934,
+            "min": 572.4814000000001,
+            "max": 731.3153000000001
+          },
+          "gracefulRootExit": 0,
+          "modelCounts": [
+            5
+          ]
+        },
+        "candidate-1": {
+          "versionMs": {
+            "samples": 20,
+            "median": 96.29505,
+            "p95": 128.5406,
+            "min": 83.0476,
+            "max": 146.1186
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 690.0328,
+            "p95": 823.0186,
+            "min": 629.3893,
+            "max": 853.3844
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 49.92424999999997,
+            "p95": 86.1826000000001,
+            "min": 38.529100000000085,
+            "max": 89.17099999999994
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 49.992599999999996,
+            "p95": 89.28580000000001,
+            "min": 47.6688,
+            "max": 97.74009999999998
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 573.35975,
+            "p95": 680.2560000000001,
+            "min": 525.7962,
+            "max": 713.3584
+          },
+          "gracefulRootExit": 18,
+          "modelCounts": [
+            5
+          ]
+        },
+        "baseline-2": {
+          "versionMs": {
+            "samples": 20,
+            "median": 107.78965,
+            "p95": 135.2053,
+            "min": 85.3134,
+            "max": 136.1785
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 1031.94515,
+            "p95": 1167.856,
+            "min": 915.0217,
+            "max": 1213.3438
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 433.59544999999997,
+            "p95": 500.4235,
+            "min": 375.6826,
+            "max": 512.3058999999997
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 5.5314,
+            "p95": 11.818400000000004,
+            "min": 4.3788,
+            "max": 22.5175
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 565.7674,
+            "p95": 697.9839999999999,
+            "min": 524.6239,
+            "max": 706.6635
+          },
+          "gracefulRootExit": 0,
+          "modelCounts": [
+            5
+          ]
+        },
+        "candidate-2": {
+          "versionMs": {
+            "samples": 20,
+            "median": 95.09965,
+            "p95": 129.4384,
+            "min": 84.5468,
+            "max": 156.6528
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 678.44015,
+            "p95": 858.3162,
+            "min": 623.9735,
+            "max": 987.159
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 42.782950000000085,
+            "p95": 90.31189999999992,
+            "min": 37.1264000000001,
+            "max": 94.17110000000002
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 51.7599,
+            "p95": 91.3237,
+            "min": 48.075100000000006,
+            "max": 96.11099999999999
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 572.5279499999999,
+            "p95": 703.2773,
+            "min": 528.2505,
+            "max": 864.4368000000001
+          },
+          "gracefulRootExit": 18,
+          "modelCounts": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "provider": "codex",
+      "version": "codex-cli 0.167.0-alpha.4.1",
+      "baseline": {
+        "versionMs": {
+          "samples": 40,
+          "median": 149.27675,
+          "p95": 175.9816,
+          "min": 107.1375,
+          "max": 403.6142
+        },
+        "catalogMs": {
+          "samples": 40,
+          "median": 673.20905,
+          "p95": 764.9469,
+          "min": 547.4662,
+          "max": 845.4057
+        },
+        "cleanupMs": {
+          "samples": 40,
+          "median": 422.71259999999995,
+          "p95": 486.66940000000005,
+          "min": 341.17009999999993,
+          "max": 505.4401000000001
+        },
+        "spawnMs": {
+          "samples": 40,
+          "median": 8.319550000000003,
+          "p95": 16.409099999999995,
+          "min": 4.273600000000002,
+          "max": 22.548199999999994
+        },
+        "processToInitializeAckMs": {
+          "samples": 40,
+          "median": 202.5935,
+          "p95": 292.54460000000006,
+          "min": 164.315,
+          "max": 445.8469
+        },
+        "gracefulRootExit": 0,
+        "modelCounts": [
+          9
+        ]
+      },
+      "candidate": {
+        "versionMs": {
+          "samples": 40,
+          "median": 126.43554999999999,
+          "p95": 176.5765,
+          "min": 101.81030000000001,
+          "max": 498.3426
+        },
+        "catalogMs": {
+          "samples": 40,
+          "median": 286.6385,
+          "p95": 377.97819999999996,
+          "min": 254.3524,
+          "max": 453.1339
+        },
+        "cleanupMs": {
+          "samples": 40,
+          "median": 17.521900000000016,
+          "p95": 38.05129999999991,
+          "min": 14.300299999999993,
+          "max": 79.79939999999993
+        },
+        "spawnMs": {
+          "samples": 40,
+          "median": 51.4655,
+          "p95": 80.5952,
+          "min": 46.8681,
+          "max": 96.6685
+        },
+        "processToInitializeAckMs": {
+          "samples": 40,
+          "median": 194.39895,
+          "p95": 245.8324,
+          "min": 175.1028,
+          "max": 315.6107
+        },
+        "gracefulRootExit": 40,
+        "modelCounts": [
+          9
+        ]
+      },
+      "reduction": 0.5742206674137847,
+      "blocks": {
+        "baseline-1": {
+          "versionMs": {
+            "samples": 20,
+            "median": 158.6805,
+            "p95": 195.91819999999998,
+            "min": 128.1151,
+            "max": 403.6142
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 673.20905,
+            "p95": 718.6029000000001,
+            "min": 622.0199,
+            "max": 727.0382
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 414.4212,
+            "p95": 448.55710000000005,
+            "min": 362.0068999999999,
+            "max": 459.66979999999995
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 8.98115,
+            "p95": 16.409099999999995,
+            "min": 6.045400000000001,
+            "max": 22.548199999999994
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 208.59700000000004,
+            "p95": 233.39540000000002,
+            "min": 181.935,
+            "max": 299.30490000000003
+          },
+          "gracefulRootExit": 0,
+          "modelCounts": [
+            9
+          ]
+        },
+        "candidate-1": {
+          "versionMs": {
+            "samples": 20,
+            "median": 125.00845000000001,
+            "p95": 166.75209999999998,
+            "min": 101.8836,
+            "max": 176.62259999999998
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 281.102,
+            "p95": 377.97819999999996,
+            "min": 254.3524,
+            "max": 442.257
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 17.236650000000054,
+            "p95": 33.660799999999966,
+            "min": 14.750200000000007,
+            "max": 79.79939999999993
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 50.01304999999999,
+            "p95": 77.2149,
+            "min": 47.914,
+            "max": 80.5952
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 190.91130000000004,
+            "p95": 245.8324,
+            "min": 175.1028,
+            "max": 295.27729999999997
+          },
+          "gracefulRootExit": 20,
+          "modelCounts": [
+            9
+          ]
+        },
+        "baseline-2": {
+          "versionMs": {
+            "samples": 20,
+            "median": 137.6679,
+            "p95": 161.5178,
+            "min": 107.1375,
+            "max": 173.35
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 660.7221,
+            "p95": 796.8555,
+            "min": 547.4662,
+            "max": 845.4057
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 436.7422,
+            "p95": 487.48979999999995,
+            "min": 341.17009999999993,
+            "max": 505.4401000000001
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 5.7745999999999995,
+            "p95": 12.278699999999999,
+            "min": 4.273600000000002,
+            "max": 21.936500000000002
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 187.82229999999998,
+            "p95": 292.54460000000006,
+            "min": 164.315,
+            "max": 445.8469
+          },
+          "gracefulRootExit": 0,
+          "modelCounts": [
+            9
+          ]
+        },
+        "candidate-2": {
+          "versionMs": {
+            "samples": 20,
+            "median": 127.7476,
+            "p95": 176.5765,
+            "min": 101.81030000000001,
+            "max": 498.3426
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 290.47695,
+            "p95": 376.64959999999996,
+            "min": 262.2562,
+            "max": 453.1339
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 17.55359999999999,
+            "p95": 38.05129999999991,
+            "min": 14.300299999999993,
+            "max": 59.946799999999996
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 52.641799999999996,
+            "p95": 93.5075,
+            "min": 46.8681,
+            "max": 96.6685
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 195.6368,
+            "p95": 238.764,
+            "min": 180.67290000000003,
+            "max": 315.6107
+          },
+          "gracefulRootExit": 20,
+          "modelCounts": [
+            9
+          ]
+        }
+      }
+    }
+  ],
+  "inferenceCalls": 0,
+  "previousLiveSlotsSpent": 13,
+  "limits": [
+    "Fresh CLI processes in warm OS/profile history, not cold startup or model TTFT.",
+    "Only metadata shutdown changes; model-turn and non-Windows termination paths remain unchanged.",
+    "Added suspended assignment/job tracking is included in spawn and total times; absolute times remain host-dependent."
+  ],
+  "finalConfirmation": {
+    "hash": "f4467c15910d30825b35fd782314a32c9c09e7c3dc929e395f0febbe851066f3",
+    "providers": [
+      {
+        "provider": "claude",
+        "measured": {
+          "versionMs": {
+            "samples": 20,
+            "median": 116.84155000000001,
+            "p95": 132.3372,
+            "min": 91.45739999999999,
+            "max": 290.9606
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 754.8009999999999,
+            "p95": 824.3593,
+            "min": 669.3509,
+            "max": 869.4056
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 41.93595000000005,
+            "p95": 62.22619999999995,
+            "min": 37.76529999999991,
+            "max": 95.56750000000011
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 88.74575,
+            "p95": 94.9297,
+            "min": 48.1122,
+            "max": 95.8657
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 597.0262500000001,
+            "p95": 667.3398,
+            "min": 521.6902,
+            "max": 698.2934
+          },
+          "gracefulRootExit": 19,
+          "modelCounts": [
+            5
+          ]
+        },
+        "reduction": 0.3024435836516023
+      },
+      {
+        "provider": "codex",
+        "measured": {
+          "versionMs": {
+            "samples": 20,
+            "median": 139.507,
+            "p95": 171.6914,
+            "min": 122.00070000000001,
+            "max": 174.1555
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 335.55555000000004,
+            "p95": 390.8801,
+            "min": 279.7065,
+            "max": 414.9731
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 16.839699999999993,
+            "p95": 34.66620000000006,
+            "min": 14.834499999999991,
+            "max": 55.30349999999993
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 86.41075000000001,
+            "p95": 94.6701,
+            "min": 47.214200000000005,
+            "max": 102.84079999999997
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 189.70825000000002,
+            "p95": 237.89270000000002,
+            "min": 169.23069999999998,
+            "max": 289.41159999999996
+          },
+          "gracefulRootExit": 20,
+          "modelCounts": [
+            9
+          ]
+        },
+        "reduction": 0.5015581712693851
+      }
+    ]
+  }
+}

@@ -24,6 +24,8 @@ mod layout;
 mod limits;
 mod media;
 mod merge;
+#[cfg(windows)]
+mod metadata_windows;
 mod migrations;
 mod models;
 mod native_claude;

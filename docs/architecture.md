@@ -50,6 +50,8 @@ Ollama requests stay on loopback with proxies/redirects disabled. `/api/show` se
 
 ## Turn timing
 
+Windows metadata CLI calls now start inside a kill-on-close Job Object while suspended, then resume without a console window. EOF gets at most 80 ms grace before remaining members are terminated/reaped; cancellation/errors skip grace, task abortion drops the job, and exited roots cannot orphan their normal Win32 descendants. Assignment failure does not retry unsupervised. Model-turn and non-Windows termination are unchanged. [Measured shutdown comparison](metadata-shutdown-0.8.md).
+
 The 0.8 latency checkpoint adds bounded monotonic offsets to existing execution snapshots and `preparationMs` to accepted direct submissions. Transport markers are source-stamped before event queues; normalized first event/text remains a controller observation. Timing control signals do not add per-marker IPC/SQLite writes or include prompt/path/account content. Installed CLI metadata probes are opt-in, isolated and inference-free; actual provider TTFT and worker scheduling remain separate. [Protocol and results](turn-latency-0.8.md).
 
 ## Persistence and ownership

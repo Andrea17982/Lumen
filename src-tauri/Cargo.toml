@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.7.0"
+version = "0.7.1"
 description = "Native AI sessions, optional orchestration and Moli browsing"
 authors = ["Andrea17982"]
 edition = "2021"
@@ -44,6 +44,10 @@ tauri-plugin-global-shortcut = "2.3.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+process-wrap = { version = "=10.0.1", default-features = false, features = ["tokio1", "job-object", "creation-flags", "kill-on-drop"] }
+windows = { version = "0.62.2", features = ["Win32_System_Threading"] }
 
 [profile.release]
 lto = true

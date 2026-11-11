@@ -4,7 +4,7 @@
   <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
   <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
   <p>
-    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.7</a> ·
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.7.1</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
     <a href="docs/README.md">Documentation</a> ·
     <a href="README.it.md">Italiano</a>
@@ -24,7 +24,11 @@ Lumen brings your AI coding sessions into one local desktop workspace. Choose a 
 
 Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.7 is an alpha release, not a claim of universal CLI or platform compatibility.
 
-## What's new in 0.7
+## 0.7.1 — Performance Update
+
+Faster long-chat opening and typing, safer Windows metadata CLI shutdown, conversation-local drafts and clearer execution progress. The scoped Windows comparisons measure **25.6% faster opening** for 5,000 mixed messages and **37.2% / 57.4% lower complete metadata-call time** for the installed Claude/Codex CLIs. These are local benchmark results, not model-response latency guarantees. [0.7.1 release notes and limits](docs/release-notes/0.7.1.md).
+
+## Native workspace features
 
 | Native work, with less friction | Tools that stay close to your project |
 | --- | --- |
@@ -34,7 +38,7 @@ Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian int
 | Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
 | Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
 
-Read the [complete 0.7.0 changelog](docs/release-notes/0.7.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md).
+Read the [0.7.1 changelog](docs/release-notes/0.7.1.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [0.7.0 changelog](docs/release-notes/0.7.0.md) retains the native-session/Moli release history.
 
 ## Choose how to work
 
@@ -72,12 +76,12 @@ Context estimates use a local tokenizer; provider-reported usage remains distinc
 
 ## Download and start
 
-Get **[Lumen 0.7 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
+Get **[Lumen 0.7.1 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| Windows x64 | `Lumen_0.7.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.7.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources/moli` beside `Lumen.exe`. |
+| Windows x64 | `Lumen_0.7.1_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
+| Windows x64 portable | `Lumen_0.7.1_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources/moli` beside `Lumen.exe`. |
 | macOS | Universal `.dmg` | Intel and Apple silicon. |
 | Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 

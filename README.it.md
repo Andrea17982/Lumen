@@ -3,7 +3,7 @@
   <h1>Lumen</h1>
   <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
   <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
-  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.7</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
+  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.7.1</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
 </div>
 
 ![Lumen 0.7 su Windows](docs/images/desktop.png)
@@ -14,7 +14,11 @@ Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, 
 
 Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.7 resta una versione alpha di un progetto indipendente.
 
-## Novità della 0.7
+## 0.7.1 — Performance Update
+
+Apertura e digitazione delle chat lunghe più rapide, chiusura CLI dei metadati supervisionata su Windows, bozze separate per conversazione e avanzamento più chiaro. Nei confronti Windows dichiarati: apertura di 5.000 messaggi misti **−25,6%**; chiamate complete ai metadati CLI Claude/Codex **−37,2% / −57,4%**. Sono risultati locali, non garanzie sui tempi dei modelli. [Novità e limiti della 0.7.1](docs/release-notes/0.7.1.md).
+
+## Funzioni dell'applicazione
 
 | Lavorare con continuità | Strumenti vicini al progetto |
 | --- | --- |
@@ -24,7 +28,7 @@ Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi 
 | Resume nativo Claude/Codex, memoria del lavoro e cambio esplicito della cartella. | Diagnostica, controlli sui progetti interessati e integrazione Godot opzionali. |
 | Continuità tramite area di notifica. | Pacchetti Windows, macOS universale e Linux. |
 
-[Changelog completo 0.7.0](docs/release-notes/0.7.0.md) · [Guida alle funzioni](docs/features.md) · [Verifiche e limiti noti](docs/validation.md)
+[Changelog 0.7.1](docs/release-notes/0.7.1.md) · [Guida alle funzioni](docs/features.md) · [Verifiche e limiti noti](docs/validation.md). Il [changelog 0.7.0](docs/release-notes/0.7.0.md) conserva la storia delle sessioni native e di Moli.
 
 ## Scegli come lavorare
 
@@ -62,7 +66,7 @@ Il registro persistente del lavoro conserva requisiti e decisioni attraverso tro
 
 I pacchetti sono in **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
-- **Windows x64:** `Lumen_0.7.0_x64-setup.exe`, oppure `Lumen_0.7.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources/moli` accanto a `Lumen.exe`.
+- **Windows x64:** `Lumen_0.7.1_x64-setup.exe`, oppure `Lumen_0.7.1_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources/moli` accanto a `Lumen.exe`.
 - **macOS:** DMG universale per Intel e Apple silicon.
 - **Linux x64:** DEB e AppImage, compilati su Ubuntu 24.04.
 
