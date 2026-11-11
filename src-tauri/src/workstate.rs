@@ -23,23 +23,22 @@ pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedConte
     use std::hash::{Hash, Hasher};
     let notes = crate::context::read_context(std::path::Path::new(&session.workspace));
     let mut reports = std::collections::BTreeMap::new();
-    let mut sequence = 0usize;
-    for message in core.store.messages(&session.id)? {
-        if starts_new_task(&message) {
-            reports.clear();
-            sequence = 0;
+    // The same derivation serves full replay and native resume, including Compact
+    // seeds. Never follow a source-chat pointer that could import later changes.
+    let evidence = collect_check_evidence(
+        core.store
+            .work_seed(&session.id)?
+            .unwrap_or_default()
+            .check_evidence,
+        session,
+        &core.store.messages(&session.id)?,
+    );
+    for (sequence, check) in evidence.into_iter().enumerate() {
+        if check.report["workspace"].as_str() != Some(session.workspace.as_str()) {
+            continue;
         }
-        for activity in message.activity.iter().filter(|a| a.kind == "validation") {
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
-                continue;
-            };
-            if value["workspace"].as_str() != Some(session.workspace.as_str()) {
-                continue;
-            }
-            if let Some(label) = value["label"].as_str() {
-                reports.insert(label.to_owned(), (sequence, message.id.clone(), value));
-                sequence += 1;
-            }
+        if let Some(label) = check.report["label"].as_str() {
+            reports.insert(label.to_owned(), (sequence, check.source, check.report));
         }
     }
     let canonical = serde_json::to_string(&(&notes, &reports)).map_err(|e| e.to_string())?;
@@ -109,6 +108,42 @@ pub struct Fact {
     pub text: String,
 }
 
+/// Historical backend output, copied by value during Compact. The original
+/// message remains the source, even across multiple handoffs or its later removal.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CheckEvidence {
+    pub source: String,
+    pub report: serde_json::Value,
+}
+
+fn collect_check_evidence(
+    mut evidence: Vec<CheckEvidence>,
+    session: &Session,
+    messages: &[Message],
+) -> Vec<CheckEvidence> {
+    evidence.retain(|check| check.report["workspace"].as_str() == Some(session.workspace.as_str()));
+    for message in messages {
+        if starts_new_task(message) {
+            evidence.clear();
+        }
+        for activity in message.activity.iter().filter(|a| a.kind == "validation") {
+            let Ok(report) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
+                continue;
+            };
+            if report["workspace"].as_str() != Some(session.workspace.as_str()) {
+                continue;
+            }
+            let label = report["label"].as_str().unwrap_or("Check");
+            evidence.retain(|check| check.report["label"].as_str().unwrap_or("Check") != label);
+            evidence.push(CheckEvidence {
+                source: message.id.clone(),
+                report,
+            });
+        }
+    }
+    evidence
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorkState {
@@ -120,6 +155,8 @@ pub struct WorkState {
     pub completed: Vec<Fact>,
     pub pending: Vec<Fact>,
     pub checks: Vec<Fact>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub check_evidence: Vec<CheckEvidence>,
 }
 
 fn add(facts: &mut Vec<Fact>, source: &str, text: String) {
@@ -145,11 +182,14 @@ pub fn derive(
     messages: &[Message],
     access: AccessMode,
 ) -> WorkState {
+    let evidence =
+        collect_check_evidence(std::mem::take(&mut state.check_evidence), session, messages);
     state
         .pending
         .retain(|fact| !fact.text.starts_with("Validation failure remains:"));
     if state.workspace != session.workspace {
         state.checks.clear();
+        state.check_evidence.clear();
     }
     state.workspace = session.workspace.clone();
     state.access = access; // The live permission profile always overrides historical approvals.
@@ -246,6 +286,7 @@ pub fn derive(
         }
         previous = Some(m);
     }
+    state.check_evidence = evidence;
     if let Some((source, plan)) = last_plan {
         state.pending.clear();
         if !plan.workspace.is_empty() && plan.workspace != session.workspace {
@@ -609,6 +650,130 @@ mod tests {
         assert!(context.evidence.contains("Z-newest: failed"));
         assert!(!context.evidence.contains("] A: failed"));
         assert!(context.evidence.contains("1 older check labels omitted"));
+    }
+
+    #[test]
+    fn compact_evidence_preserves_source_diagnostics_and_latest_status_across_restart() {
+        let f = Fixture::new();
+        let db = f.root.join("compact.db");
+        let store = Store::open(&db).unwrap();
+        let original = store.create(f.root.to_string_lossy().into()).unwrap();
+        let mut reply = message("assistant", "All done (unverified)");
+        for status in ["passed", "failed"] {
+            reply.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":original.workspace,"label":"Counter check","status":status,"detail":"Disable Hit at three","diagnostics":[{"file":"Counter.tsx","line":12,"message":"Button remains enabled"}]}).to_string()});
+        }
+        store.save_message(&original.id, &reply).unwrap();
+        let first = refresh(&store, &original.id, Some(AccessMode::Autopilot)).unwrap();
+        let continued = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&continued.id, &first).unwrap();
+        drop(store);
+        let store = Store::open(&db).unwrap();
+        let second = refresh(&store, &continued.id, None).unwrap();
+        let again = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&again.id, &second).unwrap();
+        // Load the real persisted seeds into the fixture Core used by provider context.
+        let local = f.core.store.create(original.workspace.clone()).unwrap();
+        f.core
+            .store
+            .seed_work_state(&local.id, &refresh(&store, &again.id, None).unwrap())
+            .unwrap();
+        let owned = owned_context(&f.core, &local).unwrap();
+        assert!(
+            owned.evidence.contains("Counter check: failed"),
+            "Compact lost the backend evidence delivered to providers"
+        );
+        assert!(owned.evidence.contains(&reply.id));
+        assert!(owned
+            .evidence
+            .contains("Counter.tsx:12 Button remains enabled"));
+        assert!(owned.evidence.contains("Disable Hit at three"));
+        assert!(!owned.evidence.contains("Counter check: passed"));
+        assert_eq!(second.access, AccessMode::ReadOnly);
+        assert_eq!(second.checks.len(), 1);
+        assert!(second
+            .pending
+            .iter()
+            .any(|fact| fact.text.contains("Validation failure remains")));
+    }
+
+    #[test]
+    fn compact_evidence_is_a_scoped_snapshot_with_rewind_and_new_task_boundaries() {
+        let f = Fixture::new();
+        let store = &f.core.store;
+        let original = store.create(f.root.to_string_lossy().into()).unwrap();
+        let mut reply = message("assistant", "");
+        reply.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":original.workspace,"label":"Build","status":"failed","detail":"Original diagnostic"}).to_string()});
+        store.save_message(&original.id, &reply).unwrap();
+        let state = refresh(store, &original.id, None).unwrap();
+        let mut compact = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&compact.id, &state).unwrap();
+        let snapshot = owned_context(&f.core, &compact).unwrap();
+        store.delete(&original.id).unwrap();
+        assert_eq!(
+            snapshot.revision,
+            owned_context(&f.core, &compact).unwrap().revision
+        );
+        let mut latest = message("assistant", "Unverified claim is not a check");
+        latest.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":compact.workspace,"label":"Build","status":"passed","detail":"New backend check"}).to_string()});
+        store.save_message(&compact.id, &latest).unwrap();
+        let updated = owned_context(&f.core, &compact).unwrap();
+        assert!(updated.evidence.contains("Build: passed"));
+        assert!(!updated.evidence.contains("Original diagnostic"));
+        assert_eq!(
+            refresh(store, &compact.id, None)
+                .unwrap()
+                .check_evidence
+                .len(),
+            1
+        );
+        store.truncate_from(&compact.id, &latest.id).unwrap();
+        assert_eq!(
+            snapshot.revision,
+            owned_context(&f.core, &compact).unwrap().revision
+        );
+        let task = message("user", "New task: another feature");
+        store.save_message(&compact.id, &task).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .is_empty());
+        store.truncate_from(&compact.id, &task.id).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .contains("Original diagnostic"));
+        let unrelated = store.create("another-workspace".into()).unwrap();
+        store.seed_work_state(&unrelated.id, &state).unwrap();
+        let scoped = refresh(store, &unrelated.id, None).unwrap();
+        assert!(scoped.check_evidence.is_empty() && scoped.checks.is_empty());
+        assert!(!scoped
+            .pending
+            .iter()
+            .any(|fact| fact.text.starts_with("Validation failure remains:")));
+        compact.workspace = unrelated.workspace.clone();
+        store.update(&compact).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .is_empty());
+    }
+
+    #[test]
+    fn compact_evidence_legacy_seeds_remain_readable_without_invented_details() {
+        let f = Fixture::new();
+        let s = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let legacy: WorkState = serde_json::from_value(serde_json::json!({"workspace":s.workspace,"checks":[{"source":"old-message","text":"Build: failed"}]})).unwrap();
+        assert!(legacy.check_evidence.is_empty());
+        f.core.store.seed_work_state(&s.id, &legacy).unwrap();
+        assert!(owned_context(&f.core, &s).unwrap().evidence.is_empty());
+        assert_eq!(
+            refresh(&f.core.store, &s.id, None).unwrap().checks[0].text,
+            "Build: failed"
+        );
     }
 
     #[test]

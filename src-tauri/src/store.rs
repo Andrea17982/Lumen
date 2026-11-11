@@ -144,6 +144,12 @@ impl Store {
         let mut seed = state.clone();
         let session = self.session(id)?;
         seed.access = session.access_mode;
+        if seed.workspace != session.workspace {
+            seed.checks.clear();
+            seed.check_evidence.clear();
+            seed.pending
+                .retain(|fact| !fact.text.starts_with("Validation failure remains:"));
+        }
         seed.workspace = session.workspace;
         let text = serde_json::to_string(&seed).map_err(|e| e.to_string())?;
         self.with(|c| c.execute("INSERT INTO work_states(session_id,state,seed) VALUES(?1,?2,?2) ON CONFLICT(session_id) DO UPDATE SET state=excluded.state,seed=excluded.seed", params![id,text]))?;

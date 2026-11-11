@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo e nona sulla continuità implementate nel ramo 0.8**, 11 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind e decima su Compact implementate nel ramo 0.8**, 11 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -112,6 +112,12 @@ Passano 163 test Rust Windows, sei controlli con TypeScript/Node/Godot installat
 Due regressioni riprodotte sulla baseline `26ab3b9`: Rewind conservava identificatori CLI che puntavano a una cronologia remota contenente anche i turni rimossi; un nuovo incarico esplicito ritirava i check dallo stato di lavoro ma non dal contesto provider. La rimozione dei marcatori nativi è ora atomica con il taglio SQLite; il prossimo turno ricostruisce il contesto conservato. Le altre attività e chat restano intatte. La stessa regola di nuovo incarico governa entrambi i contesti; le continuazioni dichiarano quando il nuovo contesto sostituisce evidenze precedenti, anche se restano note di progetto.
 
 Passano 166 test Rust Windows e nove scenari nativi offline Claude/Claude/GPT, inclusi i due nuovi flussi Rewind/cambio incarico. [Protocollo, verifiche e limiti](continuity-rewind-0.8.md). Budget live invariato a 13 slot; nessuna nuova inferenza o pubblicazione. Non è un rollback della cronologia sul provider né una certificazione della continuità live generale.
+
+### Decima tranche — evidenze attraverso Compact
+
+Riprodotta sulla baseline `1b8a941` la perdita di dettagli, diagnostica e sorgenti dei check nel contesto provider dopo Compact. Il nuovo seed conserva l'ultima evidenza strutturata per etichetta; continuazioni e cambio account leggono la stessa proiezione, ancora limitata agli otto check più recenti. Compact ripetuto conserva le sorgenti originali senza seguire puntatori alla chat precedente. I nuovi risultati sostituiscono quelli vecchi; nuovo incarico, Rewind e cambio progetto rispettano i rispettivi confini. Vecchi seed restano leggibili senza inventare informazioni perdute.
+
+[Protocollo e limiti](compact-evidence-0.8.md). Nessuna inferenza aggiuntiva: budget a 13 slot. Questa è continuità delle evidenze backend, non una misura della qualità generale del modello o chiusura della matrice completa.
 
 ## Decisioni concordate
 
