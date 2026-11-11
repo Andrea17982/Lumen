@@ -8,6 +8,7 @@ mod classify;
 mod codegraph;
 mod context;
 mod diagnostics;
+mod execution;
 mod gitops;
 mod godot;
 mod graph_mcp;
@@ -16,6 +17,8 @@ mod impact;
 mod inspector;
 mod integrations;
 mod interactions;
+#[cfg(test)]
+mod latency_probe;
 mod layers;
 mod layout;
 mod limits;
@@ -991,7 +994,8 @@ async fn balance(
     options: &RunOptions,
     accounts: &[Account],
     plan: &mut Plan,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let mut selected_by_usage = false;
     if options.balance_usage || accounts.iter().any(|a| a.provider.fallback_rank() > 0) {
         let mut usage = read_usage(core)?;
         for a in accounts.iter().filter(|a| a.provider == Provider::Gpt) {
@@ -1040,6 +1044,7 @@ async fn balance(
                     .min_by_key(|a| a.provider.fallback_rank())
                 {
                     plan.provider = google.provider.clone();
+                    selected_by_usage = true;
                     plan.account_id = google.id.clone();
                     plan.strategy = "single".into();
                     plan.partner_account = None;
@@ -1057,14 +1062,19 @@ async fn balance(
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                 {
                     plan.provider = a.provider.clone();
+                    selected_by_usage = true;
                     plan.account_id = a.id.clone();
                     plan.partner_account = if plan.strategy == "single" {
                         None
                     } else {
                         scores
                             .iter()
-                            .filter(|(b, score)| b.provider != a.provider && *score < 1000.0)
-                            .min_by(|a, b| a.1.total_cmp(&b.1))
+                            .filter(|(b, score)| b.id != a.id && *score < 1000.0)
+                            .min_by(|left, right| {
+                                (left.0.provider == a.provider)
+                                    .cmp(&(right.0.provider == a.provider))
+                                    .then(left.1.total_cmp(&right.1))
+                            })
                             .map(|(b, _)| b.id.clone())
                     };
                     if plan.partner_account.is_none() {
@@ -1077,5 +1087,5 @@ async fn balance(
                 .push_str(" · usage balancing unavailable: missing/stale quota data");
         }
     }
-    Ok(())
+    Ok(selected_by_usage)
 }

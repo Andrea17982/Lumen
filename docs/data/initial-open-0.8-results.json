@@ -1,0 +1,1508 @@
+{
+  "at": "2026-11-11T15:46:17.832Z",
+  "completedAt": "2026-11-11T15:49:31.676Z",
+  "protocol": "docs/initial-open-0.8.md",
+  "experimentSha256": "02a658b8a61faf1043719de2147d24bdf7fe748f77c6f7a5323f335c90d4a524",
+  "environment": {
+    "webview": "Edg/157.0.4341.46",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0",
+    "window": {
+      "width": 827,
+      "height": 547,
+      "dpr": 1.5
+    },
+    "platform": "Windows x64 release / embedded assets / isolated synthetic fixture"
+  },
+  "primary": {
+    "size": 5000,
+    "kind": "mixed",
+    "threshold": 0.2,
+    "baselineMedianMs": 1259.6529999999912,
+    "candidateMedianMs": 932.4252500000002,
+    "reduction": 0.2597761050066909,
+    "pairedReduction": {
+      "median": 0.2583135339370703,
+      "p95": 0.2907898029155698,
+      "min": 0.12309460359197799,
+      "max": 0.29295405874476166
+    },
+    "passed": true
+  },
+  "workloads": [
+    {
+      "size": 100,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 31.943449999998847,
+          "p95": 74.47820000000138,
+          "min": 23.32060000000638,
+          "max": 89.75729999999749
+        },
+        "taskMs": {
+          "median": 19.878000000005613,
+          "p95": 24.16799999999597,
+          "min": 16.656000000001114,
+          "max": 24.427000000000003
+        },
+        "scriptMs": {
+          "median": 11.81150000000386,
+          "p95": 14.859999999998763,
+          "min": 9.507999999998518,
+          "max": 15.557000000000002
+        },
+        "layoutMs": {
+          "median": 0.7874999999999688,
+          "p95": 1.1390000000000011,
+          "min": 0.636000000000081,
+          "max": 1.1600000000000499
+        },
+        "typingTaskMs": {
+          "median": 17.612499999994924,
+          "p95": 20.72300000000002,
+          "min": 15.032999999988306,
+          "max": 21.012999999996396
+        },
+        "heapBytes": {
+          "median": 579244970,
+          "p95": 1018599872,
+          "min": 11240900,
+          "max": 1435175684
+        },
+        "nodes": {
+          "median": 1420,
+          "p95": 1420,
+          "min": 1420,
+          "max": 1420
+        },
+        "articles": {
+          "median": 100,
+          "p95": 100,
+          "min": 100,
+          "max": 100
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 403390464
+        },
+        "ipcReadProbe": {
+          "ms": 2,
+          "count": 100
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 24.64299999999639,
+          "p95": 60.044800000003306,
+          "min": 19.381300000008196,
+          "max": 76.20629999999801
+        },
+        "taskMs": {
+          "median": 13.256999999999852,
+          "p95": 14.962000000000586,
+          "min": 11.647999999997438,
+          "max": 16.76899999999648
+        },
+        "scriptMs": {
+          "median": 5.008500000000637,
+          "p95": 5.779000000003975,
+          "min": 4.615000000001146,
+          "max": 6.260999999994965
+        },
+        "layoutMs": {
+          "median": 0.9300000000000974,
+          "p95": 1.0890000000000066,
+          "min": 0.7129999999999637,
+          "max": 1.1620000000001074
+        },
+        "typingTaskMs": {
+          "median": 18.14549999999926,
+          "p95": 19.480000000001496,
+          "min": 14.894999999995662,
+          "max": 20.1370000000054
+        },
+        "heapBytes": {
+          "median": 528974816,
+          "p95": 1110123344,
+          "min": 107343408,
+          "max": 1319117912
+        },
+        "nodes": {
+          "median": 1420,
+          "p95": 1420,
+          "min": 1420,
+          "max": 1420
+        },
+        "articles": {
+          "median": 100,
+          "p95": 100,
+          "min": 100,
+          "max": 100
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 770170880
+        },
+        "ipcReadProbe": {
+          "ms": 2.399999976158142,
+          "count": 100
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 30.271099999998114,
+          "p95": 67.39139999999315,
+          "min": 24.808900000003632,
+          "max": 71.85759999999937
+        },
+        "taskMs": {
+          "median": 16.904999999997727,
+          "p95": 24.547000000001873,
+          "min": 15.00200000000973,
+          "max": 25.02499999999941
+        },
+        "scriptMs": {
+          "median": 9.34399999999913,
+          "p95": 10.179000000000826,
+          "min": 8.082000000001699,
+          "max": 10.535999999994772
+        },
+        "layoutMs": {
+          "median": 0.7900000000000129,
+          "p95": 1.0620000000001184,
+          "min": 0.6930000000000547,
+          "max": 1.15899999999991
+        },
+        "typingTaskMs": {
+          "median": 16.557499999999337,
+          "p95": 19.507999999998304,
+          "min": 13.914999999997235,
+          "max": 19.59199999998873
+        },
+        "heapBytes": {
+          "median": 370693014,
+          "p95": 1199310928,
+          "min": 117286704,
+          "max": 1223834112
+        },
+        "nodes": {
+          "median": 316,
+          "p95": 327,
+          "min": 301,
+          "max": 327
+        },
+        "articles": {
+          "median": 7,
+          "p95": 8,
+          "min": 6,
+          "max": 8
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 998641664
+        },
+        "ipcReadProbe": {
+          "ms": 2.199999988079071,
+          "count": 100
+        }
+      },
+      "openingMedianReduction": 0.22854294072815307,
+      "pairedOpeningReduction": {
+        "median": 0.24565198653919723,
+        "p95": 0.6930820025188544,
+        "min": -1.7248650194874822,
+        "max": 0.7521271250360986
+      },
+      "typingMedianChange": 0.03026259758719596
+    },
+    {
+      "size": 100,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 58.907799999993586,
+          "p95": 76.1617000000042,
+          "min": 40.54930000001332,
+          "max": 80.16610000000219
+        },
+        "taskMs": {
+          "median": 42.42250000000425,
+          "p95": 50.81400000000258,
+          "min": 34.95799999998894,
+          "max": 65.87800000000001
+        },
+        "scriptMs": {
+          "median": 32.68599999999999,
+          "p95": 38.03599999999818,
+          "min": 25.930999999999926,
+          "max": 47.567000000000014
+        },
+        "layoutMs": {
+          "median": 1.2230000000000296,
+          "p95": 1.4310000000000156,
+          "min": 0.8680000000000909,
+          "max": 8.404
+        },
+        "typingTaskMs": {
+          "median": 17.6989999999968,
+          "p95": 20.59200000000061,
+          "min": 15.163000000001148,
+          "max": 20.60700000000182
+        },
+        "heapBytes": {
+          "median": 589344808,
+          "p95": 1025339816,
+          "min": 14591432,
+          "max": 1450033992
+        },
+        "nodes": {
+          "median": 2220,
+          "p95": 2220,
+          "min": 2220,
+          "max": 2220
+        },
+        "articles": {
+          "median": 100,
+          "p95": 100,
+          "min": 100,
+          "max": 100
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 419356672
+        },
+        "ipcReadProbe": {
+          "ms": 2.5,
+          "count": 100
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 52.25930000000517,
+          "p95": 97.77519999998913,
+          "min": 35.56600000000617,
+          "max": 173.63999999999942
+        },
+        "taskMs": {
+          "median": 37.79199999999605,
+          "p95": 46.75600000000202,
+          "min": 29.176999999997122,
+          "max": 47.45900000000347
+        },
+        "scriptMs": {
+          "median": 27.363000000001136,
+          "p95": 36.17099999999951,
+          "min": 18.430000000002167,
+          "max": 38.09100000000143
+        },
+        "layoutMs": {
+          "median": 1.2385000000000312,
+          "p95": 1.3190000000000701,
+          "min": 0.8589999999999431,
+          "max": 1.3350000000000861
+        },
+        "typingTaskMs": {
+          "median": 17.255000000004017,
+          "p95": 21.767999999999788,
+          "min": 15.016000000002805,
+          "max": 21.9110000000029
+        },
+        "heapBytes": {
+          "median": 526372460,
+          "p95": 1108511116,
+          "min": 106527976,
+          "max": 1316026216
+        },
+        "nodes": {
+          "median": 2220,
+          "p95": 2220,
+          "min": 2220,
+          "max": 2220
+        },
+        "articles": {
+          "median": 100,
+          "p95": 100,
+          "min": 100,
+          "max": 100
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 769114112
+        },
+        "ipcReadProbe": {
+          "ms": 2.400000035762787,
+          "count": 100
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 39.825950000002194,
+          "p95": 78.74330000000191,
+          "min": 31.864200000010896,
+          "max": 80.20230000000447
+        },
+        "taskMs": {
+          "median": 27.841000000002225,
+          "p95": 31.594999999999374,
+          "min": 23.98799999999568,
+          "max": 35.420000000002005
+        },
+        "scriptMs": {
+          "median": 19.361500000001808,
+          "p95": 23.38400000000007,
+          "min": 16.12300000000033,
+          "max": 24.45800000000986
+        },
+        "layoutMs": {
+          "median": 1.0000000000000009,
+          "p95": 1.1009999999997966,
+          "min": 0.9449999999999736,
+          "max": 1.1679999999998358
+        },
+        "typingTaskMs": {
+          "median": 15.740000000000975,
+          "p95": 17.172000000002186,
+          "min": 12.507999999996855,
+          "max": 18.20199999998806
+        },
+        "heapBytes": {
+          "median": 388272562,
+          "p95": 1191794300,
+          "min": 110967208,
+          "max": 1215212212
+        },
+        "nodes": {
+          "median": 262,
+          "p95": 262,
+          "min": 262,
+          "max": 262
+        },
+        "articles": {
+          "median": 2,
+          "p95": 2,
+          "min": 2,
+          "max": 2
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 998944768
+        },
+        "ipcReadProbe": {
+          "ms": 2.599999964237213,
+          "count": 100
+        }
+      },
+      "openingMedianReduction": 0.11286281273429222,
+      "pairedOpeningReduction": {
+        "median": 0.1081242814277793,
+        "p95": 0.43696078152958484,
+        "min": -2.928995689509059,
+        "max": 0.47847763448265945
+      },
+      "typingMedianChange": -0.02508616305965672
+    },
+    {
+      "size": 1000,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 105.50729999999339,
+          "p95": 148.2760000000053,
+          "min": 94.89079999999376,
+          "max": 151.30160000000615
+        },
+        "taskMs": {
+          "median": 99.06099999999896,
+          "p95": 105.046999999999,
+          "min": 93.88800000000685,
+          "max": 111.25199999999857
+        },
+        "scriptMs": {
+          "median": 77.7890000000001,
+          "p95": 84.0999999999994,
+          "min": 72.37599999999844,
+          "max": 86.752
+        },
+        "layoutMs": {
+          "median": 3.179000000000154,
+          "p95": 3.8679999999999826,
+          "min": 2.485999999999988,
+          "max": 4.632999999999998
+        },
+        "typingTaskMs": {
+          "median": 29.291999999998097,
+          "p95": 32.31500000000409,
+          "min": 26.022999999998575,
+          "max": 69.05599999999978
+        },
+        "heapBytes": {
+          "median": 578317510,
+          "p95": 1034269748,
+          "min": 26191668,
+          "max": 1443061636
+        },
+        "nodes": {
+          "median": 12220,
+          "p95": 12220,
+          "min": 12220,
+          "max": 12220
+        },
+        "articles": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 20,
+        "longestTaskMs": 83,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 468176896
+        },
+        "ipcReadProbe": {
+          "ms": 3.699999988079071,
+          "count": 1000
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 59.80444999998872,
+          "p95": 81.18020000000251,
+          "min": 44.667700000005425,
+          "max": 110.80309999999008
+        },
+        "taskMs": {
+          "median": 45.47049999999842,
+          "p95": 49.79900000000015,
+          "min": 36.47899999999993,
+          "max": 51.24399999999696
+        },
+        "scriptMs": {
+          "median": 18.153000000000752,
+          "p95": 20.30700000000074,
+          "min": 16.83299999999832,
+          "max": 20.726999999993723
+        },
+        "layoutMs": {
+          "median": 4.030499999999993,
+          "p95": 4.4360000000001065,
+          "min": 2.223000000000308,
+          "max": 4.477000000000009
+        },
+        "typingTaskMs": {
+          "median": 29.294999999999405,
+          "p95": 32.60000000000218,
+          "min": 22.11099999999533,
+          "max": 138.89299999999594
+        },
+        "heapBytes": {
+          "median": 536854800,
+          "p95": 1118911264,
+          "min": 117349236,
+          "max": 1318393832
+        },
+        "nodes": {
+          "median": 12220,
+          "p95": 12220,
+          "min": 12220,
+          "max": 12220
+        },
+        "articles": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 786186240
+        },
+        "ipcReadProbe": {
+          "ms": 3.900000035762787,
+          "count": 1000
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 32.115849999987404,
+          "p95": 53.675800000026356,
+          "min": 26.827100000002247,
+          "max": 60.62150000000838
+        },
+        "taskMs": {
+          "median": 18.351499999999632,
+          "p95": 20.846999999999838,
+          "min": 16.926999999995473,
+          "max": 21.136999999995965
+        },
+        "scriptMs": {
+          "median": 9.286999999999601,
+          "p95": 10.114999999998986,
+          "min": 8.766000000001384,
+          "max": 10.251999999997707
+        },
+        "layoutMs": {
+          "median": 0.8550000000000502,
+          "p95": 1.0649999999998716,
+          "min": 0.7980000000000209,
+          "max": 1.1070000000000246
+        },
+        "typingTaskMs": {
+          "median": 16.307500000003472,
+          "p95": 20.499000000000933,
+          "min": 13.671999999999684,
+          "max": 103.71199999999803
+        },
+        "heapBytes": {
+          "median": 370610430,
+          "p95": 1200889024,
+          "min": 120171668,
+          "max": 1223558048
+        },
+        "nodes": {
+          "median": 301,
+          "p95": 327,
+          "min": 301,
+          "max": 327
+        },
+        "articles": {
+          "median": 6,
+          "p95": 8,
+          "min": 6,
+          "max": 8
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 1001070592
+        },
+        "ipcReadProbe": {
+          "ms": 3.600000023841858,
+          "count": 1000
+        }
+      },
+      "openingMedianReduction": 0.4331723966020127,
+      "pairedOpeningReduction": {
+        "median": 0.4512561142176894,
+        "p95": 0.6110701389753035,
+        "min": -0.10094969158341116,
+        "max": 0.6281061875262974
+      },
+      "typingMedianChange": 0.00010241704224056569
+    },
+    {
+      "size": 1000,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 269.5829999999878,
+          "p95": 282.86109999999826,
+          "min": 254.61740000000282,
+          "max": 285.3683000000019
+        },
+        "taskMs": {
+          "median": 258.14599999999996,
+          "p95": 266.01199999999994,
+          "min": 243.64299999999872,
+          "max": 274.407
+        },
+        "scriptMs": {
+          "median": 236.5515000000009,
+          "p95": 242.858,
+          "min": 222.3639999999989,
+          "max": 251.58600000000004
+        },
+        "layoutMs": {
+          "median": 3.043999999999991,
+          "p95": 3.192,
+          "min": 2.782000000000062,
+          "max": 3.377999999999992
+        },
+        "typingTaskMs": {
+          "median": 32.86950000000388,
+          "p95": 37.165999999999144,
+          "min": 26.191999999999993,
+          "max": 37.61700000000001
+        },
+        "heapBytes": {
+          "median": 561265624,
+          "p95": 1035197836,
+          "min": 25246924,
+          "max": 1420283872
+        },
+        "nodes": {
+          "median": 20226,
+          "p95": 20226,
+          "min": 20226,
+          "max": 20226
+        },
+        "articles": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 20,
+        "longestTaskMs": 247,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 524275712
+        },
+        "ipcReadProbe": {
+          "ms": 11.100000023841858,
+          "count": 1000
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 203.94825000000128,
+          "p95": 232.5563000000111,
+          "min": 192.68139999999403,
+          "max": 233.38319999999658
+        },
+        "taskMs": {
+          "median": 193.18249999999892,
+          "p95": 214.5450000000011,
+          "min": 180.4850000000009,
+          "max": 234.59300000000383
+        },
+        "scriptMs": {
+          "median": 171.81999999999852,
+          "p95": 182.80999999999636,
+          "min": 160.22300000000024,
+          "max": 191.989999999997
+        },
+        "layoutMs": {
+          "median": 2.95999999999999,
+          "p95": 3.17400000000001,
+          "min": 2.765999999999935,
+          "max": 3.174999999999997
+        },
+        "typingTaskMs": {
+          "median": 34.50149999999752,
+          "p95": 36.01900000000313,
+          "min": 28.42699999999354,
+          "max": 40.801000000001864
+        },
+        "heapBytes": {
+          "median": 517780188,
+          "p95": 1127172356,
+          "min": 126859728,
+          "max": 1304493500
+        },
+        "nodes": {
+          "median": 20226,
+          "p95": 20226,
+          "min": 20226,
+          "max": 20226
+        },
+        "articles": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 20,
+        "longestTaskMs": 187,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 811032576
+        },
+        "ipcReadProbe": {
+          "ms": 8.799999952316284,
+          "count": 1000
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 45.825150000004214,
+          "p95": 79.24219999999332,
+          "min": 37.23079999999027,
+          "max": 105.35970000000088
+        },
+        "taskMs": {
+          "median": 27.387999999998414,
+          "p95": 30.966000000002936,
+          "min": 25.63899999999819,
+          "max": 35.38700000000006
+        },
+        "scriptMs": {
+          "median": 17.473999999998213,
+          "p95": 18.556999999987056,
+          "min": 16.503000000000156,
+          "max": 20.895999999996917
+        },
+        "layoutMs": {
+          "median": 0.9360000000000479,
+          "p95": 1.084000000000085,
+          "min": 0.9009999999998186,
+          "max": 1.7380000000000173
+        },
+        "typingTaskMs": {
+          "median": 16.815000000004687,
+          "p95": 18.803000000005454,
+          "min": 14.48400000000305,
+          "max": 18.811999999996942
+        },
+        "heapBytes": {
+          "median": 373022110,
+          "p95": 1194035072,
+          "min": 113588920,
+          "max": 1214294860
+        },
+        "nodes": {
+          "median": 307,
+          "p95": 307,
+          "min": 307,
+          "max": 307
+        },
+        "articles": {
+          "median": 4,
+          "p95": 4,
+          "min": 4,
+          "max": 4
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 998039552
+        },
+        "ipcReadProbe": {
+          "ms": 8.5,
+          "count": 1000
+        }
+      },
+      "openingMedianReduction": 0.24346768898628435,
+      "pairedOpeningReduction": {
+        "median": 0.24091324970381112,
+        "p95": 0.29779621034064574,
+        "min": 0.13623573481844253,
+        "max": 0.31821538476782263
+      },
+      "typingMedianChange": 0.0496508921642691
+    },
+    {
+      "size": 5000,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 440.4274499999956,
+          "p95": 482.0887000000221,
+          "min": 419.12080000000424,
+          "max": 525.3661999999995
+        },
+        "taskMs": {
+          "median": 429.1640000000001,
+          "p95": 458.0869999999919,
+          "min": 414.8479999999992,
+          "max": 523.121
+        },
+        "scriptMs": {
+          "median": 357.4854999999992,
+          "p95": 385.3160000000031,
+          "min": 346.26800000000026,
+          "max": 413.76499999999993
+        },
+        "layoutMs": {
+          "median": 11.504999999999988,
+          "p95": 15.301000000000009,
+          "min": 10.719000000000033,
+          "max": 16.096
+        },
+        "typingTaskMs": {
+          "median": 93.06149999999747,
+          "p95": 98.39900000000057,
+          "min": 72.56100000000743,
+          "max": 124.45200000000001
+        },
+        "heapBytes": {
+          "median": 551126608,
+          "p95": 1077476556,
+          "min": 39551804,
+          "max": 1409046360
+        },
+        "nodes": {
+          "median": 60226,
+          "p95": 60226,
+          "min": 60226,
+          "max": 60226
+        },
+        "articles": {
+          "median": 5000,
+          "p95": 5000,
+          "min": 5000,
+          "max": 5000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 21,
+        "longestTaskMs": 407,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 625217536
+        },
+        "ipcReadProbe": {
+          "ms": 13.800000011920929,
+          "count": 5000
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 156.50099999999657,
+          "p95": 175.05279999999766,
+          "min": 144.40069999999832,
+          "max": 176.13060000000405
+        },
+        "taskMs": {
+          "median": 151.55399999999906,
+          "p95": 159.3119999999999,
+          "min": 140.20299999999963,
+          "max": 159.77400000001296
+        },
+        "scriptMs": {
+          "median": 80.27950000000273,
+          "p95": 85.03999999999934,
+          "min": 71.79599999999908,
+          "max": 88.06099999999617
+        },
+        "layoutMs": {
+          "median": 11.847000000000051,
+          "p95": 13.822999999999919,
+          "min": 10.860000000000092,
+          "max": 14.45199999999991
+        },
+        "typingTaskMs": {
+          "median": 88.13099999999707,
+          "p95": 97.86199999999923,
+          "min": 72.16900000000237,
+          "max": 98.11100000000295
+        },
+        "heapBytes": {
+          "median": 518050010,
+          "p95": 1146750340,
+          "min": 145316516,
+          "max": 1306367776
+        },
+        "nodes": {
+          "median": 60226,
+          "p95": 60226,
+          "min": 60226,
+          "max": 60226
+        },
+        "articles": {
+          "median": 5000,
+          "p95": 5000,
+          "min": 5000,
+          "max": 5000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 20,
+        "longestTaskMs": 83,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 886157312
+        },
+        "ipcReadProbe": {
+          "ms": 11.400000035762787,
+          "count": 5000
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 42.08124999999927,
+          "p95": 69.8119999999908,
+          "min": 36.65260000000126,
+          "max": 78.40520000000834
+        },
+        "taskMs": {
+          "median": 20.51550000000013,
+          "p95": 22.446000000002186,
+          "min": 19.07699999999579,
+          "max": 24.439999999998463
+        },
+        "scriptMs": {
+          "median": 9.68250000000026,
+          "p95": 11.54300000000319,
+          "min": 8.88299999999731,
+          "max": 12.020999999997173
+        },
+        "layoutMs": {
+          "median": 0.9234999999999938,
+          "p95": 1.0630000000000361,
+          "min": 0.8550000000000502,
+          "max": 1.1270000000001001
+        },
+        "typingTaskMs": {
+          "median": 16.945500000002056,
+          "p95": 18.925000000002967,
+          "min": 14.425999999999384,
+          "max": 19.77200000000323
+        },
+        "heapBytes": {
+          "median": 356535272,
+          "p95": 1205604720,
+          "min": 126380432,
+          "max": 1215424220
+        },
+        "nodes": {
+          "median": 322,
+          "p95": 333,
+          "min": 307,
+          "max": 333
+        },
+        "articles": {
+          "median": 7,
+          "p95": 8,
+          "min": 6,
+          "max": 8
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 1001992192
+        },
+        "ipcReadProbe": {
+          "ms": 10.800000011920929,
+          "count": 5000
+        }
+      },
+      "openingMedianReduction": 0.6446611127439987,
+      "pairedOpeningReduction": {
+        "median": 0.6501860066887981,
+        "p95": 0.6800753759690947,
+        "min": 0.5942932475938576,
+        "max": 0.6816215051520267
+      },
+      "typingMedianChange": -0.05298109314808519
+    },
+    {
+      "size": 5000,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 1259.6529999999912,
+          "p95": 1301.5164000000077,
+          "min": 1199.9087,
+          "max": 1330.850999999995
+        },
+        "taskMs": {
+          "median": 1224.7105000000006,
+          "p95": 1277.1149999999948,
+          "min": 1174.9849999999924,
+          "max": 1296.0709999999976
+        },
+        "scriptMs": {
+          "median": 1135.311499999999,
+          "p95": 1192.4739999999972,
+          "min": 1088.7449999999958,
+          "max": 1205.4079999999913
+        },
+        "layoutMs": {
+          "median": 11.878000000000014,
+          "p95": 15.322999999999976,
+          "min": 11.21300000000014,
+          "max": 15.96199999999981
+        },
+        "typingTaskMs": {
+          "median": 119.4059999999979,
+          "p95": 124.089000000005,
+          "min": 109.79500000000009,
+          "max": 124.46400000000324
+        },
+        "heapBytes": {
+          "median": 542666668,
+          "p95": 1120002352,
+          "min": 112202256,
+          "max": 1364085136
+        },
+        "nodes": {
+          "median": 100226,
+          "p95": 100226,
+          "min": 100226,
+          "max": 100226
+        },
+        "articles": {
+          "median": 5000,
+          "p95": 5000,
+          "min": 5000,
+          "max": 5000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 20,
+        "longestTaskMs": 1199,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 744280064
+        },
+        "ipcReadProbe": {
+          "ms": 39.89999997615814,
+          "count": 5000
+        }
+      },
+      "plain": {
+        "samples": 20,
+        "openMs": {
+          "median": 932.4252500000002,
+          "p95": 1030.0717000000004,
+          "min": 898.6964000000007,
+          "max": 1091.4453000000067
+        },
+        "taskMs": {
+          "median": 897.7289999999982,
+          "p95": 992.9559999999994,
+          "min": 864.633,
+          "max": 1058.4569999999899
+        },
+        "scriptMs": {
+          "median": 811.647999999999,
+          "p95": 899.2159999999991,
+          "min": 754.7519999999998,
+          "max": 912.154000000001
+        },
+        "layoutMs": {
+          "median": 11.811999999999976,
+          "p95": 15.47900000000002,
+          "min": 11.07899999999995,
+          "max": 17.744999999999898
+        },
+        "typingTaskMs": {
+          "median": 120.4380000000036,
+          "p95": 133.84599999999836,
+          "min": 109.69099999999798,
+          "max": 159.19900000000098
+        },
+        "heapBytes": {
+          "median": 408533724,
+          "p95": 1193141080,
+          "min": 100946052,
+          "max": 1283391984
+        },
+        "nodes": {
+          "median": 100226,
+          "p95": 100226,
+          "min": 100226,
+          "max": 100226
+        },
+        "articles": {
+          "median": 5000,
+          "p95": 5000,
+          "min": 5000,
+          "max": 5000
+        },
+        "allMessagesMounted": true,
+        "longTaskCount": 23,
+        "longestTaskMs": 894,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 981794816
+        },
+        "ipcReadProbe": {
+          "ms": 39.19999998807907,
+          "count": 5000
+        }
+      },
+      "virtual": {
+        "samples": 20,
+        "openMs": {
+          "median": 88.70609999999579,
+          "p95": 100.04420000000391,
+          "min": 79.48090000002412,
+          "max": 108.28549999999814
+        },
+        "taskMs": {
+          "median": 38.64500000000248,
+          "p95": 42.82800000000009,
+          "min": 33.26399999999552,
+          "max": 42.88999999999987
+        },
+        "scriptMs": {
+          "median": 21.944500000000033,
+          "p95": 26.07299999999846,
+          "min": 16.78099999999816,
+          "max": 26.187000000000182
+        },
+        "layoutMs": {
+          "median": 1.0635000000000088,
+          "p95": 1.2280000000000069,
+          "min": 0.9869999999999879,
+          "max": 1.250999999999891
+        },
+        "typingTaskMs": {
+          "median": 17.154500000003736,
+          "p95": 20.34900000000306,
+          "min": 14.254999999998574,
+          "max": 21.62900000000434
+        },
+        "heapBytes": {
+          "median": 363207346,
+          "p95": 1204816672,
+          "min": 128537496,
+          "max": 1228818004
+        },
+        "nodes": {
+          "median": 268,
+          "p95": 268,
+          "min": 268,
+          "max": 268
+        },
+        "articles": {
+          "median": 2,
+          "p95": 2,
+          "min": 2,
+          "max": 2
+        },
+        "allMessagesMounted": false,
+        "longTaskCount": 0,
+        "longestTaskMs": 0,
+        "visibleFocusedSamples": 20,
+        "privateProcessProbe": {
+          "count": 7,
+          "privateBytes": 1010298880
+        },
+        "ipcReadProbe": {
+          "ms": 41.5,
+          "count": 5000
+        }
+      },
+      "openingMedianReduction": 0.2597761050066909,
+      "pairedOpeningReduction": {
+        "median": 0.2583135339370703,
+        "p95": 0.2907898029155698,
+        "min": 0.12309460359197799,
+        "max": 0.29295405874476166
+      },
+      "typingMedianChange": 0.008642781769808261
+    }
+  ],
+  "secondaryInvestigation": {
+    "samples": 80,
+    "sha256": "02a658b8a61faf1043719de2147d24bdf7fe748f77c6f7a5323f335c90d4a524",
+    "workloads": [
+      {
+        "size": 100,
+        "kind": "mixed",
+        "baseline": {
+          "openMs": {
+            "median": 58.50814999999875,
+            "p95": 71.23339999999916,
+            "min": 44.020799999999326,
+            "max": 150.3989999999976
+          },
+          "typingTaskMs": {
+            "median": 17.430000000000277,
+            "p95": 21.616999999999997,
+            "min": 14.690999999999566,
+            "max": 21.856999999999793
+          }
+        },
+        "plain": {
+          "openMs": {
+            "median": 53.86369999999988,
+            "p95": 68.11510000000271,
+            "min": 37.34140000000116,
+            "max": 90.60999999999876
+          },
+          "typingTaskMs": {
+            "median": 18.499499999999003,
+            "p95": 19.50800000000008,
+            "min": 14.749000000000123,
+            "max": 20.134000000002317
+          }
+        }
+      },
+      {
+        "size": 1000,
+        "kind": "mixed",
+        "baseline": {
+          "openMs": {
+            "median": 285.7874000000006,
+            "p95": 305.9243999999999,
+            "min": 264.84319999999934,
+            "max": 311.34219999999914
+          },
+          "typingTaskMs": {
+            "median": 34.60700000000044,
+            "p95": 39.32499999999983,
+            "min": 27.722000000000246,
+            "max": 82.94800000000002
+          }
+        },
+        "plain": {
+          "openMs": {
+            "median": 227.77020000000084,
+            "p95": 233.84409999999843,
+            "min": 204.2609999999986,
+            "max": 271.395199999999
+          },
+          "typingTaskMs": {
+            "median": 34.07049999999967,
+            "p95": 36.23599999999971,
+            "min": 27.452000000000254,
+            "max": 38.286000000000264
+          }
+        }
+      }
+    ],
+    "conclusion": "Original small-chat opening p95 increase and 1000-message typing increase do not repeat. A separate roughly 1 ms typing increase on 100 messages is not reproduced in the main series; no general typing improvement is claimed."
+  },
+  "gates": [
+    {
+      "arm": "baseline",
+      "nativeSize": 1000,
+      "htmlHash": "825713ac462882933f3da8b7f6396fd217c55b7e19eac72817211e72973619ff",
+      "axHash": "a2a7b07b3b212081f0efd89d8c649e30c70f74dbe2d6af862f2024fd7987ed79",
+      "axNodes": 58,
+      "axScope": "Targeted first/last paragraph subtrees on 1000 mixed messages, not full-tree export or screen-reader certification",
+      "axFirst": true,
+      "axLast": true,
+      "findFirst": true,
+      "selectionFirst": true,
+      "selectionLast": true,
+      "selectionHash": "cc36b66f5590b75ed9c02d3e7dabe00a408d78a152052ec848a8e18a29012b06"
+    },
+    {
+      "arm": "plain",
+      "nativeSize": 1000,
+      "htmlHash": "825713ac462882933f3da8b7f6396fd217c55b7e19eac72817211e72973619ff",
+      "axHash": "a2a7b07b3b212081f0efd89d8c649e30c70f74dbe2d6af862f2024fd7987ed79",
+      "axNodes": 58,
+      "axScope": "Targeted first/last paragraph subtrees on 1000 mixed messages, not full-tree export or screen-reader certification",
+      "axFirst": true,
+      "axLast": true,
+      "findFirst": true,
+      "selectionFirst": true,
+      "selectionLast": true,
+      "selectionHash": "cc36b66f5590b75ed9c02d3e7dabe00a408d78a152052ec848a8e18a29012b06"
+    },
+    {
+      "arm": "virtual",
+      "nativeSize": 1000,
+      "htmlHash": "ec44d99eb16e6d605a45539a5065603ace425bf165f134c3f08fc7c0431fed4e",
+      "axHash": "84c2d2f54080cf83bbe7f56732b6f25364b7d180f1fb349944087f16b27752d1",
+      "axNodes": 7,
+      "axScope": "Targeted first/last paragraph subtrees on 1000 mixed messages, not full-tree export or screen-reader certification",
+      "axFirst": false,
+      "axLast": true,
+      "findFirst": false,
+      "selectionFirst": false,
+      "selectionLast": true,
+      "selectionHash": "98b23c3a7755d2ec801d284bc71a895135c300142a7ad19ac1b2f06b3fa5282b"
+    }
+  ],
+  "finalOrdinaryBuild": {
+    "at": "2026-11-11T16:11:06.101Z",
+    "completedAt": "2026-11-11T16:12:41.687Z",
+    "hashes": {
+      "baseline": "02a658b8a61faf1043719de2147d24bdf7fe748f77c6f7a5323f335c90d4a524",
+      "candidate": "f59bdb4688683ea21e31b8254fc830e5a71bf137d8beba292600ccf0e11db92b"
+    },
+    "samples": 40,
+    "baseline": {
+      "openMs": {
+        "median": 1405.9121000000014,
+        "p95": 1643.714,
+        "min": 1362.3788999999997,
+        "max": 1649.0253
+      },
+      "taskMs": {
+        "median": 1377.6345000000001,
+        "p95": 1617.3880000000001,
+        "min": 1333.389,
+        "max": 1617.744
+      },
+      "typingTaskMs": {
+        "median": 124.69949999999997,
+        "p95": 182.998,
+        "min": 103.44500000000001,
+        "max": 185.03000000000003
+      }
+    },
+    "candidate": {
+      "openMs": {
+        "median": 1046.1628000000019,
+        "p95": 1242.0530999999974,
+        "min": 1003.8994999999995,
+        "max": 1252.5082000000002
+      },
+      "taskMs": {
+        "median": 1018.1864999999998,
+        "p95": 1216.075,
+        "min": 977.9969999999998,
+        "max": 1221.203
+      },
+      "typingTaskMs": {
+        "median": 125.90400000000014,
+        "p95": 182.3840000000001,
+        "min": 111.70499999999994,
+        "max": 192.6350000000001
+      }
+    },
+    "reduction": 0.2558832091992089,
+    "typingMedianChange": 0.009659220766724541,
+    "pairedReduction": {
+      "median": 0.25940244653159683,
+      "p95": 0.3465486519202271,
+      "min": 0.19380041778392054,
+      "max": 0.34741388255577355
+    },
+    "stock": {
+      "at": "2026-11-11T16:07:59.381Z",
+      "sha256": "f59bdb4688683ea21e31b8254fc830e5a71bf137d8beba292600ccf0e11db92b",
+      "noPrototypeAssets": true,
+      "queryCannotEnablePrototype": true,
+      "full5000HtmlMatches": true,
+      "selection1000Matches": true,
+      "nativeFind1000": true,
+      "targetedAx1000Matches": true,
+      "axScope": "Targeted first/last paragraph subtrees on 1000 mixed messages, not full-tree export or screen-reader certification"
+    },
+    "acceptance": {
+      "at": "2026-11-11T16:08:02.530Z",
+      "sha256": "f59bdb4688683ea21e31b8254fc830e5a71bf137d8beba292600ccf0e11db92b",
+      "passed": true,
+      "checks": [
+        "Browser text find reaches the first historical message through content-visibility",
+        "Cross-history selection retains all 1000 messages and formatted code",
+        "Copy returns the real response; typing preserves historical DOM and open disclosure",
+        "Historical link stays keyboard reachable; local image loads, enlarges and restores focus",
+        "Streaming updates the latest body without replacing or collapsing historical messages",
+        "Compact handoff remains reachable without starting generation",
+        "Memoized message actions use the latest chat after navigation, not captured old state",
+        "Both comparison messages retain adjacent lane grouping and distinct visible bodies"
+      ],
+      "scope": "Native Windows release, synthetic fixtures. No screen-reader certification, external-editor launch, provider inference or universal accessibility claim."
+    }
+  },
+  "excludedConfirmation": {
+    "samples": 40,
+    "hashes": {
+      "baseline": "02a658b8a61faf1043719de2147d24bdf7fe748f77c6f7a5323f335c90d4a524",
+      "candidate": "f59bdb4688683ea21e31b8254fc830e5a71bf137d8beba292600ccf0e11db92b"
+    },
+    "reason": "Unequal navigation after reduced-motion emulation mixed smooth and instant scrolling. Original observations retained locally, replaced by 20 equally prepared launch pairs.",
+    "timing": {
+      "baseline": {
+        "openMs": {
+          "median": 1381.9430499999999,
+          "p95": 1542.5206000000017,
+          "min": 1327.3528999999999,
+          "max": 1575.6673999999912
+        },
+        "typingTaskMs": {
+          "median": 123.95349999999993,
+          "p95": 167.36799999999997,
+          "min": 105.38599999999998,
+          "max": 174.57900000000004
+        }
+      },
+      "candidate": {
+        "openMs": {
+          "median": 996.7279500000022,
+          "p95": 1104.2346000000107,
+          "min": 970.9341999999997,
+          "max": 1132.5025000000023
+        },
+        "typingTaskMs": {
+          "median": 467.02599999999995,
+          "p95": 643.9649999999999,
+          "min": 430.013,
+          "max": 646.878
+        }
+      }
+    },
+    "diagnostic": {
+      "observations": [
+        {
+          "stage": "initial",
+          "mediaReduced": true,
+          "behaviors": [
+            "smooth"
+          ]
+        },
+        {
+          "stage": "reloaded",
+          "mediaReduced": true,
+          "behaviors": [
+            "instant"
+          ]
+        }
+      ],
+      "conclusion": "Media emulation occurs after initial hook mount. A reload initializes the installed hook with reduced motion; both timing arms must navigate equally after emulation."
+    }
+  },
+  "decision": {
+    "plainParagraph": "Accepted: opening gate and identical HTML, native selection and targeted AX evidence",
+    "virtualization": "Excluded: only the tail is mounted; historical find, selection and AX content fail. Its timing is not full-transcript readiness."
+  },
+  "limits": [
+    "20 paired warm openings per workload/arm in one experimental binary; no cold OS/process startup or inference latency claim.",
+    "HTML equivalence covers all 5000 mixed messages. Native selection/find and targeted first/last paragraph AX evidence cover 1000 mixed messages, not full screen-reader certification.",
+    "Two exploratory 18-sample pilots were stopped during unbounded 5000-message full-AX/selection diagnostics; excluded from the fixed 360-sample timing series, retained locally.",
+    "Memory/process and IPC probes are single first-repetition observations per workload/arm; do not establish peak memory or IPC speedup.",
+    "No measured scroll improvement is claimed; complete DOM and layout remain unchanged for the accepted path."
+  ],
+  "liveInferenceCalls": 0,
+  "previousLiveSlotsSpent": 13
+}

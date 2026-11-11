@@ -41,6 +41,9 @@ export interface Message {
   role: 'user' | 'assistant';
   text: string;
   activity: Activity[];
+  /** UI-only optimistic delivery state; never evidence that a provider started. */
+  delivery?: 'sending' | 'uncertain';
+  submittedAt?: number;
   /** Live output per Orchestra subtask while it runs (not persisted). */
   live?: Record<string, string>;
 }

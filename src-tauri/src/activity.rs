@@ -1,6 +1,32 @@
 //! Compact streamed activity without dropping metadata needed to resume or answer input.
 use crate::models::Activity;
 pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
+    if activity.kind == "execution" {
+        if let Ok(incoming) = serde_json::from_str::<serde_json::Value>(&activity.text) {
+            if let Some(id) = incoming["id"].as_str() {
+                if let Some(index) = rows.iter().position(|a| {
+                    a.kind == "execution"
+                        && serde_json::from_str::<serde_json::Value>(&a.text)
+                            .is_ok_and(|v| v["id"] == id)
+                }) {
+                    rows[index] = activity;
+                    return;
+                }
+            }
+        }
+        if rows.iter().filter(|a| a.kind == "execution").count() >= 64 {
+            if let Some(index) = rows.iter().position(|a| a.kind == "execution") {
+                rows.remove(index);
+            }
+        }
+    }
+    if activity.kind == "execution-phase"
+        && rows.iter().filter(|a| a.kind == "execution-phase").count() >= 64
+    {
+        if let Some(index) = rows.iter().position(|a| a.kind == "execution-phase") {
+            rows.remove(index);
+        }
+    }
     if activity.kind == "thinking" {
         if let Some(last) = rows.last_mut().filter(|a| a.kind == "thinking") {
             last.text.push_str(&activity.text);
@@ -72,7 +98,18 @@ pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
         let remove = rows
             .iter()
             .position(|a| {
-                ["tool", "file", "thinking", "child", "model", "resume"].contains(&a.kind.as_str())
+                [
+                    "tool",
+                    "file",
+                    "thinking",
+                    "child",
+                    "model",
+                    "resume",
+                    "tool-start",
+                    "tool-end",
+                    "execution",
+                ]
+                .contains(&a.kind.as_str())
             })
             .unwrap_or(0);
         rows.remove(remove);

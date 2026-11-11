@@ -25,6 +25,10 @@ export const HIDDEN = [
   'resume',
   'route',
   'validation',
+  'execution',
+  'execution-phase',
+  'tool-start',
+  'tool-end',
 ];
 export function orchestraOf(m: Message): OrchestraState | null {
   const a = m.activity.find((x) => x.kind === 'orchestra');

@@ -157,6 +157,13 @@ impl Store {
         })
     }
     pub fn save_message(&self, s: &str, m: &Message) -> Result<(), String> {
+        self.write_message(s, m, false)
+    }
+    /// Initial user submissions must not overwrite an existing message, even in another chat.
+    pub fn insert_message(&self, s: &str, m: &Message) -> Result<(), String> {
+        self.write_message(s, m, true)
+    }
+    fn write_message(&self, s: &str, m: &Message, insert_only: bool) -> Result<(), String> {
         self.with(|c| {
             let mut activities=m.activity.clone();
             let previous:Option<String>=c.query_row("SELECT activity FROM messages WHERE id=?1 AND session_id=?2",params![m.id,s],|r|r.get(0)).optional()?;
@@ -173,7 +180,12 @@ impl Store {
                 }
             }
             let activity=serde_json::to_string(&activities).unwrap_or_default();
-            c.execute("INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity",params![m.id,s,m.role,m.text,activity,now()])
+            let sql = if insert_only {
+                "INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6)"
+            } else {
+                "INSERT INTO messages VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET text=excluded.text,activity=excluded.activity"
+            };
+            c.execute(sql,params![m.id,s,m.role,m.text,activity,now()])
         })?;
         Ok(())
     }
@@ -384,6 +396,24 @@ mod tests {
         assert_eq!(db.messages(&s.id).unwrap().len(), 1);
         db.delete(&s.id).unwrap();
         assert!(db.messages(&s.id).unwrap().is_empty());
+    }
+    #[test]
+    fn initial_submission_cannot_overwrite_an_existing_message() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        let first = db.create("/tmp".into()).unwrap();
+        let second = db.create("/tmp".into()).unwrap();
+        let mut message = Message {
+            id: id(),
+            role: "user".into(),
+            text: "Original request".into(),
+            activity: vec![],
+        };
+        db.insert_message(&first.id, &message).unwrap();
+        message.text = "Duplicate request".into();
+        assert!(db.insert_message(&first.id, &message).is_err());
+        assert!(db.insert_message(&second.id, &message).is_err());
+        assert_eq!(db.messages(&first.id).unwrap()[0].text, "Original request");
+        assert!(db.messages(&second.id).unwrap().is_empty());
     }
     #[test]
     fn upgrades_legacy_sessions_and_preserves_account_identity() {

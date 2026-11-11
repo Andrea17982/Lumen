@@ -1,0 +1,675 @@
+{
+  "at": "2026-11-11T14:07:53.084Z",
+  "finishedAt": "2026-11-11T13:59:13.654Z",
+  "version": "0.8 working tree, not a release",
+  "builds": {
+    "A": "4257bd94bea025b001db99c8d6e6778a753f614cb8a31c12ae258a45ae389ccc",
+    "B": "918bf7cfc487e3aa28b8626321bbaccc4fab1bef89d241e83185ddb4c629acad"
+  },
+  "local": {
+    "corpusBaseline": "2/14",
+    "corpusCandidate": "14/14",
+    "interpretation": "Fixed deterministic routing corpus; not model intelligence or live Auto performance"
+  },
+  "protocol": {
+    "arms": {
+      "A": "Preserved pre-quality baseline",
+      "B": "Changed Lumen-owned context on direct native resume"
+    },
+    "models": "Matched per provider, low effort; direct native mode, no classifier/reviewer/repair calls",
+    "turns": "Two user turns per full task, no replacement of failed/invalidated slots",
+    "checks": "Independent compile and React UI / Godot C#-GDScript headless runtime",
+    "time": "Full observed task including independent checks; excludes app/project setup and preflight",
+    "tokens": "Cumulative exact owned native-session logs, includes native tool turns; Codex input includes cached tokens. Monetary charges unavailable.",
+    "limitations": [
+      "Small synthetic tasks, low effort and provider cache variability; no universal superiority claim",
+      "Not a comparison with official GUI apps; not live Auto, cross-audit or two-Claude acceptance",
+      "Windows debug; no release latency/memory baseline or non-Windows GUI acceptance"
+    ]
+  },
+  "budget": {
+    "spentSlots": 13,
+    "maximumPerTaskProvider": 6,
+    "extraSlots": 0,
+    "invalidated": [
+      {
+        "key": "react/gpt/1/A",
+        "reason": "checker-windows-short-path"
+      },
+      {
+        "key": "react/gpt/1/B",
+        "reason": "checker-windows-short-path"
+      }
+    ],
+    "blockedProviders": {
+      "claude": "authentication"
+    },
+    "checkerRepair": {
+      "at": "2026-11-11T13:44:24.454Z",
+      "cause": "Windows 8.3 TEMP alias mismatched Vite real module paths",
+      "resolution": "Canonicalize independent checker project root; external TEMP baseline/oracle checks passed",
+      "spentSlotsRetained": true,
+      "extraSlots": 0
+    }
+  },
+  "groups": [
+    {
+      "task": "react",
+      "provider": "claude",
+      "spentSlots": 1,
+      "maximumSlots": 6,
+      "blocked": "authentication",
+      "arms": [
+        {
+          "arm": "A",
+          "attempts": 1,
+          "evaluable": 0,
+          "passed": 0,
+          "medianTaskMs": null,
+          "medianInputTokens": null,
+          "medianOutputTokens": null,
+          "medianCacheReadTokens": null,
+          "unmeasuredUsageAttempts": 1
+        },
+        {
+          "arm": "B",
+          "attempts": 0,
+          "evaluable": 0,
+          "passed": 0,
+          "medianTaskMs": null,
+          "medianInputTokens": null,
+          "medianOutputTokens": null,
+          "medianCacheReadTokens": null,
+          "unmeasuredUsageAttempts": 0
+        }
+      ]
+    },
+    {
+      "task": "react",
+      "provider": "gpt",
+      "spentSlots": 6,
+      "maximumSlots": 6,
+      "blocked": null,
+      "arms": [
+        {
+          "arm": "A",
+          "attempts": 3,
+          "evaluable": 2,
+          "passed": 0,
+          "medianTaskMs": 71286.99010000001,
+          "medianInputTokens": 280041.5,
+          "medianOutputTokens": 1627,
+          "medianCacheReadTokens": 251136,
+          "unmeasuredUsageAttempts": 0
+        },
+        {
+          "arm": "B",
+          "attempts": 3,
+          "evaluable": 2,
+          "passed": 2,
+          "medianTaskMs": 76552.81525000001,
+          "medianInputTokens": 234337.5,
+          "medianOutputTokens": 1517.5,
+          "medianCacheReadTokens": 212096,
+          "unmeasuredUsageAttempts": 0
+        }
+      ]
+    },
+    {
+      "task": "godot",
+      "provider": "claude",
+      "spentSlots": 0,
+      "maximumSlots": 6,
+      "blocked": "authentication",
+      "arms": [
+        {
+          "arm": "A",
+          "attempts": 0,
+          "evaluable": 0,
+          "passed": 0,
+          "medianTaskMs": null,
+          "medianInputTokens": null,
+          "medianOutputTokens": null,
+          "medianCacheReadTokens": null,
+          "unmeasuredUsageAttempts": 0
+        },
+        {
+          "arm": "B",
+          "attempts": 0,
+          "evaluable": 0,
+          "passed": 0,
+          "medianTaskMs": null,
+          "medianInputTokens": null,
+          "medianOutputTokens": null,
+          "medianCacheReadTokens": null,
+          "unmeasuredUsageAttempts": 0
+        }
+      ]
+    },
+    {
+      "task": "godot",
+      "provider": "gpt",
+      "spentSlots": 6,
+      "maximumSlots": 6,
+      "blocked": null,
+      "arms": [
+        {
+          "arm": "A",
+          "attempts": 3,
+          "evaluable": 3,
+          "passed": 1,
+          "medianTaskMs": 107197.65249999997,
+          "medianInputTokens": 574050,
+          "medianOutputTokens": 2332,
+          "medianCacheReadTokens": 539136,
+          "unmeasuredUsageAttempts": 0
+        },
+        {
+          "arm": "B",
+          "attempts": 3,
+          "evaluable": 3,
+          "passed": 3,
+          "medianTaskMs": 58706.01379999996,
+          "medianInputTokens": 172514,
+          "medianOutputTokens": 1138,
+          "medianCacheReadTokens": 164992,
+          "unmeasuredUsageAttempts": 0
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "key": "react/claude/1/A",
+      "state": "finished",
+      "passed": false,
+      "failureClass": "authentication",
+      "model": "sonnet",
+      "effort": "low",
+      "turnStatuses": [
+        "error"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent React runtime",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 58564.596000000005,
+      "usage": {
+        "source": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "costUsd": null
+      }
+    },
+    {
+      "key": "react/gpt/1/A",
+      "state": "invalidated",
+      "passed": false,
+      "failureClass": "checker-windows-short-path",
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": 2,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent React runtime",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 186358.7121,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 679506,
+        "outputTokens": 2747,
+        "cacheReadTokens": 638592,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "react/gpt/1/B",
+      "state": "invalidated",
+      "passed": false,
+      "failureClass": "checker-windows-short-path",
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [],
+      "observedTurnsAfterInterruptedHarness": 2,
+      "firstStepScopePreserved": null,
+      "unrelatedChanges": null,
+      "finalChecks": null,
+      "elapsedMs": null,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 89669,
+        "outputTokens": 512,
+        "cacheReadTokens": 86528,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1,
+        "coverage": "Partial: task interrupted; final native usage may be missing"
+      }
+    },
+    {
+      "key": "react/gpt/2/B",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent upper/lower/zero bounds",
+          "passed": true
+        },
+        {
+          "name": "Independent React UI state/label/disable/reset",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 65649.6832,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 191821,
+        "outputTokens": 1665,
+        "cacheReadTokens": 170496,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "react/gpt/2/A",
+      "state": "finished",
+      "passed": false,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent upper/lower/zero bounds",
+          "passed": true
+        },
+        {
+          "name": "Independent React UI state/label/disable/reset",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 69547.1232,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 286007,
+        "outputTokens": 1597,
+        "cacheReadTokens": 258688,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "react/gpt/3/A",
+      "state": "finished",
+      "passed": false,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent upper/lower/zero bounds",
+          "passed": true
+        },
+        {
+          "name": "Independent React UI state/label/disable/reset",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 73026.85700000002,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 274076,
+        "outputTokens": 1657,
+        "cacheReadTokens": 243584,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "react/gpt/3/B",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "TypeScript compilation",
+          "passed": true
+        },
+        {
+          "name": "Independent upper/lower/zero bounds",
+          "passed": true
+        },
+        {
+          "name": "Independent React UI state/label/disable/reset",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 87455.94730000003,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 276854,
+        "outputTokens": 1370,
+        "cacheReadTokens": 253696,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/1/A",
+      "state": "finished",
+      "passed": false,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 97275.4547,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 480603,
+        "outputTokens": 2245,
+        "cacheReadTokens": 428288,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/1/B",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 58706.01379999996,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 170467,
+        "outputTokens": 1138,
+        "cacheReadTokens": 164992,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/2/B",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 57020.33449999994,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 172514,
+        "outputTokens": 1036,
+        "cacheReadTokens": 144768,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/2/A",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 107197.65249999997,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 652545,
+        "outputTokens": 2332,
+        "cacheReadTokens": 611328,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/3/A",
+      "state": "finished",
+      "passed": false,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": false
+        }
+      ],
+      "elapsedMs": 107355.93039999995,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 574050,
+        "outputTokens": 2508,
+        "cacheReadTokens": 539136,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    },
+    {
+      "key": "godot/gpt/3/B",
+      "state": "finished",
+      "passed": true,
+      "failureClass": null,
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "turnStatuses": [
+        "completed",
+        "completed"
+      ],
+      "observedTurnsAfterInterruptedHarness": null,
+      "firstStepScopePreserved": true,
+      "unrelatedChanges": 0,
+      "finalChecks": [
+        {
+          "name": "C# compilation",
+          "passed": true
+        },
+        {
+          "name": "Godot import/GDScript",
+          "passed": true
+        },
+        {
+          "name": "Independent C#/GDScript runtime",
+          "passed": true
+        }
+      ],
+      "elapsedMs": 96010.14610000001,
+      "usage": {
+        "source": "exact owned native session logs",
+        "inputTokens": 216936,
+        "outputTokens": 1446,
+        "cacheReadTokens": 210432,
+        "cacheWriteTokens": 0,
+        "costUsd": null,
+        "costNote": "No verified billed amount available; no price inferred",
+        "sessions": 1
+      }
+    }
+  ]
+}

@@ -89,6 +89,17 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
         if let Some(item) = v.get("item") {
             let typ = item["type"].as_str().unwrap_or("");
             let phase = v["type"].as_str().unwrap_or("");
+            if ["command_execution", "mcp_tool_call", "file_change"].contains(&typ) {
+                if let Some(id) = item["id"].as_str() {
+                    if let Some(kind) = match phase {
+                        "item.started" => Some("tool-start"),
+                        "item.completed" => Some("tool-end"),
+                        _ => None,
+                    } {
+                        push(kind, serde_json::json!({"id":id}).to_string());
+                    }
+                }
+            }
             if phase == "item.completed" {
                 match typ {
                     "agent_message" => push("text", item["text"].as_str().unwrap_or("").into()),
@@ -161,6 +172,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             if let Some(blocks) = v["message"]["content"].as_array() {
                 for b in blocks {
                     if b["type"] == "tool_use" {
+                        if let Some(id) = b["id"].as_str() {
+                            push("tool-start", serde_json::json!({"id":id}).to_string());
+                        }
                         let name = b["name"].as_str().unwrap_or("Tool");
                         push(
                             if name == "Edit" || name == "Write" {
@@ -170,6 +184,15 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                             },
                             format!("{}\n{}", name, b["input"]),
                         );
+                    }
+                }
+            }
+        }
+        if v["type"] == "user" {
+            if let Some(blocks) = v["message"]["content"].as_array() {
+                for block in blocks.iter().filter(|b| b["type"] == "tool_result") {
+                    if let Some(id) = block["tool_use_id"].as_str() {
+                        push("tool-end", serde_json::json!({"id":id}).to_string());
                     }
                 }
             }
@@ -742,9 +765,11 @@ pub(crate) async fn run_command(
     if *cancel.borrow() {
         return Err("Cancelled".into());
     }
+    crate::execution::signal(&mut emit, "spawn-start");
     let mut child = c
         .spawn()
         .map_err(|e| format!("Cannot start {}: {e}", p.binary()))?;
+    crate::execution::signal(&mut emit, "process-started");
     // Callers that must outlive the app (Orchestra recovery) record the process.
     if let Some(pid) = child.id() {
         emit(Activity {
@@ -754,6 +779,7 @@ pub(crate) async fn run_command(
     }
     let mut stdin = child.stdin.take().ok_or("CLI stdin unavailable")?;
     let prompt = prompt.to_owned();
+    crate::execution::signal(&mut emit, "request-enqueued");
     let writer = tokio::spawn(async move {
         let r = stdin.write_all(prompt.as_bytes()).await;
         drop(stdin);
@@ -1019,7 +1045,8 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(result, prompt);
-        // The process ID first, then the answer.
+        // Content/control observations remain the process ID then the answer.
+        events.retain(|a| a.kind != "latency");
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].kind, "pid");
         drop(tx);

@@ -51,6 +51,16 @@ pub async fn discover(
     dir: &Path,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<Vec<ModelInfo>, String> {
+    discover_observed(account, dir, cancel, |_| {}).await
+}
+
+pub(crate) async fn discover_observed(
+    account: &Account,
+    dir: &Path,
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
+    mut observe: impl FnMut(&'static str),
+) -> Result<Vec<ModelInfo>, String> {
+    observe("catalog-start");
     if matches!(account.provider, Provider::Gemini | Provider::Antigravity) {
         let mut c = providers::command(&account.provider)?;
         providers::isolate(&mut c, &account.provider, dir);
@@ -137,9 +147,11 @@ pub async fn discover(
             "",
         ]);
     }
+    observe("spawn-start");
     let mut child = c
         .spawn()
         .map_err(|e| format!("Cannot load the official model catalog: {e}"))?;
+    observe("process-started");
     let mut stdin = child
         .stdin
         .take()
@@ -169,6 +181,7 @@ pub async fn discover(
             .write_all(format!("{init}\n").as_bytes())
             .await
             .map_err(|e| e.to_string())?;
+        observe("initialize-written");
         let mut models = vec![];
         let mut page_id = 2_i64;
         loop {
@@ -179,6 +192,7 @@ pub async fn discover(
             if account.provider == Provider::Claude {
                 if v["type"] == "control_response" && v["response"]["request_id"] == "lumen-models"
                 {
+                    observe("initialize-acknowledged");
                     if v["response"]["subtype"] == "error" {
                         return Err(
                             "Claude rejected model discovery. Check CLI version and login.".into(),
@@ -190,6 +204,7 @@ pub async fn discover(
                     ));
                 }
             } else if v["id"] == 1 {
+                observe("initialize-acknowledged");
                 if v.get("error").is_some() {
                     return Err(
                         "Codex rejected model catalog initialization. Update the CLI.".into(),
@@ -230,9 +245,11 @@ pub async fn discover(
         }
     };
     let result = tokio::select! {biased;_=interrupted=>Err("Cancelled".into()),result=tokio::time::timeout(std::time::Duration::from_secs(45),query)=>result.map_err(|_|"Official model catalog timed out. Check CLI installation and login.".to_string()).and_then(|r|r)};
+    observe("query-ended");
     drop(stdin);
     providers::terminate(&mut child).await;
     diagnostics.abort();
+    observe("cleanup-ended");
     let models = result?;
     if models.is_empty() {
         return Err("The official CLI returned no selectable models. Sign in or update the CLI, then refresh.".into());

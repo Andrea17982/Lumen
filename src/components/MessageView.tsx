@@ -1,14 +1,14 @@
 import { lazy, Suspense, useState } from 'react';
 import { Check, ChevronDown, Copy, MapPin, Paperclip, Repeat2, RotateCcw } from 'lucide-react';
 import AttachmentPreview from './AttachmentPreview';
-import WorkingIndicator from './WorkingIndicator';
 import NativeQuestions from './NativeQuestions';
 import ChildSessions from './ChildSessions';
 import ResponseImage from './ResponseImage';
 import { HIDDEN, orchestraOf, providerOf } from '../lib/messages';
-import { splitReasoning, workPhase } from '../lib/reasoning';
+import { splitReasoning } from '../lib/reasoning';
 import type { Account, Message } from '../lib/types';
 import { errorText, Mark, nameOf } from '../lib/util';
+import { useI18n } from '../lib/i18n';
 
 const MessageBody = lazy(() => import('./MessageBody'));
 const OrchestraCard = lazy(() => import('./OrchestraCard'));
@@ -47,6 +47,7 @@ export default function MessageView({
   onOrchestra: (command: string, args: Record<string, unknown>) => Promise<void>;
   onError: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
   const inline =
@@ -77,7 +78,12 @@ export default function MessageView({
           <span className="user-mark">You</span>
         )}
         <span className="message-actions">
-          {m.role === 'user' && onRewind && !running && (
+          {m.delivery && (
+            <span role="status">
+              {t(m.delivery === 'sending' ? 'Sending…' : 'Delivery not confirmed')}
+            </span>
+          )}
+          {m.role === 'user' && !m.delivery && onRewind && !running && (
             <button
               className="icon-button"
               aria-label="Rewind to here"
@@ -246,7 +252,6 @@ export default function MessageView({
           {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
         </small>
       )}
-      {live && <WorkingIndicator phase={workPhase(m.activity.map((a) => a.kind))} />}
     </article>
   );
 }

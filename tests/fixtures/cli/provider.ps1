@@ -18,6 +18,21 @@ if (!$PromptText) {
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($promptText.Contains('OBS_PROMISE_FIXTURE') -and $Provider -eq 'claude') {
+    Emit @{type='result';is_error=$false;result='I will implement the requested changes.'}
+    exit 0
+}
+if ($promptText.Contains('OBS_ERROR_FIXTURE') -and $Provider -eq 'claude') {
+    Emit @{type='result';is_error=$true;result='Controlled offline provider failure.'}
+    exit 1
+}
+if ($promptText.Contains('OBS_TOOL_FIXTURE') -and $Provider -eq 'claude') {
+    Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='observed-tool';name='Read';input=@{file_path='sample.ts'}})}}
+    Start-Sleep -Seconds 2
+    Emit @{type='user';message=@{content=@(@{type='tool_result';tool_use_id='observed-tool';content='Offline result.'})}}
+    Emit @{type='result';is_error=$false;result='The offline tool returned.'}
+    exit 0
+}
 if ($promptText.Contains('QUESTION_FIXTURE')) {
     if ($Provider -eq 'claude') {
         Emit @{type='control_request';request_id='fixture-question';request=@{subtype='can_use_tool';tool_name='AskUserQuestion';input=@{questions=@(@{question='Which implementation should I use?';header='Implementation';multiSelect=$false;options=@(@{label='Native';description='Keep official CLI behavior'},@{label='Custom';description='Use a custom approach'})})}}}
@@ -31,6 +46,9 @@ if ($promptText.Contains('QUESTION_FIXTURE')) {
     Set-Content -LiteralPath (Join-Path (Get-Location).Path "answer-$Provider.txt") -Value 'Native'
 }
 $reply = "This is an **offline UI fixture**, not a live AI response.`n`n### A small, thoughtful plan`n`n- Keep the conversation clear.`n- Review the changes before applying them.`n- Make room for the next idea.`n`n| Step | State |`n| --- | --- |`n| Understand | Complete |`n| Review | Complete |`n`n" + '```typescript' + "`nconst clarity = true;`n" + '```'
+if ($promptText.Contains('QUALITY_CONTEXT_FIXTURE')) {
+    $reply = if ($promptText.Contains('Independent counter check: failed')) { 'QUALITY_CONTEXT_PRESENT' } else { 'QUALITY_CONTEXT_ABSENT' }
+}
 # Orchestra fixtures: questions, a two-part plan, approvals and one file per subtask.
 if ($promptText.Contains('Ask only for missing information that materially changes the result.')) {
     $reply = '{"questions":[{"q":"Which file names?","recommended":"orchestra-s1.txt and orchestra-s2.txt"}]}'
@@ -47,6 +65,12 @@ if ($promptText -match 'Your subtask \((s\d+)\)') {
 if ($Provider -eq 'ollama') {
     Write-Output "Local fixture reply."
     exit 0
+}
+$rateOnce = if ($Provider -eq 'claude' -and $env:CLAUDE_CONFIG_DIR) { Join-Path $env:CLAUDE_CONFIG_DIR 'quality-rate-once' } else { $null }
+if ($rateOnce -and (Test-Path -LiteralPath $rateOnce)) {
+    Remove-Item -LiteralPath $rateOnce
+    Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    exit 1
 }
 if ($promptText.Contains('RATE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}

@@ -47,6 +47,7 @@ pub async fn execute(
     mut cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    crate::execution::signal(&mut emit, "adapter-start");
     if *cancel.borrow() {
         return Err("Cancelled".into());
     }
@@ -141,7 +142,9 @@ pub async fn execute(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    crate::execution::signal(&mut emit, "spawn-start");
     let mut child = c.spawn().map_err(|e| format!("Cannot start Claude: {e}"))?;
+    crate::execution::signal(&mut emit, "process-started");
     if let Some(pid) = child.id() {
         emit(Activity {
             kind: "pid".into(),
@@ -190,7 +193,9 @@ pub async fn execute(
                 }
             }
         }).await.map_err(|_|"Claude did not initialize in time".to_string())??;
+        crate::execution::signal(&mut emit, "protocol-ready");
         tx.send(json!({"type":"user","message":{"role":"user","content":input.prompt}})).await.map_err(|_|"Claude closed its input")?;
+        crate::execution::signal(&mut emit, "request-enqueued");
         let mut text = String::new();
         loop {
             let line = tokio::select! { biased; _=cancel.changed()=>return Err("Cancelled".into()), _=failed.changed()=>return Err("Claude input delivery failed; the turn was stopped".into()), r=lines.next_line()=>r.map_err(|e|e.to_string())? };

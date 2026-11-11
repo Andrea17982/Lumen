@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink } from 'lucide-react';
@@ -24,10 +24,12 @@ import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
 import { Draft } from './features/local-assistant/draft';
 import DraftSheet from './components/DraftSheet';
-import MessageView from './components/MessageView';
+import Transcript from './components/Transcript';
+import { useLatestCallback } from './lib/useLatestCallback';
+import ExecutionSummary from './components/ExecutionSummary';
 import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerParts';
 import { ProjectList, SessionList } from './components/Sidebar';
-import { active, laneOf, mergeUsage, providerOf } from './lib/messages';
+import { active, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import Topbar, { type HealthPill } from './components/Topbar';
 import { ComposerToolbar, TokenCaption } from './components/Composer';
@@ -58,13 +60,20 @@ import type {
 } from './lib/types';
 import { errorText, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
+import { draftKey, useConversationDrafts, type ComposerDraft } from './lib/useConversationDrafts';
 
 // Loaded on first use, so starting Lumen parses less code.
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
 const GatekeeperPanel = lazy(() => import('./features/gatekeeper/GatekeeperPanel'));
 const ProjectInspector = lazy(() => import('./components/ProjectInspector'));
-const ManualMerge = lazy(() => import('./components/ManualMerge'));
 const tokens = estimateTokens;
+interface Submission {
+  sessionId: string | null;
+  anchor?: string;
+  message: Message;
+  draft: ComposerDraft;
+  failure?: string;
+}
 
 export default function App() {
   const { t } = useI18n();
@@ -72,10 +81,20 @@ export default function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [refreshingExecution, setRefreshingExecution] = useState(false);
+  const streamRevision = useRef(0);
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const [draft, setDraft] = useState('');
+  const composer = useConversationDrafts(selected);
+  const {
+    text: draft,
+    setText: setDraft,
+    attachments: attached,
+    setAttachments: setAttached,
+  } = composer;
+  const sending = useRef(false);
+  const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [autoPolicy, setAutoPolicy] = useState(
@@ -174,7 +193,6 @@ export default function App() {
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
   const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
   const [autoReview] = useState(() => localStorage.getItem('lumen-auto-review') === 'true');
-  const [attached, setAttached] = useState<string[]>([]);
   const appSettings = useAppSettings();
   useEffect(() => {
     if (appSettings) localAssistant.configure(appSettings.localAssistant);
@@ -240,7 +258,7 @@ export default function App() {
   const currentWorkspace = session?.workspace || workspace;
   const attachCapture = useCallback(
     (path: string) => setAttached((previous) => [...new Set([...previous, path])]),
-    [],
+    [selected],
   );
   useCaptureHotkey(currentWorkspace, attachCapture, setError);
   const currentWorkspaceId = session ? session.workspaceId || '' : workspaceId;
@@ -388,6 +406,7 @@ export default function App() {
       if (batch.length) setMessages((m) => batch.reduce(applyEvent, m));
     };
     void subscribe((event: RunEvent) => {
+      if (event.sessionId === selectedRef.current) streamRevision.current++;
       if (event.kind === 'workspace') {
         const updated = JSON.parse(event.text) as Session;
         if (activeSession.current?.id === updated.id) activeSession.current = updated;
@@ -652,13 +671,77 @@ export default function App() {
       setBusy(false);
     }
   }
+  function forgetSubmission(id: string) {
+    setSubmissions((all) => {
+      const next = { ...all };
+      delete next[id];
+      return next;
+    });
+  }
+  async function refreshExecution() {
+    if (!selected || refreshingExecution) return;
+    const id = selected;
+    const revision = streamRevision.current;
+    const refreshAtStart = refreshRef.current;
+    setRefreshingExecution(true);
+    try {
+      const [snapshot, approvals, list] = await Promise.all([
+        call<Message[]>('get_messages', { id }),
+        approvalSnapshot(id),
+        call<Session[]>('list_sessions', { search, offset: 0 }),
+      ]);
+      // A slow read must not overwrite newer streamed text, telemetry or another chat.
+      if (selectedRef.current === id && streamRevision.current === revision) {
+        setMessages(snapshot);
+        setApprovals(approvals);
+        if (refreshRef.current === refreshAtStart) {
+          setSessions(list);
+          setOffset(0);
+          setHasMore(list.length === 100);
+        }
+      }
+    } catch (e) {
+      composer.fail(draftKey(id), errorText(e));
+    } finally {
+      setRefreshingExecution(false);
+    }
+  }
+  async function checkSubmission(id: string, submission: Submission, failure = submission.failure) {
+    if (!submission.sessionId) return;
+    try {
+      const snapshot = await call<Message[]>('get_messages', { id: submission.sessionId });
+      const accepted = snapshot.some((message) => message.id === id);
+      if (!accepted && !failure) throw new Error(t('Delivery not confirmed'));
+      if (selectedRef.current === submission.sessionId) setMessages(snapshot);
+      if (failure) {
+        composer.fail(
+          draftKey(submission.sessionId),
+          accepted ? failure : `${failure} ${t('Draft restored in this conversation.')}`,
+          accepted ? undefined : submission.draft,
+        );
+      }
+      forgetSubmission(id);
+    } catch {
+      // The command may have been accepted. Keep the original payload visible; never resend it.
+      setSubmissions((all) => ({
+        ...all,
+        [id]: { ...submission, failure, message: { ...submission.message, delivery: 'uncertain' } },
+      }));
+    }
+  }
   async function send(
     override?: { text: string; mode: Mode; auditOf: string },
     commandText?: string,
   ) {
     const text = override?.text ?? commandText ?? draft.trim();
     const runMode = override?.mode ?? mode;
-    if (!text || folderBusy) return;
+    if (
+      !text ||
+      folderBusy ||
+      sending.current ||
+      Object.values(submissions).some((s) => s.sessionId === selected)
+    )
+      return;
     if (running) {
       if (!override && /^\/(compact|workspace)(?:\s|$)/i.test(text))
         setError(t('Wait for the current response to finish before using this command.'));
@@ -676,10 +759,12 @@ export default function App() {
       setBusy(true);
       setError('');
       try {
-        if (await compact()) setDraft('');
+        if (await compact()) {
+          if (!commandText) composer.clearTextIfUnchanged(composer.key, draft);
+        }
       } finally {
         setBusy(false);
-        input.current?.focus();
+        if (selectedRef.current === selected) input.current?.focus();
       }
       return;
     }
@@ -698,38 +783,74 @@ export default function App() {
       openSettings('accounts');
       return;
     }
+    sending.current = true;
     setBusy(true);
+    let submission: Submission | undefined;
+    const clientMessageId = crypto.randomUUID();
+    let accepted = false;
     try {
       let s = session;
+      // A folder picker can be cancelled. Only clear the draft once a destination is known.
+      const folder = s?.workspace || workspace || (await chooseFolder());
+      if (!folder) return;
+      submission = {
+        sessionId: s?.id ?? null,
+        anchor: messages.at(-1)?.id,
+        message: {
+          id: clientMessageId,
+          role: 'user',
+          text,
+          activity:
+            override || !attached.length
+              ? []
+              : [{ kind: 'attachments', text: attached.join('\n') }],
+          delivery: 'sending',
+          submittedAt: Date.now(),
+        },
+        draft: {
+          text: override ? '' : draft,
+          attachments: override ? [] : [...attached],
+          error: '',
+        },
+      };
+      setSubmissions((all) => ({ ...all, [clientMessageId]: submission! }));
+      if (!override) composer.clear(composer.key);
       if (!s) {
-        const folder = workspace || (await chooseFolder());
-        if (!folder) return;
         s = await call<Session>('create_session', { workspace: folder });
+        submission = { ...submission, sessionId: s.id };
+        setSubmissions((all) => ({ ...all, [clientMessageId]: submission! }));
+        setSessions((list) => [s!, ...list]);
+        if (selectedRef.current === selected) {
+          composer.move(composer.key, draftKey(s.id));
+          setSelected(s.id);
+        }
         if (workspaceId)
           s = await call<Session>('set_session_workspace', { id: s.id, workspaceId, folder });
-        setSessions((list) => [s!, ...list]);
-        setSelected(s.id);
       }
       const result = await call<Plan>('send_message', {
         id: s.id,
         text,
+        clientMessageId,
         options: { ...runOptions(override), mode: runMode, attachments: override ? [] : attached },
       });
-      if (!override) {
-        setDraft('');
-        setAttached([]);
-      }
-      const snapshot = await call<Message[]>('get_messages', { id: s.id });
-      if (selectedRef.current === s.id) {
-        setPlan(result);
-        setMessages(snapshot);
-      }
+      accepted = true;
+      if (selectedRef.current === s.id) setPlan(result);
+      await checkSubmission(clientMessageId, submission);
       await refresh();
     } catch (e) {
-      setError(errorText(e));
+      const failure = errorText(e);
+      if (submission?.sessionId) {
+        if (accepted) composer.fail(draftKey(submission.sessionId), failure);
+        else await checkSubmission(clientMessageId, submission, failure);
+      } else {
+        forgetSubmission(clientMessageId);
+        if (submission && !override) composer.fail(composer.key, failure, submission.draft);
+        else if (selectedRef.current === selected) setError(failure);
+      }
     } finally {
+      sending.current = false;
       setBusy(false);
-      input.current?.focus();
+      if (selectedRef.current === (submission?.sessionId ?? selected)) input.current?.focus();
     }
   }
   async function update(s: Session, title = s.title, pinned = s.pinned) {
@@ -764,8 +885,13 @@ export default function App() {
     }
   }
   async function remove(s: Session) {
+    if (Object.values(submissions).some((submission) => submission.sessionId === s.id)) {
+      setError(t('Wait for message delivery before deleting this conversation.'));
+      return;
+    }
     try {
       await call('delete_session', { id: s.id });
+      composer.remove(draftKey(s.id));
       if (selected === s.id) setSelected(null);
       setDeleteTarget(null);
       await refresh();
@@ -836,11 +962,13 @@ export default function App() {
     try {
       const next = await call<Session>('compact_session', { id: session.id, summary });
       await refresh();
-      setSelected(next.id);
-      setSheet(null);
+      if (selectedRef.current === session.id) {
+        setSelected(next.id);
+        setSheet(null);
+      }
       return true;
     } catch (e) {
-      setError(errorText(e));
+      composer.fail(draftKey(session.id), errorText(e));
       return false;
     }
   }
@@ -866,7 +994,10 @@ export default function App() {
     };
     setApprovals({ requests: [], sessions: [] });
     load();
-    void onApprovalChange(load).then((off) => {
+    void onApprovalChange(() => {
+      streamRevision.current++;
+      load();
+    }).then((off) => {
       if (alive) stop = off;
       else off();
     });
@@ -896,7 +1027,8 @@ export default function App() {
       setError(errorText(e));
     }
   }
-  const historyTokens = messages.reduce((n, m) => n + tokens(m.text), 0);
+  const historyTokens = useMemo(() => messages.reduce((n, m) => n + tokens(m.text), 0), [messages]);
+  const measurement = useMemo(() => lastMeasurement(messages), [messages]);
   const attachedTokens = 0; // Arbitrary external files are not read merely to estimate context.
   const draftTokens =
     (draftEstimate?.text === draft ? draftEstimate.tokens : tokens(draft)) + attachedTokens;
@@ -917,43 +1049,41 @@ export default function App() {
         promptTokens,
         draftTokens,
         contextWindow(contextProvider, model || plan?.model || ''),
-        ['claude', 'gpt'].includes(contextProvider) ? lastMeasurement(messages) : null,
+        ['claude', 'gpt'].includes(contextProvider) ? measurement : null,
       )
     : null;
   const blob = /[A-Za-z0-9+/=]{4000,}/.test(draft);
   const impact =
     draftTokens + historyTokens > 60_000 ? 'High' : draftTokens > 8000 ? 'Medium' : 'Low';
-  const groups: (Message | Message[])[] = [];
-  for (const m of messages) {
-    const last = groups.at(-1);
-    if (laneOf(m)) {
-      if (Array.isArray(last)) last.push(m);
-      else groups.push([m]);
-    } else groups.push(m);
-  }
-  const messageView = (m: Message, inLane = false) => (
-    <MessageView
-      key={m.id}
-      m={m}
-      inLane={inLane}
-      latest={m.id === messages.at(-1)?.id}
-      live={running && m.role === 'assistant' && m.id === messages.at(-1)?.id}
-      running={running}
-      busy={busy}
-      readOnly={accessMode === 'read-only'}
-      workspace={session?.workspace}
-      accounts={accounts}
-      onRewind={session ? (x) => void askRewind(x) : undefined}
-      onAudit={audit}
-      onApplyLane={(x) => void resolveLanes(x, true)}
-      onOrchestra={orchestra}
-      onError={setError}
-    />
+  const currentSubmissions = useMemo(
+    () => Object.entries(submissions).filter(([, s]) => s.sessionId === selected),
+    [submissions, selected],
   );
+  const visibleMessages = useMemo(() => {
+    const result = [...messages];
+    for (const [, submission] of currentSubmissions) {
+      if (result.some((m) => m.id === submission.message.id)) continue;
+      const anchor = result.findIndex((m) => m.id === submission.anchor);
+      result.splice(anchor + 1, 0, submission.message);
+    }
+    return result;
+  }, [messages, currentSubmissions]);
+  const onRewindMessage = useLatestCallback((m: Message) => void askRewind(m));
+  const onAuditMessage = useLatestCallback(audit);
+  const onApplyLane = useLatestCallback((m: Message) => void resolveLanes(m, true));
+  const onDiscardLane = useLatestCallback((m: Message) => void resolveLanes(m, false));
+  const onOrchestra = useLatestCallback(orchestra);
+  const onRefreshExecution = useLatestCallback(() => void refreshExecution());
+  const onMerged = useLatestCallback(async () => {
+    if (!session) return;
+    const id = session.id;
+    const result = await call<Message[]>('get_messages', { id });
+    if (selectedRef.current === id) setMessages(result);
+    await refresh();
+  });
   const newChat = () => {
     setSelected(null);
     setMessages([]);
-    setDraft('');
     setSidebar(false);
     input.current?.focus();
   };
@@ -1411,58 +1541,59 @@ export default function App() {
           </form>
         )}
 
-        <div className={`conversation ${messages.length ? 'has-messages' : ''}`}>
-          {messages.length === 0 ? (
+        <div className={`conversation ${visibleMessages.length ? 'has-messages' : ''}`}>
+          {visibleMessages.length === 0 ? (
             <Welcome reduced={!!reduced} />
           ) : (
-            <div className="message-list">
-              {groups.map((g) =>
-                Array.isArray(g) ? (
-                  <div className="lanes" key={g[0].id}>
-                    <div className="lane-grid">{g.map((m) => messageView(m, true))}</div>
-                    {session &&
-                      !running &&
-                      g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && (
-                        <Suspense fallback={null}>
-                          <ManualMerge
-                            session={session.id}
-                            message={
-                              g.find((m) => m.activity.some((a) => a.kind === 'worktree'))!.id
-                            }
-                            onApplied={async () => {
-                              setMessages(
-                                await call<Message[]>('get_messages', { id: session.id }),
-                              );
-                              await refresh();
-                            }}
-                          />
-                        </Suspense>
-                      )}
-                    {g.some((m) => m.activity.some((a) => a.kind === 'worktree')) && !running && (
-                      <button
-                        className="text-button lane-discard"
-                        onClick={() => {
-                          const m = g.find((x) => x.activity.some((a) => a.kind === 'worktree'));
-                          if (m) void resolveLanes(m, false);
-                        }}
-                      >
-                        Discard both versions
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  messageView(g)
-                ),
-              )}
-              <div ref={bottom} />
-            </div>
+            <Transcript
+              messages={visibleMessages}
+              lastMessageId={messages.at(-1)?.id}
+              sessionId={session?.id}
+              bottom={bottom}
+              running={running}
+              busy={busy}
+              readOnly={accessMode === 'read-only'}
+              workspace={session?.workspace}
+              accounts={accounts}
+              onRewind={session ? onRewindMessage : undefined}
+              onAudit={onAuditMessage}
+              onApplyLane={onApplyLane}
+              onDiscardLane={onDiscardLane}
+              onOrchestra={onOrchestra}
+              onMerged={onMerged}
+              onError={setError}
+            />
           )}
         </div>
 
         <div className="composer-region">
-          {error && (
-            <ErrorBanner text={error} label={t('Dismiss error')} onDismiss={() => setError('')} />
+          <ExecutionSummary
+            messages={visibleMessages}
+            session={session}
+            submission={currentSubmissions[0]?.[1].message}
+            approvalPending={approvals.requests.some(
+              (r) => r.status === 'pending' || r.delivery === 'uncertain',
+            )}
+            refreshing={refreshingExecution}
+            onRefresh={onRefreshExecution}
+          />
+          {(composer.error || error) && (
+            <ErrorBanner
+              text={composer.error || error}
+              label={t('Dismiss error')}
+              onDismiss={() => {
+                composer.dismissError();
+                setError('');
+              }}
+            />
           )}
+          {currentSubmissions
+            .filter(([, s]) => s.message.delivery === 'uncertain')
+            .map(([id, s]) => (
+              <button key={id} className="text-button" onClick={() => void checkSubmission(id, s)}>
+                {t('Check message delivery')}
+              </button>
+            ))}
           {session && historyTokens > 40_000 && !running && (
             <button className="compact-chip" onClick={openHandoff}>
               <Shrink size={13} />
@@ -1642,6 +1773,7 @@ export default function App() {
               running={running}
               canSend={
                 !!draft.trim() &&
+                currentSubmissions.length === 0 &&
                 !folderBusy &&
                 (draft.trim().toLowerCase() === '/compact' ||
                   !(desktop && mode !== 'auto' && mode !== 'both' && !catalogReady))

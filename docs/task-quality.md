@@ -7,11 +7,23 @@ These backend features preserve the native execution workflow and add no repeate
 `workstate.rs` reconstructs a structured ledger from source messages and Lumen's execution evidence. SQLite's `work_states` table stores the goal, user requirements, decisions/approved scope, actual workspace and permission profile, finished agent tasks, pending tasks and check results.
 
 - Facts carry source message IDs and preserve the user's text. Assistant prose such as “all tests passed” is not verification evidence.
-- Full prompts, native CLI continuations and Orchestra worker handoffs receive a budgeted projection of the ledger. Full facts remain in SQLite and an app-data `work-state/<session-id>.json` context snapshot that tools can read when excerpts are insufficient. Snapshots are removed when the chat is deleted.
+- Full prompts and Orchestra worker handoffs receive a budgeted projection of the ledger. Same-account native continuations keep the native transcript and send the new request, current permissions and changed Lumen-owned context rather than replaying the ledger every turn. Full facts remain in SQLite and an app-data `work-state/<session-id>.json` context snapshot that tools can read when excerpts are insufficient. Snapshots are removed when the chat is deleted.
 - Compact copies the ledger independently of the handoff prose and retains an edited handoff as the latest user-supplied decision. The target conversation's actual permissions override inherited approvals.
 - Rewind reconstructs state from retained messages. An explicit `Nuovo obiettivo:`, `New task:` or `/task ` request starts a new scope without deleting history.
 - Checks carry their workspace; another project's results are not evidence for the current project. Fresh results replace older results of the same check.
 - `session_work_state` returns the full structured state for inspection.
+
+## 0.8 working-tree continuity and Auto calibration
+
+The 0.8 candidate adds a fingerprint for project notes and workspace-scoped backend checks to native-session metadata. A native continuation receives changed notes and the latest result per check label, with source message IDs and bounded details/diagnostics; unchanged context is omitted. At most eight recent labels are projected, with omitted coverage explicit. Removing context invalidates the old evidence rather than implying success. A switch to another account uses the full bounded handoff and this chat's check evidence; it never reuses another account's native session ID. This is per-chat continuity, not shared project-wide conversation history.
+
+Auto reuses a previous verdict only for recognized short continuations such as “procedi”, not every short new task. A newer unrated manual request stops lookup of older verdicts. Fresh quota balancing takes precedence over native-account affinity; absent usable quota data retains the existing affinity behavior. Manual provider/model/effort choices remain authoritative.
+
+Budget can request an independent audit for risky work or explicit user requests. Quality adds optional review for tier-two tasks, rather than every ordinary coding task. Explicit opt-out suppresses automatic review. Review prefers a different provider but can use a separate Claude/ChatGPT account on the same provider; Both still requires Claude plus ChatGPT. A requested audit without another primary account fails explicitly, and loss of an account after execution is not reported as an audit pass. Reviewers are read-only, and only a standalone `APPROVED` response accepts an audit; a qualified approval requires correction. An audit remains model feedback, not independent compile/runtime verification.
+
+Reviewer-only calls do not replace the visible writer's resumable native metadata. If the writer falls back to another account, review selects an independent available account and chooses a proportional model from that account's actual catalog rather than reusing the old partner's model ID or an unrelated default. The native fixture checks actual writer identity and reviewer selection after fallback.
+
+Difficulty alone no longer selects the Orchestra task-graph path: the fallback looks for implementation spanning distinct areas or a concrete request for parallel deliverables. Orchestra remains an explicit setting. These are bounded classifier/routing rules, not proof of smarter models or a new general delegation engine. The [experiment protocol and results](quality-experiments-0.8.md) distinguish deterministic tests from live task quality.
 
 ## Diagnostics and corrections
 

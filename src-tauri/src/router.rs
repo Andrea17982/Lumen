@@ -1,11 +1,58 @@
 use crate::models::*;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditIntent {
+    #[default]
+    Auto,
+    Requested,
+    Forbidden,
+}
+
 /// What a request needs. `effort` 0..=2 maps to low/medium/high before the Auto policy.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TaskProfile {
     pub tier: i32,
     pub effort: i32,
     pub review: bool,
+    pub audit: AuditIntent,
+}
+
+pub fn audit_intent(prompt: &str) -> AuditIntent {
+    let p = prompt.to_lowercase();
+    if [
+        "no cross-audit",
+        "no cross audit",
+        "senza cross-audit",
+        "senza cross audit",
+        "non fare audit",
+        "non usare altri agenti",
+        "do not audit",
+        "don't audit",
+        "no independent review",
+    ]
+    .iter()
+    .any(|s| p.contains(s))
+    {
+        return AuditIntent::Forbidden;
+    }
+    if [
+        "cross-audit",
+        "cross audit",
+        "crossaudit",
+        "independent review",
+        "independent audit",
+        "revisione indipendente",
+        "audit indipendente",
+        "secondo revisore",
+    ]
+    .iter()
+    .any(|s| p.contains(s))
+    {
+        AuditIntent::Requested
+    } else {
+        AuditIntent::Auto
+    }
 }
 
 /// Calibrated against the user's Italian examples. Length raises effort only;
@@ -36,6 +83,14 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
         "implement",
         "svilupp",
         "costruisci",
+        "typescript",
+        "javascript",
+        "react",
+        "gdscript",
+        "godot",
+        "script",
+        "fix",
+        "correggi",
     ]);
     let translation = has(&["traduci", "translate", "translation", "traduzione"]);
     let demanding = has(&[
@@ -51,7 +106,19 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
         "complesso",
         "complex",
     ]);
-    let tier = if advanced {
+    let tier = if translation {
+        0
+    } else if advanced
+        || (debugging
+            && has(&[
+                "concurrency",
+                "concorrenza",
+                "intermittent",
+                "intermittente",
+                "distributed",
+                "distribuit",
+            ]))
+    {
         2
     } else if debugging && !translation {
         1
@@ -61,14 +128,38 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
     TaskProfile {
         tier,
         effort: i32::from(demanding || prompt.len() > 1200),
-        review: advanced && (demanding || prompt.len() > 1800)
-            || has(&[
-                "validator",
-                "validatore",
-                "verifier",
-                "revisore",
-                "independent review",
-            ]),
+        review: !translation
+            && audit_intent(prompt) != AuditIntent::Forbidden
+            && (audit_intent(prompt) == AuditIntent::Requested
+                || (has(&[
+                    "security",
+                    "sicurezza",
+                    "authentication",
+                    "autenticazione",
+                    "migration",
+                    "migrazione",
+                ]) && has(&[
+                    "implement",
+                    "fix",
+                    "corregg",
+                    "migr",
+                    "refactor",
+                    "svilupp",
+                    "production",
+                    "produzione",
+                ]))
+                || (debugging
+                    && has(&[
+                        "concurrency",
+                        "concorrenza",
+                        "intermittent",
+                        "intermittente",
+                    ]))),
+        audit: if translation {
+            AuditIntent::Auto
+        } else {
+            audit_intent(prompt)
+        },
     }
 }
 
@@ -158,9 +249,13 @@ pub fn route_with(
     let a = selected.ok_or(
         "Add an account for this provider in Settings, then complete the official CLI login.",
     )?;
-    let partner = accounts.iter().find(|b| {
-        b.provider != a.provider && matches!(b.provider, Provider::Claude | Provider::Gpt)
-    });
+    let partner = if options.mode == "both" {
+        accounts.iter().find(|b| {
+            b.provider != a.provider && matches!(b.provider, Provider::Claude | Provider::Gpt)
+        })
+    } else {
+        review_partner(accounts, a)
+    };
     if options.mode == "both" && partner.is_none() {
         return Err(
             "Both needs a Claude and a ChatGPT account. Add the missing one in Settings.".into(),
@@ -169,21 +264,31 @@ pub fn route_with(
     let strategy = if options.mode == "both" {
         "broadcast"
     } else if options.mode == "auto" && partner.is_some() {
-        if (task.review && options.auto_policy != AutoPolicy::Budget)
-            || (options.auto_policy == AutoPolicy::Quality && task.tier > 0)
-            || options.auto_review
+        if task.audit != AuditIntent::Forbidden
+            && (task.audit == AuditIntent::Requested
+                || task.review
+                || (options.auto_policy == AutoPolicy::Quality && task.tier == 2)
+                || options.auto_review)
         {
             "review"
         } else {
             "single"
         }
-    } else if options.auto_review && partner.is_some() {
+    } else if task.audit != AuditIntent::Forbidden && options.auto_review && partner.is_some() {
         "review"
     } else {
         "single"
     };
+    if task.audit != AuditIntent::Forbidden
+        && partner.is_none()
+        && (options.auto_review || (options.mode == "auto" && task.audit == AuditIntent::Requested))
+    {
+        return Err(
+            "Independent review requires another available Claude or ChatGPT account.".into(),
+        );
+    }
     let automatic = options.mode == "auto" || options.mode == "both";
-    Ok(Plan {
+    let mut plan = Plan {
         provider: a.provider.clone(),
         account_id: a.id.clone(),
         model: if automatic {
@@ -202,7 +307,7 @@ pub fn route_with(
         } else if options.mode == "both" {
             "Same prompt to Claude and ChatGPT, side by side"
         } else if strategy == "review" && options.mode != "auto" {
-            "Answer, then cross-audit by the other model"
+            "Answer, then cross-audit by another account"
         } else if task.tier == 2 {
             "Migration, architecture or security: flagship model with proportional reasoning"
         } else if task.tier == 1 {
@@ -216,7 +321,22 @@ pub fn route_with(
         } else {
             None
         },
-    })
+    };
+    if options.mode == "auto"
+        && partner.is_none()
+        && task.audit != AuditIntent::Forbidden
+        && (task.review || (options.auto_policy == AutoPolicy::Quality && task.tier == 2))
+    {
+        plan.reason
+            .push_str(" · independent review unavailable: no other configured primary account");
+    }
+    Ok(plan)
+}
+pub fn review_partner<'a>(accounts: &'a [Account], writer: &Account) -> Option<&'a Account> {
+    accounts
+        .iter()
+        .filter(|a| a.id != writer.id && matches!(a.provider, Provider::Claude | Provider::Gpt))
+        .min_by_key(|a| a.provider == writer.provider)
 }
 /// Model class: 0 Haiku/Luna, 1 Sonnet/Terra (and unknown), 2 Opus/Sol.
 pub fn model_tier(m: &ModelInfo) -> i32 {
@@ -258,10 +378,26 @@ pub fn select_model<'a>(
 pub fn task_tier(prompt: &str) -> i32 {
     profile(prompt).tier
 }
-/// Orchestra takes over only for complex work: architecture/security/migration,
-/// or coding that is demanding or long. Simple prompts keep the normal path.
+/// The keyword fallback identifies parallel deliverables or implementation across distinct
+/// areas. Difficulty or length alone does not justify Orchestra's task-graph overhead.
 pub fn complex(prompt: &str) -> bool {
-    let t = profile(prompt);
+    let p = prompt.to_lowercase();
+    if [
+        "traduci",
+        "translate",
+        "translation",
+        "traduzione",
+        "spiega",
+        "explain",
+        "without changing",
+        "senza toccare",
+        "non modificare",
+    ]
+    .iter()
+    .any(|s| p.contains(s))
+    {
+        return false;
+    }
     let checklist_items = prompt
         .lines()
         .filter(|line| {
@@ -295,10 +431,16 @@ pub fn complex(prompt: &str) -> bool {
     ]
     .iter()
     .any(|phrase| prompt.to_lowercase().contains(phrase));
-    checklist_items >= 3
-        || (explicit_parallel && (checklist_items >= 2 || prompt.len() > 400))
-        || t.tier == 2
-        || (t.tier == 1 && (t.effort > 0 || prompt.len() > 600))
+    let words: Vec<_> = p.split(|c: char| !c.is_alphanumeric()).collect();
+    let area = |names: &[&str]| names.iter().any(|name| words.contains(name));
+    let areas = usize::from(area(&["api", "backend", "server"]))
+        + usize::from(area(&["ui", "frontend", "interfaccia", "client"]))
+        + usize::from(area(&["database", "storage", "persistenza"]));
+    let implementation = ["implement", "svilupp", "costruisci", "build", "crea "]
+        .iter()
+        .any(|s| p.contains(s));
+    (explicit_parallel && (checklist_items >= 2 || prompt.len() > 400))
+        || (implementation && areas >= 2)
 }
 /// Quota pressure per time remaining. The tightest active window is the constraint.
 /// Snapshots expire after 15 minutes; exhausted windows never receive reset bonuses.
@@ -357,6 +499,69 @@ mod tests {
                 provider: Provider::Gpt,
             },
         ]
+    }
+    #[test]
+    fn quality_audit_intent_and_account_topology_are_explicit() {
+        let mut options = opts();
+        options.auto_policy = AutoPolicy::Budget;
+        assert_eq!(
+            route("Fai un cross-audit di questo fix", &options, &accounts())
+                .unwrap()
+                .strategy,
+            "review"
+        );
+        options.auto_policy = AutoPolicy::Quality;
+        assert_eq!(
+            route("Correggi CSS", &options, &accounts())
+                .unwrap()
+                .strategy,
+            "single"
+        );
+        assert_eq!(
+            route(
+                "Fix security without changing API; no cross-audit",
+                &options,
+                &accounts()
+            )
+            .unwrap()
+            .strategy,
+            "single"
+        );
+        let mut same = accounts();
+        same[1].provider = Provider::Claude;
+        let plan = route("Fai un cross-audit di questo fix", &options, &same).unwrap();
+        assert_ne!(plan.account_id, plan.partner_account.unwrap());
+        options.mode = "both".into();
+        assert!(route("Compare", &options, &same).is_err());
+        options.mode = "auto".into();
+        assert!(route("Fai un cross-audit di questo fix", &options, &same[..1]).is_err());
+    }
+    #[test]
+    fn quality_calibration_corpus() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/quality/auto-cases.json"))
+                .unwrap();
+        let mut rows = vec![];
+        for case in cases.as_array().unwrap() {
+            let request = case["request"].as_str().unwrap();
+            let task = profile(request);
+            let mut options = opts();
+            options.auto_policy = AutoPolicy::Quality;
+            let plan = route_with(task, &options, &accounts()).unwrap();
+            let actual = serde_json::json!({"tier":task.tier,"review":task.review,"complex":complex(request),"qualityStrategy":plan.strategy});
+            let ok = ["tier", "review", "complex", "qualityStrategy"]
+                .iter()
+                .all(|key| actual[*key] == case[*key]);
+            rows.push(serde_json::json!({"id":case["id"],"actual":actual,"passed":ok}));
+        }
+        println!(
+            "QUALITY_CALIBRATION {}",
+            serde_json::to_string(&rows).unwrap()
+        );
+        assert!(
+            rows.iter().all(|r| r["passed"] == true),
+            "Routing corpus mismatches; see QUALITY_CALIBRATION"
+        );
     }
     #[test]
     fn routing() {
@@ -449,7 +654,7 @@ mod tests {
             ("Test", 2, "low"),
             ("Traduci questa email", 2, "low"),
             ("Correggi un errore CSS", 1, "low"),
-            ("Trova un bug intermittente di concorrenza", 1, "medium"),
+            ("Trova un bug intermittente di concorrenza", 0, "medium"),
             ("Progetta una migrazione del database", 0, "low"),
             ("Controlla la sicurezza dell'autenticazione", 0, "low"),
         ] {

@@ -415,6 +415,7 @@ async fn hidden(
         false,
     )
     .await;
+    crate::execution::merge(out, &scratch);
     out.activity.extend(
         scratch
             .activity
@@ -665,7 +666,7 @@ pub async fn plan(
             publish(app, core, s, out, &st);
             let plan_json = serde_json::to_string_pretty(&st.subtasks).unwrap_or_default();
             let review_prompt = format!(
-                "{context}\n\nYou are auditing a work plan written by another AI orchestrator. Read-only during this audit call: never edit files. Check that the plan implements the full agreed request (not just research when changes were requested), that file ownership does not overlap, that dependencies are right and that each assignment fits the difficulty. If the plan is sound, reply with the single word APPROVED on the first line; otherwise list concrete corrections.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nPlan:\n{plan_json}",
+                "{context}\n\nYou are auditing a work plan written by another AI orchestrator. Read-only during this audit call: never edit files. Check that the plan implements the full agreed request (not just research when changes were requested), that file ownership does not overlap, that dependencies are right and that each assignment fits the difficulty. If the plan is sound, reply with exactly APPROVED and nothing else; otherwise list concrete corrections.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nPlan:\n{plan_json}",
                 st.task, st.answers
             );
             let review = hidden(
@@ -1501,6 +1502,7 @@ pub async fn execute(
                 false,
             )
             .await;
+            crate::execution::merge(out, &scratch);
             if let Err(e) = r {
                 st.steps[step].status = "failed".into();
                 st.steps[step].detail = turns::friendly(&e);
@@ -1649,7 +1651,7 @@ pub async fn execute(
                         .unwrap_or_default(),
                     _ => String::new(),
                 };
-                let review_prompt = format!("Conversation for reference:\n{}\n\nYou are auditing the integrated result of a team of AI agents. Read-only during this audit call: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with the single word APPROVED on the first line.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.context, st.task, st.answers);
+                let review_prompt = format!("Conversation for reference:\n{}\n\nYou are auditing the integrated result of a team of AI agents. Read-only during this audit call: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with exactly APPROVED and nothing else.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.context, st.task, st.answers);
                 let review = match hidden(
                     app,
                     core,
@@ -2373,6 +2375,7 @@ fn needs_replan(st: &State, session: &Session, options: &RunOptions) -> bool {
         || (st.read_only && options.access() != AccessMode::ReadOnly)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn continue_message(
     app: tauri::AppHandle,
     core: Arc<Core>,
@@ -2381,6 +2384,7 @@ pub(crate) async fn continue_message(
     text: String,
     options: RunOptions,
     workspace_changed: bool,
+    user_message_id: String,
 ) -> Result<Plan, String> {
     let (mut m, mut st) = load(&core, &id, &message)?;
     let a = account(&core, &st.orchestrator)?;
@@ -2406,11 +2410,13 @@ pub(crate) async fn continue_message(
     }
     .into();
     save_state(&app, &core, &id, &mut m, &st)?;
+    let mut user = user_message(text);
+    user.id = user_message_id;
     turns::spawn_turn(
         app,
         core,
         id,
-        user_message(text),
+        user,
         move |app, core, s, mut out, rx| async move {
             let result = async {
                 if execute_existing {

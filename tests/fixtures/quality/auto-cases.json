@@ -1,0 +1,114 @@
+[
+  {
+    "id": "greeting",
+    "request": "Ciao",
+    "tier": 0,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "css-polish",
+    "request": "Correggi un errore CSS",
+    "tier": 1,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "react-counter",
+    "request": "Implementa un contatore React con TypeScript",
+    "tier": 1,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "godot-reset",
+    "request": "Correggi il reset nello script GDScript Godot",
+    "tier": 1,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "validator-is-not-a-reviewer",
+    "request": "Correggi il validatore TypeScript",
+    "tier": 1,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "single-race",
+    "request": "Trova un bug intermittente di concorrenza",
+    "tier": 2,
+    "review": true,
+    "complex": false,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "single-architecture-question",
+    "request": "Spiega l'architettura di questo componente",
+    "tier": 2,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "explicit-cross-audit",
+    "request": "Fai un cross-audit indipendente di questo fix",
+    "tier": 1,
+    "review": true,
+    "complex": false,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "explicit-english-audit",
+    "request": "Perform an independent review of this code",
+    "tier": 1,
+    "review": true,
+    "complex": false,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "multi-area-auth",
+    "request": "Implement the authentication architecture for the API and the settings UI",
+    "tier": 2,
+    "review": true,
+    "complex": true,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "translation-not-security-work",
+    "request": "Traduci questa email sull'architettura e la sicurezza",
+    "tier": 0,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "simple-checklist-question",
+    "request": "Spiega questi tre termini:\n- API\n- CSS\n- TypeScript",
+    "tier": 1,
+    "review": false,
+    "complex": false,
+    "qualityStrategy": "single"
+  },
+  {
+    "id": "parallel-deliverables",
+    "request": "Implementa queste attività in parallelo:\n- API autenticazione\n- UI impostazioni\n- migrazione database",
+    "tier": 2,
+    "review": true,
+    "complex": true,
+    "qualityStrategy": "review"
+  },
+  {
+    "id": "single-difficult-security-fix",
+    "request": "Fix the production authentication bug without changing any other module",
+    "tier": 2,
+    "review": true,
+    "complex": false,
+    "qualityStrategy": "review"
+  }
+]

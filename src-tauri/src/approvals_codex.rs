@@ -140,6 +140,16 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
         })
     };
     match v["method"].as_str().unwrap_or("") {
+        "item/started" => {
+            let item = &v["params"]["item"];
+            if ["commandExecution", "mcpToolCall", "fileChange"]
+                .contains(&item["type"].as_str().unwrap_or(""))
+            {
+                if let Some(id) = item["id"].as_str() {
+                    push("tool-start", json!({"id":id}).to_string());
+                }
+            }
+        }
         "thread/tokenUsage/updated" => {
             let usage = &v["params"]["tokenUsage"];
             if let Some(input) = usage["last"]["inputTokens"].as_u64() {
@@ -157,6 +167,13 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
         }
         "item/completed" => {
             let item = &v["params"]["item"];
+            if ["commandExecution", "mcpToolCall", "fileChange"]
+                .contains(&item["type"].as_str().unwrap_or(""))
+            {
+                if let Some(id) = item["id"].as_str() {
+                    push("tool-end", json!({"id":id}).to_string());
+                }
+            }
             match item["type"].as_str().unwrap_or("") {
                 "agentMessage" => {
                     if let Some(t) = item["text"].as_str() {
@@ -261,10 +278,13 @@ pub async fn codex_turn(
     mut cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    crate::execution::signal(&mut emit, "adapter-start");
     let cwd = dunce::canonicalize(input.workspace)
         .map_err(|_| "The conversation folder is no longer available")?;
     let version = version(input.config).await?;
+    crate::execution::signal(&mut emit, "version-ready");
     let (requests, command_reply, file_reply) = cached_schemas(input.config, &version).await?;
+    crate::execution::signal(&mut emit, "schema-ready");
 
     let mut c = providers::command(&Provider::Gpt)?;
     providers::isolate(&mut c, &Provider::Gpt, input.config);
@@ -292,9 +312,11 @@ pub async fn codex_turn(
         browser.args(&mut args, &Provider::Gpt)?;
         c.args(args);
     }
+    crate::execution::signal(&mut emit, "spawn-start");
     let mut child = c
         .spawn()
         .map_err(|e| format!("unavailable: cannot start Codex: {e}"))?;
+    crate::execution::signal(&mut emit, "process-started");
     if let Some(pid) = child.id() {
         emit(Activity {
             kind: "pid".into(),
@@ -365,6 +387,7 @@ async fn run(
         )
         .await?;
     let init = expect(wire, id).await?;
+    crate::execution::signal(emit, "protocol-ready");
     let availability = support::codex(version, evidence.0, evidence.1, evidence.2, &init);
     if let Availability::Unavailable { reason } = &availability {
         return Err(format!("unavailable: {reason}"));
@@ -402,6 +425,7 @@ async fn run(
     };
     let id = wire.send(method, params).await?;
     let thread = expect(wire, id).await?;
+    crate::execution::signal(emit, "thread-ready");
     let thread_id = thread["result"]["thread"]["id"]
         .as_str()
         .ok_or("Codex did not return a thread id")?
@@ -426,6 +450,7 @@ async fn run(
         turn["effort"] = json!(input.effort);
     }
     let id = wire.send("turn/start", turn).await?;
+    crate::execution::signal(emit, "request-enqueued");
 
     // 3. Read until the turn completes. Messages that arrive before the turn id is known are
     // held, so no approval request is handled without its real scope.
@@ -461,6 +486,7 @@ async fn run(
                 let turn_id = message["result"]["turn"]["id"]
                     .as_str()
                     .ok_or("Codex did not return a turn id")?;
+                crate::execution::signal(emit, "request-acknowledged");
                 *scope = Some(approvals.keeper.start_session(
                     &approvals.chat,
                     Engine::Codex,
@@ -667,6 +693,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn explicit_tool_lifecycle_maps_separately_from_completed_output() {
+        let mut text = String::new();
+        let mut rows = vec![];
+        for method in ["item/started", "item/completed"] {
+            activity(
+                &json!({"method":method,"params":{"item":{"type":"commandExecution","id":"tool-a","command":"fixture"}}}),
+                &mut text,
+                &mut |a| rows.push(a),
+            );
+        }
+        assert_eq!(
+            rows.iter().map(|a| a.kind.as_str()).collect::<Vec<_>>(),
+            ["tool-start", "tool-end", "tool"]
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&rows[0].text).unwrap()["id"],
+            "tool-a"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&rows[1].text).unwrap()["id"],
+            "tool-a"
+        );
+    }
     #[test]
     fn maps_protocol_items_to_chat_activity() {
         let mut text = String::new();

@@ -1,0 +1,737 @@
+{
+  "at": "2026-11-11T16:40:27.313Z",
+  "protocol": "docs/turn-latency-0.8.md",
+  "offline": {
+    "build": "isolated-release",
+    "sha256": "4a9e8481d23eb16cbc0353575b45b8262fb19b829467cde2e5fd290112082244",
+    "samples": 80,
+    "workloads": [
+      {
+        "provider": "claude",
+        "mode": "initial",
+        "samples": 20,
+        "firstProcess": {
+          "provider": "claude",
+          "repetition": 0,
+          "mode": "initial",
+          "status": "completed",
+          "acceptanceMs": 734.3001999999999,
+          "completedMs": 1807.4462,
+          "preparationMs": 716,
+          "timings": [
+            [
+              "catalog",
+              0
+            ],
+            [
+              "capacity",
+              3
+            ],
+            [
+              "starting-provider",
+              6
+            ],
+            [
+              "adapter-start",
+              17
+            ],
+            [
+              "spawn-start",
+              19
+            ],
+            [
+              "process-started",
+              82
+            ],
+            [
+              "protocol-ready",
+              417
+            ],
+            [
+              "request-enqueued",
+              417
+            ],
+            [
+              "first-provider-event",
+              420
+            ],
+            [
+              "first-text",
+              469
+            ],
+            [
+              "return",
+              977
+            ],
+            [
+              "returned",
+              977
+            ]
+          ],
+          "normalizedEvents": 5,
+          "firstProcessForAccount": true
+        },
+        "acceptanceMs": {
+          "samples": 20,
+          "median": 8.725100000001476,
+          "p95": 13.39429999999993,
+          "min": 6.7260000000005675,
+          "max": 734.3001999999999
+        },
+        "preparationMs": {
+          "samples": 20,
+          "median": 1,
+          "p95": 1,
+          "min": 1,
+          "max": 716
+        },
+        "completionObservedMs": {
+          "samples": 20,
+          "median": 987.3512000000082,
+          "p95": 1051.8919999999998,
+          "min": 901.4814999999999,
+          "max": 1807.4462
+        },
+        "spans": {
+          "stageCatalogMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 4,
+            "min": 2,
+            "max": 4
+          },
+          "capacityAndDispatchMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 4,
+            "min": 2,
+            "max": 4
+          },
+          "sharedSetupMs": {
+            "samples": 20,
+            "median": 5,
+            "p95": 6,
+            "min": 4,
+            "max": 11
+          },
+          "adapterSetupMs": {
+            "samples": 20,
+            "median": 1,
+            "p95": 2,
+            "min": 1,
+            "max": 2
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 62,
+            "p95": 65,
+            "min": 61,
+            "max": 65
+          },
+          "processToProtocolReadyMs": {
+            "samples": 20,
+            "median": 298.5,
+            "p95": 335,
+            "min": 285,
+            "max": 339
+          },
+          "protocolToEnqueueMs": {
+            "samples": 20,
+            "median": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "enqueueToObservedTextMs": {
+            "samples": 20,
+            "median": 54.5,
+            "p95": 71,
+            "min": 48,
+            "max": 74
+          },
+          "stageTotalMs": {
+            "samples": 20,
+            "median": 898.5,
+            "p95": 956,
+            "min": 816,
+            "max": 977
+          },
+          "schemaMs": {
+            "samples": 0,
+            "median": null,
+            "p95": null,
+            "min": null,
+            "max": null
+          }
+        }
+      },
+      {
+        "provider": "claude",
+        "mode": "resume",
+        "samples": 20,
+        "firstProcess": null,
+        "acceptanceMs": {
+          "samples": 20,
+          "median": 9.274899999998524,
+          "p95": 11.814299999998184,
+          "min": 6.969999999999345,
+          "max": 16.91710000000012
+        },
+        "preparationMs": {
+          "samples": 20,
+          "median": 1,
+          "p95": 1,
+          "min": 1,
+          "max": 1
+        },
+        "completionObservedMs": {
+          "samples": 20,
+          "median": 995.265199999998,
+          "p95": 1049.9728,
+          "min": 943.6883999999991,
+          "max": 1059.6394
+        },
+        "spans": {
+          "stageCatalogMs": {
+            "samples": 20,
+            "median": 7,
+            "p95": 8,
+            "min": 2,
+            "max": 9
+          },
+          "capacityAndDispatchMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 5,
+            "min": 2,
+            "max": 5
+          },
+          "sharedSetupMs": {
+            "samples": 20,
+            "median": 5,
+            "p95": 7,
+            "min": 4,
+            "max": 8
+          },
+          "adapterSetupMs": {
+            "samples": 20,
+            "median": 1.5,
+            "p95": 2,
+            "min": 1,
+            "max": 2
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 63,
+            "p95": 75,
+            "min": 60,
+            "max": 79
+          },
+          "processToProtocolReadyMs": {
+            "samples": 20,
+            "median": 300.5,
+            "p95": 317,
+            "min": 288,
+            "max": 327
+          },
+          "protocolToEnqueueMs": {
+            "samples": 20,
+            "median": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "enqueueToObservedTextMs": {
+            "samples": 20,
+            "median": 64,
+            "p95": 78,
+            "min": 54,
+            "max": 80
+          },
+          "stageTotalMs": {
+            "samples": 20,
+            "median": 892,
+            "p95": 951,
+            "min": 851,
+            "max": 970
+          },
+          "schemaMs": {
+            "samples": 0,
+            "median": null,
+            "p95": null,
+            "min": null,
+            "max": null
+          }
+        }
+      },
+      {
+        "provider": "gpt",
+        "mode": "initial",
+        "samples": 20,
+        "firstProcess": {
+          "provider": "gpt",
+          "repetition": 0,
+          "mode": "initial",
+          "status": "completed",
+          "acceptanceMs": 686.2244999999998,
+          "completedMs": 1938.7748000000006,
+          "preparationMs": 676,
+          "timings": [
+            [
+              "catalog",
+              0
+            ],
+            [
+              "capacity",
+              3
+            ],
+            [
+              "starting-provider",
+              7
+            ],
+            [
+              "adapter-start",
+              93
+            ],
+            [
+              "version-ready",
+              133
+            ],
+            [
+              "schema-ready",
+              416
+            ],
+            [
+              "spawn-start",
+              417
+            ],
+            [
+              "process-started",
+              426
+            ],
+            [
+              "protocol-ready",
+              699
+            ],
+            [
+              "thread-ready",
+              702
+            ],
+            [
+              "first-provider-event",
+              702
+            ],
+            [
+              "request-enqueued",
+              702
+            ],
+            [
+              "request-acknowledged",
+              706
+            ],
+            [
+              "first-text",
+              784
+            ],
+            [
+              "return",
+              1169
+            ],
+            [
+              "returned",
+              1169
+            ]
+          ],
+          "normalizedEvents": 7,
+          "firstProcessForAccount": true
+        },
+        "acceptanceMs": {
+          "samples": 20,
+          "median": 8.65965000000142,
+          "p95": 9.150900000000547,
+          "min": 8.276400000002468,
+          "max": 686.2244999999998
+        },
+        "preparationMs": {
+          "samples": 20,
+          "median": 1,
+          "p95": 1,
+          "min": 1,
+          "max": 676
+        },
+        "completionObservedMs": {
+          "samples": 20,
+          "median": 906.3104500000009,
+          "p95": 1014.3461000000025,
+          "min": 862.1768000000011,
+          "max": 1938.7748000000006
+        },
+        "spans": {
+          "stageCatalogMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 4,
+            "min": 2,
+            "max": 4
+          },
+          "capacityAndDispatchMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 4,
+            "min": 2,
+            "max": 4
+          },
+          "sharedSetupMs": {
+            "samples": 20,
+            "median": 21.5,
+            "p95": 24,
+            "min": 21,
+            "max": 86
+          },
+          "adapterSetupMs": {
+            "samples": 20,
+            "median": 37,
+            "p95": 50,
+            "min": 33,
+            "max": 324
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 5,
+            "p95": 15,
+            "min": 4,
+            "max": 16
+          },
+          "processToProtocolReadyMs": {
+            "samples": 20,
+            "median": 280,
+            "p95": 293,
+            "min": 268,
+            "max": 323
+          },
+          "protocolToEnqueueMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 4,
+            "min": 1,
+            "max": 4
+          },
+          "enqueueToObservedTextMs": {
+            "samples": 20,
+            "median": 81,
+            "p95": 84,
+            "min": 73,
+            "max": 93
+          },
+          "stageTotalMs": {
+            "samples": 20,
+            "median": 825,
+            "p95": 900,
+            "min": 767,
+            "max": 1169
+          },
+          "schemaMs": {
+            "samples": 20,
+            "median": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 283
+          }
+        }
+      },
+      {
+        "provider": "gpt",
+        "mode": "resume",
+        "samples": 20,
+        "firstProcess": null,
+        "acceptanceMs": {
+          "samples": 20,
+          "median": 8.954650000001493,
+          "p95": 10.904899999999543,
+          "min": 8.432399999990594,
+          "max": 10.924299999998766
+        },
+        "preparationMs": {
+          "samples": 20,
+          "median": 1,
+          "p95": 1,
+          "min": 1,
+          "max": 1
+        },
+        "completionObservedMs": {
+          "samples": 20,
+          "median": 905.0727000000006,
+          "p95": 973.2428,
+          "min": 821.2525999999998,
+          "max": 981.5924000000014
+        },
+        "spans": {
+          "stageCatalogMs": {
+            "samples": 20,
+            "median": 4.5,
+            "p95": 8,
+            "min": 2,
+            "max": 8
+          },
+          "capacityAndDispatchMs": {
+            "samples": 20,
+            "median": 3,
+            "p95": 5,
+            "min": 2,
+            "max": 6
+          },
+          "sharedSetupMs": {
+            "samples": 20,
+            "median": 21,
+            "p95": 25,
+            "min": 20,
+            "max": 26
+          },
+          "adapterSetupMs": {
+            "samples": 20,
+            "median": 34.5,
+            "p95": 48,
+            "min": 32,
+            "max": 50
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 4,
+            "p95": 5,
+            "min": 4,
+            "max": 15
+          },
+          "processToProtocolReadyMs": {
+            "samples": 20,
+            "median": 283,
+            "p95": 301,
+            "min": 267,
+            "max": 308
+          },
+          "protocolToEnqueueMs": {
+            "samples": 20,
+            "median": 1,
+            "p95": 2,
+            "min": 1,
+            "max": 2
+          },
+          "enqueueToObservedTextMs": {
+            "samples": 20,
+            "median": 81.5,
+            "p95": 89,
+            "min": 69,
+            "max": 92
+          },
+          "stageTotalMs": {
+            "samples": 20,
+            "median": 815.5,
+            "p95": 887,
+            "min": 744,
+            "max": 894
+          },
+          "schemaMs": {
+            "samples": 20,
+            "median": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    ]
+  },
+  "installedCli": {
+    "driver": "Rust debug test driver, actual installed CLI processes; isolated configuration, no copied authentication",
+    "providers": [
+      {
+        "provider": "claude",
+        "versions": [
+          "2.1.314"
+        ],
+        "attempted": 20,
+        "successful": 20,
+        "status": "complete",
+        "firstProcess": {
+          "versionMs": 142.157,
+          "catalogMs": 1107.7362,
+          "status": "ok",
+          "modelCount": 5,
+          "milestones": [
+            [
+              "catalog-start",
+              0.0040999999999999995
+            ],
+            [
+              "spawn-start",
+              9.842699999999999
+            ],
+            [
+              "process-started",
+              22.165399999999998
+            ],
+            [
+              "initialize-written",
+              22.3008
+            ],
+            [
+              "initialize-acknowledged",
+              657.6039000000001
+            ],
+            [
+              "query-ended",
+              657.7452000000001
+            ],
+            [
+              "cleanup-ended",
+              1107.6585
+            ]
+          ]
+        },
+        "timings": {
+          "versionMs": {
+            "samples": 20,
+            "median": 88.61105,
+            "p95": 132.1947,
+            "min": 81.08210000000001,
+            "max": 142.157
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 953.25125,
+            "p95": 1095.7598,
+            "min": 896.6035,
+            "max": 1107.7362
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 4.53385,
+            "p95": 14.4966,
+            "min": 4.121999999999998,
+            "max": 14.901399999999999
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 531.28135,
+            "p95": 635.4385000000001,
+            "min": 496.51930000000004,
+            "max": 672.7198
+          },
+          "metadataAfterInitMs": {
+            "samples": 20,
+            "median": 0.07080000000001974,
+            "p95": 0.11749999999994998,
+            "min": 0.058400000000006,
+            "max": 0.1413000000000011
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 405.03575,
+            "p95": 447.1193999999999,
+            "min": 348.59040000000005,
+            "max": 449.91329999999994
+          }
+        }
+      },
+      {
+        "provider": "codex",
+        "versions": [
+          "0.167.0-alpha.4.1"
+        ],
+        "attempted": 20,
+        "successful": 20,
+        "status": "complete",
+        "firstProcess": {
+          "versionMs": 142.1421,
+          "catalogMs": 828.5025,
+          "status": "ok",
+          "modelCount": 9,
+          "milestones": [
+            [
+              "catalog-start",
+              0.001
+            ],
+            [
+              "spawn-start",
+              13.957
+            ],
+            [
+              "process-started",
+              23.924
+            ],
+            [
+              "initialize-written",
+              23.9952
+            ],
+            [
+              "initialize-acknowledged",
+              341.7341
+            ],
+            [
+              "query-ended",
+              343.9908
+            ],
+            [
+              "cleanup-ended",
+              828.4618
+            ]
+          ]
+        },
+        "timings": {
+          "versionMs": {
+            "samples": 20,
+            "median": 111.72075000000001,
+            "p95": 142.1421,
+            "min": 98.17660000000001,
+            "max": 153.8901
+          },
+          "catalogMs": {
+            "samples": 20,
+            "median": 588.3076,
+            "p95": 719.066,
+            "min": 456.6275,
+            "max": 828.5025
+          },
+          "spawnMs": {
+            "samples": 20,
+            "median": 4.334649999999999,
+            "p95": 14.485499999999998,
+            "min": 4.116400000000002,
+            "max": 16.0106
+          },
+          "processToInitializeAckMs": {
+            "samples": 20,
+            "median": 185.52089999999998,
+            "p95": 229.9385,
+            "min": 169.4752,
+            "max": 317.81010000000003
+          },
+          "metadataAfterInitMs": {
+            "samples": 20,
+            "median": 2.0435000000000088,
+            "p95": 2.5416000000000167,
+            "min": 1.6065000000000111,
+            "max": 2.714499999999987
+          },
+          "cleanupMs": {
+            "samples": 20,
+            "median": 387.30449999999996,
+            "p95": 462.09260000000006,
+            "min": 246.21269999999996,
+            "max": 484.47100000000006
+          }
+        }
+      }
+    ]
+  },
+  "limits": [
+    "No provider inference/TTFT or official-app parity measurement. Metadata readiness is not model readiness.",
+    "Stage phase timings include local bookkeeping. First normalized text includes scheduling/buffering (up to the existing 24 ms batch), not a network first byte.",
+    "Source-stamped transport milestones use a process-wide monotonic origin; normalized event/text stamps are controller observations. Stored values are relative offsets only.",
+    "Command preparation covers accepted direct submissions. Queue/context before a stage, rejected submissions, Auto classification inference, Orchestra scheduling and provider/network/tool latency are not independently attributed here.",
+    "Completion observed by native IPC polling includes up to a 25 ms polling interval plus IPC; it is distinct from stage return.",
+    "Initial samples are fresh native sessions, not cold OS/app launches. Metadata/account caches are warm after the first sample; existing catalog TTL is 300 seconds.",
+    "No warm process pool or general speedup is implemented or inferred. Independent CLI invocations retain config/account isolation."
+  ],
+  "inferenceCalls": 0,
+  "previousLiveSlotsSpent": 13
+}

@@ -1,8 +1,8 @@
 //! Auto routing verdict from a small model instead of keywords. The local helper (Ollama) is
 //! used when the user enabled it; otherwise the cheapest Claude model at low effort rates the
 //! request. Any failure or timeout falls back to the keyword profile, so routing never blocks.
-//! A short follow-up ("procedi", "ok fix it") reuses the previous request's verdict, so most
-//! turns of a conversation skip the call entirely.
+//! Recognized short continuations ("procedi", "fix it") reuse the latest request's verdict.
+//! Unrelated short tasks and newer unrated manual requests do not inherit an old route.
 use crate::models::{Account, Activity, Message, Provider};
 use crate::router::TaskProfile;
 use serde_json::Value;
@@ -41,6 +41,7 @@ pub fn record(v: &Verdict) -> Activity {
             "review": v.task.review,
             "complex": v.complex,
             "source": v.source,
+            "audit": v.task.audit,
         })
         .to_string(),
     }
@@ -51,8 +52,10 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
     let a = messages
         .iter()
         .rev()
-        .filter(|m| m.role == "user")
-        .find_map(|m| m.activity.iter().find(|a| a.kind == "route"))?;
+        .find(|m| m.role == "user")?
+        .activity
+        .iter()
+        .find(|a| a.kind == "route")?;
     let (task, complex) = parse(&a.text)?;
     Some(Verdict {
         task,
@@ -69,12 +72,45 @@ pub fn follow_up(previous: Option<Verdict>, request: &str) -> Option<Verdict> {
     if text.chars().count() > FOLLOW_UP_CHARS || text.contains('\n') || text.contains("```") {
         return None;
     }
+    let command = text.trim_end_matches(['.', '!']).to_lowercase();
+    let continuation = [
+        "procedi",
+        "continua",
+        "proceed",
+        "continue",
+        "go on",
+        "go ahead",
+        "ok fallo",
+        "fallo",
+        "fix it",
+        "correggilo",
+        "implement the approved plan",
+        "applica il piano",
+        "procedi con il piano approvato",
+        "procedi secondo il piano approvato",
+    ]
+    .contains(&command.as_str())
+        || [
+            "procedi con il punto ",
+            "continua dal punto ",
+            "continue with step ",
+        ]
+        .iter()
+        .any(|s| command.starts_with(s));
+    if !continuation {
+        return None;
+    }
     let own = crate::router::profile(text);
     Some(Verdict {
         task: TaskProfile {
             tier: prev.task.tier.max(own.tier),
             effort: prev.task.effort.max(own.effort),
-            review: prev.task.review,
+            review: prev.task.review || own.review,
+            audit: if own.audit == crate::router::AuditIntent::Auto {
+                prev.task.audit
+            } else {
+                own.audit
+            },
         },
         complex: prev.complex,
         source: "previous request",
@@ -133,6 +169,11 @@ pub fn parse(text: &str) -> Option<(TaskProfile, bool)> {
             tier: num("tier")?,
             effort: num("effort").unwrap_or(0),
             review: v["review"].as_bool().unwrap_or(false),
+            audit: v
+                .get("audit")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
         },
         v["complex"].as_bool().unwrap_or(false),
     ))
@@ -152,7 +193,8 @@ pub async fn classify(
     if let Some((model, timeout_ms)) = local.filter(|(m, _)| !m.is_empty()) {
         let wait = timeout_ms.min(TIMEOUT.as_millis() as u64);
         if let Ok(text) = crate::ollama::generate(&model, &ask, wait).await {
-            if let Some((task, complex)) = parse(&text) {
+            if let Some((mut task, complex)) = parse(&text) {
+                task.audit = crate::router::audit_intent(request);
                 return Verdict {
                     task,
                     complex,
@@ -167,11 +209,14 @@ pub async fn classify(
     let config = data.join("accounts").join(&account.id);
     match tokio::time::timeout(TIMEOUT, claude(&config, &ask)).await {
         Ok(Some(text)) => match parse(&text) {
-            Some((task, complex)) => Verdict {
-                task,
-                complex,
-                source: "claude",
-            },
+            Some((mut task, complex)) => {
+                task.audit = crate::router::audit_intent(request);
+                Verdict {
+                    task,
+                    complex,
+                    source: "claude",
+                }
+            }
             None => fallback,
         },
         _ => fallback,
@@ -219,6 +264,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn quality_unrelated_short_requests_do_not_inherit_old_complexity() {
+        let prev = Verdict {
+            task: TaskProfile {
+                tier: 2,
+                effort: 2,
+                review: true,
+                audit: Default::default(),
+            },
+            complex: true,
+            source: "claude",
+        };
+        for request in [
+            "Nuovo obiettivo: traduci ciao",
+            "Traduci questa email",
+            "Correggi il colore CSS",
+            "What does this variable mean?",
+        ] {
+            assert!(follow_up(Some(prev), request).is_none(), "{request}");
+        }
+        assert!(follow_up(Some(prev), "procedi").is_some());
+    }
+    #[test]
+    fn quality_previous_does_not_skip_a_newer_unrated_manual_task() {
+        let verdict = heuristic("architecture security production");
+        let chat = vec![
+            Message {
+                id: "old".into(),
+                role: "user".into(),
+                text: "old".into(),
+                activity: vec![record(&verdict)],
+            },
+            Message {
+                id: "new".into(),
+                role: "user".into(),
+                text: "New task: translate this".into(),
+                activity: vec![],
+            },
+        ];
+        assert!(previous(&chat).is_none());
+    }
+    #[test]
     fn parses_a_verdict_inside_chatter() {
         let (t, complex) = parse(
             "Sure:\n```json\n{\"tier\":2,\"effort\":2,\"review\":true,\"complex\":true}\n```",
@@ -236,6 +322,7 @@ mod tests {
                 tier: 2,
                 effort: 2,
                 review: false,
+                audit: Default::default(),
             },
             complex: false,
             source: "claude",

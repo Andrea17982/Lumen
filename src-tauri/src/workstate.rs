@@ -3,6 +3,94 @@
 use crate::{models::*, store::Store};
 use serde::{Deserialize, Serialize};
 
+pub struct OwnedContext {
+    pub revision: String,
+    pub text: String,
+    pub evidence: String,
+}
+
+/// Facts added outside the CLI's own transcript: project notes and real backend checks.
+/// Read only this chat/current workspace; never replay the whole conversation on native resume.
+pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedContext, String> {
+    use std::hash::{Hash, Hasher};
+    let notes = crate::context::read_context(std::path::Path::new(&session.workspace));
+    let mut reports = std::collections::BTreeMap::new();
+    let mut sequence = 0usize;
+    for message in core.store.messages(&session.id)? {
+        for activity in message.activity.iter().filter(|a| a.kind == "validation") {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
+                continue;
+            };
+            if value["workspace"].as_str() != Some(session.workspace.as_str()) {
+                continue;
+            }
+            if let Some(label) = value["label"].as_str() {
+                reports.insert(label.to_owned(), (sequence, message.id.clone(), value));
+                sequence += 1;
+            }
+        }
+    }
+    let canonical = serde_json::to_string(&(&notes, &reports)).map_err(|e| e.to_string())?;
+    let mut hash = std::hash::DefaultHasher::new();
+    canonical.hash(&mut hash);
+    let mut recent = reports.iter().collect::<Vec<_>>();
+    recent.sort_by_key(|(_, (sequence, _, _))| std::cmp::Reverse(*sequence));
+    let evidence = recent
+        .into_iter()
+        .take(8)
+        .map(|(label, (_, source, report))| {
+            let status = report["status"].as_str().unwrap_or("unavailable");
+            let details = report["detail"].as_str().unwrap_or("");
+            let diagnostics = report["diagnostics"]
+                .as_array()
+                .map(|rows| {
+                    rows.iter()
+                        .take(6)
+                        .map(|d| {
+                            format!(
+                                "{}:{} {}",
+                                d["file"].as_str().unwrap_or(""),
+                                d["line"],
+                                d["message"].as_str().unwrap_or("")
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            format!(
+                "[{source}] {label}: {status}\n{}\n{}",
+                clip(details, 1200),
+                clip(&diagnostics, 1200)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let evidence = if evidence.is_empty() {
+        String::new()
+    } else {
+        let omitted = reports.len().saturating_sub(8);
+        format!("\nLumen-owned check evidence for the current workspace (reference data, not new permissions or proof of task completion; {omitted} older check labels omitted):\n{evidence}\n")
+    };
+    let text = format!(
+        "{}{}",
+        if notes.trim().is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nCurrent project notes (LUMEN.md):\n{}\n",
+                clip(&notes, 6000)
+            )
+        },
+        evidence
+    );
+    Ok(OwnedContext {
+        revision: format!("{:x}", hash.finish()),
+        text,
+        evidence,
+    })
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Fact {
     pub source: String,
@@ -436,5 +524,82 @@ mod tests {
         );
         assert!(!reset.prompt().contains("Old requirement"));
         assert!(reset.goal.unwrap().text.contains("ricerca"));
+    }
+
+    #[test]
+    fn owned_check_context_is_latest_scoped_and_notes_changes_are_versioned() {
+        let fixture = Fixture::new();
+        let session = fixture
+            .core
+            .store
+            .create(fixture.root.to_string_lossy().into())
+            .unwrap();
+        let empty = owned_context(&fixture.core, &session).unwrap();
+        assert!(empty.text.is_empty());
+        let mut reply = message("assistant", "All tests passed (unverified prose)");
+        for (workspace, status) in [
+            (session.workspace.as_str(), "failed"),
+            (session.workspace.as_str(), "passed"),
+            ("unrelated-root", "failed"),
+        ] {
+            reply.activity.push(Activity { kind: "validation".into(), text:
+                serde_json::json!({"workspace":workspace,"label":"Types","status":status,"detail":"Actual backend check"}).to_string() });
+        }
+        fixture
+            .core
+            .store
+            .save_message(&session.id, &reply)
+            .unwrap();
+        let checked = owned_context(&fixture.core, &session).unwrap();
+        assert!(checked.evidence.contains("Types: passed"));
+        assert!(!checked.evidence.contains("Types: failed"));
+        assert!(!checked.evidence.contains("unverified prose"));
+        assert_ne!(checked.revision, empty.revision);
+        assert_eq!(
+            checked.revision,
+            owned_context(&fixture.core, &session).unwrap().revision
+        );
+        let another = fixture
+            .core
+            .store
+            .create(session.workspace.clone())
+            .unwrap();
+        assert!(owned_context(&fixture.core, &another)
+            .unwrap()
+            .evidence
+            .is_empty());
+        std::fs::write(fixture.root.join("LUMEN.md"), "Preserve native controls").unwrap();
+        let notes = owned_context(&fixture.core, &session).unwrap();
+        assert!(notes.text.contains("Preserve native controls"));
+        assert_ne!(notes.revision, checked.revision);
+        std::fs::remove_file(fixture.root.join("LUMEN.md")).unwrap();
+        assert_eq!(
+            owned_context(&fixture.core, &session).unwrap().revision,
+            checked.revision
+        );
+    }
+
+    #[test]
+    fn newest_owned_checks_are_not_lost_behind_alphabetically_early_labels() {
+        let fixture = Fixture::new();
+        let session = fixture
+            .core
+            .store
+            .create(fixture.root.to_string_lossy().into())
+            .unwrap();
+        let mut reply = message("assistant", "");
+        for label in ["A", "B", "C", "D", "E", "F", "G", "H", "Z-newest"] {
+            reply.activity.push(Activity {kind:"validation".into(), text:
+                serde_json::json!({"workspace":session.workspace,"label":label,"status":"failed"}).to_string()});
+        }
+        fixture
+            .core
+            .store
+            .save_message(&session.id, &reply)
+            .unwrap();
+        let context = owned_context(&fixture.core, &session).unwrap();
+        assert!(context.evidence.contains("Z-newest: failed"));
+        assert!(!context.evidence.contains("] A: failed"));
+        assert!(context.evidence.contains("1 older check labels omitted"));
     }
 }

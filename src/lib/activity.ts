@@ -3,6 +3,40 @@ import type { Activity } from './types';
 /** Match the backend's bounded snapshots, so child tokens cannot evict questions/checkpoints. */
 export function recordActivity(rows: Activity[], incoming: Activity): Activity[] {
   const next = [...rows];
+  if (incoming.kind === 'execution') {
+    try {
+      const value = JSON.parse(incoming.text);
+      const index =
+        typeof value.id === 'string'
+          ? next.findIndex((a) => {
+              try {
+                return a.kind === 'execution' && JSON.parse(a.text).id === value.id;
+              } catch {
+                return false;
+              }
+            })
+          : -1;
+      if (index >= 0) {
+        next[index] = incoming;
+        return next;
+      }
+    } catch {
+      /* Preserve unsupported telemetry as bounded activity. */
+    }
+    if (next.filter((a) => a.kind === 'execution').length >= 64)
+      next.splice(
+        next.findIndex((a) => a.kind === 'execution'),
+        1,
+      );
+  }
+  if (
+    incoming.kind === 'execution-phase' &&
+    next.filter((a) => a.kind === 'execution-phase').length >= 64
+  )
+    next.splice(
+      next.findIndex((a) => a.kind === 'execution-phase'),
+      1,
+    );
   if (incoming.kind === 'child') {
     try {
       const child = JSON.parse(incoming.text);
@@ -44,7 +78,17 @@ export function recordActivity(rows: Activity[], incoming: Activity): Activity[]
   next.push(incoming);
   if (next.length > 500) {
     const index = next.findIndex((a) =>
-      ['tool', 'file', 'thinking', 'child', 'model', 'resume'].includes(a.kind),
+      [
+        'tool',
+        'file',
+        'thinking',
+        'child',
+        'model',
+        'resume',
+        'tool-start',
+        'tool-end',
+        'execution',
+      ].includes(a.kind),
     );
     next.splice(index < 0 ? 0 : index, 1);
   }

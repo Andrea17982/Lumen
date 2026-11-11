@@ -1,0 +1,217 @@
+# Roadmap 0.8 — misure, qualità e continuità
+
+Stato: **sei tranche integrate o valutate localmente; baseline release Windows, chat lunghe e avvio CLI misurati**, 11 novembre 2026. Le decisioni sotto sono approvate dal proprietario. Le ottimizzazioni superano i criteri sul lavoro UI durante la digitazione e sull'apertura iniziale; il prototipo di virtualizzazione è escluso per perdita di ricerca/selezione/accessibilità. La nuova attribuzione CLI non misura inferenza/TTFT live. Tempi assoluti stabili e virtualizzazione compatibile restano aperti. La versione pubblicata resta 0.7.0.
+
+## Direzione approvata nell'intervista dell'11 novembre
+
+- **Uso principale:** coding React/TypeScript/JavaScript e Godot, dalla creazione e architettura di un progetto al lavoro attivo su roadmap, ricerca e rifiniture. Un'unica applicazione aggrega gli abbonamenti; il caso prioritario usa due account Claude e uno ChatGPT.
+- **Priorità di qualità:** completare l'esecuzione senza solleciti ingiustificati, migliorare ragionamento/architettura/codice, conservare requisiti e decisioni. La qualità inferiore alle app ufficiali è una segnalazione da diagnosticare, non una differenza già misurata a parità di modello e impostazioni.
+- **Contesto:** condiviso tra account nella singola chat; grafo e repocontext forniscono conoscenza mirata del progetto. Nessuna condivisione indiscriminata delle conversazioni di uno stesso progetto.
+- **Auto:** un responsabile mantiene il filo e integra. Le sole scelte ordinarie sono Balance quota usage e Budget/Default/Quality. L'algoritmo decide assegnazione, aiuti, delega e cross-audit quando il beneficio giustifica token e attesa, oppure quando richiesti esplicitamente. Non lanciare sempre più agenti sullo stesso problema.
+- **Orchestra:** resta esplicita; autorizza orchestrator e distribuzione parallela con piano, dipendenze e worktree quando necessari. L'intervista chiarisce dubbi reali prima di lavorare; non deve ripetere decisioni già risolte. Auto senza Orchestra può comunque richiedere aiuti circoscritti. Questa è una specifica di destinazione: la calibrazione e l'estensione della delega ordinaria devono ancora essere verificate/implementate.
+- **Both:** richiesta esplicita di soluzioni da confrontare, distinta dalla collaborazione automatica. Sessioni dirette restano predefinite e conservano le scelte dell'utente.
+- **Autonomia e conferme:** lavoro tecnico richiesto → esecuzione e controlli, senza revisione obbligatoria del codice. Scelte visive → proposta o prima/dopo concreto, approvazione del risultato, poi integrazione nella destinazione richiesta e chiusura senza altra autorizzazione dello stesso perimetro. Pubblicazioni/deploy seguono l'autorizzazione del singolo compito.
+- **Identità:** minimale Apple Liquid Glass; vetro e trasparenza cruciali, entrambi i temi, leggibilità e pochi controlli. Composizione approvata: vista essenziale con barra flottante; il logo in alto a sinistra è il pulsante che apre/chiude la sidebar di vetro con progetti. Transizione tra le due composizioni con breve scintillio del logo al clic, senza movimento continuo e rispettando movimento ridotto. Nessun redesign generale implicito.
+- **Avanzamento:** riepilogo compatto con fase, ultima azione reale, agenti e verifiche; dettagli espandibili. Distinguere attesa provider, strumenti, domande pendenti, errori e silenzio del protocollo; una durata senza eventi non dimostra uno stallo. Recupero automatico solo quando non duplica effetti; mai rilanciare alla cieca operazioni di scrittura.
+- **Preset:** nessuno rinuncia alla correttezza; Budget riduce duplicazione/collaborazioni superflue, Quality può spendere di più per verifiche e confronti mirati. Nessuna garanzia di soddisfazione delle animazioni senza prove sul prototipo.
+
+## Ordine di esecuzione e accettazione
+
+| Priorità | Attività e dipendenze | Criterio di accettazione | Stato |
+| --- | --- | --- | --- |
+| P0 | Bozze e allegati per conversazione; invio e riconciliazione con il backend | Cambiare chat non trasferisce testo/allegati; il messaggio appare subito in invio e il composer si libera; errore recuperabile senza perdita né duplicazione; risposte tardive e Compact non alterano un'altra chat o una nuova bozza | Integrata localmente; 7 scenari Windows debug/offline verificati |
+| P0 | Osservabilità dell'esecuzione e analisi degli arresti segnalati | Stati basati su eventi reali e durata visibile; distinguere conclusione, domanda, errore e assenza di eventi; riproduzione controllata prima di modificare recupero/istruzioni | Riepilogo integrato e verificato Windows/offline; causa degli episodi live ancora da stabilire |
+| P1 | Qualità, continuità tra account e Auto; dipende da compiti e verifiche indipendenti | Compiti React/TS e Godot con requisiti/check fissati prima; misurare completamento senza solleciti, errori, correzioni, estranei, costo totale e attesa; limiti dichiarati, nessuna parità universale dedotta | Correzioni e fixture Windows integrate; GPT: candidata React 2/2 e Godot 3/3, confronto mirato; Claude live fermo per autenticazione; qualità generale/delega ordinaria ancora aperte |
+| P1 | Baseline release Windows e candidati prestazionali dei punti 0–4 | Misure ripetute e metrica/soglia fissate prima del prototipo; integrare solo benefici dimostrati | Digitazione CPU −63% sul primo carico primario; confronto successivo di 360 aperture: −26% sulla chat mista da 5.000 messaggi; finestra virtualizzata esclusa per perdita di contenuti raggiungibili; baseline assoluta stabile e altri candidati aperti |
+| P2 | Composizione visiva approvata, logo/sidebar, rifiniture e movimento | Chiaro/scuro, tastiera/focus e movimento ridotto; controlli accessibili pur mantenendo pochi elementi; confronto visivo nativo Windows | Direzione approvata; implementazione da avviare |
+| P1 | Attesa tra turni e avvio CLI/provider | Separare preparazione, processo, handshake, invio e testo; mantenere distinti fixture e provider reali | 80 turni release/offline e 40 inizializzazioni CLI reali senza inferenza; telemetria monotona integrata; inferenza live e Auto/Orchestra ancora da attribuire |
+| P2 | Regressioni mirate Windows e build/CI multipiattaforma | Copertura dei flussi modificati, con fixture/live/desktop distinti; account e hardware mancanti restano visibili | Da avviare |
+
+La verifica iniziale ha confermato i difetti segnalati nel composer: stato unico per testo/allegati e svuotamento soltanto dopo `send_message`. La prima tranche sotto li corregge. La preparazione/classificazione/catalogo precede tuttora l'accettazione backend; il feedback immediato non misura né elimina quell'attesa. La descrizione obsoleta di link/immagini non interattivi in `DESIGN.md` è stata corretta sulla fonte `MessageBody`/`ResponseImage`, senza usare catture come prova live.
+
+L'accettazione non richiede di integrare ogni candidato: scarti e risultati inconcludenti sono validi se documentati e rinviati esplicitamente. Il budget live resta quello già concordato. Nessun aumento versione o pubblicazione in questa preparazione.
+
+### Prima tranche — evidenza dell'11 novembre
+
+`tests/native-composer.mjs` verifica sette scenari nell'app Windows debug/WebView2 con dati e account isolati, IPC/SQLite reali e CLI offline: isolamento testo/allegati, invio immediato con accettazione ritardata e protezione dal doppio invio, rifiuto con testo più recente, accettazione con readback indisponibile, rifiuto con primo readback fallito, creazione chat e Compact ritardato. I messaggi usano un UUID client conservato dal backend, anche nelle continuazioni Orchestra; l'inserimento iniziale non può sovrascrivere un messaggio già esistente. La verifica di un esito incerto legge lo stato e non rilancia la richiesta.
+
+Le bozze sono **locali alla finestra**: cambiare chat le conserva; reload/riavvio non sono ancora coperti da persistenza. Gli errori di invio sono associati alla chat sorgente e il ripristino conserva anche eventuale testo nuovo. Il feedback immediato non elimina il tempo reale di preparazione del provider, né rende cancellabile ogni sua fase.
+
+Controlli superati: build debug Rust; TypeScript; 3 test storage e 13 Orchestra; 2 regressioni Playwright mirate (slash commands e filtro sidebar); Clippy con warning negati, formattazione e riferimenti documentali. La revisione indipendente ha trovato e poi giudicato risolti il recupero dopo rifiuto + readback fallito e il comportamento tardivo di Compact. Catture di invio leggibili in chiaro/scuro e azione di verifica esito controllate. Questi risultati riguardano il working tree basato su `657c679`, non una nuova release o un confronto live. Report e catture locali: `.impeccable/review/native-composer-results.json` e `native-composer*.png`.
+
+La chiusura della prima tranche non implicava osservabilità generale, diagnosi dell'esecuzione/qualità, baseline release, confronti prestazionali o nuova composizione logo/sidebar. La tranche seguente aggiorna soltanto l'osservabilità e le riproduzioni controllate.
+
+### Seconda tranche — osservabilità e diagnosi controllata
+
+**Implementata localmente l'11 novembre, con collaudi Windows debug/offline.** Un solo riepilogo espandibile sopra il composer mostra fase osservata, durata, ultimo evento registrato, agenti con stato esplicito e verifiche strutturate disponibili. Non conta un flusso di testo di un sottoagente come prova di una chat autonoma attiva. Le verifiche assenti non sono passaggi impliciti; risultati ripetuti dello stesso check sostituiscono il precedente. Le fasi comprendono attesa di avvio/accesso al progetto, contesto, catalogo, capacità, avvio provider, risposta, ragionamento, strumento, domanda/permesso, verifica e fine turno.
+
+`execution.rs` registra snapshot versione 1 nelle attività esistenti: tempi di avvio/ultimo evento/primo testo/ritorno, contatori e fasi, senza prompt, risposte, comandi o valori delle domande. Ogni snapshot conserva al massimo 32 transizioni; restano al massimo 64 snapshot di chiamate e 64 marcatori di fase per messaggio, con massimo 256 ID aperti per strumenti/domande. Gli aggiornamenti di fase e di input sono immediati; gli altri snapshot vengono pubblicati al massimo ogni 750 ms e alla chiusura. Sono osservazioni del flusso normalizzato, non una misura dell'inferenza interna né una baseline prestazionale.
+
+Le coppie esplicite avvio/fine strumenti esposte da Claude e Codex sono distinte dal semplice risultato di uno strumento. Le capacità degli altri provider restano diverse. Le osservazioni delle chiamate interne di Orchestra sono conservate anche dopo salvataggio/reload; la UI sceglie una chiamata ancora attiva quando un'altra parallela è già terminata. Dopo un riavvio che marca il turno interrotto senza un evento finale, il tempo si ferma all'ultima osservazione e dichiara ignoto l'istante finale.
+
+**Diagnosi dimostrata nei casi controllati:** il vecchio indicatore basato sull'ultimo tool poteva suggerire uno strumento ancora in esecuzione dopo il suo risultato; ora la distinzione è esplicita. Una risposta che promette lavoro e termina senza strumenti produce "Turno terminato" e zero eventi strumento, non attività fittizia né una certificazione del compito. Domande e permessi pendenti non vengono classificati come blocchi. Dopo 30 secondi senza aggiornamenti registrati compare un'indicazione di silenzio, non un errore o un rilancio. "Aggiorna stato" legge messaggi/sessioni/journal dei permessi senza invocare modelli; le letture tardive non sovrascrivono streaming o altre chat. Stop usa la cancellazione esistente.
+
+**Evidenze:** `tests/native-execution.mjs` passa 8 scenari (domanda/risposta, promessa senza strumenti e reload, coppia strumenti, errore, 30 secondi reali di silenzio + refresh + Stop, refresh tardivo dopo cambio chat, intervista interna Orchestra persistita, italiano/scuro dopo reload). Passano di nuovo i 7 scenari composer. Le regressioni mirate includono 8 test TypeScript per stati/pressione/parallelismo/crash, 4 Rust execution per privacy/lifecycle/pressione/persistenza e i mapping di protocollo. Build debug, TypeScript, Clippy, formattazione e documentazione restano distinti dalla prova nativa. Report/catture locali: `.impeccable/review/native-execution-results.json` e `execution-*.png`. Revisione indipendente: ship a questo perimetro desktop, non audit universale.
+
+**Limiti aperti:** non è stata stabilita la causa degli episodi storici sui veri account, né dimostrata maggiore qualità dei modelli. Prima dell'accettazione backend, la UI misura soltanto l'attesa osservata dell'invio; classificazione/catalogo preliminari non hanno ancora una scomposizione completa e Stop non cancella ogni loro fase. Nessun reinvio è aggiunto in risposta al silenzio; le politiche native/fallback preesistenti restano distinte. Tempi da clock locale, copertura provider/account/riavvio e accessibilità con lettore di schermo non sono certificazioni. Restano aperti qualità/continuità Auto, baseline release, esperimenti, UI logo/sidebar e copertura multipiattaforma; nessuna chiamata live o nuova release è stata eseguita.
+
+### Terza tranche — qualità, continuità e calibrazione
+
+**Integrata localmente l'11 novembre.** Corrette l'eredità di verdict su richieste brevi non correlate, la ricerca oltre un incarico manuale più recente, l'affinità account che annullava il bilanciamento quota e l'accettazione di audit qualificati come passaggi. Quality non avvia più audit per ogni lavoro ordinario di coding; Budget conserva richieste esplicite e valutazioni di rischio, con opt-out rispettato. La difficoltà singola non basta a giustificare il grafo parallelo Orchestra. Review può usare un secondo account dello stesso provider; Both conserva il contratto Claude + GPT. Quota/cooldown non possono eliminare silenziosamente un audit richiesto. Il modello del revisore è scelto dal catalogo dell'account indipendente effettivo anche dopo fallback.
+
+La ripresa nativa riceve note/check posseduti da Lumen solo quando cambiano: latest per etichetta, sorgente, workspace/chat correnti, massimo otto etichette recenti e dettagli limitati. Il cambio account riceve gli stessi fatti nel passaggio completo senza condividere ID nativi; una nuova chat non eredita i check di un'altra. Nessun reinvio automatico del compito è aggiunto per silenzio o ritorno senza strumenti.
+
+**Risultati:** corpus deterministico fissato prima del prototipo da 2/14 a 14/14; non è una misura dell'intelligenza del modello. Le fixture Windows coprono due Claude + GPT, isolamento, invio delle nuove evidenze una volta sola, bilanciamento e audit/fallback. I progetti minimi React/TS e Godot C#/GDScript compilano, falliscono sui difetti intenzionali e passano dopo la correzione di riferimento. Nessun file Rodent Heroes è usato.
+
+**Live mirato GPT:** requisiti completi della candidata React 2/2 e Godot 3/3, baseline 0/2 e 1/3. Tutti i campioni validi compilano e preservano il perimetro; la differenza riguarda il comportamento UI rimasto da completare tramite le evidenze Lumen. Spesi 13 slot totali, compresi due React invalidati da un difetto del verificatore TEMP Windows e un errore OAuth Claude. Il verificatore è stato corretto e riprovato offline prima degli slot rimasti; nessuna coppia è stata sostituita e nessun limite di sei tentativi per task/provider è superato. Claude non è ritentato, né è fabbricato un secondo account live.
+
+Tempi, input/output/cache e tentativi esclusi restano nel [protocollo con risultati](quality-experiments-0.8.md) e nel [report aggregato](data/quality-0.8-results.json). Costi monetari assenti e uso parziale del compito interrotto sono espliciti. Il campione prova il beneficio mirato del contesto di verifica nel percorso diretto; non certifica qualità generale, Auto/cross-audit live, confronto con app ufficiali, latenza release o copertura multipiattaforma. Le ultime rifiniture audit sono collaudate offline sulla build finale, separatamente dal binario congelato per A/B. Baseline prestazionali, delega ordinaria più ampia e composizione logo/sidebar rimangono aperte.
+
+### Quarta tranche — baseline Windows e aggiornamenti delle chat lunghe
+
+**Integrata localmente l'11 novembre.** La trascrizione completa è isolata dal composer tramite `Transcript`; proiezioni dei messaggi, stima dello storico e riepilogo di esecuzione evitano lavoro ripetuto quando cambia solo la bozza. Le azioni leggono chat/permessi correnti; un readback tardivo dopo merge non sovrascrive un'altra chat. MessageView, CSS e politiche di scorrimento restano quelli di ingresso; nessuna cronologia è troncata o resa inaccessibile.
+
+Protocollo e metrica fissati prima dei prototipi: build release Windows con frontend incorporato, identità/profilo isolati, 100/1.000/5.000 messaggi brevi e misti, 20 ripetizioni per scenario. Sono conservati baseline, primo prototipo escluso, controllo della baseline e variante finale: 480 prove complete. Ulteriori 160 prove di scroll A/B/A/B verificano le differenze secondarie. Nessuna chiamata ai modelli; il registro live precedente resta a 13 slot.
+
+**Risultato primario:** per dodici caratteri nella chat mista da 5.000 messaggi, mediana di lavoro del thread UI da 734 a 271 ms (−63,1%), contro soglia del 20%. Il beneficio resta contro la baseline ripetuta (1.582 ms). I tempi assoluti variano anche sul binario invariato: apertura da 1.386 a 2.921 ms, quindi nessuna promessa di velocità generale o baseline hardware stabile.
+
+Il primo prototipo aggiungeva memoizzazione per riga ed è escluso dopo differenze di scroll non chiarite. La variante finale conserva soltanto l'isolamento della trascrizione dal composer. Nei due confronti mirati, con HTML, viewport/DPI e focus uguali, p95 frame 37,5/37,6 ms e 33,4/33,3 ms. Tutti i messaggi restano montati; ricerca, selezione, copia, immagini, disclosure, streaming, Compact, callback dopo cambio chat e lane Both passano 8 scenari release. Passano anche i 7 scenari composer e gli 8 execution debug/offline. Catture chiaro/scuro preservano la composizione esistente.
+
+Il [protocollo e le decisioni](performance-0.8.md) e il [record aggregato](data/performance-0.8-results.json) distinguono CPU, tempo, frame, heap e memoria privata. L'apertura iniziale con DOM molto grande, virtualizzazione completa, provider/handshake, memoria a regime, screen reader e baseline assolute stabili restano aperti. Questa tranche non chiude automaticamente tutti i punti 0–4, non cambia versione e non pubblica pacchetti.
+
+### Quinta tranche — apertura iniziale e prototipo di virtualizzazione
+
+Il [confronto fissato prima dei prototipi](initial-open-0.8.md) usa un solo binario release sperimentale, tre varianti e 20 aperture per ciascuno dei sei carichi: **360 prove**. Sulla chat mista da 5.000 messaggi, il percorso conservativo per paragrafi letterali scende da 1.259,7 a 932,4 ms (−26,0%, mediana delle riduzioni appaiate −25,8%), oltre la soglia del 20%. Markdown e casi ambigui restano al renderer originale. HTML completo identico a 5.000 messaggi; ricerca, selezione e proiezioni AX mirate identiche a 1.000, senza certificazione screen reader.
+
+Il prototipo con altezze misurate e overscan smonta lo storico e fallisce i vincoli di ricerca/selezione/esposizione accessibile: **non integrato**. La build ordinaria esclude il modulo sperimentale; nessuna opzione nuova. [Dati aggregati](data/initial-open-0.8-results.json), limiti dei due pilot diagnostici interrotti e segnali secondari restano visibili. Nessuna inferenza aggiuntiva; registro live invariato a 13 slot. Restano aperti una virtualizzazione compatibile, startup a freddo, latenza provider e verifiche screen reader/multipiattaforma.
+
+Conferma sulla release ordinaria corretta: 20 coppie appaiate, apertura da 1.405,9 a 1.046,2 ms (−25,6%), digitazione +1,0%. Una prima conferma con impostazione asimmetrica dello scorrimento è esclusa con causa riprodotta e dati conservati; non altera le 360 prove originali. Passano i vincoli sul binario normale, 8 scenari release, 7 composer/8 execution debug, 72 unitari, 29 browser, build e controlli formali. La quinta tranche è conclusa nel perimetro valutato, senza dichiarare completata la virtualizzazione o l'intera 0.8.
+
+### Sesta tranche — attribuzione dell'attesa e avvio CLI
+
+Il [protocollo fissato prima delle misure](turn-latency-0.8.md) separa 80 turni release/offline (20 iniziali e 20 continuazioni per provider) da 20 inizializzazioni senza inferenza per ciascuna CLI installata. Telemetria monotona limitata e senza contenuti registra preparazione, catalogo/capacità, creazione processo, protocollo, enqueue/ack disponibili, primo testo normalizzato e ritorno. I confini di trasporto sono marcati all'origine, prima di eventuali code; i segnali confluiscono nei checkpoint già esistenti.
+
+CLI reali: processo→ack di inizializzazione 531 ms Claude / 186 ms Codex; chiamata metadati comprensiva di chiusura 953/588 ms. La sola creazione processo è circa 4–5 ms; il percorso di chiusura aggiunge 405/387 ms, candidato concreto da profilare prima di un pool generale. Nei turni sintetici la preparazione a cache calda è 1 ms e l'accettazione IPC circa 9 ms; il primo uso costa 734/686 ms di accettazione. È effetto della cache già presente, non un nuovo miglioramento né latenza reale dei modelli.
+
+Passano 152 test Rust, Clippy, 4 turni smoke, 8 scenari execution e 7 quality/account/audit; gli 80 turni release verificano anche persistenza dei confini e continuazione. [Dati aggregati](data/turn-latency-0.8-results.json). Nessuna nuova inferenza: registro live invariato a 13 slot. Pool, TTFT dei provider, classificazione Auto e scheduling worker Orchestra restano da validare; nessuna modifica a policy native, permessi o autenticazione.
+
+## Decisioni concordate
+
+- Bilanciare fluidità, tempi di attesa e qualità del codice prodotto.
+- Usare Lumen e un **minuscolo progetto Godot dedicato**, insieme a fixture sintetiche ripetibili. Non copiare né modificare Rodent Heroes.
+- Includere lacune funzionali mirate: affidabilità del grafo, continuità delle sessioni e verifiche native Windows.
+- Integrare le ottimizzazioni soltanto dopo un miglioramento misurabile e senza regressioni di correttezza o del comportamento nativo.
+- Conservare sessioni dirette predefinite, Orchestra esplicita, provider/modello/cartella scelti, autenticazione ufficiale e Moli condiviso.
+- Restano escluse firma, Telegram, cifratura interna, daemon separato e gabbia OS aggiuntiva comune, come già concordato.
+- Windows resta il riferimento nativo. macOS/Linux ricevono build e controlli automatici; i collaudi desktop reali restano distinti e richiedono tester.
+
+## Progetto minimo e budget concordati
+
+1. **Godot con C# e GDScript:** una scena 2D minimale e piccoli script in entrambi i linguaggi. Nessun asset esterno, servizio o copia di Rodent Heroes. Registrare i prerequisiti Godot .NET e SDK .NET e separare il costo della prima compilazione dalle prove a caldo.
+2. **Prove live mirate:** prima misure locali; poi tre coppie A/B per attività e provider disponibile, soltanto sui candidati promettenti. Ogni coppia confronta il compito completo sulla baseline e sul candidato: sei esecuzioni del compito, che possono contenere più turni o chiamate agli strumenti. Registrare consumo, tentativi falliti, cache e quota; non estendere automaticamente il budget.
+
+Entrambe le scelte sono state confermate dal proprietario il 10 novembre 2026. L'11 novembre è stata autorizzata l'esecuzione dopo l'intervista; gli esperimenti non ancora eseguiti conservano lo stato indicato sotto.
+
+## Regole per decidere
+
+Ogni voce attraversa **baseline → ipotesi → prototipo → confronto → decisione → integrazione e regressioni**. Registrare commit, ambiente, comandi, dati grezzi, risultati e limiti. Gli stati sono: da misurare, in esperimento, accettata, scartata con evidenza, bloccata da prerequisito, integrata e verificata. Una voce valutata non è una voce implementata.
+
+Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentativo. Le seguenti soglie sono una proposta tecnica da calibrare sulla variabilità della baseline, non risultati promessi:
+
+- Prestazioni: almeno **20% sul tempo rilevante** oppure **15% sulla memoria privata**, sul carico dichiarato, con effetto ripetibile oltre il rumore. Non scegliere la metrica vincente dopo aver visto i risultati.
+- Riportare tempi assoluti, mediana e p95 dove il campione è sufficiente. Una sola misura o un massimo isolato non stabiliscono un guadagno generale. Come punto di partenza: 20 ripetizioni locali per scenario, estendendole se instabili.
+- Nessuna regressione riproducibile di correttezza, isolamento, permessi, cancellazione o integrità delle sessioni. Indagare regressioni superiori al 5% sulle altre metriche principali prima dell'integrazione.
+- Token: confrontare l'intero scambio effettivo, inclusi schema, istruzioni, riparazioni e richieste aggiuntive; non soltanto il payload più compatto.
+- Qualità: stessi requisiti, modello, impostazioni, contesto iniziale e verifiche indipendenti. Contare requisiti soddisfatti, errori, correzioni necessarie, modifiche estranee, chiamate e durata. Non usare la sola autovalutazione del modello come prova.
+- Confronti live piccoli sono indicativi: alternare A/B e B/A e registrare cache/quota. Se il risultato è ambiguo, dichiararlo inconcludente; ulteriori esecuzioni richiedono una nuova definizione del budget. Non dedurre superiorità universale da tre coppie.
+- Un miglioramento di UX può essere valido senza aumentare la qualità del codice; dichiarare quale beneficio è stato effettivamente osservato.
+
+## 0. Baseline e strumenti di misura
+
+**Stato: prima baseline locale release misurata; tempi assoluti non stazionari, copertura da estendere.** Vedi [protocollo Windows](performance-0.8.md): 20 ripetizioni per scenario, controlli su binario congelato, DOM/frame/heap e memoria privata. Startup a freddo, tempi CLI/provider e maggiore controllo dell'ambiente non sono ancora certificati.
+
+- Preparare una build release Windows di riferimento e dati applicativi isolati. Separare debug/release, avvio a freddo/caldo e tempo di Lumen/CLI/modello/strumenti.
+- Misurare apertura chat, digitazione, scorrimento continuo e salti, streaming con immagini/codice/sottoagenti, Compact e cambio conversazione. Carichi iniziali: 100, 1.000 e 5.000 messaggi, brevi e lunghi.
+- Registrare intervalli tra frame, blocchi del thread UI, DOM, memoria privata e numero di processi. La somma dei working set condivisi non è memoria privata.
+- Separare avvio processo, handshake, richiesta inviata, primo evento, primo testo e completamento; distinguere percorsi diretti, continuazione e Orchestra.
+- Conservare fixture e risultati versionati senza segreti, dati di account o conversazioni private; escludere dati pesanti e log grezzi dal repository.
+- Il Godot minimo deve aprirsi ed essere verificabile offline, con una scena 2D, pochi nodi e piccoli script C# e GDScript, nessun addon acquistato, asset esterno, servizio o dipendenza da Rodent Heroes. Prevedere stato, pulsante, limite e reset con controlli indipendenti, includendo compilazione C#, controllo GDScript e interazione tra i due linguaggi.
+
+**Nota sul punto di partenza:** la prova sintetica debug del 10 novembre alle 17:06 registra circa 563 ms di apertura e 782 ms di massimo intervallo tra frame per 1.000 messaggi. I precedenti 330–360 ms non esauriscono i risultati. Nessuno dei campioni costituisce ancora una baseline release ripetuta.
+
+## 1. Chat lunghe e virtualizzazione
+
+**Stato: isolamento dal composer e percorso per paragrafi letterali accettati sui rispettivi carichi; prototipo di virtualizzazione valutato ed escluso.** L'apertura migliora senza ridurre il DOM; la finestra che smonta lo storico non conserva ricerca, selezione e accessibilità. Una soluzione compatibile resta aperta. Le prove escluse e i controlli secondari restano nei report; non è una prova che ogni virtualizzazione sia inutile.
+
+- Profilare il percorso attuale con memoizzazione e `content-visibility`.
+- Confrontare un prototipo di virtualizzazione con la stessa baseline, includendo altezze variabili e streaming.
+- Verificare posizione di scorrimento, ritorno alla chat, messaggi/immagini espansi, ricerca, selezione/copia del testo, collegamenti, tastiera e lettura accessibile. Non sostituire un rallentamento con perdita di contenuti raggiungibili.
+- Integrare soltanto con beneficio ripetibile e regressioni superate; conservare una modalità di confronto/ripristino durante l'esperimento.
+
+## 2. Attesa tra turni e processi riutilizzabili
+
+**Stato: attribuzione locale e startup/metadati CLI misurati senza inferenza; prototipo condizionato alle lacune rimaste.** Vedi [misure tra turni](turn-latency-0.8.md). Il costo di chiusura Windows dei metadati è un candidato ristretto; tempi dei modelli, classificazione Auto e scheduling Orchestra non sono ancora separati. Nessun pool introdotto.
+
+- Misurare quanto dell'attesa deriva da Lumen, avvio CLI, handshake, provider e strumenti. Confrontare con un controllo tramite CLI ufficiale quando le condizioni sono comparabili.
+- Prima eliminare lavoro duplicato dimostrato; sperimentare processi mantenuti pronti solo se avvio/inizializzazione pesano sul percorso reale.
+- Verificare cambio account, cartella, modello e permessi, cancellazione, crash, sessioni simultanee, scadenza e consumo a riposo. Nessuna configurazione o risposta deve passare alla sessione sbagliata.
+- Non confondere riuso del processo con riuso della conversazione nativa già esistente; non promettere riduzioni del tempo di inferenza.
+
+## 3. Contesto, metadati e qualità del codice
+
+**Stato: misure parziali; confronto end-to-end da costruire.**
+
+- Misurare duplicazione, rilevanza, troncamento, budget, riserve di output e continuità dei requisiti nei percorsi effettivi.
+- Provare prima riduzione dei duplicati e proiezioni mirate dello stato; confrontare JSON con chiavi e formato compatto solo per metadati posseduti da Lumen.
+- Preservare formati nativi CLI/MCP. Verificare Unicode, campi assenti, versioni, dipendenze, errori e riparazioni; misurare comprensione/produzione del modello, non soltanto round-trip del parser.
+- Il precedente risparmio sintetico di circa 32% sui metadati è un'ipotesi utile, non un risparmio dell'intera conversazione né una prova di qualità.
+- Usare piccoli compiti di modifica e correzione su Lumen e sul progetto Godot, con requisiti e controlli indipendenti fissati prima delle prove.
+
+## 4. Affidabilità del grafo
+
+**Stato: copertura mirata da estendere.**
+
+- Creare fixture per dichiarazioni, riferimenti, rinomina, cancellazione e dipendenze nei linguaggi effettivamente coinvolti; registrare omissioni e falsi positivi.
+- Verificare che il contesto di impatto migliori le modifiche e i controlli selezionati, senza aggiungere rumore o eccessivo costo di indicizzazione.
+- Considerare tree-sitter soltanto in presenza di errori concreti non risolti adeguatamente dal percorso attuale; confrontare accuratezza, tempi, memoria e manutenzione. Non introdurlo per il solo cambio di tecnologia.
+
+## 5. Continuità e comportamento nativo
+
+**Stato: implementazione esistente; matrice di regressione da ampliare.**
+
+- Verificare requisiti e decisioni attraverso continuazione, Compact, Rewind, cambio modello/provider e cambio esplicito della cartella.
+- Riprodurre domande/approvazioni pendenti, cancellazione, coda, quota, riavvio e Resume ripetuto senza duplicare effetti o chiedere di approvare nuovamente un piano già autorizzato.
+- Coprire sessioni dirette e worker Orchestra, Moli incluso; verificare isolamento dei contesti e messaggi tardivi di una connessione chiusa.
+- Distinguere output dei sottoagenti da chat figlie autonome e capacità native differenti dei provider. La gestione universale di chat figlie autonome non entra implicitamente in questa voce.
+- Riutilizzare fixture per tutti i provider e prove live secondo disponibilità e budget concordato. Login/quota mancanti restano prerequisiti visibili, non falsi passaggi né esclusioni silenziose.
+
+## 6. Verifiche native Windows mirate
+
+**Stato: copertura parziale da completare sui flussi modificati.**
+
+- Verificare tastiera, focus, domande a scelta, immagini, chat lunga, inspector, scorciatoie e ripristino, includendo una prova effettiva con lettore di schermo.
+- Verificare apertura alla riga negli editor disponibili; dichiarare separatamente quelli non installati.
+- Misurare e riprodurre eventuali differenze tra UI di Lumen e protocollo nativo, evitando di aggiungere turni di pianificazione o richieste di autorizzazione duplicati.
+
+## 7. Markdown/ANSI in Rust
+
+**Stato: candidato subordinato al profiling, non implementazione promessa.**
+
+- Procedere al prototipo soltanto se parsing/rendering rappresentano un costo significativo dopo le misure del punto 0.
+- Confrontare il costo totale, compresi IPC e aggiornamento UI, mantenendo corretti immagini, link, streaming, selezione e accessibilità.
+- Se non migliora il carico reale, registrare il confronto e conservare il rendering attuale. L'uso di Rust da solo non è un criterio di successo.
+
+## Confini e lavoro successivo
+
+La 0.8 non include automaticamente avvio affiancato di applicazioni arbitrarie dai worktree, gestione universale di chat figlie autonome, redesign generale o nuovi servizi remoti. Il confronto visuale statico esistente resta distinto da queste estensioni. Sono possibili voci future, non funzionalità considerate completate o scartate definitivamente.
+
+Le verifiche live Claude/Gemini e le matrici account/versione/OS già aperte restano visibili in [Validazione](validation.md). Non dichiarare parità universale o qualità superiore se dimostrata soltanto su fixture o su un singolo provider.
+
+## Chiusura della 0.8
+
+- Per ogni candidato: decisione, numeri, carichi, limiti e stato dell'integrazione. Le prove inconcludenti restano aperte o vengono rinviate esplicitamente.
+- Test mirati per ogni modifica accettata, regressioni applicabili, verifica Windows nativa e CI/build multipiattaforma.
+- Documentazione coerente con i risultati effettivi; nessuna eliminazione della roadmap con voci irrisolte. Spostare nell'archivio soltanto dopo aver classificato ogni voce.
+- Build, aumento versione e pubblicazione sono attività successive alla definizione e realizzazione della roadmap; non fanno parte della sola preparazione di questo documento.
+
+[Documentazione](README.md) · [Validazione 0.7](validation.md) · [Qualità e contesto](task-quality.md)

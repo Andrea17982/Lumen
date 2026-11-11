@@ -26,7 +26,15 @@ pub async fn send_message(
     id: String,
     text: String,
     options: RunOptions,
+    client_message_id: Option<String>,
 ) -> Result<Plan, String> {
+    let preparation_started = std::time::Instant::now();
+    let message_id = match client_message_id {
+        Some(id) => uuid::Uuid::parse_str(&id)
+            .map_err(|_| "Invalid client message ID")?
+            .to_string(),
+        None => crate::models::id(),
+    };
     if text.trim().is_empty() || text.len() > 100_000 {
         return Err("Enter a message of up to 100,000 bytes".into());
     }
@@ -34,12 +42,16 @@ pub async fn send_message(
         return Err("This message contains a complete lockfile. Send the relevant entries or describe the dependency change instead.".into());
     }
     let mut session = core.store.session(&id)?;
+    let history = core.store.messages(&id)?;
+    // Reject an already accepted ID before applying even an explicit folder change.
+    if history.iter().any(|message| message.id == message_id) {
+        return Err("This message was already accepted; reload the conversation".into());
+    }
     let workspace_changed = crate::workspace::apply(&app, &core, &id, &text)?;
     if workspace_changed {
         session = core.store.session(&id)?;
     }
     let accounts = core.store.accounts()?;
-    let history = core.store.messages(&id)?;
     if options.audit_of.is_none() {
         if let Some((message, _)) = crate::orchestra::continuation(&history, &text) {
             return crate::orchestra::continue_message(
@@ -50,6 +62,7 @@ pub async fn send_message(
                 text,
                 options,
                 workspace_changed,
+                message_id,
             )
             .await;
         }
@@ -76,9 +89,10 @@ pub async fn send_message(
         crate::classify::heuristic(&text)
     };
     let mut plan = router::route_with(verdict.task, &options, &accounts)?;
+    let wanted_review = plan.strategy == "review";
     if options.mode == "auto" {
-        crate::balance(&core, &options, &accounts, &mut plan).await?;
-        stick_to_previous(&core, &history, &accounts, &mut plan);
+        let balanced = crate::balance(&core, &options, &accounts, &mut plan).await?;
+        stick_to_previous(&core, &history, &accounts, &mut plan, balanced);
         // Skip an account that is cooling down after a rate limit.
         if core.limits.cooling(&plan.account_id, now()) {
             if let Some(b) = accounts.iter().find(|b| {
@@ -88,11 +102,23 @@ pub async fn send_message(
             }) {
                 plan.provider = b.provider.clone();
                 plan.account_id = b.id.clone();
-                plan.strategy = "single".into();
-                plan.partner_account = None;
+                let available = accounts
+                    .iter()
+                    .filter(|a| !core.limits.cooling(&a.id, now()))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                plan.partner_account = if wanted_review {
+                    router::review_partner(&available, b).map(|a| a.id.clone())
+                } else {
+                    None
+                };
+                if plan.partner_account.is_none() {
+                    plan.strategy = "single".into();
+                }
                 plan.reason = "Preferred account is cooling down after a rate limit".into();
             }
         }
+        reconcile_review(verdict.task, &options, wanted_review, &mut plan)?;
         let a = account(&core, &plan.account_id)?;
         let models = models_for(&core, &a, false, None).await?;
         let selected =
@@ -142,7 +168,7 @@ pub async fn send_message(
         }
     };
     let mut user = Message {
-        id: crate::models::id(),
+        id: message_id,
         role: "user".into(),
         text: text.clone(),
         activity: vec![],
@@ -156,7 +182,19 @@ pub async fn send_message(
             text: options.attachments.join("\n"),
         });
     }
-    if let Err(e) = core.store.save_message(&id, &user) {
+    crate::execution::queued(&mut user);
+    if let Some(row) = user
+        .activity
+        .iter_mut()
+        .find(|a| a.kind == "execution-phase")
+    {
+        if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&row.text) {
+            value["preparationMs"] =
+                serde_json::json!(preparation_started.elapsed().as_millis() as u64);
+            row.text = value.to_string();
+        }
+    }
+    if let Err(e) = core.store.insert_message(&id, &user) {
         release(&core);
         return Err(e);
     }
@@ -241,6 +279,16 @@ pub async fn send_message(
             if let Err(e) = &r {
                 note(&app, &id, &mut output, "error", friendly(e));
             }
+            crate::execution::phase(
+                &app,
+                &id,
+                &mut output,
+                match &r {
+                    Ok(()) => "turn-returned",
+                    Err(e) if e == "Cancelled" => "turn-interrupted",
+                    Err(_) => "turn-error",
+                },
+            );
             if let Err(e) = core.store.save_message(&id, &output) {
                 event(
                     &app,
@@ -267,6 +315,23 @@ pub async fn send_message(
     Ok(returned)
 }
 
+/// Quota/cooldown routing must not silently discard an explicitly requested audit.
+fn reconcile_review(
+    task: router::TaskProfile,
+    options: &RunOptions,
+    wanted: bool,
+    plan: &mut Plan,
+) -> Result<(), String> {
+    if wanted && plan.strategy != "review" {
+        if task.audit == router::AuditIntent::Requested || options.auto_review {
+            return Err("Independent review is unavailable under current account quota/cooldown; no work was started.".into());
+        }
+        plan.reason
+            .push_str(" · independent review unavailable under current account quota/cooldown");
+    }
+    Ok(())
+}
+
 /// Token usage a provider reported for a turn, stored on the reply for the context meter.
 #[derive(serde::Serialize, Default)]
 struct Measured {
@@ -288,8 +353,17 @@ pub(crate) fn friendly(e: &str) -> String {
 /// Auto keeps a chat on the account that answered last, so the next turn can continue that
 /// CLI's own session instead of starting over on another provider. A cooling account, the
 /// Google emergency fallback and Both are left as routed.
-fn stick_to_previous(core: &Core, history: &[Message], accounts: &[Account], plan: &mut Plan) {
-    if !matches!(plan.provider, Provider::Claude | Provider::Gpt) || plan.strategy == "broadcast" {
+fn stick_to_previous(
+    core: &Core,
+    history: &[Message],
+    accounts: &[Account],
+    plan: &mut Plan,
+    balanced: bool,
+) {
+    if balanced
+        || !matches!(plan.provider, Provider::Claude | Provider::Gpt)
+        || plan.strategy == "broadcast"
+    {
         return;
     }
     let Some(native) = history
@@ -309,12 +383,7 @@ fn stick_to_previous(core: &Core, history: &[Message], accounts: &[Account], pla
     plan.provider = a.provider.clone();
     plan.account_id = a.id.clone();
     if plan.strategy != "single" {
-        plan.partner_account = accounts
-            .iter()
-            .find(|b| {
-                b.provider != a.provider && matches!(b.provider, Provider::Claude | Provider::Gpt)
-            })
-            .map(|b| b.id.clone());
+        plan.partner_account = router::review_partner(accounts, a).map(|b| b.id.clone());
         if plan.partner_account.is_none() {
             plan.strategy = "single".into();
         }
@@ -348,6 +417,8 @@ pub(crate) struct Native {
     pub workspace: String,
     #[serde(default)]
     pub layout_revision: Option<String>,
+    #[serde(default)]
+    pub context_revision: Option<String>,
 }
 
 /// A native session to continue, and the prompt that carries only the new request.
@@ -418,22 +489,36 @@ pub(crate) async fn resume_prompt(
     };
     let text = context::spill(&workspace, &request.text).0;
     let (revision, mut layout) = crate::layout::context(&workspace);
-    let previous = messages
+    let previous_native = messages
         .iter()
         .rev()
         .filter(|m| !exclude.contains(&m.id.as_str()))
-        .find_map(native_of)
-        .and_then(|n| n.layout_revision);
+        .find_map(native_of);
+    let previous = previous_native
+        .as_ref()
+        .and_then(|n| n.layout_revision.clone());
     if revision == previous {
         layout.clear();
     } else if revision.is_none() {
         layout = "\nThe user removed the saved layout constraints. No previous canvas constraint remains active.\n".into();
     }
+    let owned = crate::workstate::owned_context(core, s).ok()?;
+    let old_context = previous_native
+        .as_ref()
+        .and_then(|n| n.context_revision.as_ref());
+    let changed = old_context != Some(&owned.revision);
+    let delta = if changed && owned.text.is_empty() && old_context.is_some() {
+        "\nLumen's current project/check context is empty. Previously supplied notes/checks are not current evidence; do not infer passing validation.\n".to_string()
+    } else if changed {
+        owned.text
+    } else {
+        String::new()
+    };
     Some(Resume {
         session,
         replay: Some(options.clone()),
         prompt: format!(
-            "[Lumen: {}]\n{layout}{text}{attached}",
+            "[Lumen: {}]\n{layout}{delta}{text}{attached}",
             permission_text(options.access())
         ),
     })
@@ -478,6 +563,11 @@ pub(crate) async fn stage_with(
     resume: Option<&Resume>,
 ) -> Result<String, String> {
     let config = config_dir(core, a);
+    let mut trace = crate::execution::Trace::new(a.provider.binary());
+    trace.publish(app, &s.id, out, true);
+    if visible {
+        let _ = core.store.save_message(&s.id, out);
+    }
     let resume = resume.filter(|_| matches!(a.provider, Provider::Claude | Provider::Gpt));
     let native_skills = matches!(a.provider, Provider::Claude | Provider::Gpt);
     let stripped = if native_skills {
@@ -495,22 +585,48 @@ pub(crate) async fn stage_with(
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let workspace = PathBuf::from(&s.workspace);
     let layout_revision = crate::layout::context(&workspace).0;
+    let context_revision = Some(crate::workstate::owned_context(core, s)?.revision);
     let mut checkpoint = std::time::Instant::now();
     if !out.activity.iter().any(|a| a.kind == "workspace-root") {
         note(app, &s.id, out, "workspace-root", s.workspace.clone());
     }
-    let models = models_for(core, a, false, Some(cancel.clone())).await?;
-    let selected = model
+    let models = match models_for(core, a, false, Some(cancel.clone())).await {
+        Ok(models) => models,
+        Err(e) => {
+            trace.finish(&Err(e.clone()));
+            trace.publish(app, &s.id, out, true);
+            return Err(e);
+        }
+    };
+    let Some(selected) = model
         .and_then(|id| models.iter().find(|m| m.id == id))
         .or_else(|| models.iter().find(|m| m.is_default))
         .or_else(|| models.first())
-        .ok_or("No provider model available")?;
+    else {
+        let error = "No provider model available".to_string();
+        trace.finish(&Err(error.clone()));
+        trace.publish(app, &s.id, out, true);
+        return Err(error);
+    };
     let resolved_effort = resolve_effort(selected, effort);
+    trace.phase("capacity");
+    trace.publish(app, &s.id, out, true);
+    if visible {
+        let _ = core.store.save_message(&s.id, out);
+    }
     let mut waiting = cancel.clone();
     let permit = tokio::select! {
         biased;
-        _ = waiting.changed() => return Err("Cancelled".into()),
-        p = core.inference.clone().acquire_owned() => p.map_err(|e| e.to_string())?,
+        _ = waiting.changed() => Err("Cancelled".to_string()),
+        p = core.inference.clone().acquire_owned() => p.map_err(|e| e.to_string()),
+    };
+    let permit = match permit {
+        Ok(permit) => permit,
+        Err(e) => {
+            trace.finish(&Err(e.clone()));
+            trace.publish(app, &s.id, out, true);
+            return Err(e);
+        }
     };
     note(
         app,
@@ -532,6 +648,11 @@ pub(crate) async fn stage_with(
     // the CLI's own instructions and tools, so the difference from the local estimate is the
     // overhead every later prompt will also pay.
     let prompt_tokens = context::estimate(prompt);
+    trace.phase("starting-provider");
+    trace.publish(app, &s.id, out, true);
+    if visible {
+        let _ = core.store.save_message(&s.id, out);
+    }
     let mut measured = Measured::default();
     let mut native: Option<String> = None;
     let retry_cancel = cancel.clone();
@@ -558,6 +679,23 @@ pub(crate) async fn stage_with(
         },
         cancel,
         |activity| {
+            // Timing signals carry no provider content and do not add IPC/SQLite writes.
+            // The existing snapshot checkpoint/finish publishes the accumulated offsets.
+            if activity.kind == "latency" {
+                trace.observe(&activity);
+                return;
+            }
+            let changed = trace.observe(&activity);
+            trace.publish(app, &s.id, out, changed);
+            if visible && changed {
+                let _ = core.store.save_message(&s.id, out);
+                checkpoint = std::time::Instant::now();
+            }
+            // Lifecycle pairs have already updated the bounded trace. Do not let hidden
+            // per-tool rows evict native sessions, questions or checkpoints from activity.
+            if ["tool-start", "tool-end", "latency"].contains(&activity.kind.as_str()) {
+                return;
+            }
             let input_needed =
                 activity.kind == "interaction" || activity.kind == "interaction-result";
             if activity.kind == "quota" {
@@ -611,6 +749,8 @@ pub(crate) async fn stage_with(
         },
     )
     .await;
+    trace.finish(&result);
+    trace.publish(app, &s.id, out, true);
     if let (Some(_), Err(e)) = (resume, &result) {
         if resume_unavailable(e) && out.text.trim().is_empty() {
             drop(permit);
@@ -654,6 +794,7 @@ pub(crate) async fn stage_with(
                         session,
                         workspace: s.workspace.clone(),
                         layout_revision,
+                        context_revision,
                     })
                     .unwrap_or_default(),
                 });
@@ -683,7 +824,7 @@ pub(crate) async fn spawn_turn<F, Fut>(
     app: tauri::AppHandle,
     core: Arc<Core>,
     id: String,
-    user: Message,
+    mut user: Message,
     work: F,
 ) -> Result<(), String>
 where
@@ -701,7 +842,8 @@ where
         }
         jobs.insert(id.clone(), tx);
     }
-    if let Err(e) = core.store.save_message(&id, &user) {
+    crate::execution::queued(&mut user);
+    if let Err(e) = core.store.insert_message(&id, &user) {
         if let Ok(mut j) = core.jobs.lock() {
             j.remove(&id);
         }
@@ -727,6 +869,16 @@ where
             event(&app, &id, &mid, "status", "running");
             work(app.clone(), core.clone(), session, output, rx).await
         };
+        crate::execution::phase(
+            &app,
+            &id,
+            &mut output,
+            match &result {
+                Ok(()) => "turn-returned",
+                Err(e) if e == "Cancelled" => "turn-interrupted",
+                Err(_) => "turn-error",
+            },
+        );
         drop(permit);
         if let Err(e) = &result {
             note(&app, &id, &mut output, "error", friendly(e));
@@ -905,7 +1057,8 @@ pub(crate) async fn build_prompt(
         &audit,
     );
     let state = crate::workstate::context(core, s, options.access())?;
-    let prompt = format!("Current conversation workspace: {}\nAll relative paths and project tools use this directory. Explicit user directory changes are applied by Lumen before this turn; do not infer a switch from paths in quoted history or attachments.\n{state}\n{prompt}", s.workspace);
+    let owned = crate::workstate::owned_context(core, s)?;
+    let prompt = format!("Current conversation workspace: {}\nAll relative paths and project tools use this directory. Explicit user directory changes are applied by Lumen before this turn; do not infer a switch from paths in quoted history or attachments.\n{state}\n{prompt}{}", s.workspace,owned.evidence);
     Ok((
         prompt,
         format!(
@@ -1218,12 +1371,11 @@ pub(crate) async fn checkpoint_message(
 }
 
 pub(crate) fn approved(review: &str) -> bool {
-    review.trim_start().lines().next().is_some_and(|l| {
-        l.trim()
-            .trim_matches('*')
-            .to_uppercase()
-            .starts_with("APPROVED")
-    })
+    review
+        .trim()
+        .trim_matches('*')
+        .trim()
+        .eq_ignore_ascii_case("APPROVED")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1237,6 +1389,7 @@ async fn run_plan(
     mut cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
     let writer = account(core, &plan.account_id)?;
+    crate::execution::phase(app, &s.id, out, "workspace");
     let lock = workspace_lock(core, s)?;
     let other_sessions = conversations_on_workspace(core, s);
     if !other_sessions.is_empty() && options.access() != AccessMode::ReadOnly {
@@ -1269,6 +1422,7 @@ async fn run_plan(
             checkpoint_message(core, s, &user.id).await?;
         }
     }
+    crate::execution::phase(app, &s.id, out, "context");
     let verify = core
         .settings
         .lock()
@@ -1284,18 +1438,6 @@ async fn run_plan(
         (String::new(), String::new())
     } else {
         build_prompt(core, s, &[&out.id], options).await?
-    };
-    let partner_model = if let Some(id) = &plan.partner_account {
-        let partner = account(core, id)?;
-        let models = models_for(core, &partner, false, Some(cancel.clone())).await?;
-        let task = history.rsplit("user:\n").next().unwrap_or(&history);
-        Some(
-            router::select_model(&models, task, &options.auto_policy)?
-                .id
-                .clone(),
-        )
-    } else {
-        None
     };
     if resume.is_some() {
         note(
@@ -1332,14 +1474,33 @@ async fn run_plan(
             .as_deref()
             .map(|id| account(core, id))
             .transpose()?
-            .filter(|r| r.provider != writer.provider)
+            .filter(|r| r.id != writer.id && !core.limits.cooling(&r.id, now()))
             .or_else(|| {
-                core.store.accounts().ok()?.into_iter().find(|b| {
-                    b.provider != writer.provider
-                        && matches!(b.provider, Provider::Claude | Provider::Gpt)
-                })
+                let available = core
+                    .store
+                    .accounts()
+                    .ok()?
+                    .into_iter()
+                    .filter(|a| !core.limits.cooling(&a.id, now()))
+                    .collect::<Vec<_>>();
+                router::review_partner(&available, &writer).cloned()
             });
         if let Some(reviewer) = reviewer {
+            // Resolve against the actual independent account after writer fallback, not
+            // a model ID belonging to the originally planned reviewer.
+            let models = models_for(core, &reviewer, false, Some(cancel.clone())).await?;
+            let task = history.rsplit("user:\n").next().unwrap_or(&history);
+            let target = core
+                .store
+                .messages(&s.id)
+                .ok()
+                .and_then(|messages| crate::classify::previous(&messages))
+                .map(|v| v.task.tier)
+                .unwrap_or_else(|| router::task_tier(task));
+            let reviewer_model = router::select_tier(&models, target)
+                .ok_or("No reviewer model available")?
+                .id
+                .clone();
             let rounds = core
                 .settings
                 .lock()
@@ -1367,7 +1528,7 @@ async fn run_plan(
                 } else {
                     format!("\n\nFile changes so far (git diff -U3):\n{diff}")
                 };
-                let review_prompt = format!("You are auditing another assistant's work. Read-only: never edit files. Find bugs, architectural problems, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with the single word APPROVED on the first line.\n\n{prompt}\n\nDraft answer:\n{draft}{diff}");
+                let review_prompt = format!("You are auditing another assistant's work. Read-only: never edit files. Find bugs, architectural problems, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with exactly APPROVED and nothing else.\n\n{prompt}\n\nDraft answer:\n{draft}{diff}");
                 let mut review_out = Message {
                     id: out.id.clone(),
                     role: "assistant".into(),
@@ -1381,9 +1542,7 @@ async fn run_plan(
                     &mut review_out,
                     &reviewer,
                     &review_prompt,
-                    partner_model
-                        .as_deref()
-                        .filter(|_| Some(&reviewer.id) == plan.partner_account.as_ref()),
+                    Some(&reviewer_model),
                     &plan.effort,
                     AccessMode::ReadOnly,
                     cancel.clone(),
@@ -1398,8 +1557,9 @@ async fn run_plan(
                     out,
                     "review",
                     format!(
-                        "Audit by {} · round {round}/{rounds}\n\n{review}",
-                        reviewer.provider.binary()
+                        "Audit by {} ({}) · round {round}/{rounds}\n\n{review}",
+                        reviewer.provider.binary(),
+                        reviewer.name
                     ),
                 );
                 if approved(&review) {
@@ -1430,6 +1590,9 @@ async fn run_plan(
                 )
                 .await?;
             }
+        } else {
+            note(app,&s.id,out,"review-unavailable","No independent account is available; the writer's work is retained but was not cross-audited.".into());
+            return Err("Independent review could not run on an available account".into());
         }
     }
     out.text = draft;
@@ -1512,6 +1675,7 @@ pub(crate) async fn self_heal(
             "tool",
             "Running diagnostics and relevant project checks.".into(),
         );
+        crate::execution::phase(app, &s.id, out, "verification");
         let reports =
             crate::validation::run(&workspace, &verification_files, cancel.clone()).await?;
         for report in &reports {
@@ -2057,6 +2221,7 @@ mod resume_tests {
                 session: "sid".into(),
                 workspace: workspace.into(),
                 layout_revision: None,
+                context_revision: None,
             })
             .unwrap(),
         }
@@ -2067,6 +2232,64 @@ mod resume_tests {
             name: "A".into(),
             provider: Provider::Claude,
         }
+    }
+    #[test]
+    fn quality_qualified_audit_is_not_approval() {
+        assert!(approved("APPROVED"));
+        assert!(approved("**APPROVED**"));
+        for text in [
+            "APPROVED with blocking issues",
+            "APPROVED? No, fix data loss",
+            "APPROVED\nBut tests still fail",
+            "NOT APPROVED",
+        ] {
+            assert!(!approved(text), "{text}");
+        }
+    }
+    #[test]
+    fn quality_quota_downgrade_cannot_silently_discard_a_requested_audit() {
+        let mut options = crate::test_support::Fixture::options(AccessMode::Autopilot);
+        options.mode = "auto".into();
+        let mut plan = Plan {
+            provider: Provider::Claude,
+            account_id: "writer".into(),
+            model: None,
+            effort: "low".into(),
+            strategy: "single".into(),
+            reason: "quota selection".into(),
+            partner_account: None,
+        };
+        let requested = router::profile("Fai un cross-audit di questo fix");
+        assert!(reconcile_review(requested, &options, true, &mut plan).is_err());
+        let optional = router::profile("Implement security authentication");
+        assert!(reconcile_review(optional, &options, true, &mut plan).is_ok());
+        assert!(plan.reason.contains("review unavailable"));
+        options.auto_review = true;
+        assert!(reconcile_review(optional, &options, true, &mut plan).is_err());
+        // No previously selected review means no audit promise was made.
+        assert!(reconcile_review(optional, &options, false, &mut plan).is_ok());
+    }
+    #[test]
+    fn quality_continuity_does_not_undo_balanced_account_selection() {
+        let f = crate::test_support::Fixture::new();
+        let old = claude();
+        let other = Account {
+            id: "balanced".into(),
+            name: "B".into(),
+            provider: Provider::Gpt,
+        };
+        let history = vec![msg("a", "assistant", vec![native(&old.id, "/w")])];
+        let mut plan = Plan {
+            provider: other.provider.clone(),
+            account_id: other.id.clone(),
+            model: None,
+            effort: "medium".into(),
+            strategy: "single".into(),
+            reason: "quota selection".into(),
+            partner_account: None,
+        };
+        stick_to_previous(&f.core, &history, &[old, other.clone()], &mut plan, true);
+        assert_eq!(plan.account_id, other.id);
     }
 
     #[test]
@@ -2088,6 +2311,24 @@ mod resume_tests {
     }
 
     #[tokio::test]
+    async fn quality_native_resume_receives_lumen_owned_check_failures() {
+        let f = crate::test_support::Fixture::new();
+        let folder = f.root.to_string_lossy().into_owned();
+        let s = f.core.store.create(folder.clone()).unwrap();
+        let mut reply = msg("a", "assistant", vec![native("acc", &folder)]);
+        reply.activity.push(Activity{kind:"validation".into(),text:serde_json::json!({"workspace":folder,"label":"Independent counter check","status":"failed"}).to_string()});
+        f.core.store.save_message(&s.id, &reply).unwrap();
+        f.core
+            .store
+            .save_message(&s.id, &msg("u", "user", vec![]))
+            .unwrap();
+        let options = crate::test_support::Fixture::options(AccessMode::Autopilot);
+        let resumed = resume_prompt(&f.core, &s, &[], &claude(), &options)
+            .await
+            .unwrap();
+        assert!(resumed.prompt.contains("Independent counter check: failed"));
+    }
+    #[tokio::test]
     async fn native_resume_sends_only_changed_or_removed_layout_constraints() {
         use crate::test_support::Fixture;
         let f = Fixture::new();
@@ -2106,6 +2347,7 @@ mod resume_tests {
                     session: "sid".into(),
                     workspace: folder.clone(),
                     layout_revision: revision,
+                    context_revision: None,
                 })
                 .unwrap(),
             });

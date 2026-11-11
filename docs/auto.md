@@ -16,7 +16,13 @@ IDs, defaults and reasoning levels come from connected catalogs. Budget lowers e
 
 ## Review and comparison
 
-Independent review needs another configured provider. Writer/reviewer/final or comparison/synthesis stages are bounded, and their actual model/effort appears in activity. The writer follows the selected permissions; reviewers stay read-only. Native child agents remain available where the provider protocol supports them.
+In released 0.7, independent review needs another configured provider. Writer/reviewer/final or comparison/synthesis stages are bounded, and their actual model/effort appears in activity. The writer follows the selected permissions; reviewers stay read-only. Native child agents remain available where the provider protocol supports them.
+
+### 0.8 working-tree calibration
+
+Review now permits another primary account on the same provider, preferring a different provider when available; Both still requires Claude plus ChatGPT. Budget preserves requested or risk-driven review. Quality adds optional review for tier-two work rather than every ordinary coding task, and explicit opt-out suppresses review. A qualified `APPROVED` response cannot accept an audit. Quota/cooldown routing cannot silently drop an explicitly requested review: it reports unavailability before work begins; optional review loss is visible in the route reason.
+
+Only recognized short continuations reuse the latest request's rating; unrelated short requests and newer unrated manual tasks do not inherit an older verdict. Fresh Balance quota usage selection takes precedence over native-account affinity. The fallback distinguishes difficult single tasks from implementation across multiple areas or concrete parallel deliverables. The model classifier remains heuristic and native child-agent behavior remains provider-specific; these changes are not a new universal delegation engine. See [experiment evidence](quality-experiments-0.8.md) for controlled tests, live budget and limitations.
 
 ## Orchestra
 

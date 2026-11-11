@@ -1462,6 +1462,67 @@ label {
     monospace;
   margin: 9px 0;
 }
+.execution-summary {
+  width: 100%;
+  margin: 0 auto 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+.execution-summary > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  cursor: pointer;
+  padding: 7px 0;
+}
+.execution-summary > summary > [role='status'] {
+  color: var(--text);
+}
+.execution-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+.execution-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.execution-summary[open] > summary > .execution-chevron {
+  transform: rotate(180deg);
+}
+.execution-detail {
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+.execution-detail p {
+  margin: 5px 0;
+}
+.execution-detail details {
+  margin-top: 6px;
+}
+.execution-detail ol {
+  margin: 5px 0;
+  padding-left: 20px;
+}
+.execution-milestones {
+  margin: 6px 0;
+  font-variant-numeric: tabular-nums;
+}
+.execution-milestones > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.execution-milestones dd {
+  margin: 0;
+}
+.execution-summary summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .working-indicator {
   display: flex;
   align-items: center;

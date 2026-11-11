@@ -231,7 +231,7 @@ Settings uses progressive disclosure: Simple exposes only the Orchestra switch; 
 
 New conversation is a softly raised full-width 12px control with an icon and keyboard hint. Session rows are compact, left aligned, ellipsized, and 8px rounded; selection uses `selected` plus the theme shadow. Status dots accompany accessible status text, and pins remain small supporting marks. Icon buttons are normally 28px square; account-row icon buttons are 22px wide. Disabled buttons reduce opacity to .42 and stop advertising a pointer cursor. These sizes reflect desktop density, not a verified touch-target system.
 
-Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px padding. They populate a draft and focus the composer. Secondary text actions use `accent`; destructive actions use `error`. Global hover treatment applies only to enabled buttons. Controls do not add a visual focus ring; text fields retain the native caret.
+Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px padding. They populate a draft and focus the composer. Secondary text actions use `accent`; destructive actions use `error`. Global hover treatment applies only to enabled buttons. Incumbent button controls do not add a visual focus ring; text fields retain the native caret. The execution disclosure's keyboard-focus outline is the narrow exception described above.
 
 ### Composer and fields
 
@@ -251,7 +251,11 @@ Fields use 7px corners, `surface`, a `line` border, and 8px padding. The search 
 
 Assistant prose sits directly on the reading surface. User prose uses a softly filled, content-sized 12px rounded panel. Assistant responses offer copy. Activity and diagnostics are nested native disclosure elements, keeping orchestration inspectable without dominating the transcript.
 
-Markdown uses GFM lists and tables. `MessageBody` renders link destinations as visible text and images as `[Image: alt]` placeholders: links and images inside responses are not interactive previews. Do not promise richer media behavior from these styles.
+The 0.8 render-isolation tranche preserves this exact composition and the complete transcript DOM. Composer-only changes reuse the transcript; actual message updates render normally. Historical find, selection, disclosures, image enlargement, Both lanes and current-chat actions remain reachable. It adds no visual control or new scroll policy. Native light/dark captures and the scoped CPU/scroll evidence are documented in [Windows performance](docs/performance-0.8.md). The subsequent [opening optimization](docs/initial-open-0.8.md) keeps identical paragraph markup for literal text and the original Markdown path otherwise. The windowed prototype loses historical content access and stays excluded from ordinary builds; compatible full virtualization remains open.
+
+The 0.8 working tree adds a single selected-turn execution disclosure above the composer, aligned to its existing column. Its 12px summary uses `text` for legibility over the aurora in both themes, an Activity icon, explicit chevron, wrapping tabular timing and only available agent/check counts. Expanded details scroll within a 230px maximum height and retain native keyboard disclosure/focus behavior. Stage milestones report local observed times; inputs, permissions, silence, errors and interruption remain distinct. "Turn ended" does not claim task completion. A read-only refresh updates local execution evidence; silence never triggers a new model request. This extends the incumbent composition and does not implement the approved future logo/sidebar redesign. Native captures validate the tested desktop size, not screen-reader certification or every responsive layout.
+
+Markdown uses GFM lists and tables. `MessageBody` renders links as buttons that use the validated backend opener, and images through `ResponseImage`. Local images are scoped to the message's project folder; remote images require explicit loading. Images nested in links do not create nested interactive controls. These are implemented affordances, not proof that every editor or remote image host works.
 
 ### Settings modal side panel
 
@@ -263,7 +267,7 @@ Opening settings closes the navigation sidebar and conversation action menu befo
 
 One-time notices (for example Antigravity in File edits) use the centered dialog: a 13px bold title, muted 12px explanation, a **Don't show again** checkbox and a single OK button. They never block work beyond one click.
 
-Controls draw no focus ring, at the owner's request; hover and selected fills carry the state instead. Popovers open beside the control that opened them (Usage beside its button, Rename beside the conversation), over an invisible click-catcher that never changes color.
+Incumbent button controls draw no focus ring, at the owner's request; hover and selected fills carry the state instead. The new execution disclosure summaries retain a visible 2px `accent` keyboard-focus outline, without changing the button policy. Popovers open beside the control that opened them (Usage beside its button, Rename beside the conversation), over an invisible click-catcher that never changes color.
 
 Usage uses compact single-line quota rows with a thin meter, percentage and time to reset. Missing, stale or manually entered data has a discreet status label; its detail is available from the tooltip and accessible name. General → Appearance includes an optional, persistent 8% interface enlargement; the default remains unchanged. Icon-only actions use the shared `IconButton` component for consistent labels and title hints.
 

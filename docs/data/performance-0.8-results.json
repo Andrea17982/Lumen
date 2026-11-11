@@ -1,0 +1,1939 @@
+{
+  "at": "2026-11-11T15:07:35.486Z",
+  "platform": {
+    "os": "10.0.26300",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13980HX",
+    "logicalCpus": 32,
+    "webview": {
+      "protocolVersion": "1.3",
+      "product": "Edg/157.0.4341.46",
+      "revision": "@a0c6bd61d7884b3c402a34c67d05100107a9e5e4",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0",
+      "jsVersion": "15.7.11.4"
+    }
+  },
+  "buildMode": "Native Windows x64 release, embedded production assets, isolated app identifier/profile, no original accounts",
+  "hashes": {
+    "baseline": "93a6cc77c9cd3aed51b5d118ea582b4289b59ac9397172e453ee78fe55bc7e6a",
+    "candidate": "2ace96b61ed141c6edc8ec1077328d9c86e9bd799cefd6dfb42327261774dc3a",
+    "confirmation": "93a6cc77c9cd3aed51b5d118ea582b4289b59ac9397172e453ee78fe55bc7e6a"
+  },
+  "ordering": "Baseline 20 repetitions/workload, candidate 20/workload, then baseline control 20/workload to investigate observed nonstationary timing. Same fixture, alternating workload order per repetition. Not randomized per-arm.",
+  "primary": {
+    "metric": "UI-thread TaskDuration for fixed 12-key typing batch at 5000 mixed messages",
+    "thresholdReduction": 0.2,
+    "baselineMs": 734.107999999999,
+    "candidateMs": 271.2045000000032,
+    "baselineControlMs": 1582.4389999999937,
+    "reduction": 0.6305659385267515,
+    "gatePassed": true
+  },
+  "startupSingleLaunchMs": {
+    "baseline": 569.5409,
+    "candidate": 554.4021,
+    "control": 572.6995
+  },
+  "acceptance": {
+    "at": "2026-11-11T15:04:56.591Z",
+    "sha256": "2ace96b61ed141c6edc8ec1077328d9c86e9bd799cefd6dfb42327261774dc3a",
+    "passed": true,
+    "checks": [
+      "Browser text find reaches the first historical message through content-visibility",
+      "Cross-history selection retains all 1000 messages and formatted code",
+      "Copy returns the real response; typing preserves historical DOM and open disclosure",
+      "Historical link stays keyboard reachable; local image loads, enlarges and restores focus",
+      "Streaming updates the latest body without replacing or collapsing historical messages",
+      "Compact handoff remains reachable without starting generation",
+      "Memoized message actions use the latest chat after navigation, not captured old state",
+      "Both comparison messages retain adjacent lane grouping and distinct visible bodies"
+    ],
+    "scope": "Native Windows release, synthetic fixtures. No screen-reader certification, external-editor launch, provider inference or universal accessibility claim."
+  },
+  "trialCounts": {
+    "fullWorkloads": 480,
+    "focusedScroll": 160,
+    "paidInferenceCalls": 0
+  },
+  "scrollInvestigation": {
+    "at": "2026-11-11T14:54:53.127Z",
+    "scope": "5000 mixed, fixed full DOM, no typing/streaming between scroll trials; A/B/A/B, warmup plus20 trials per launch",
+    "results": [
+      {
+        "arm": "baseline",
+        "windowState": {
+          "focused": true,
+          "visibility": "visible",
+          "width": 827,
+          "height": 547,
+          "dpr": 1.5
+        },
+        "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+        "samples": 20,
+        "frames": 720,
+        "medianMs": 20.800000000000182,
+        "p95Ms": 37.5,
+        "maxMs": 191.79999999999927
+      },
+      {
+        "arm": "candidate",
+        "windowState": {
+          "focused": true,
+          "visibility": "visible",
+          "width": 827,
+          "height": 547,
+          "dpr": 1.5
+        },
+        "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+        "samples": 20,
+        "frames": 720,
+        "medianMs": 20.80000000000291,
+        "p95Ms": 37.600000000000364,
+        "maxMs": 54.099999999998545
+      },
+      {
+        "arm": "baseline",
+        "windowState": {
+          "focused": true,
+          "visibility": "visible",
+          "width": 827,
+          "height": 547,
+          "dpr": 1.5
+        },
+        "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+        "samples": 20,
+        "frames": 720,
+        "medianMs": 20.899999999997817,
+        "p95Ms": 33.400000000001455,
+        "maxMs": 120.90000000000146
+      },
+      {
+        "arm": "candidate",
+        "windowState": {
+          "focused": true,
+          "visibility": "visible",
+          "width": 827,
+          "height": 547,
+          "dpr": 1.5
+        },
+        "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+        "samples": 20,
+        "frames": 720,
+        "medianMs": 20.899999999999636,
+        "p95Ms": 33.30000000000109,
+        "maxMs": 45.69999999999891
+      }
+    ]
+  },
+  "scrollPairs": [
+    {
+      "baselineP95Ms": 37.5,
+      "candidateP95Ms": 37.600000000000364,
+      "change": 0.002666666666676365,
+      "domIdentical": true,
+      "focused": true
+    },
+    {
+      "baselineP95Ms": 33.400000000001455,
+      "candidateP95Ms": 33.30000000000109,
+      "change": -0.0029940119760586414,
+      "domIdentical": true,
+      "focused": true
+    }
+  ],
+  "excludedPrototype": {
+    "sha256": "ea59b6f23d6ba21de9d50d2c1473ed54c7f9fdfa32bf192b923114850fcc30fe",
+    "scope": "Per-message memoization in addition to transcript isolation",
+    "primaryTypingTaskMs": {
+      "median": 291.93999999999676,
+      "p95": 333.28199999999697,
+      "min": 147.435999999999,
+      "max": 365.4209999999978
+    },
+    "scroll": {
+      "at": "2026-11-11T14:46:12.415Z",
+      "scope": "5000 mixed, fixed full DOM, no typing/streaming between scroll trials; A/B/A/B, warmup plus20 trials per launch",
+      "results": [
+        {
+          "arm": "baseline",
+          "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+          "samples": 20,
+          "frames": 720,
+          "medianMs": 16.699999999999818,
+          "p95Ms": 25,
+          "maxMs": 158.39999999999964
+        },
+        {
+          "arm": "candidate",
+          "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+          "samples": 20,
+          "frames": 720,
+          "medianMs": 20.69999999999891,
+          "p95Ms": 25.100000000000364,
+          "maxMs": 45.70000000000073
+        },
+        {
+          "arm": "baseline",
+          "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+          "samples": 20,
+          "frames": 720,
+          "medianMs": 8.399999999999636,
+          "p95Ms": 12.800000000001091,
+          "maxMs": 33.399999999999636
+        },
+        {
+          "arm": "candidate",
+          "domHash": "4b77ca63aa766131e8213a9e1a474b2497f1bbfb5a5fb5ef3b57cda237a04625",
+          "samples": 20,
+          "frames": 720,
+          "medianMs": 20.699999999999818,
+          "p95Ms": 29.199999999999818,
+          "maxMs": 41.70000000000073
+        }
+      ]
+    },
+    "decision": "Not integrated: unexplained scrolling differences prompted narrowing to transcript/composer isolation only"
+  },
+  "workloads": [
+    {
+      "size": 100,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 31.86710000000312,
+          "p95": 48.81549999999697,
+          "min": 28.10689999999886,
+          "max": 54.877900000006775
+        },
+        "typingTaskMs": {
+          "median": 23.692000000004043,
+          "p95": 40.337999999991325,
+          "min": 20.14800000000605,
+          "max": 44.99600000000001
+        },
+        "typingMs": {
+          "median": 48.710849999995844,
+          "p95": 81.76279999999679,
+          "min": 32.17300000000978,
+          "max": 82.24079999999958
+        },
+        "typingScriptMs": {
+          "median": 11.693499999998025,
+          "p95": 20.329000000003816,
+          "min": 10.707000000003575,
+          "max": 23.54400000000001
+        },
+        "typingLayoutMs": {
+          "median": 0.8850000000000247,
+          "p95": 1.4289999999999026,
+          "min": 0.7770000000002497,
+          "max": 2.489
+        },
+        "streamTaskMs": {
+          "median": 36.061999999997596,
+          "p95": 43.26900000000933,
+          "min": 32.896999999991294,
+          "max": 53.705999999999975
+        },
+        "streamMs": {
+          "median": 236.73619999999937,
+          "p95": 256.0439999999944,
+          "min": 226.1753000000026,
+          "max": 355.9170000000013
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 6,
+          "p95": 23.099999964237213,
+          "min": 1.5999999642372131,
+          "max": 39.69999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999994179,
+          "min": 3.7999999999883585,
+          "max": 12.5
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 5.000000011918019,
+          "min": 3.8999999999941792,
+          "max": 8.10000000000582
+        },
+        "longTasks": 0,
+        "longTaskMaxMs": null,
+        "domNodes": {
+          "median": 1433,
+          "p95": 1433,
+          "min": 1433,
+          "max": 1433
+        },
+        "heapBytes": {
+          "median": 147866328,
+          "p95": 353619076,
+          "min": 15541008,
+          "max": 353845740
+        },
+        "privateProcessBytes": {
+          "median": 974649344,
+          "p95": 1531990016,
+          "min": 417308672,
+          "max": 1531990016
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 56.02994999999646,
+          "p95": 76.81919999999809,
+          "min": 32.594100000000026,
+          "max": 78.61939999999595
+        },
+        "typingTaskMs": {
+          "median": 34.58300000000847,
+          "p95": 41.961999999998056,
+          "min": 20.730999999997834,
+          "max": 42.942000000010694
+        },
+        "typingMs": {
+          "median": 68.33755000000565,
+          "p95": 124.85050000000047,
+          "min": 35.87210000000778,
+          "max": 130.12919999999576
+        },
+        "typingScriptMs": {
+          "median": 8.52950000000341,
+          "p95": 10.737000000005992,
+          "min": 6.130999999996334,
+          "max": 11.06299999999294
+        },
+        "typingLayoutMs": {
+          "median": 1.6045000000008969,
+          "p95": 2.3060000000008074,
+          "min": 1.3139999999998153,
+          "max": 2.4399999999999977
+        },
+        "streamTaskMs": {
+          "median": 86.16400000001434,
+          "p95": 92.99700000000044,
+          "min": 48.02100000000001,
+          "max": 93.11700000000656
+        },
+        "streamMs": {
+          "median": 295.6221499999974,
+          "p95": 317.4231,
+          "min": 239.66440000000011,
+          "max": 319.92029999999795
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 7.100000023841858,
+          "p95": 32.69999998807907,
+          "min": 1.4000000357627869,
+          "max": 48.19999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999997817,
+          "min": 2,
+          "max": 25
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 5,
+          "min": 2.2999999999883585,
+          "max": 10.099999999998545
+        },
+        "longTasks": 0,
+        "longTaskMaxMs": null,
+        "domNodes": {
+          "median": 1433,
+          "p95": 1433,
+          "min": 1433,
+          "max": 1433
+        },
+        "heapBytes": {
+          "median": 132877328,
+          "p95": 260830640,
+          "min": 12454132,
+          "max": 264136428
+        },
+        "privateProcessBytes": {
+          "median": 928444416,
+          "p95": 1443381248,
+          "min": 413507584,
+          "max": 1443381248
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 56.0594499999861,
+          "p95": 86.30119999998715,
+          "min": 24.18609999999171,
+          "max": 92.54269999999087
+        },
+        "typingTaskMs": {
+          "median": 52.196000000009235,
+          "p95": 65.08099999999928,
+          "min": 20.252999999996746,
+          "max": 68.54599999999778
+        },
+        "typingMs": {
+          "median": 77.34010000000126,
+          "p95": 156.11380000000645,
+          "min": 32.28269999998156,
+          "max": 185.68300000000454
+        },
+        "typingScriptMs": {
+          "median": 23.8119999999995,
+          "p95": 29.250999999987926,
+          "min": 10.748999999989906,
+          "max": 29.66400000000391
+        },
+        "typingLayoutMs": {
+          "median": 1.650999999999847,
+          "p95": 2.1679999999999477,
+          "min": 0.7379999999996834,
+          "max": 2.4129999999999985
+        },
+        "streamTaskMs": {
+          "median": 93.93750000000267,
+          "p95": 109.91800000005014,
+          "min": 45.250000000000014,
+          "max": 127.13100000001987
+        },
+        "streamMs": {
+          "median": 309.61204999998154,
+          "p95": 335.55349999998,
+          "min": 235.20100000000002,
+          "max": 336.44310000003316
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 8.349999994039536,
+          "p95": 29.80000001192093,
+          "min": 1.9000000357627869,
+          "max": 48.60000002384186
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999994179,
+          "min": 1.6999999999825377,
+          "max": 21.10000000000582
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 5.199999988079071,
+          "min": 2,
+          "max": 8.299999999988358
+        },
+        "longTasks": 0,
+        "longTaskMaxMs": null,
+        "domNodes": {
+          "median": 1433,
+          "p95": 1433,
+          "min": 1433,
+          "max": 1433
+        },
+        "heapBytes": {
+          "median": 146146420,
+          "p95": 615499740,
+          "min": 15481120,
+          "max": 637129464
+        },
+        "privateProcessBytes": {
+          "median": 876533760,
+          "p95": 1335930880,
+          "min": 417136640,
+          "max": 1335930880
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": -0.4596910349486141,
+      "openMedianChange": 0.7582381201926431,
+      "openMedianChangeAgainstControl": -0.0005262270676870129
+    },
+    {
+      "size": 100,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 59.275399999998626,
+          "p95": 74.3107,
+          "min": 47.71240000000398,
+          "max": 93.92240000000311
+        },
+        "typingTaskMs": {
+          "median": 26.06900000000678,
+          "p95": 34.18399999998201,
+          "min": 20.9339999999969,
+          "max": 34.25
+        },
+        "typingMs": {
+          "median": 52.7131500000105,
+          "p95": 78.03750000000582,
+          "min": 32.518800000005285,
+          "max": 91.16240000000107
+        },
+        "typingScriptMs": {
+          "median": 13.30450000000205,
+          "p95": 16.858999999996627,
+          "min": 11.642999999992298,
+          "max": 18.88299999999998
+        },
+        "typingLayoutMs": {
+          "median": 0.9105000000000363,
+          "p95": 1.3280000000000027,
+          "min": 0.7609999999997896,
+          "max": 1.3849999999999696
+        },
+        "streamTaskMs": {
+          "median": 40.36899999999832,
+          "p95": 52.410000000001844,
+          "min": 37.520000000000664,
+          "max": 52.49799999999999
+        },
+        "streamMs": {
+          "median": 237.97690000001603,
+          "p95": 256.456600000005,
+          "min": 230.30890000000363,
+          "max": 261.49559999999474
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 6.5999999940395355,
+          "p95": 24,
+          "min": 1.7999999523162842,
+          "max": 36
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999994179,
+          "min": 3.3999999999941792,
+          "max": 50
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.5,
+          "min": 1.7999999999883585,
+          "max": 6.69999999999709
+        },
+        "longTasks": 0,
+        "longTaskMaxMs": null,
+        "domNodes": {
+          "median": 2233,
+          "p95": 2233,
+          "min": 2233,
+          "max": 2233
+        },
+        "heapBytes": {
+          "median": 143469088,
+          "p95": 352748740,
+          "min": 18797624,
+          "max": 370830804
+        },
+        "privateProcessBytes": {
+          "median": 985597952,
+          "p95": 1527668736,
+          "min": 443527168,
+          "max": 1527668736
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 86.61339999999836,
+          "p95": 129.63890000000538,
+          "min": 66.98410000000149,
+          "max": 151.86079999999856
+        },
+        "typingTaskMs": {
+          "median": 36.79950000000076,
+          "p95": 44.52499999999304,
+          "min": 20.311000000000025,
+          "max": 45.8629999999971
+        },
+        "typingMs": {
+          "median": 66.50994999998511,
+          "p95": 109.01030000000901,
+          "min": 40.835999999999785,
+          "max": 120.994200000001
+        },
+        "typingScriptMs": {
+          "median": 8.415500000002574,
+          "p95": 11.15199999999561,
+          "min": 6.4670000000000005,
+          "max": 11.329000000003475
+        },
+        "typingLayoutMs": {
+          "median": 1.595500000000083,
+          "p95": 2.6090000000005276,
+          "min": 1.0910000000000017,
+          "max": 2.911000000000108
+        },
+        "streamTaskMs": {
+          "median": 85.79849999999922,
+          "p95": 107.34999999999673,
+          "min": 44.12899999999998,
+          "max": 109.01799999999895
+        },
+        "streamMs": {
+          "median": 289.5836499999896,
+          "p95": 356.09130000000005,
+          "min": 231.92669999999998,
+          "max": 365.77260000000024
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 6.6500000059604645,
+          "p95": 35.39999997615814,
+          "min": 1.5,
+          "max": 53.10000002384186
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999997817,
+          "min": 1.900000000023283,
+          "max": 66.79999999999927
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.899999999994179,
+          "min": 3.5,
+          "max": 45.79999999999927
+        },
+        "longTasks": 16,
+        "longTaskMaxMs": 64,
+        "domNodes": {
+          "median": 2233,
+          "p95": 2233,
+          "min": 2233,
+          "max": 2233
+        },
+        "heapBytes": {
+          "median": 120525238,
+          "p95": 245386864,
+          "min": 15958144,
+          "max": 262601388
+        },
+        "privateProcessBytes": {
+          "median": 944889856,
+          "p95": 1452281856,
+          "min": 437497856,
+          "max": 1452281856
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 93.5149500000116,
+          "p95": 122.1429000000062,
+          "min": 62.265700000018114,
+          "max": 170.09799999999814
+        },
+        "typingTaskMs": {
+          "median": 60.82749999999493,
+          "p95": 78.03499999999985,
+          "min": 29.72400000000003,
+          "max": 150.04199999999912
+        },
+        "typingMs": {
+          "median": 97.31560000000172,
+          "p95": 156.71410000001197,
+          "min": 41.03500000000031,
+          "max": 166.47339999995893
+        },
+        "typingScriptMs": {
+          "median": 27.5595000000024,
+          "p95": 31.159999999999854,
+          "min": 16.962000000000003,
+          "max": 31.363999999996395
+        },
+        "typingLayoutMs": {
+          "median": 1.8305000000000682,
+          "p95": 2.1290000000000475,
+          "min": 0.9720000000000006,
+          "max": 2.958000000000016
+        },
+        "streamTaskMs": {
+          "median": 90.86000000002059,
+          "p95": 119.39399999999978,
+          "min": 43.887999999999984,
+          "max": 128.6060000000191
+        },
+        "streamMs": {
+          "median": 289.96264999999767,
+          "p95": 341.8433999999834,
+          "min": 247.6565999999998,
+          "max": 354.5378000000055
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 6.550000011920929,
+          "p95": 26.200000047683716,
+          "min": 3.300000011920929,
+          "max": 51
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.399999999994179,
+          "min": 1.5,
+          "max": 66.80000000000291
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.199999999989814,
+          "p95": 5.100000000005821,
+          "min": 2.7999999999883585,
+          "max": 9.599999999991269
+        },
+        "longTasks": 14,
+        "longTaskMaxMs": 63,
+        "domNodes": {
+          "median": 2233,
+          "p95": 2233,
+          "min": 2233,
+          "max": 2233
+        },
+        "heapBytes": {
+          "median": 141745374,
+          "p95": 275452768,
+          "min": 16557860,
+          "max": 629147224
+        },
+        "privateProcessBytes": {
+          "median": 885014528,
+          "p95": 1331724288,
+          "min": 438304768,
+          "max": 1331724288
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": -0.4116191645245766,
+      "openMedianChange": 0.46120312979752764,
+      "openMedianChangeAgainstControl": -0.07380156862632525
+    },
+    {
+      "size": 1000,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 117.80339999999705,
+          "p95": 142.58730000001378,
+          "min": 100.36920000001555,
+          "max": 259.3044
+        },
+        "typingTaskMs": {
+          "median": 120.37049999999638,
+          "p95": 164.10299999999722,
+          "min": 115.16299999999546,
+          "max": 336.31500000000005
+        },
+        "typingMs": {
+          "median": 149.57099999999627,
+          "p95": 174.50250000000233,
+          "min": 124.12839999998687,
+          "max": 345.95640000000003
+        },
+        "typingScriptMs": {
+          "median": 83.88299999999482,
+          "p95": 118.76699999999119,
+          "min": 80.25600000000566,
+          "max": 265.38999999999993
+        },
+        "typingLayoutMs": {
+          "median": 1.3270000000000226,
+          "p95": 1.6920000000002489,
+          "min": 1.2110000000000731,
+          "max": 2.4740000000000038
+        },
+        "streamTaskMs": {
+          "median": 131.48450000000088,
+          "p95": 150.82000000001017,
+          "min": 123.61799999999334,
+          "max": 324.02500000000003
+        },
+        "streamMs": {
+          "median": 283.3249000000069,
+          "p95": 304.0743999999977,
+          "min": 265.46250000000146,
+          "max": 390.72679999999946
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 9.5,
+          "p95": 26.69999998807907,
+          "min": 3.699999988079071,
+          "max": 76.89999997615814
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 8.30000000000291,
+          "min": 3.400000000001455,
+          "max": 229
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.400000035762787,
+          "min": -0.4999999880674295,
+          "max": 29.09999999999991
+        },
+        "longTasks": 20,
+        "longTaskMaxMs": 216,
+        "domNodes": {
+          "median": 12233,
+          "p95": 12233,
+          "min": 12233,
+          "max": 12233
+        },
+        "heapBytes": {
+          "median": 139927996,
+          "p95": 357214116,
+          "min": 30857568,
+          "max": 363104272
+        },
+        "privateProcessBytes": {
+          "median": 1033510912,
+          "p95": 1552039936,
+          "min": 514981888,
+          "max": 1552039936
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 231.5526499999978,
+          "p95": 295.35220000000845,
+          "min": 131.34389999999985,
+          "max": 297.22309999999925
+        },
+        "typingTaskMs": {
+          "median": 56.653499999995915,
+          "p95": 82.36700000000141,
+          "min": 26.43299999999993,
+          "max": 89.56200000000081
+        },
+        "typingMs": {
+          "median": 79.01109999999608,
+          "p95": 114.33959999999934,
+          "min": 48.08669999999984,
+          "max": 114.45920000000115
+        },
+        "typingScriptMs": {
+          "median": 8.456999999996384,
+          "p95": 11.238000000005854,
+          "min": 5.413000000000001,
+          "max": 12.04900000000464
+        },
+        "typingLayoutMs": {
+          "median": 1.7445000000000377,
+          "p95": 2.513999999999683,
+          "min": 0.9340000000000043,
+          "max": 2.5569999999999204
+        },
+        "streamTaskMs": {
+          "median": 240.0234999999995,
+          "p95": 294.60800000001086,
+          "min": 107.21900000000007,
+          "max": 297.72700000000896
+        },
+        "streamMs": {
+          "median": 354.5112999999983,
+          "p95": 448.5862999999954,
+          "min": 280.3200999999999,
+          "max": 467.1959999999963
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 11.849999994039536,
+          "p95": 35.5,
+          "min": 1.800000011920929,
+          "max": 51.69999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 12.5,
+          "min": 2.1999999999970896,
+          "max": 237.5
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.199999999999818,
+          "p95": 8.400000000001455,
+          "min": 2.1999999999970896,
+          "max": 16.70000000001164
+        },
+        "longTasks": 20,
+        "longTaskMaxMs": 222,
+        "domNodes": {
+          "median": 12233,
+          "p95": 12233,
+          "min": 12233,
+          "max": 12233
+        },
+        "heapBytes": {
+          "median": 120869962,
+          "p95": 255002196,
+          "min": 14448296,
+          "max": 268492024
+        },
+        "privateProcessBytes": {
+          "median": 992256000,
+          "p95": 1492471808,
+          "min": 492040192,
+          "max": 1492471808
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 252.15499999999884,
+          "p95": 296.94719999999506,
+          "min": 178.88219999999274,
+          "max": 312.3603000000003
+        },
+        "typingTaskMs": {
+          "median": 275.2805000000009,
+          "p95": 304.6060000000068,
+          "min": 263.48600000000033,
+          "max": 313.4110000000305
+        },
+        "typingMs": {
+          "median": 289.0334000000148,
+          "p95": 352.867900000012,
+          "min": 273.9904000000097,
+          "max": 358.62290000001667
+        },
+        "typingScriptMs": {
+          "median": 196.53349999999926,
+          "p95": 209.0780000000052,
+          "min": 185.8749999999958,
+          "max": 233.26699999998368
+        },
+        "typingLayoutMs": {
+          "median": 2.406999999999604,
+          "p95": 3.0360000000000387,
+          "min": 2.137999999999529,
+          "max": 4.192999999999891
+        },
+        "streamTaskMs": {
+          "median": 301.92699999999206,
+          "p95": 323.7400000000008,
+          "min": 243.60000000001492,
+          "max": 339.1799999999989
+        },
+        "streamMs": {
+          "median": 435.58929999999964,
+          "p95": 488.6686000000045,
+          "min": 336.6791999999987,
+          "max": 493.85069999998086
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 39.25,
+          "p95": 50.90000003576279,
+          "min": 3.900000035762787,
+          "max": 113.19999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.2000000000116415,
+          "p95": 20.699999999982538,
+          "min": 2.099999999976717,
+          "max": 212.4000000000001
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.200000000004366,
+          "p95": 8.39999999999418,
+          "min": 0.09999999997671694,
+          "max": 12.5
+        },
+        "longTasks": 21,
+        "longTaskMaxMs": 201,
+        "domNodes": {
+          "median": 12233,
+          "p95": 12233,
+          "min": 12233,
+          "max": 12233
+        },
+        "heapBytes": {
+          "median": 150975704,
+          "p95": 286276320,
+          "min": 21141096,
+          "max": 618396424
+        },
+        "privateProcessBytes": {
+          "median": 926371840,
+          "p95": 1334235136,
+          "min": 518508544,
+          "max": 1334235136
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": 0.5293406607100775,
+      "openMedianChange": 0.9655854584842509,
+      "openMedianChangeAgainstControl": -0.081705102020587
+    },
+    {
+      "size": 1000,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 298.0959500000099,
+          "p95": 318.48919999999634,
+          "min": 275.0014999999985,
+          "max": 632.4979000000003
+        },
+        "typingTaskMs": {
+          "median": 144.16950000000384,
+          "p95": 181.85699999999372,
+          "min": 135.4949999999917,
+          "max": 320.5939999999998
+        },
+        "typingMs": {
+          "median": 173.51445000000967,
+          "p95": 189.5124999999971,
+          "min": 153.19039999999222,
+          "max": 331.97509999999966
+        },
+        "typingScriptMs": {
+          "median": 102.2350000000003,
+          "p95": 131.3340000000025,
+          "min": 94.1309999999973,
+          "max": 242.92399999999992
+        },
+        "typingLayoutMs": {
+          "median": 1.4425000000000132,
+          "p95": 1.7220000000000013,
+          "min": 1.294999999999824,
+          "max": 3.2540000000000067
+        },
+        "streamTaskMs": {
+          "median": 152.38299999999327,
+          "p95": 166.65899999999567,
+          "min": 139.82100000001196,
+          "max": 351.7130000000002
+        },
+        "streamMs": {
+          "median": 289.6735500000068,
+          "p95": 341.50229999999283,
+          "min": 276.11260000000766,
+          "max": 527.2683000000006
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 11.600000023841858,
+          "p95": 29.69999998807907,
+          "min": 3.699999988079071,
+          "max": 58.89999997615814
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 8.400000000008731,
+          "min": 3.2000000000043656,
+          "max": 566.8000000000002
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 4.400000000001455,
+          "min": -1.8999999880761607,
+          "max": 8.400000000008731
+        },
+        "longTasks": 20,
+        "longTaskMaxMs": 551,
+        "domNodes": {
+          "median": 20239,
+          "p95": 20239,
+          "min": 20239,
+          "max": 20239
+        },
+        "heapBytes": {
+          "median": 136883716,
+          "p95": 338401336,
+          "min": 27711632,
+          "max": 374428112
+        },
+        "privateProcessBytes": {
+          "median": 1059194880,
+          "p95": 1549754368,
+          "min": 568635392,
+          "max": 1549754368
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 576.9488000000019,
+          "p95": 631.1989999999932,
+          "min": 287.09299999999985,
+          "max": 638.8065999999963
+        },
+        "typingTaskMs": {
+          "median": 70.667499999999,
+          "p95": 98.21700000000533,
+          "min": 26.757999999997395,
+          "max": 103.56800000002409
+        },
+        "typingMs": {
+          "median": 87.54139999998733,
+          "p95": 152.90969999998924,
+          "min": 35.21359999999913,
+          "max": 163.5621000000101
+        },
+        "typingScriptMs": {
+          "median": 8.976999999994462,
+          "p95": 11.296999999999002,
+          "min": 4.721999999999227,
+          "max": 13.131999999998811
+        },
+        "typingLayoutMs": {
+          "median": 1.8244999999998956,
+          "p95": 2.5479999999999947,
+          "min": 0.8330000000000837,
+          "max": 2.5729999999999364
+        },
+        "streamTaskMs": {
+          "median": 280.15800000000013,
+          "p95": 325.8349999999979,
+          "min": 127.12999999999997,
+          "max": 326.8579999999872
+        },
+        "streamMs": {
+          "median": 403.4063500000102,
+          "p95": 492.8277999999991,
+          "min": 251.88680000000022,
+          "max": 519.5396999999939
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 12.299999952316284,
+          "p95": 34.5,
+          "min": 3.199999988079071,
+          "max": 103.39999997615814
+        },
+        "frameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 16.60000000000582,
+          "min": 2.3000000000029104,
+          "max": 579.3999999999942
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 8.39999999999418,
+          "min": 3.2999999999956344,
+          "max": 8.89999999999418
+        },
+        "longTasks": 20,
+        "longTaskMaxMs": 565,
+        "domNodes": {
+          "median": 20239,
+          "p95": 20239,
+          "min": 20239,
+          "max": 20239
+        },
+        "heapBytes": {
+          "median": 133166960,
+          "p95": 284417544,
+          "min": 20622720,
+          "max": 398416244
+        },
+        "privateProcessBytes": {
+          "median": 1033525248,
+          "p95": 1510350848,
+          "min": 556699648,
+          "max": 1510350848
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 590.7851499999961,
+          "p95": 673.5694999999832,
+          "min": 551.1293000000005,
+          "max": 705.2044999999925
+        },
+        "typingTaskMs": {
+          "median": 337.58749999999793,
+          "p95": 367.9290000000037,
+          "min": 313.0749999999978,
+          "max": 371.0920000000044
+        },
+        "typingMs": {
+          "median": 348.7922499999913,
+          "p95": 393.25339999998687,
+          "min": 322.99250000000757,
+          "max": 402.3349000000162
+        },
+        "typingScriptMs": {
+          "median": 246.19300000000345,
+          "p95": 280.4,
+          "min": 217.6329999999922,
+          "max": 283.8610000000017
+        },
+        "typingLayoutMs": {
+          "median": 2.5689999999998214,
+          "p95": 2.939000000000025,
+          "min": 2.3039999999996397,
+          "max": 3.0890000000001194
+        },
+        "streamTaskMs": {
+          "median": 322.0155000000062,
+          "p95": 354.33100000000195,
+          "min": 301.4939999999999,
+          "max": 361.1389999999801
+        },
+        "streamMs": {
+          "median": 422.4141999999956,
+          "p95": 511.9131000000052,
+          "min": 378.2250000000349,
+          "max": 562.2803000000131
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 50.14999997615814,
+          "p95": 77.70000004768372,
+          "min": 3.399999976158142,
+          "max": 92.30000001192093
+        },
+        "frameIntervalsMs": {
+          "median": 4.2000000000116415,
+          "p95": 24.79999999998836,
+          "min": 2.400000000008731,
+          "max": 592
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 4.19999999999709,
+          "p95": 8.300000000046566,
+          "min": -0.4000000238302164,
+          "max": 18.399999976158142
+        },
+        "longTasks": 20,
+        "longTaskMaxMs": 575,
+        "domNodes": {
+          "median": 20239,
+          "p95": 20239,
+          "min": 20239,
+          "max": 20239
+        },
+        "heapBytes": {
+          "median": 153469052,
+          "p95": 452466124,
+          "min": 26390872,
+          "max": 599827328
+        },
+        "privateProcessBytes": {
+          "median": 941385728,
+          "p95": 1324007424,
+          "min": 558764032,
+          "max": 1324007424
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": 0.5098304426387197,
+      "openMedianChange": 0.9354466238135164,
+      "openMedianChangeAgainstControl": -0.023420273850814022
+    },
+    {
+      "size": 5000,
+      "kind": "short",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 494.6851500000048,
+          "p95": 1176.8940000000002,
+          "min": 463.20530000000144,
+          "max": 1383.9292000000005
+        },
+        "typingTaskMs": {
+          "median": 600.3995000000018,
+          "p95": 653.2839999999851,
+          "min": 553.1769999999981,
+          "max": 1417.6130000000003
+        },
+        "typingMs": {
+          "median": 603.9220000000023,
+          "p95": 663.6970999999903,
+          "min": 562.0245999999897,
+          "max": 1418.8011999999999
+        },
+        "typingScriptMs": {
+          "median": 463.693499999998,
+          "p95": 529.878999999994,
+          "min": 432.24599999999924,
+          "max": 1169.6240000000007
+        },
+        "typingLayoutMs": {
+          "median": 1.5644999999999687,
+          "p95": 1.675000000000093,
+          "min": 1.4659999999997453,
+          "max": 3.296000000000021
+        },
+        "streamTaskMs": {
+          "median": 593.9165000000006,
+          "p95": 650.3670000000028,
+          "min": 521.6139999999996,
+          "max": 1301.374
+        },
+        "streamMs": {
+          "median": 650.2448500000028,
+          "p95": 717.319399999993,
+          "min": 566.4140999999945,
+          "max": 1353.5714000000007
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 92.5,
+          "p95": 214.19999998807907,
+          "min": 3.299999952316284,
+          "max": 466.19999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.300000000017462,
+          "p95": 46,
+          "min": 2.6000000000058208,
+          "max": 1145.999999999999
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 12.400000000008731,
+          "p95": 20.799999999999272,
+          "min": 2.2000000000116415,
+          "max": 58.39999999999418
+        },
+        "longTasks": 62,
+        "longTaskMaxMs": 1030,
+        "domNodes": {
+          "median": 60239,
+          "p95": 60239,
+          "min": 60239,
+          "max": 60239
+        },
+        "heapBytes": {
+          "median": 366436610,
+          "p95": 425832200,
+          "min": 103512596,
+          "max": 484572724
+        },
+        "privateProcessBytes": {
+          "median": 1109731328,
+          "p95": 1543831552,
+          "min": 675631104,
+          "max": 1543831552
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 1050.895199999999,
+          "p95": 1171.9530999999843,
+          "min": 488.6104999999998,
+          "max": 1174.4851999999955
+        },
+        "typingTaskMs": {
+          "median": 212.96699999999902,
+          "p95": 276.62599999999316,
+          "min": 95.14899999999993,
+          "max": 383.6589999999944
+        },
+        "typingMs": {
+          "median": 218.837950000001,
+          "p95": 277.98889999999665,
+          "min": 108.16319999999996,
+          "max": 374.44530000002123
+        },
+        "typingScriptMs": {
+          "median": 11.539999999996553,
+          "p95": 13.979000000000852,
+          "min": 6.6589999999999705,
+          "max": 16.59100000000535
+        },
+        "typingLayoutMs": {
+          "median": 2.4560000000002358,
+          "p95": 3.4639999999999116,
+          "min": 1.2879999999999976,
+          "max": 4.321999999999937
+        },
+        "streamTaskMs": {
+          "median": 1096.5565000000001,
+          "p95": 1463.2050000000163,
+          "min": 466.91099999999983,
+          "max": 1490.0439999999833
+        },
+        "streamMs": {
+          "median": 1188.885750000003,
+          "p95": 1522.358099999983,
+          "min": 543.6561000000002,
+          "max": 1523.0159000000276
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 33.75000002980232,
+          "p95": 127.60000002384186,
+          "min": 6.200000047683716,
+          "max": 237.69999998807907
+        },
+        "frameIntervalsMs": {
+          "median": 4.300000000017462,
+          "p95": 83.5,
+          "min": 3.5,
+          "max": 1054.5
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 20.89999999999418,
+          "p95": 41.80000000001746,
+          "min": 6.300000035762423,
+          "max": 100
+        },
+        "longTasks": 227,
+        "longTaskMaxMs": 978,
+        "domNodes": {
+          "median": 60239,
+          "p95": 60239,
+          "min": 60239,
+          "max": 60239
+        },
+        "heapBytes": {
+          "median": 178155318,
+          "p95": 322979628,
+          "min": 38773436,
+          "max": 329591284
+        },
+        "privateProcessBytes": {
+          "median": 1068371968,
+          "p95": 1444126720,
+          "min": 692617216,
+          "max": 1444126720
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 1126.9277999999977,
+          "p95": 1316.092599999989,
+          "min": 969.6539000000048,
+          "max": 1438.3342000000002
+        },
+        "typingTaskMs": {
+          "median": 1333.7085000000002,
+          "p95": 1466.4100000000103,
+          "min": 1233.635000000021,
+          "max": 1546.5300000000007
+        },
+        "typingMs": {
+          "median": 1338.7206000000006,
+          "p95": 1468.4213000000018,
+          "min": 1234.1603999999934,
+          "max": 1539.4233999999997
+        },
+        "typingScriptMs": {
+          "median": 1090.4490000000067,
+          "p95": 1241.8150000000026,
+          "min": 1012.7769999999998,
+          "max": 1309.7289999999973
+        },
+        "typingLayoutMs": {
+          "median": 2.578999999999887,
+          "p95": 3.025999999999751,
+          "min": 2.16700000000003,
+          "max": 3.257999999999761
+        },
+        "streamTaskMs": {
+          "median": 1316.3644999999847,
+          "p95": 1399.4169999999997,
+          "min": 1159.2470000000005,
+          "max": 1441.8560000000014
+        },
+        "streamMs": {
+          "median": 1376.2845499999985,
+          "p95": 1484.9085999999988,
+          "min": 1204.3555999999953,
+          "max": 1511.7619000000122
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 321.15000000596046,
+          "p95": 730.5,
+          "min": 4.699999988079071,
+          "max": 1224.7999999523163
+        },
+        "frameIntervalsMs": {
+          "median": 4.300000000017462,
+          "p95": 108.30000000000291,
+          "min": 2.2999999999883585,
+          "max": 1104.3000000000002
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 20.89999999999418,
+          "p95": 29.29999999998836,
+          "min": 4.199999952310463,
+          "max": 146.09999999999127
+        },
+        "longTasks": 584,
+        "longTaskMaxMs": 1020,
+        "domNodes": {
+          "median": 60239,
+          "p95": 60239,
+          "min": 60239,
+          "max": 60239
+        },
+        "heapBytes": {
+          "median": 295213980,
+          "p95": 466727212,
+          "min": 78929716,
+          "max": 525709972
+        },
+        "privateProcessBytes": {
+          "median": 1089542144,
+          "p95": 1453965312,
+          "min": 725118976,
+          "max": 1453965312
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": 0.6452911769580114,
+      "openMedianChange": 1.1243718352976408,
+      "openMedianChangeAgainstControl": -0.06746891859442883
+    },
+    {
+      "size": 5000,
+      "kind": "mixed",
+      "baseline": {
+        "samples": 20,
+        "openMs": {
+          "median": 1386.4492499999906,
+          "p95": 3151.3395999999993,
+          "min": 1317.783999999985,
+          "max": 3390.649300000001
+        },
+        "typingTaskMs": {
+          "median": 734.107999999999,
+          "p95": 1529.667,
+          "min": 664.5480000000034,
+          "max": 1792.8879999999979
+        },
+        "typingMs": {
+          "median": 737.8798999999926,
+          "p95": 1535.4617999999973,
+          "min": 670.4470000000001,
+          "max": 1787.4627999999975
+        },
+        "typingScriptMs": {
+          "median": 575.556000000006,
+          "p95": 1286.9360000000008,
+          "min": 528.9999999999964,
+          "max": 1477.9379999999999
+        },
+        "typingLayoutMs": {
+          "median": 1.5999999999998238,
+          "p95": 2.8569999999999984,
+          "min": 1.4760000000002549,
+          "max": 3.265999999999991
+        },
+        "streamTaskMs": {
+          "median": 653.1844999999947,
+          "p95": 1496.1249999999993,
+          "min": 584.3809999999792,
+          "max": 1498.6040000000003
+        },
+        "streamMs": {
+          "median": 707.4981499999994,
+          "p95": 1553.1389999999992,
+          "min": 646.9081000000006,
+          "max": 1597.8334000000032
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 155.55000001192093,
+          "p95": 370.0999999642372,
+          "min": 0.8999999761581421,
+          "max": 646.6000000238419
+        },
+        "frameIntervalsMs": {
+          "median": 4.299999999999272,
+          "p95": 58.40000000002328,
+          "min": 3.599999999976717,
+          "max": 2829.5
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 8.5,
+          "p95": 21,
+          "min": 0.8000000357569661,
+          "max": 67
+        },
+        "longTasks": 156,
+        "longTaskMaxMs": 2735,
+        "domNodes": {
+          "median": 100239,
+          "p95": 100239,
+          "min": 100239,
+          "max": 100239
+        },
+        "heapBytes": {
+          "median": 165051362,
+          "p95": 227998888,
+          "min": 99853112,
+          "max": 243246064
+        },
+        "privateProcessBytes": {
+          "median": 1198592000,
+          "p95": 1539977216,
+          "min": 857206784,
+          "max": 1539977216
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "candidate": {
+        "samples": 20,
+        "openMs": {
+          "median": 2822.55505,
+          "p95": 3249.0785000000033,
+          "min": 2584.367200000008,
+          "max": 3324.4048000000184
+        },
+        "typingTaskMs": {
+          "median": 271.2045000000032,
+          "p95": 352.0849999999882,
+          "min": 221.0929999999962,
+          "max": 458.00199999999336
+        },
+        "typingMs": {
+          "median": 274.56570000000283,
+          "p95": 352.3822999999975,
+          "min": 223.7791000000143,
+          "max": 461.05340000000433
+        },
+        "typingScriptMs": {
+          "median": 12.303000000000619,
+          "p95": 15.139000000004899,
+          "min": 10.50499999999488,
+          "max": 27.88399999999669
+        },
+        "typingLayoutMs": {
+          "median": 2.5535000000003194,
+          "p95": 3.139000000000003,
+          "min": 2.254999999999896,
+          "max": 3.1490000000000684
+        },
+        "streamTaskMs": {
+          "median": 1299.3640000000003,
+          "p95": 1626.8340000000023,
+          "min": 1121.452000000005,
+          "max": 1720.8320000000015
+        },
+        "streamMs": {
+          "median": 1372.7621,
+          "p95": 1677.9667999999947,
+          "min": 1170.9298999999883,
+          "max": 1794.0466999999771
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 42.95000001788139,
+          "p95": 109.09999996423721,
+          "min": 2.100000023841858,
+          "max": 164.29999995231628
+        },
+        "frameIntervalsMs": {
+          "median": 4.299999999999272,
+          "p95": 95.80000000000291,
+          "min": 3.6999999999970896,
+          "max": 3112.899999999994
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 20.79999999998836,
+          "p95": 41.5,
+          "min": 4.099999999976717,
+          "max": 54.19999999998254
+        },
+        "longTasks": 236,
+        "longTaskMaxMs": 2986,
+        "domNodes": {
+          "median": 100239,
+          "p95": 100239,
+          "min": 100239,
+          "max": 100239
+        },
+        "heapBytes": {
+          "median": 177126898,
+          "p95": 273335968,
+          "min": 59251012,
+          "max": 338777692
+        },
+        "privateProcessBytes": {
+          "median": 1106065408,
+          "p95": 1417752576,
+          "min": 794378240,
+          "max": 1417752576
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "baselineControl": {
+        "samples": 20,
+        "openMs": {
+          "median": 2920.7545500000197,
+          "p95": 3194.9437000000016,
+          "min": 2759.7157000000007,
+          "max": 3204.351600000009
+        },
+        "typingTaskMs": {
+          "median": 1582.4389999999937,
+          "p95": 1709.3679999999836,
+          "min": 1514.9239999999793,
+          "max": 1845.2420000000006
+        },
+        "typingMs": {
+          "median": 1582.7900999999983,
+          "p95": 1710.6772000000346,
+          "min": 1516.1974999999802,
+          "max": 1838.4546999999984
+        },
+        "typingScriptMs": {
+          "median": 1307.402500000002,
+          "p95": 1383.972,
+          "min": 1230.9730000000059,
+          "max": 1544.2440000000008
+        },
+        "typingLayoutMs": {
+          "median": 2.6649999999996954,
+          "p95": 3.6960000000005877,
+          "min": 2.2809999999999775,
+          "max": 4.153000000000517
+        },
+        "streamTaskMs": {
+          "median": 1453.020500000008,
+          "p95": 1677.6800000000094,
+          "min": 1300.705999999991,
+          "max": 1693.808000000004
+        },
+        "streamMs": {
+          "median": 1551.1817499999815,
+          "p95": 1701.4891999999818,
+          "min": 1349.2991000000038,
+          "max": 1750.332699999999
+        },
+        "keyAfterFrameProxyMs": {
+          "median": 389.59999999403954,
+          "p95": 905.0999999642372,
+          "min": 2.100000023841858,
+          "max": 1209.300000011921
+        },
+        "frameIntervalsMs": {
+          "median": 4.300000000017462,
+          "p95": 124.90000000000146,
+          "min": 3.3000000000029104,
+          "max": 2758.7999999999884
+        },
+        "scrollFrameIntervalsMs": {
+          "median": 20.79999999998836,
+          "p95": 29.20000000001164,
+          "min": 4,
+          "max": 137.70000000000073
+        },
+        "longTasks": 608,
+        "longTaskMaxMs": 2680,
+        "domNodes": {
+          "median": 100239,
+          "p95": 100239,
+          "min": 100239,
+          "max": 100239
+        },
+        "heapBytes": {
+          "median": 209404814,
+          "p95": 372480068,
+          "min": 129362888,
+          "max": 386550184
+        },
+        "privateProcessBytes": {
+          "median": 1146951680,
+          "p95": 1439920128,
+          "min": 853983232,
+          "max": 1439920128
+        },
+        "privateProcessSamples": 2,
+        "processCounts": [
+          7
+        ],
+        "allMessagesMounted": true,
+        "bottomAfterJumps": 20
+      },
+      "typingTaskReduction": 0.6305659385267515,
+      "openMedianChange": 1.0358156275824877,
+      "openMedianChangeAgainstControl": -0.033621277761946455
+    }
+  ],
+  "primaryBaselineControl": {
+    "samples": 20,
+    "openMs": {
+      "median": 2920.7545500000197,
+      "p95": 3194.9437000000016,
+      "min": 2759.7157000000007,
+      "max": 3204.351600000009
+    },
+    "typingTaskMs": {
+      "median": 1582.4389999999937,
+      "p95": 1709.3679999999836,
+      "min": 1514.9239999999793,
+      "max": 1845.2420000000006
+    },
+    "typingMs": {
+      "median": 1582.7900999999983,
+      "p95": 1710.6772000000346,
+      "min": 1516.1974999999802,
+      "max": 1838.4546999999984
+    },
+    "typingScriptMs": {
+      "median": 1307.402500000002,
+      "p95": 1383.972,
+      "min": 1230.9730000000059,
+      "max": 1544.2440000000008
+    },
+    "typingLayoutMs": {
+      "median": 2.6649999999996954,
+      "p95": 3.6960000000005877,
+      "min": 2.2809999999999775,
+      "max": 4.153000000000517
+    },
+    "streamTaskMs": {
+      "median": 1453.020500000008,
+      "p95": 1677.6800000000094,
+      "min": 1300.705999999991,
+      "max": 1693.808000000004
+    },
+    "streamMs": {
+      "median": 1551.1817499999815,
+      "p95": 1701.4891999999818,
+      "min": 1349.2991000000038,
+      "max": 1750.332699999999
+    },
+    "keyAfterFrameProxyMs": {
+      "median": 389.59999999403954,
+      "p95": 905.0999999642372,
+      "min": 2.100000023841858,
+      "max": 1209.300000011921
+    },
+    "frameIntervalsMs": {
+      "median": 4.300000000017462,
+      "p95": 124.90000000000146,
+      "min": 3.3000000000029104,
+      "max": 2758.7999999999884
+    },
+    "scrollFrameIntervalsMs": {
+      "median": 20.79999999998836,
+      "p95": 29.20000000001164,
+      "min": 4,
+      "max": 137.70000000000073
+    },
+    "longTasks": 608,
+    "longTaskMaxMs": 2680,
+    "domNodes": {
+      "median": 100239,
+      "p95": 100239,
+      "min": 100239,
+      "max": 100239
+    },
+    "heapBytes": {
+      "median": 209404814,
+      "p95": 372480068,
+      "min": 129362888,
+      "max": 386550184
+    },
+    "privateProcessBytes": {
+      "median": 1146951680,
+      "p95": 1439920128,
+      "min": 853983232,
+      "max": 1439920128
+    },
+    "privateProcessSamples": 2,
+    "processCounts": [
+      7
+    ],
+    "allMessagesMounted": true,
+    "bottomAfterJumps": 20
+  },
+  "limits": [
+    "No paid/model calls; prior live budget unchanged",
+    "Synthetic warm-host workload; first-process launch is one sample per arm, not cold OS or startup acceptance",
+    "TaskDuration includes renderer work beyond JavaScript. The key-after-frame proxy is not INP or presentation feedback",
+    "Private bytes sampled only twice per workload/arm, excluding shared working sets; JS heap follows ordinary GC",
+    "Full transcript DOM preserved; no virtualization or initial-mount scaling improvement claimed",
+    "No provider handshake/inference latency, full-release packaging/CI, non-Windows GUI or screen-reader certification"
+  ]
+}
