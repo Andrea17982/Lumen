@@ -48,6 +48,10 @@ One-shot Moli fetches avoid layout/images/fonts. Interactive CDP engines are ret
 
 Ollama requests stay on loopback with proxies/redirects disabled. `/api/show` selects native tool calling or a JSON-action format; tool results return to the same model. Remote model metadata/cloud aliases are rejected. [Detailed browser contract](moli.md).
 
+## Graph reliability
+
+The post-0.7.1 graph checkpoint corrects scoped typed-module extension substitution and Godot literal resource/inheritance paths. Full-line TS/JS/C#/GDScript comments are excluded from extraction/reference identifiers. Relative normalization stays within indexed repository/Godot-project boundaries; index format 4 invalidates earlier extraction records. Existing immutable pre-edit graph snapshots retain callers after deletions. This remains an approximate graph, not a complete compiler/configuration resolver. [Corpus, native MCP checks and limits](graph-reliability-0.8.md).
+
 ## Turn timing
 
 Windows metadata CLI calls now start inside a kill-on-close Job Object while suspended, then resume without a console window. EOF gets at most 80 ms grace before remaining members are terminated/reaped; cancellation/errors skip grace, task abortion drops the job, and exited roots cannot orphan their normal Win32 descendants. Assignment failure does not retry unsupervised. Model-turn and non-Windows termination are unchanged. [Measured shutdown comparison](metadata-shutdown-0.8.md).

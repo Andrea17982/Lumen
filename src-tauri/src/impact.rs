@@ -94,6 +94,54 @@ pub fn handoff(root: &Path, report: &Impact) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn typed_and_godot_deleted_imports_keep_callers_in_the_handoff() {
+        let fixture = crate::test_support::Fixture::new();
+        let root = fixture.directory("project");
+        for (path, text) in [
+            ("package.json", "{\"scripts\":{\"test\":\"vitest run\"}}"),
+            ("web/state.mts", "export const count = 1;\n"),
+            (
+                "tests/use.test.mts",
+                "import {count as x} from '../web/state.mjs';\nexport const value = x;\n",
+            ),
+            ("game/project.godot", "config_version=5\n"),
+            ("game/base.gd", "extends Node\n"),
+            ("game/scripts/derived.gd", "extends '../base.gd'\n"),
+        ] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        let before = super::snapshot(&fixture.core, &root, crate::models::AccessMode::Autopilot)
+            .await
+            .unwrap();
+        assert!(before.is_some());
+        std::fs::remove_file(root.join("web/state.mts")).unwrap();
+        std::fs::remove_file(root.join("game/base.gd")).unwrap();
+        let result = super::analyse(
+            &fixture.core,
+            &root,
+            &["web/state.mts".into(), "game/base.gd".into()],
+            before,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(result.unknown.is_empty());
+        assert!(result
+            .files
+            .iter()
+            .any(|f| f.path == "tests/use.test.mts" && f.test && f.distance == 1));
+        assert!(result
+            .files
+            .iter()
+            .any(|f| f.path == "game/scripts/derived.gd" && f.distance == 1));
+        let handoff = super::handoff(&root, &result);
+        assert!(
+            handoff.contains("tests/use.test.mts") && handoff.contains("game/scripts/derived.gd")
+        );
+    }
     use super::*;
     use crate::test_support::Fixture;
 

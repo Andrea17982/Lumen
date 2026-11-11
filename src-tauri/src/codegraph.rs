@@ -381,17 +381,41 @@ fn resolve(
     match lang {
         "ts" => {
             let base = if spec.starts_with('.') {
-                join(dir, spec)
+                let Some(path) = crate::repomap::relative_path(dir, spec) else {
+                    return vec![];
+                };
+                path
             } else if let Some(rest) = spec.strip_prefix("@/").or_else(|| spec.strip_prefix("~/")) {
                 format!("src/{rest}")
             } else {
                 return vec![];
             };
-            let stem = base
-                .strip_suffix(".js")
-                .or_else(|| base.strip_suffix(".jsx"))
-                .unwrap_or(&base)
-                .to_string();
+            let typed = [".ts", ".tsx", ".mts", ".cts"]
+                .iter()
+                .any(|ext| from.ends_with(ext));
+            for (runtime, sources) in [
+                (".mjs", &[".mts", ".d.mts"][..]),
+                (".cjs", &[".cts", ".d.cts"][..]),
+                (".jsx", &[".tsx", ".ts", ".d.ts"][..]),
+                (".js", &[".ts", ".tsx", ".d.ts"][..]),
+            ] {
+                if let Some(stem) = base.strip_suffix(runtime) {
+                    let mut candidates = if typed {
+                        sources
+                            .iter()
+                            .map(|ext| format!("{stem}{ext}"))
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    };
+                    candidates.push(base.clone());
+                    if typed && runtime == ".js" {
+                        candidates.push(format!("{stem}.jsx"));
+                    }
+                    return first(id, &candidates);
+                }
+            }
+            let stem = &base;
             let mut c = vec![base.clone()];
             for e in [
                 ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
@@ -1203,6 +1227,207 @@ mod tests {
         write(&root, "tools/report.py", "from tools import helpers\n\nclass Report:\n    def render(self):\n        return helpers.fmt()\n\nx = 1\n");
         write(&root, "tools/helpers.py", "def fmt():\n    return ''\n");
         (base.join("data"), root)
+    }
+
+    #[test]
+    fn roadmap_typescript_and_godot_import_corpus() {
+        let fixture = crate::test_support::Fixture::new();
+        let root = fixture.directory("project");
+        let data = fixture.directory("index");
+        for (path, text) in [
+            ("web/state.mts", "export const count = 1;\n"),
+            ("web/common.cts", "export const count = 2;\n"),
+            ("web/source.ts", "export const count = 3;\n"),
+            ("web/source.js", "export const count = 4;\n"),
+            (
+                "web/typed.mts",
+                "import { count as x } from './state.mjs';\nexport const value = x;\n",
+            ),
+            (
+                "web/common-user.cts",
+                "import { count as x } from './common.cjs';\nexport const value = x;\n",
+            ),
+            (
+                "web/typed-user.ts",
+                "import { count as x } from './source.js';\nexport const value = x;\n",
+            ),
+            (
+                "web/native-user.js",
+                "import { count as x } from './source.js';\nexport const value = x;\n",
+            ),
+            (
+                "web/missing.js",
+                "import { count as x } from './state.mjs';\nexport const value = x;\n",
+            ),
+            ("outside.ts", "export const count = 5;\n"),
+            (
+                "web/escape.ts",
+                "import { count as x } from '../../outside.ts';\nexport const value = x;\n",
+            ),
+            ("game/project.godot", "config_version=5\n"),
+            ("game/base.gd", "extends Node\n"),
+            (
+                "game/scripts/quoted.gd",
+                "extends Node\nconst value = preload('res://base.gd')\n",
+            ),
+            ("game/scripts/derived.gd", "extends '../base.gd'\n"),
+            ("game/scripts/escape.gd", "extends '../../outside.gd'\n"),
+            ("outside.gd", "extends Node\n"),
+            (
+                "game/CounterState.cs",
+                "public class CounterState {\n public int Count;\n}\n",
+            ),
+            (
+                "game/scripts/managed.gd",
+                "extends Node\nvar state: CounterState\n",
+            ),
+        ] {
+            write(&root, path, text);
+        }
+        let graph = graph(&data, &root);
+        let mut failures = vec![];
+        for (from, target, expected) in [
+            ("web/typed.mts", "web/state.mts", true),
+            ("web/common-user.cts", "web/common.cts", true),
+            ("web/typed-user.ts", "web/source.ts", true),
+            ("web/typed-user.ts", "web/source.js", false),
+            ("web/native-user.js", "web/source.js", true),
+            ("web/native-user.js", "web/source.ts", false),
+            ("web/missing.js", "web/state.mts", false),
+            ("web/escape.ts", "outside.ts", false),
+            ("game/scripts/quoted.gd", "game/base.gd", true),
+            ("game/scripts/derived.gd", "game/base.gd", true),
+            ("game/scripts/escape.gd", "outside.gd", false),
+        ] {
+            let actual = graph.imports[graph.id[from]].contains(&graph.id[target]);
+            if actual != expected {
+                failures.push(format!(
+                    "{from} -> {target}: expected {expected}, got {actual}"
+                ));
+            }
+            let impact = graph.impact_details(&[target.into()], 1);
+            let actual = impact
+                .files
+                .iter()
+                .any(|f| f.path == from && f.distance == 1);
+            if actual != expected {
+                failures.push(format!(
+                    "impact({target}) -> {from}: expected {expected}, got {actual}"
+                ));
+            }
+        }
+        let managed = graph.impact_details(&["game/CounterState.cs".into()], 1);
+        if !managed
+            .files
+            .iter()
+            .any(|f| f.path == "game/scripts/managed.gd")
+        {
+            failures.push("C# type -> GDScript impact was lost".into());
+        }
+        assert!(
+            failures.is_empty(),
+            "{} corpus failures:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn roadmap_comments_and_normalized_resource_paths() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("project");
+        let data = f.directory("index");
+        for (path, text) in [
+            ("game/project.godot", "config_version=5\n"),
+            ("game/base.gd", "extends Node\n"),
+            ("game/notes.gd", "# preload(\"res://base.gd\")\n# class_name ImaginaryType\n"),
+            ("game/notes.cs", "// public class ImaginaryType {}\n"),
+            ("web/base.ts", "export const count = 1;\n"),
+            ("web/view.jsx", "export const count = 2;\n"),
+            ("web/view-user.ts", "import {count as x} from './view.js';\nexport const value = x;\n"),
+            ("web/notes.ts", "// import { count } from './base';\n// export class ImaginaryType {}\n"),
+            ("game/scenes/Main.tscn", "[gd_scene load_steps=2 format=3]\n[ext_resource type=\"Script\" path=\"res://scripts/../base.gd\" id=\"1\"]\n[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n"),
+        ] { write(&root, path, text); }
+        let g = graph(&data, &root);
+        for path in ["game/notes.gd", "game/notes.cs", "web/notes.ts"] {
+            assert!(g.imports[g.id[path]].is_empty(), "{path}");
+            assert!(g.symbols[g.id[path]].is_empty(), "{path}");
+            assert!(g.refs_out[g.id[path]].is_empty(), "{path}");
+        }
+        assert_eq!(
+            g.imports[g.id["game/scenes/Main.tscn"]],
+            vec![g.id["game/base.gd"]]
+        );
+        assert_eq!(
+            g.imports[g.id["web/view-user.ts"]],
+            vec![g.id["web/view.jsx"]]
+        );
+    }
+
+    #[test]
+    fn roadmap_graph_refreshes_edited_imports_renames_and_deletions() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("project");
+        let data = f.directory("index");
+        for (path, text) in [
+            ("web/state.mts", "export const count = 1;\n"),
+            (
+                "web/use.test.mts",
+                "import { count as x } from './state.mjs';\nexport const value = x;\n",
+            ),
+            ("game/project.godot", "config_version=5\n"),
+            ("game/base.gd", "extends Node\n"),
+            ("game/scripts/derived.gd", "extends '../base.gd'\n"),
+        ] {
+            write(&root, path, text);
+        }
+        let first = graph(&data, &root);
+        crate::repomap::with_index(&data, &root, |_, stats| assert_eq!(stats.refreshed, 0));
+        assert!(Arc::ptr_eq(&first, &graph(&data, &root)));
+        std::fs::rename(root.join("web/state.mts"), root.join("web/renamed.mts")).unwrap();
+        std::fs::rename(root.join("game/base.gd"), root.join("game/renamed_base.gd")).unwrap();
+        write(
+            &root,
+            "web/use.test.mts",
+            "import { count as x } from './renamed.mjs';\nexport const value = x;\n",
+        );
+        write(
+            &root,
+            "game/scripts/derived.gd",
+            "extends '../renamed_base.gd'\n",
+        );
+        let renamed = graph(&data, &root);
+        assert!(
+            !renamed.id.contains_key("web/state.mts") && !renamed.id.contains_key("game/base.gd")
+        );
+        assert_eq!(
+            renamed.imports[renamed.id["web/use.test.mts"]],
+            vec![renamed.id["web/renamed.mts"]]
+        );
+        assert_eq!(
+            renamed.imports[renamed.id["game/scripts/derived.gd"]],
+            vec![renamed.id["game/renamed_base.gd"]]
+        );
+        let impact = renamed.impact_details(&["web/renamed.mts".into()], 1);
+        assert!(impact
+            .files
+            .iter()
+            .any(|f| f.path == "web/use.test.mts" && f.test && f.distance == 1));
+        std::fs::remove_file(root.join("web/renamed.mts")).unwrap();
+        std::fs::remove_file(root.join("game/renamed_base.gd")).unwrap();
+        let deleted = graph(&data, &root);
+        assert!(deleted.imports[deleted.id["web/use.test.mts"]].is_empty());
+        assert!(deleted.imports[deleted.id["game/scripts/derived.gd"]].is_empty());
+        assert_eq!(
+            deleted
+                .impact_details(&["web/renamed.mts".into()], 1)
+                .unknown,
+            vec!["web/renamed.mts"]
+        );
+        assert!(
+            first.id.contains_key("web/state.mts"),
+            "Pre-edit snapshots stay immutable"
+        );
     }
 
     #[test]

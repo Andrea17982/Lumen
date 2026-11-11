@@ -16,7 +16,7 @@ const MAX_FILES: usize = 20_000;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
 const BUILD_BUDGET: Duration = Duration::from_secs(8);
 const MAX_SYMBOLS_PER_FILE: usize = 400;
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 /// Distinct identifiers kept per file for the reference graph.
 const MAX_IDENTS_PER_FILE: usize = 4_000;
 const MAX_SPAN_LINES: usize = 4_000;
@@ -194,7 +194,7 @@ fn patterns() -> &'static Patterns {
             r"^\s*(?:(?:public|private|fileprivate|internal|open|final|static|override|mutating|@\w+)\s+)*(class|struct|enum|protocol|extension|func|actor|typealias)\s+([A-Za-z_]\w*)",
         )
         .unwrap(),
-        gd_import: Regex::new(r#"(?:preload|load)\(\s*"(res://[^"]+)"|^extends\s+"(res://[^"]+)""#).unwrap(),
+        gd_import: Regex::new(r#"\b(?:preload|load)\s*\(\s*["'](res://[^"']+)["']|^\s*extends\s+["']([^"']+)["']"#).unwrap(),
         ident: Regex::new(r"[A-Za-z_][A-Za-z0-9_]{2,}").unwrap(),
     })
 }
@@ -209,6 +209,29 @@ fn godot_root(root: &Path, rel: &str) -> String {
         dir = d.parent();
     }
     String::new()
+}
+
+/// Normalize an indexed relative path without inventing a target above its root.
+pub(crate) fn relative_path(dir: &str, path: &str) -> Option<String> {
+    if path.starts_with('/') || path.contains(['\\', ':']) {
+        return None;
+    }
+    let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            part => parts.push(part),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+fn comment_line(lang: &str, line: &str) -> bool {
+    (matches!(lang, "ts" | "cs") && line.trim_start().starts_with("//"))
+        || (lang == "gd" && line.trim_start().starts_with('#'))
 }
 
 /// What one file contributes to the index.
@@ -259,18 +282,27 @@ fn extract(root: &Path, rel: &str, lang: &str, text: &str) -> Extracted {
     } else {
         String::new()
     };
-    let res = |path: &str| {
-        let path = path.trim_start_matches("res://");
+    let project_path = |path: &str| {
         if res_root.is_empty() {
             path.to_string()
         } else {
             format!("{res_root}/{path}")
         }
     };
+    let res =
+        |path: &str| relative_path("", path.strip_prefix("res://")?).map(|p| project_path(&p));
+    let script_dir = Path::new(rel)
+        .parent()
+        .and_then(|p| p.strip_prefix(&res_root).ok())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
     let mut root_node = true;
     let mut go_imports = false;
     for (i, line) in lines.iter().enumerate() {
         let line = *line;
+        if comment_line(lang, line) {
+            continue;
+        }
         let top = !line.starts_with(' ') && !line.starts_with('\t');
         match lang {
             "cs" => {
@@ -287,8 +319,15 @@ fn extract(root: &Path, rel: &str, lang: &str, text: &str) -> Extracted {
                     push(&c[2], &c[1], i);
                 }
                 for c in p.gd_import.captures_iter(line) {
-                    if let Some(m) = c.get(1).or_else(|| c.get(2)) {
-                        imports.push(format!("res://{}", res(m.as_str())));
+                    let found = c.get(1).or_else(|| c.get(2)).and_then(|m| {
+                        res(m.as_str()).or_else(|| {
+                            c.get(2)
+                                .and_then(|_| relative_path(&script_dir, m.as_str()))
+                                .map(|p| project_path(&p))
+                        })
+                    });
+                    if let Some(path) = found {
+                        imports.push(format!("res://{path}"));
                     }
                 }
             }
@@ -452,7 +491,9 @@ fn extract(root: &Path, rel: &str, lang: &str, text: &str) -> Extracted {
                     push(&c[1], kind, i);
                 }
                 for c in p.resource.captures_iter(line) {
-                    uses.push(res(&c[1]));
+                    if let Some(path) = res(&c[1]) {
+                        uses.push(path);
+                    }
                 }
             }
             _ => {}
@@ -465,7 +506,11 @@ fn extract(root: &Path, rel: &str, lang: &str, text: &str) -> Extracted {
         vec![]
     } else {
         let mut set: HashSet<&str> = HashSet::new();
-        for m in p.ident.find_iter(text) {
+        for m in lines
+            .iter()
+            .filter(|line| !comment_line(lang, line))
+            .flat_map(|line| p.ident.find_iter(line))
+        {
             if set.len() >= MAX_IDENTS_PER_FILE {
                 break;
             }
@@ -906,6 +951,53 @@ mod tests {
         let refs = references(&data, &root, "PlayerController", 20);
         assert!(refs.iter().any(|r| r.file == "game/scenes/client.tscn"
             && r.text.contains("game/scripts/PlayerController.cs")));
+    }
+
+    #[test]
+    fn old_import_extraction_cache_is_rebuilt_even_with_matching_file_metadata() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("project");
+        let data = f.directory("index");
+        let source = root.join("state.ts");
+        std::fs::write(&source, "export class CurrentState {}\n").unwrap();
+        let meta = source.metadata().unwrap();
+        let legacy = Index {
+            version: 3,
+            files: BTreeMap::from([(
+                "state.ts".into(),
+                FileRecord {
+                    size: meta.len(),
+                    modified: modified(&meta),
+                    symbols: vec![Symbol {
+                        name: "StaleState".into(),
+                        kind: "class".into(),
+                        file: "state.ts".into(),
+                        line: 1,
+                        end: 1,
+                        signature: "export class StaleState {}".into(),
+                    }],
+                    uses: vec![],
+                    imports: vec![],
+                    idents: vec![],
+                    lang: "ts".into(),
+                },
+            )]),
+        };
+        let path = store_path(&data, &root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, serde_json::to_string(&legacy).unwrap()).unwrap();
+        with_index(&data, &root, |index, stats| {
+            assert_eq!(stats.refreshed, 1);
+            assert_eq!(index.version, 4);
+            assert!(index.files["state.ts"]
+                .symbols
+                .iter()
+                .any(|s| s.name == "CurrentState"));
+            assert!(!index.files["state.ts"]
+                .symbols
+                .iter()
+                .any(|s| s.name == "StaleState"));
+        });
     }
 
     #[test]

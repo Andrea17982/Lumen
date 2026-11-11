@@ -15,6 +15,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [0.8 initial chat opening](initial-open-0.8.md) | Paired release opening measurements, literal-paragraph optimization and excluded windowed prototype |
 | [0.8 turn waiting and CLI startup](turn-latency-0.8.md) | Source-stamped phase attribution, native offline turns and actual metadata-only CLI measurements |
 | [Windows metadata shutdown](metadata-shutdown-0.8.md) | Before/after installed-CLI measurements, bounded graceful shutdown and descendant/cancellation gates |
+| [0.8 graph reliability](graph-reliability-0.8.md) | Typed module/Godot import corrections, independent oracles and refresh/deleted-target handoff checks |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |
 | [Validation and scope](validation.md) | Verified results, agreed exclusions and deferred acceptance |

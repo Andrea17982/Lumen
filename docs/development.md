@@ -56,6 +56,10 @@ Keep Vite running, build `cargo build --manifest-path src-tauri/Cargo.toml`, the
 
 The separate [initial-opening experiment](initial-open-0.8.md) uses `LUMEN_PERF_ROOT` to isolate its evidence and an explicit build-time `VITE_TRANSCRIPT_EXPERIMENT=1` flag for baseline/plain/virtual comparisons in one binary. Ordinary builds remove the virtual module and ignore experiment query parameters. `tests/initial-open-native.mjs`, `initial-open-stock.mjs` and `initial-open-report.mjs` collect the comparison, verify the normal candidate and emit sanitized aggregates. A secondary run writes a separate file and never overwrites the main series. Unset the build-time flag before normal builds; these experiments do not require any account or inference.
 
+## Graph correctness checks
+
+The post-0.7.1 graph corpus runs in normal Rust tests. `node tests/graph-import-oracles.mjs` checks TypeScript/Node resolution and runs a tiny existing-Godot GDScript fixture in TEMP, without model calls. After a debug build, `node tests/native-graph.mjs` exercises the real graph MCP across edits, rename, restart/persistent cache and deletion. `tests/graph-reliability-report.mjs` aggregates the local retained baseline/native evidence. [Scope and reproduction](graph-reliability-0.8.md).
+
 ## Turn waiting and CLI metadata
 
 The metadata-only shutdown comparison freezes separate baseline/candidate Rust test executables and runs the installed-CLI probe in A/B/A/B blocks. `tests/metadata-shutdown-report.mjs` validates complete raw records and reports net metadata-call time including Windows job setup. `cargo test --manifest-path src-tauri/Cargo.toml --lib metadata_windows` runs real EOF, stubborn/orphaned child, cancellation, abort and concurrent-job isolation fixtures on Windows. [Fixed protocol and final confirmation](metadata-shutdown-0.8.md).

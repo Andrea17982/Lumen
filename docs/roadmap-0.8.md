@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche integrate o valutate; checkpoint completati raccolti nella 0.7.1 — Performance Update**, 11 novembre 2026. Pubblicazione autorizzata dal proprietario dopo verifiche e CI; questa roadmap 0.8 resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri. Virtualizzazione con perdita di ricerca/selezione/accessibilità esclusa; inferenza/TTFT live, tempi assoluti stabili e candidati rimasti non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo implementata nel ramo 0.8**, 11 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -101,6 +101,12 @@ Confronto A/B/A/B delle CLI installate, 40 campioni per provider/variante: chiam
 
 Passano 158 test Rust Windows, 72 unitari frontend, 29 browser, 22 scenari nativi offline, build e controlli formali. [Misure, compromesso di avvio e limiti](metadata-shutdown-0.8.md). Il proprietario autorizza push/merge e release **0.7.1 — Performance Update** delle tranche concluse dopo CI e verifica dei pacchetti. Questa autorizzazione sostituisce il precedente rinvio della pubblicazione, senza chiudere l'intera roadmap 0.8. Budget live invariato a 13 slot; nessuna nuova inferenza.
 
+### Ottava tranche — import affidabili e contesto di impatto
+
+Il corpus dichiarato prima delle correzioni rileva 14 errori su 23 aspettative nella baseline 0.7.1. Risoluzione degli import typed `.mjs/.cjs`→`.mts/.cts`, priorità delle sorgenti TypeScript, GDScript con apici singoli/ereditarietà relativa e normalizzazione entro i confini portano il corpus a 23/23. Commenti su righe intere non creano più definizioni/import/riferimenti nei linguaggi mirati. Indice persistente 3→4, refresh dopo rinomina/cancellazione e conservazione dei chiamanti nell'handoff verificati.
+
+Passano 163 test Rust Windows, sei controlli con TypeScript/Node/Godot installati e cinque scenari MCP nativi; Clippy, build debug e controlli formali. [Protocollo e limiti](graph-reliability-0.8.md), [dati](data/graph-reliability-0.8-results.json). Nessun parser nuovo o inferenza; registro live a 13 slot. È una correzione mirata del contesto, non prova di accuratezza globale/risparmio token o chiusura dell'intero punto 4.
+
 ## Decisioni concordate
 
 - Bilanciare fluidità, tempi di attesa e qualità del codice prodotto.
@@ -175,7 +181,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 4. Affidabilità del grafo
 
-**Stato: copertura mirata da estendere.**
+**Stato: corpus import TS/JS e Godot, commenti su righe intere e refresh/handoff mirati verificati.** [Ottava tranche](graph-reliability-0.8.md): 23/23 aspettative contro 9/23, senza cambio parser. Alias/configurazioni arbitrarie, semantica completa dei linguaggi, altre forme di commenti/stringhe e accuratezza su progetti reali restano da estendere.
 
 - Creare fixture per dichiarazioni, riferimenti, rinomina, cancellazione e dipendenze nei linguaggi effettivamente coinvolti; registrare omissioni e falsi positivi.
 - Verificare che il contesto di impatto migliori le modifiche e i controlli selezionati, senza aggiungere rumore o eccessivo costo di indicizzazione.

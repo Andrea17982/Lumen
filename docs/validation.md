@@ -2,6 +2,12 @@
 
 The completed checkpoints below are included in **0.7.1 — Performance Update**. Earlier sections retain their 0.7.0/checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
 
+## Post-release 0.8 graph checkpoint
+
+The next implementation branch corrects the TS/JS/Godot import corpus from 9/23 to 23/23 expectations, with full-line comment controls, bounded path normalization and index-format 4 migration. The six installed compiler/runtime checks (TypeScript/Node/Godot) and five Windows debug native graph MCP scenarios pass. Normal tests cover edited imports, rename/deletion, cache reuse/migration and deleted-target callers retained in the real impact handoff. The complete Windows Rust suite passes 163 tests (14 opt-in probes ignored); Clippy denies warnings and debug build/format/documentation checks pass. [Protocol/remaining semantics](graph-reliability-0.8.md), [aggregate](data/graph-reliability-0.8-results.json).
+
+These are isolated code-graph correctness checks, without provider inference, model-quality/token-saving claims, GUI/screen-reader or other-platform desktop certification. Size/mtime preservation, complete comment/string parsing, arbitrary config/alias resolution and dynamic/UID resource paths remain open. The published 0.7.1 is unchanged; the live ledger remains at 13 spent slots.
+
 ## 0.7.1 metadata shutdown acceptance
 
 The fixed installed-CLI A/B/A/B experiment completes 160 metadata calls plus 160 version probes, without inference. Complete-call medians decrease 37.2% for Claude and 57.4% for Codex, including roughly 42 ms extra supervised-spawn setup. Cleanup medians fall from 428/423 to 44/18 ms. A separate final-source/version confirmation completes another 20 samples per provider: 30.2%/50.2% lower complete-call medians against the preserved baseline. All raw blocks, first samples, hashes, model counts, p95 and setup tradeoffs are retained in the [sanitized record](data/metadata-shutdown-0.8-results.json).
