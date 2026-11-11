@@ -510,7 +510,15 @@ pub(crate) async fn resume_prompt(
     let delta = if changed && owned.text.is_empty() && old_context.is_some() {
         "\nLumen's current project/check context is empty. Previously supplied notes/checks are not current evidence; do not infer passing validation.\n".to_string()
     } else if changed {
-        owned.text
+        format!(
+            "{}{}",
+            if old_context.is_some() {
+                "\nThe following replaces Lumen's previously supplied project/check context. Omitted checks are not current evidence; do not infer passing validation.\n"
+            } else {
+                ""
+            },
+            owned.text
+        )
     } else {
         String::new()
     };
@@ -2310,6 +2318,68 @@ mod resume_tests {
         assert!(resumable(&chat, &["out"], &other, "/w", AccessMode::FileEdits).is_none());
     }
 
+    #[test]
+    fn continuity_rewind_invalidates_remote_history_without_touching_other_chats() {
+        let f = crate::test_support::Fixture::new();
+        let s = f.core.store.create("/w".into()).unwrap();
+        let other = f.core.store.create("/w".into()).unwrap();
+        for chat in [&s, &other] {
+            for m in [
+                msg("u1", "user", vec![]),
+                msg(
+                    "a1",
+                    "assistant",
+                    vec![
+                        native("acc", "/w"),
+                        Activity {
+                            kind: "file".into(),
+                            text: "keep.ts".into(),
+                        },
+                    ],
+                ),
+                msg("u2", "user", vec![]),
+            ] {
+                // Message IDs are globally unique, including across chats.
+                let mut m = m;
+                m.id = format!("{}-{}", chat.id, m.id);
+                f.core.store.save_message(&chat.id, &m).unwrap();
+            }
+        }
+        let removed = format!("{}-u2", s.id);
+        f.core.store.truncate_from(&s.id, &removed).unwrap();
+        f.core
+            .store
+            .save_message(&s.id, &msg("replacement", "user", vec![]))
+            .unwrap();
+        let history = f.core.store.messages(&s.id).unwrap();
+        assert!(
+            resumable(&history, &[], &claude(), "/w", AccessMode::ReadOnly).is_none(),
+            "remote CLI still contains the removed future turns"
+        );
+        assert!(history[1]
+            .activity
+            .iter()
+            .any(|a| a.kind == "file" && a.text == "keep.ts"));
+        assert!(resumable(
+            &f.core.store.messages(&other.id).unwrap(),
+            &[],
+            &claude(),
+            "/w",
+            AccessMode::ReadOnly
+        )
+        .is_some());
+        // An unknown rewind target must leave the surviving transcript unchanged.
+        assert!(f.core.store.truncate_from(&other.id, "missing").is_err());
+        assert!(resumable(
+            &f.core.store.messages(&other.id).unwrap(),
+            &[],
+            &claude(),
+            "/w",
+            AccessMode::ReadOnly
+        )
+        .is_some());
+    }
+
     #[tokio::test]
     async fn quality_native_resume_receives_lumen_owned_check_failures() {
         let f = crate::test_support::Fixture::new();
@@ -2327,6 +2397,52 @@ mod resume_tests {
             .await
             .unwrap();
         assert!(resumed.prompt.contains("Independent counter check: failed"));
+    }
+
+    #[tokio::test]
+    async fn continuity_native_resume_retires_checks_even_when_project_notes_remain() {
+        let f = crate::test_support::Fixture::new();
+        let folder = f.root.to_string_lossy().into_owned();
+        let s = f.core.store.create(folder.clone()).unwrap();
+        std::fs::write(f.root.join("LUMEN.md"), "Keep project conventions").unwrap();
+        let check = Activity {
+            kind: "validation".into(),
+            text: serde_json::json!({"workspace":folder,"label":"Old build","status":"passed"})
+                .to_string(),
+        };
+        f.core
+            .store
+            .save_message(&s.id, &msg("checked", "assistant", vec![check]))
+            .unwrap();
+        let revision = crate::workstate::owned_context(&f.core, &s)
+            .unwrap()
+            .revision;
+        let mut marker = native("acc", &folder);
+        let mut value: serde_json::Value = serde_json::from_str(&marker.text).unwrap();
+        value["context_revision"] = revision.into();
+        marker.text = value.to_string();
+        f.core
+            .store
+            .save_message(&s.id, &msg("reply", "assistant", vec![marker]))
+            .unwrap();
+        let mut request = msg("next", "user", vec![]);
+        request.text = "Nuovo obiettivo: implementa la ricerca".into();
+        f.core.store.save_message(&s.id, &request).unwrap();
+        let resumed = resume_prompt(
+            &f.core,
+            &s,
+            &[],
+            &claude(),
+            &crate::test_support::Fixture::options(AccessMode::ReadOnly),
+        )
+        .await
+        .unwrap();
+        assert!(resumed.prompt.contains("Keep project conventions"));
+        assert!(resumed
+            .prompt
+            .contains("Omitted checks are not current evidence"));
+        assert!(!resumed.prompt.contains("Old build: passed"));
+        assert!(resumed.prompt.contains("Read-only"));
     }
     #[tokio::test]
     async fn native_resume_sends_only_changed_or_removed_layout_constraints() {

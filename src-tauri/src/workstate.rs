@@ -9,6 +9,14 @@ pub struct OwnedContext {
     pub evidence: String,
 }
 
+fn starts_new_task(message: &Message) -> bool {
+    let lower = message.text.trim().to_lowercase();
+    message.role == "user"
+        && ["new task:", "nuovo obiettivo:", "nuova attività:", "/task "]
+            .iter()
+            .any(|prefix| lower.starts_with(prefix))
+}
+
 /// Facts added outside the CLI's own transcript: project notes and real backend checks.
 /// Read only this chat/current workspace; never replay the whole conversation on native resume.
 pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedContext, String> {
@@ -17,6 +25,10 @@ pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedConte
     let mut reports = std::collections::BTreeMap::new();
     let mut sequence = 0usize;
     for message in core.store.messages(&session.id)? {
+        if starts_new_task(&message) {
+            reports.clear();
+            sequence = 0;
+        }
         for activity in message.activity.iter().filter(|a| a.kind == "validation") {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
                 continue;
@@ -145,11 +157,7 @@ pub fn derive(
     let mut last_plan = None;
     for m in messages {
         if m.role == "user" {
-            let lower = m.text.trim().to_lowercase();
-            if ["new task:", "nuovo obiettivo:", "nuova attività:", "/task "]
-                .iter()
-                .any(|p| lower.starts_with(p))
-            {
+            if starts_new_task(m) {
                 state = WorkState {
                     workspace: session.workspace.clone(),
                     access,
@@ -601,5 +609,44 @@ mod tests {
         assert!(context.evidence.contains("Z-newest: failed"));
         assert!(!context.evidence.contains("] A: failed"));
         assert!(context.evidence.contains("1 older check labels omitted"));
+    }
+
+    #[test]
+    fn continuity_new_task_retires_old_checks_and_rewind_restores_them() {
+        let f = Fixture::new();
+        let s = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let mut check = message("assistant", "");
+        check.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":s.workspace,"label":"Previous task","status":"passed"}).to_string()});
+        f.core.store.save_message(&s.id, &check).unwrap();
+        let before = owned_context(&f.core, &s).unwrap();
+        for prefix in ["New task:", "Nuovo obiettivo:", "Nuova attività:", "/task "] {
+            let request = message("user", &format!("{prefix} build another feature"));
+            f.core.store.save_message(&s.id, &request).unwrap();
+            let current = owned_context(&f.core, &s).unwrap();
+            assert!(
+                current.evidence.is_empty(),
+                "{prefix} inherited checks from an unrelated task"
+            );
+            assert_ne!(current.revision, before.revision);
+            assert!(refresh(&f.core.store, &s.id, None)
+                .unwrap()
+                .checks
+                .is_empty());
+            let mut latest = message("assistant", "New task: quoted text is not a user reset");
+            latest.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":s.workspace,"label":"Current task","status":"failed"}).to_string()});
+            f.core.store.save_message(&s.id, &latest).unwrap();
+            let evidence = owned_context(&f.core, &s).unwrap();
+            assert!(evidence.evidence.contains("Current task: failed"));
+            assert!(!evidence.evidence.contains("Previous task"));
+            f.core.store.truncate_from(&s.id, &request.id).unwrap();
+            assert_eq!(
+                owned_context(&f.core, &s).unwrap().revision,
+                before.revision
+            );
+        }
     }
 }

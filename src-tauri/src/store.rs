@@ -236,15 +236,36 @@ impl Store {
     /// Removes a message and everything after it (Rewind).
     pub fn truncate_from(&self, session: &str, message: &str) -> Result<(), String> {
         self.with(|c| {
-            let (at, row): (i64, i64) = c.query_row(
+            let tx = c.unchecked_transaction()?;
+            let (at, row): (i64, i64) = tx.query_row(
                 "SELECT created_at,rowid FROM messages WHERE id=?1 AND session_id=?2",
                 params![message, session],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )?;
-            c.execute(
+            tx.execute(
                 "DELETE FROM messages WHERE session_id=?1 AND (created_at>?2 OR (created_at=?2 AND rowid>=?3))",
                 params![session, at, row],
-            )
+            )?;
+            // A remote CLI conversation still contains the discarded future. Its
+            // IDs cannot safely resume even from an earlier retained response.
+            // Clear only native resume markers, atomically with truncation.
+            let retained = {
+                let mut q = tx.prepare("SELECT id,activity FROM messages WHERE session_id=?1")?;
+                let rows = q.query_map([session], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            for (id, raw) in retained {
+                let Ok(mut activity) = serde_json::from_str::<Vec<Activity>>(&raw) else {
+                    continue;
+                };
+                let before = activity.len();
+                activity.retain(|a| a.kind != "native");
+                if activity.len() != before {
+                    tx.execute("UPDATE messages SET activity=?2 WHERE id=?1 AND session_id=?3",
+                        params![id, serde_json::to_string(&activity).expect("serializable activities"), session])?;
+                }
+            }
+            tx.commit()
         })?;
         crate::workstate::refresh(self, session, None)?;
         Ok(())
