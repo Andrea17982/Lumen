@@ -1,0 +1,45 @@
+{
+  "baseline": "6628c27",
+  "date": "2026-11-12",
+  "scope": "Offline Windows WebView2 and owned CLI/worktree fixtures; no model-quality claim",
+  "liveCalls": 0,
+  "liveBudgetSpent": 13,
+  "baselineFailures": [
+    "Failed dependency unblocks child",
+    "Resume exceeds saved attempt/admission budget",
+    "Missing dependency waits indefinitely",
+    "Stop leaves two owned fixture processes alive"
+  ],
+  "rust": {
+    "ignored": 14,
+    "newRegressions": 5,
+    "passed": 175
+  },
+  "nativeOrchestra": {
+    "offline": true,
+    "liveCalls": 0,
+    "checks": [
+      "Observed worker write and partial output followed by quota: one attempt, blocked dependency, consumed Resume rejected",
+      "Persisted three-attempt limit prevents launching a fourth CLI on Resume",
+      "Completed task retained; only interrupted worker resumes with saved scope/account/model/workspace and incremented attempts",
+      "Stop waits for owned worker/child cleanup before removing lanes; no dependent or retry starts"
+    ]
+  },
+  "nativeQualityRegressionChecks": 12,
+  "frontendUnitTests": 72,
+  "checks": [
+    "Rust debug build",
+    "Clippy -D warnings",
+    "rustfmt",
+    "frontend build",
+    "Prettier",
+    "docs links/version"
+  ],
+  "unverified": [
+    "Live multiaccount quality",
+    "Provider-independent delegation",
+    "Concurrent Resume requests",
+    "Integration/finalization recovery",
+    "Native macOS/Linux GUI behavior"
+  ]
+}

@@ -860,12 +860,12 @@ async fn stage_observed(
 /// Missing-session replay and quota fallback require no observed model work.
 /// Unknown activity is deliberately treated as work, not assumed harmless.
 #[derive(Default)]
-struct ResumeReplayGuard {
+pub(crate) struct ResumeReplayGuard {
     work_observed: bool,
 }
 
 impl ResumeReplayGuard {
-    fn observe(&mut self, activity: &Activity) {
+    pub(crate) fn observe(&mut self, activity: &Activity) {
         if !matches!(
             activity.kind.as_str(),
             "pid" | "session" | "latency" | "quota" | "usage" | "window"
@@ -878,7 +878,7 @@ impl ResumeReplayGuard {
         self.before_work(text, cancelled) && resume_unavailable(error)
     }
 
-    fn before_work(&self, text: &str, cancelled: bool) -> bool {
+    pub(crate) fn before_work(&self, text: &str, cancelled: bool) -> bool {
         !cancelled && !self.work_observed && text.trim().is_empty()
     }
 }

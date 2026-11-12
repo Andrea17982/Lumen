@@ -18,6 +18,21 @@ if (!$PromptText) {
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a team') -and $promptText.Contains('ORCHESTRA_CONTINUITY_FIXTURE')) {
+    Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-continuity-attempts.txt') -Value 'attempt'
+    if ($promptText.Contains('WORKER_CANCEL')) {
+        $ownedChild = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -WindowStyle Hidden -PassThru
+        Set-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-cancel-pids.json') -Value (ConvertTo-Json -Compress @($PID, $ownedChild.Id))
+        Emit @{type='stream_event';event=@{delta=@{text='Worker waiting with owned child.'}}}
+        Start-Sleep -Seconds 60
+    } elseif ($promptText.Contains('WORKER_QUOTA_AFTER_EFFECT')) {
+        Set-Content -LiteralPath (Join-Path (Get-Location).Path 'owned-worker.txt') -Value 'owned worktree effect'
+        Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='worker-write';name='Write';input=@{file_path='owned-worker.txt'}})}}
+        Emit @{type='stream_event';event=@{delta=@{text='Preserve worker partial output.'}}}
+        Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    } else { Emit @{type='result';is_error=$false;result=$(if ($promptText.Contains('APPROVED_SCOPE_MARKER')) { 'WORKER_SCOPE_PRESENT' } else { 'WORKER_SCOPE_MISSING' })} }
+    exit 0
+}
 if ($promptText.Contains('QUOTA_GUARD_')) {
     $case = if ($promptText.Contains('QUOTA_GUARD_NESTED')) { 'nested' } elseif ($promptText.Contains('QUOTA_GUARD_TOOL')) { 'tool' } elseif ($promptText.Contains('QUOTA_GUARD_PARTIAL')) { 'partial' } else { 'safe' }
     Add-Content -LiteralPath (Join-Path (Get-Location).Path "quota-attempt-$case.txt") -Value $Provider

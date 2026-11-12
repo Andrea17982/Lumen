@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota e quattordicesima su Auto/Orchestra implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -143,19 +143,25 @@ Eseguita anticipatamente su richiesta del proprietario il 12 novembre. Corrette 
 
 Passano 35 scenari browser e 72 unitari; matrice WebView2 con dati isolati per impostazioni chiaro/scuro, domanda da tastiera, inspector, 1.000 messaggi ricercabili/esposti in AX e immagine locale. Provato realmente Assistente vocale, con conferma uditiva del proprietario sulle etichette; VS Code mostra la riga 13 richiesta dal backend con profilo temporaneo. Lettore e finestre editor ripristinati al termine. [Matrice e limiti](windows-accessibility-0.8.md), [risultato aggregato](data/windows-accessibility-0.8-results.json). Nessuna certificazione generale di accessibilità, NVDA o desktop non Windows; budget live invariato a 13 slot.
 
-## Piano di chiusura — quattro tranche residue, 16 completata
+### Tranche 14 — Auto/Orchestra e continuità
 
-Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, la tranche 16 è completata nel perimetro dichiarato; restano 14, 15, 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+Tre difetti dello scheduler riprodotti e corretti: dipendenze fallite considerate completate, quarto tentativo dopo ripresa e dipendenze inesistenti sospese. Solo completamenti riusciti sbloccano i dipendenti; ammissioni e tentativi già consumati restano tali. Nei worker, errori dopo lavoro osservato non avviano retry; output parziale, spiegazione e cooldown quota sono conservati. La prova nativa di cancellazione ha riprodotto processi figli superstiti: Stop attende ora la pulizia del provider prima di rimuovere le lane.
+
+Cinque regressioni Rust aggiunte, quattro scenari Orchestra Windows con IPC/worktree reali e CLI offline e 12 regressioni native account/contesto/routing/audit coprono questo perimetro. Le regole Auto e cross-audit restano quelle approvate; nessuna nuova harness universale o prova di qualità multiaccount live. [Protocollo, risultati e limiti](auto-orchestra-continuity-0.8.md). Budget fermo a 13 slot; release 0.7.1 invariata.
+
+## Piano di chiusura — tre tranche residue, 14 e 16 completate
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14 e 16 sono completate nel perimetro dichiarato; restano 15, 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
 
 | Tranche prevista | Lavoro residuo | Criterio di uscita |
 | --- | --- | --- |
-| 14 — Auto e Orchestra | Revisione conclusiva delle regole di assegnazione/aiuti/cross-audit e della continuità di esecuzione: coda, cancellazione, ripresa, modello/account/cartella e worker | Casi offline rappresentativi e perimetro di delega effettivamente supportato documentati; nessuna calibrazione live dichiarata senza prova |
+| 14 — Auto e Orchestra — completata | Dipendenze, budget di ripresa, replay dei worker e pulizia su Stop corretti | Casi offline e confini di delega nel checkpoint sopra; qualità multiaccount live non certificata |
 | 15 — Contesto e grafo | Budget e duplicazione dei prompt, troncamento/requisiti, proiezioni dei metadati e copertura mirata dei linguaggi | Payload effettivi misurati offline e corpus finale; implementare correzioni dimostrate, classificare i candidati senza prova di qualità/token end-to-end |
-| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; 14 e 15 restano aperte |
+| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; contesto/grafo della 15 ancora aperto |
 | 17 — Prestazioni e accettazione finale | Consolidare misure release, regressioni e decisioni per virtualizzazione, pool CLI e Markdown/ANSI in Rust; riconciliare roadmap/validazione | Ogni candidato classificato con evidenza o rinvio esplicito e motivato; nessuna implementazione per il solo cambio di tecnologia; limiti live/piattaforma ancora visibili |
 | 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
 
-Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di quattro comprende la tranche di integrazione e pubblicazione.
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di tre comprende la tranche di integrazione e pubblicazione.
 
 ## Decisioni concordate
 

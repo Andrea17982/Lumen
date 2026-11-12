@@ -2,13 +2,19 @@
 
 The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Update**; explicitly post-release 0.8 checkpoints belong to their implementation branches. Earlier sections retain their checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
 
+## Post-release 0.8 Auto/Orchestra checkpoint — tranche 14
+
+Scheduler dependencies now require successful completion; failed/missing chains terminate without launching dependents. Resume preserves consumed admissions and the three-attempt limit. Worker errors after observed work stop rather than replaying; partial text/reason and quota cooldown survive. Explicit Stop lets provider termination finish before worktree cleanup. Three scheduler failures and a native cancellation failure were reproduced before their fixes.
+
+Five added Rust regressions, four real Windows IPC/worktree scenarios with offline CLI fixtures, and the existing 12 native account/context/routing/audit scenarios cover this bounded checkpoint. No live inference is spent; the historical budget remains 13. [Protocol and limitations](auto-orchestra-continuity-0.8.md). Native delegation remains provider-specific, live multiaccount quality is unverified, and concurrent Resume/finalization recovery is not newly certified. Remaining tranches: 15, 17 and 18; release stays 0.7.1.
+
 ## Post-release 0.8 Windows/accessibility checkpoint — tranche 16
 
 Settings now matches its keyboard-modal behavior with modal semantics, inert/ARIA-hidden background and reliable opener restoration. Keyboard focus in settings/inspector/questions has a tonal fill and underline. Native question availability distinguishes checking, read failure and expiry; answer delivery failure preserves the choice and retry focus, success focuses the sent status. No option is preselected.
 
 The Windows debug matrix covers both settings themes, a real offline-provider question with controlled read/delivery faults, inspector focus return, 1,000 mounted messages with historical find/AX and local image-dialog focus. Installed VS Code opens the fixture file at the requested line; Windows UI Automation reports `Ln 13, Col 1` using a temporary profile. Narrator was actually started and exercised on the conversation/commands/settings; the owner confirmed audible labels were understandable. Reader and temporary editor windows were restored afterward. The five existing sidebar and eight execution scenarios pass; frontend build, 72 unit and 35 browser tests pass. [Matrix and limits](windows-accessibility-0.8.md), [sanitized result](data/windows-accessibility-0.8-results.json).
 
-This is bounded Windows acceptance, not WCAG or universal screen-reader certification. NVDA, braille, OS zoom at 200%, other line editors and non-Windows desktops remain untested. Live budget stays at 13 slots and release 0.7.1 is unchanged. Tranches 14/15/17/18 remain open.
+This is bounded Windows acceptance, not WCAG or universal screen-reader certification. NVDA, braille, OS zoom at 200%, other line editors and non-Windows desktops remain untested. Live budget stays at 13 slots and release 0.7.1 is unchanged. At this checkpoint tranches 14/15/17/18 remained open; the later tranche 14 record above updates the remaining scope.
 
 ## Post-release 0.8 graph checkpoint
 
