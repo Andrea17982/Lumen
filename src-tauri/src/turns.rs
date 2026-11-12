@@ -868,7 +868,7 @@ impl ResumeReplayGuard {
     pub(crate) fn observe(&mut self, activity: &Activity) {
         if !matches!(
             activity.kind.as_str(),
-            "pid" | "session" | "latency" | "quota" | "usage" | "window"
+            "pid" | "session" | "latency" | "quota" | "usage" | "window" | "connector-status"
         ) {
             self.work_observed = true;
         }
@@ -2383,7 +2383,15 @@ mod resume_tests {
     #[test]
     fn resume_replay_guard_rejects_work_partial_output_and_cancellation() {
         let mut clean = ResumeReplayGuard::default();
-        for kind in ["pid", "session", "latency", "quota", "usage", "window"] {
+        for kind in [
+            "pid",
+            "session",
+            "latency",
+            "quota",
+            "usage",
+            "window",
+            "connector-status",
+        ] {
             clean.observe(&Activity {
                 kind: kind.into(),
                 text: "transport metadata".into(),

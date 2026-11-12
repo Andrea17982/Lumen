@@ -120,6 +120,58 @@ mod tests {
     use lumen_gatekeeper::{Action, Decision, RequestStatus};
     use std::{path::PathBuf, time::Instant};
 
+    #[tokio::test]
+    async fn claude_mcp_tools_are_reviewable_once_without_command_whitelists() {
+        let keeper = Gatekeeper::in_memory(Duration::from_secs(30)).unwrap();
+        let scope = keeper
+            .start_session(
+                "chat",
+                Engine::Claude,
+                "thread",
+                "turn",
+                &std::env::current_dir().unwrap(),
+                Availability::Available {
+                    version: "fixture".into(),
+                    evidence: "offline".into(),
+                },
+            )
+            .unwrap();
+        let input = serde_json::json!({"repository":"fixture","title":"Review me"});
+        let message = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"approve","arguments":{"tool_name":"mcp__github__create_issue","input":input}}});
+        let pending = keeper.request_claude(&scope, &message).unwrap();
+        let snapshot = keeper.snapshot().unwrap();
+        assert!(snapshot[0].can_approve);
+        assert!(!snapshot[0].whitelist_eligible);
+        let request_id = pending.request_id.clone();
+        keeper
+            .decide(Decision {
+                request_id: pending.request_id.clone(),
+                scope: scope.clone(),
+                action: Action::Approve,
+                note: None,
+            })
+            .unwrap();
+        let delivery = pending.wait().await.unwrap();
+        let response: serde_json::Value = serde_json::from_str(
+            delivery.response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            response,
+            serde_json::json!({"behavior":"allow","updatedInput":input})
+        );
+        assert!(keeper
+            .decide(Decision {
+                request_id,
+                scope,
+                action: Action::Approve,
+                note: None
+            })
+            .is_err());
+    }
+
     /// Runs the real Claude CLI against the real MCP bridge. Sends no prompt, so no model turn.
     /// Build the helper first, then point `LUMEN_GATEKEEPER_MCP_EXE` at it (an absolute path):
     /// `cargo build --manifest-path ../src/features/gatekeeper/Cargo.toml --bin lumen-gatekeeper-mcp`

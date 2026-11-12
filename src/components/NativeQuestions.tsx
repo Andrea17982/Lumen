@@ -11,10 +11,14 @@ interface Question {
   options: { label: string; description: string }[];
   multiSelect: boolean;
   secret: boolean;
+  optional?: boolean;
 }
 interface Request {
   id: string;
   questions: Question[];
+  kind?: 'connector';
+  actionId?: string;
+  urlOrigin?: string;
 }
 function parse<T>(text: string): T | null {
   try {
@@ -117,17 +121,28 @@ function QuestionForm({
     };
   }, [request.id, live, sent, result]);
   const enabled = pending === true && !sent && !result;
+  useEffect(() => {
+    if (pending === true && request.kind === 'connector') {
+      form.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  }, [pending, request.kind]);
   const finalAnswers = Object.fromEntries(
     request.questions.map((q) => [
       q.id,
       custom[q.id]?.trim() ? [...(answers[q.id] || []), custom[q.id].trim()] : answers[q.id] || [],
     ]),
   );
+  const declining =
+    request.kind === 'connector' &&
+    ['Decline', 'Cancel'].includes(finalAnswers[request.actionId || '']?.[0]);
   return (
     <form
       ref={form}
-      className="native-questions"
-      aria-label={t('Questions from the agent')}
+      className={`native-questions${request.kind === 'connector' ? ' connector-request' : ''}`}
+      data-pending={enabled || undefined}
+      aria-label={t(
+        request.kind === 'connector' ? 'Request from a connector' : 'Questions from the agent',
+      )}
       onSubmit={(e) => {
         e.preventDefault();
         if (!enabled || busy) return;
@@ -143,11 +158,51 @@ function QuestionForm({
           .finally(() => setBusy(false));
       }}
     >
+      {request.kind === 'connector' && (
+        <p>
+          {t(
+            'Connector consent is separate from agent permissions. Your answers stay in this request and are not added to shared context.',
+          )}
+        </p>
+      )}
+      {request.urlOrigin && (
+        <p>
+          {request.urlOrigin}{' '}
+          <button
+            type="button"
+            className="response-link"
+            disabled={!enabled || busy}
+            onClick={() => {
+              setError('');
+              void call('open_connector_url', { id: request.id }).catch((e) =>
+                setError(errorText(e)),
+              );
+            }}
+          >
+            {t('Open sign-in page')}
+          </button>
+          <small>
+            {t(
+              'Complete sign-in in your browser, then choose Accept. The connector will verify the result.',
+            )}
+          </small>
+        </p>
+      )}
       {request.questions.map((q) => (
         <fieldset key={q.id} disabled={!enabled || busy}>
           <legend>
             {q.header && <small>{q.header}</small>}
-            {q.question}
+            {q.id === request.actionId ? (
+              <>
+                {t(
+                  'Review this connector request. Choose Accept, Decline or Cancel; no choice is automatic.',
+                )}
+                <small>{q.question.split('\n').slice(1).join('\n')}</small>
+              </>
+            ) : (
+              q.question
+            )}
+            {q.optional && <small>{t('Optional')}</small>}
           </legend>
           <div className="native-options">
             {q.options.map((o) => (
@@ -170,24 +225,26 @@ function QuestionForm({
                   }}
                 />
                 <span>
-                  <strong>{o.label}</strong>
+                  <strong>{q.id === request.actionId ? t(o.label) : o.label}</strong>
                   {o.description && <small>{o.description}</small>}
                 </span>
               </label>
             ))}
           </div>
-          <label className="native-custom">
-            {q.options.length ? t('Write a different answer') : t('Your answer')}
-            <input
-              type={q.secret ? 'password' : 'text'}
-              autoComplete="off"
-              value={custom[q.id] || ''}
-              onChange={(e) => {
-                setCustom((prev) => ({ ...prev, [q.id]: e.target.value }));
-                if (!q.multiSelect) setAnswers((prev) => ({ ...prev, [q.id]: [] }));
-              }}
-            />
-          </label>
+          {q.id !== request.actionId && (
+            <label className="native-custom">
+              {q.options.length ? t('Write a different answer') : t('Your answer')}
+              <input
+                type={q.secret ? 'password' : 'text'}
+                autoComplete="off"
+                value={custom[q.id] || ''}
+                onChange={(e) => {
+                  setCustom((prev) => ({ ...prev, [q.id]: e.target.value }));
+                  if (!q.multiSelect) setAnswers((prev) => ({ ...prev, [q.id]: [] }));
+                }}
+              />
+            </label>
+          )}
           {result?.[q.id] && <p className="native-answer">{result[q.id].join(', ')}</p>}
         </fieldset>
       ))}
@@ -195,7 +252,15 @@ function QuestionForm({
         <button
           className="primary-button"
           type="submit"
-          disabled={busy || Object.values(finalAnswers).some((a) => !a.length)}
+          disabled={
+            busy ||
+            request.questions.some(
+              (q) =>
+                !q.optional &&
+                (!declining || q.id === request.actionId) &&
+                !finalAnswers[q.id].length,
+            )
+          }
         >
           {t(busy ? 'Sending…' : 'Send answers')}
         </button>

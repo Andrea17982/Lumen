@@ -14,6 +14,12 @@ Add and name slots in Settings → Accounts, choose Sign in, finish the provider
 
 ## Model and provider access
 
+### Connectors and account scope — post-release 0.8
+
+Auto can select a different provider; it does not transfer Claude connector authorizations to GPT. Local Git/`gh` authentication is separate from a GitHub connector. Claude.ai connectors require the same subscription account in Claude Code; API-key authentication does not provide them. Complete any required connector authorization in the provider’s interface, using the isolated account selected in Lumen. Lumen does not copy credentials from another CLI profile.
+
+In the 0.8 implementation branch, supported Codex MCP form/URL requests require an explicit answer even in Autopilot. The browser sign-in page opens only on your click; choosing Accept asks the connector to verify the result. Responses are not saved as shared chat requirements. Claude MCP tools can be reviewed once in Ask; restricted modes retain their MCP restrictions. Check Activity for the connector states reported by Claude. See [connector scope, supported forms and validation limits](connector-interactions-0.8.md). These changes are not in the published 0.7.1.
+
 All five providers can be selected directly. Catalog discovery is per account and does not itself establish entitlement to every returned model. Provider plans, organization policies, CLI versions and actual quotas still apply. Auto's optional balancing/fallback is described in [Auto policy](auto.md); duplicate account slots do not create additional allowance.
 
 Ollama conversations, discovery and helpers use its official local API. `OLLAMA_HOST` can select another loopback HTTP port; remote endpoints, proxy/redirect routing and cloud-model metadata are rejected. Lumen never pulls a missing model automatically. Install models through Ollama yourself. The browser loop does not add Claude/Codex filesystem or child-agent tools to Ollama.

@@ -3,6 +3,17 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
+  'Request from a connector': 'Richiesta di un connettore',
+  'Connector consent is separate from agent permissions. Your answers stay in this request and are not added to shared context.':
+    'Il consenso al connettore è separato dai permessi dell’agente. Le risposte restano in questa richiesta e non entrano nel contesto condiviso.',
+  'Open sign-in page': 'Apri la pagina di accesso',
+  'Complete sign-in in your browser, then choose Accept. The connector will verify the result.':
+    'Completa l’accesso nel browser, poi scegli Accetta. Il connettore verificherà il risultato.',
+  'Review this connector request. Choose Accept, Decline or Cancel; no choice is automatic.':
+    'Verifica la richiesta del connettore. Scegli Accetta, Rifiuta o Annulla: nessuna scelta è automatica.',
+  Accept: 'Accetta',
+  Optional: 'Facoltativo',
+  Decline: 'Rifiuta',
   'Read only': 'Sola lettura',
   'File edits': 'Modifica file',
   'Choose agent permissions': 'Scegli i permessi dell’agente',

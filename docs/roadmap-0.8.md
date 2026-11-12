@@ -289,6 +289,10 @@ La 0.8 non include automaticamente avvio affiancato di applicazioni arbitrarie d
 
 Le verifiche live Claude/Gemini e le matrici account/versione/OS già aperte restano visibili in [Validazione](validation.md). Non dichiarare parità universale o qualità superiore se dimostrata soltanto su fixture o su un singolo provider.
 
+## Correzione aggiuntiva prima della release — connettori
+
+La segnalazione 0.7.1 su macOS non è ancora riprodotta. Corrette separatamente due falle dimostrate sulla sorgente: protocollo di consenso MCP GPT e approvazione dei tool MCP Claude in Ask. Scope, dati privati, URL, cancellazione e limiti sono nel [checkpoint connettori](connector-interactions-0.8.md). Nessuna migrazione di credenziali, inferenza aggiuntiva o modifica della release pubblicata; il lavoro confluisce nell'integrazione della tranche 18.
+
 ## Chiusura della 0.8
 
 - Per ogni candidato: decisione, numeri, carichi, limiti e stato dell'integrazione. Le prove inconcludenti restano aperte o vengono rinviate esplicitamente.

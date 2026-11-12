@@ -1094,6 +1094,29 @@ html[data-text-size='large'] {
 .native-questions > button {
   justify-self: start;
 }
+.connector-request > p {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.connector-request > p small {
+  display: block;
+  color: var(--muted);
+}
+.connector-request fieldset:first-of-type .native-options {
+  display: flex;
+  flex-wrap: wrap;
+}
+.connector-request fieldset:first-of-type .native-options label {
+  flex: 1 1 100px;
+}
+.connector-request .native-custom input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--input);
+  color: var(--text);
+}
 .response-link {
   padding: 0;
   border: 0;

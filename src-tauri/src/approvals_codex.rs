@@ -551,6 +551,47 @@ async fn handle(
     let scope = scope.as_ref().ok_or("No approval scope")?;
     let method = message["method"].as_str().unwrap_or("");
     if message.get("id").is_some() && !method.is_empty() {
+        if method == "mcpServer/elicitation/request" {
+            let request = crate::connectors::validate_scope(
+                &message["params"],
+                &scope.provider_session_id,
+                &scope.turn_id,
+            )
+            .and_then(|()| crate::connectors::Request::parse(&message["params"]))
+            .and_then(|request| {
+                questions
+                    .ask_connector(request.clone(), message["id"].to_string())
+                    .map(|(activity, receive)| (request, activity, receive))
+            });
+            match request {
+                Ok((request, activity, receive)) => {
+                    emit(activity);
+                    let out = wire.out.clone();
+                    let id = message["id"].clone();
+                    tokio::spawn(async move {
+                        if let Ok(answers) = receive.await {
+                            let result = request
+                                .response(&answers)
+                                .unwrap_or(json!({"action":"cancel","content":null}));
+                            let _ = out.send(json!({"id":id,"result":result})).await;
+                        }
+                    });
+                }
+                Err(reason) => {
+                    emit(Activity {
+                        kind: "connector-status".into(),
+                        text: format!("Connector request cancelled: {reason}"),
+                    });
+                    wire.out
+                        .send(
+                            json!({"id":message["id"],"result":{"action":"cancel","content":null}}),
+                        )
+                        .await
+                        .map_err(|_| "Codex closed its input")?;
+                }
+            }
+            return Ok(None);
+        }
         let dynamic =
             method == "item/tool/call" && message["params"]["tool"] == "lumen_request_user_input";
         if method == "item/tool/requestUserInput" || dynamic {
@@ -616,7 +657,7 @@ async fn handle(
                     text: format!("Declined: {method}\n{reason}"),
                 });
                 wire.out
-                    .send(decline(&message["id"]))
+                    .send(if matches!(method, "item/commandExecution/requestApproval" | "item/fileChange/requestApproval") {decline(&message["id"])} else {json!({"id":message["id"],"error":{"code":-32601,"message":"Unsupported server request; no permissions granted"}})})
                     .await
                     .map_err(|_| "Codex closed its input")?;
             }

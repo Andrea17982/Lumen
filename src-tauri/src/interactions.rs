@@ -20,6 +20,8 @@ pub struct Question {
     pub multi_select: bool,
     #[serde(default)]
     pub secret: bool,
+    #[serde(default)]
+    pub optional: bool,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OptionItem {
@@ -43,6 +45,11 @@ pub fn answer_context(activity: &[Activity]) -> Vec<String> {
             .filter(|a| a.kind == "interaction")
             .filter_map(|a| serde_json::from_str::<serde_json::Value>(&a.text).ok())
             .find(|v| v["id"] == result["id"]);
+        if result["kind"] == "connector"
+            || request.as_ref().is_some_and(|r| r["kind"] == "connector")
+        {
+            continue;
+        }
         if let Some(answers) = result["answers"].as_object() {
             for (id, values) in answers {
                 let question = request
@@ -67,6 +74,7 @@ pub fn answer_context(activity: &[Activity]) -> Vec<String> {
     facts
 }
 struct Pending {
+    connector: Option<crate::connectors::Request>,
     owner: String,
     wire: String,
     questions: Vec<Question>,
@@ -95,6 +103,21 @@ impl Connection {
         questions: Vec<Question>,
         wire: String,
     ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
+        self.ask_inner(questions, wire, None)
+    }
+    pub fn ask_connector(
+        &self,
+        request: crate::connectors::Request,
+        wire: String,
+    ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
+        self.ask_inner(request.questions.clone(), wire, Some(request))
+    }
+    fn ask_inner(
+        &self,
+        questions: Vec<Question>,
+        wire: String,
+        connector: Option<crate::connectors::Request>,
+    ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
         if questions.is_empty()
             || questions.len() > 32
             || questions
@@ -111,9 +134,15 @@ impl Connection {
         }
         let id = uuid::Uuid::new_v4().to_string();
         let (reply, receive) = oneshot::channel();
+        let mut description = serde_json::json!({"id":id,"questions":questions});
+        if let Some(request) = &connector {
+            description["kind"] = "connector".into();
+            description["actionId"] = "__lumen_connector_action__".into();
+            description["urlOrigin"] = serde_json::json!(request.origin);
+        }
         let activity = Activity {
             kind: "interaction".into(),
-            text: serde_json::json!({"id":id,"questions":questions}).to_string(),
+            text: description.to_string(),
         };
         if activity.text.len() > 64_000 {
             return Err("The CLI question exceeds the 64 KB input limit".into());
@@ -124,6 +153,7 @@ impl Connection {
             .insert(
                 id,
                 Pending {
+                    connector,
                     owner: self.owner.clone(),
                     wire,
                     questions,
@@ -181,11 +211,19 @@ pub fn answer_question(id: String, answers: Answers) -> Result<(), String> {
     let request = requests
         .get(&id)
         .ok_or("This question is no longer waiting for an answer")?;
+    let connector_reply = request
+        .connector
+        .as_ref()
+        .map(|request| request.response(&answers))
+        .transpose()?;
+    let declined = connector_reply
+        .as_ref()
+        .is_some_and(|reply| reply["action"] != "accept");
     if answers.len() != request.questions.len()
         || request.questions.iter().any(|q| {
             answers.get(&q.id).is_none_or(|a| {
-                a.is_empty()
-                    || (!q.multi_select && a.len() != 1)
+                (!declined && !q.optional && a.is_empty())
+                    || (!q.multi_select && a.len() > 1)
                     || a.iter().any(|s| s.trim().is_empty() || s.len() > 32_000)
             })
         })
@@ -195,7 +233,10 @@ pub fn answer_question(id: String, answers: Answers) -> Result<(), String> {
     let request = requests.remove(&id).unwrap();
     let public: Answers = answers
         .iter()
-        .filter(|(id, _)| !request.questions.iter().any(|q| q.secret && &q.id == *id))
+        .filter(|(id, _)| {
+            request.connector.is_none()
+                && !request.questions.iter().any(|q| q.secret && &q.id == *id)
+        })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     request
@@ -205,10 +246,28 @@ pub fn answer_question(id: String, answers: Answers) -> Result<(), String> {
     if let Ok(mut completed) = request.completed.lock() {
         completed.push(Activity {
             kind: "interaction-result".into(),
-            text: serde_json::json!({"id":id,"answers":public}).to_string(),
+            text: serde_json::json!({"id":id,"answers":public,"kind":if request.connector.is_some(){"connector"}else{"question"}}).to_string(),
         });
     }
     Ok(())
+}
+
+pub fn connector_url(id: &str) -> Result<String, String> {
+    pending()
+        .lock()
+        .map_err(|_| "Question lock failed")?
+        .get(id)
+        .and_then(|request| request.connector.as_ref())
+        .and_then(|request| request.url.clone())
+        .ok_or_else(|| "This connector sign-in is no longer waiting".into())
+}
+
+#[tauri::command]
+pub fn open_connector_url(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(connector_url(&id)?, None::<&str>)
+        .map_err(|_| "Could not open the connector sign-in page".into())
 }
 
 pub fn codex_questions(params: &serde_json::Value) -> Result<Vec<Question>, String> {
@@ -248,6 +307,7 @@ pub fn claude_questions(input: &serde_json::Value) -> Result<Vec<Question>, Stri
                 options: serde_json::from_value(q["options"].clone()).map_err(|e| e.to_string())?,
                 multi_select: q["multiSelect"] == true,
                 secret: false,
+                optional: false,
             })
         })
         .collect()
@@ -266,6 +326,7 @@ mod tests {
             options: vec![],
             multi_select: false,
             secret: false,
+            optional: false,
         }];
         let (a, rx) = c.ask(qs.clone(), "first".into()).unwrap();
         let id = serde_json::from_str::<serde_json::Value>(&a.text).unwrap()["id"]

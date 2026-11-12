@@ -1,0 +1,27 @@
+# Correzione connettori prima della 0.8
+
+Baseline `3dac425`, segnalazione 0.7.1 da macOS. Lo screenshot mostra GPT scelto da Auto e una risposta che cita `user_confirmed=false`; non contiene il frame nativo dello strumento. Non è una riproduzione del caso del segnalante e non dimostra un difetto specifico di macOS.
+
+Falle confermate sulla sorgente 0.7.1 e sul ramo attuale: richieste MCP Codex estranee ad approvazioni shell/file ricevono risposte non adatte al loro protocollo; le chiamate MCP Claude in Ask passano a un adattatore che le marca non supportate. I profili account isolati e i limiti MCP in Read only/File edits sono intenzionali: non copiare credenziali o disabilitare le restrizioni per aggirarli.
+
+Correggere il flusso delle richieste connector Codex con conferma esplicita anche in Autopilot, risposte native tipizzate per form/URL, rifiuto/annullamento e scadenza con la connessione. Non scegliere valori predefiniti o consensi al posto dell'utente. Le risposte dei connettori non diventano requisiti/permessi durevoli e non sono riversate nella cronologia o nel passaggio tra account. Un URL OAuth resta nella memoria della richiesta pendente: nessuna apertura automatica, protocollo eseguibile o copia del link completo nel transcript. Schemi non supportati terminano con risposta corretta e diagnosi visibile, senza attesa infinita.
+
+Claude Ask consente la revisione esplicita di una chiamata MCP identificata, senza whitelist di comandi né ampliamenti del profilo. Activity mostra nome e stato MCP dichiarati dall'inizializzazione della CLI, senza copiare endpoint, header o errori grezzi. L'assenza di uno stato non certifica una connessione. Le modalità ristrette conservano il controllo sui server esplicitamente configurati; Autopilot e Ask conservano i rispettivi percorsi nativi.
+
+## Implementazione e limiti
+
+Il dispatch di `mcpServer/elicitation/request` precede il Gatekeeper e il ramo Autopilot. Scope thread/turno validato; supportati form con oggetto piatto, massimo 30 campi stringa/booleano/intero/numero, enum stringa, limiti numerici/lunghezza e campi facoltativi. Nessun default applicato. Campi password nascosti; tutte le risposte MCP, non soltanto password, sono escluse dalla cronologia delle risposte e dai fatti di handoff. Schemi condizionali, riferimenti, array, form estesi OpenAI e formati non implementati sono annullati esplicitamente: non viene pubblicizzata la capacità per form opachi.
+
+URL completi conservati soltanto con la richiesta pendente in memoria; Activity/UI ricevono l'origine e una spiegazione con link rimossi. Ammessi HTTPS e HTTP loopback, senza credenziali URL; `open_connector_url` verifica che la richiesta sia ancora pendente. Accetta conferma la scelta dell'utente, non certifica l'esito OAuth. Risoluzione, Stop e chiusura della connessione invalidano input e link. I metodi server sconosciuti ricevono errore JSON-RPC `-32601`, invece di una falsa risposta di approvazione shell.
+
+La UI usa le domande native esistenti, con testo dedicato, campi facoltativi e consenso senza preselezione. Mostra inizialmente la spiegazione, conserva lo scorrimento durante l'attesa e permette Rifiuta/Annulla senza compilare i campi richiesti. L'apertura del browser richiede il pulsante esplicito; non è un flusso OAuth proprietario. Non viene migrata o condivisa alcuna autorizzazione Claude → GPT né tra i profili isolati di due account.
+
+## Verifiche locali — 12 novembre 2026
+
+- Rust: **184 passati, 14 opt-in ignorati**, inclusi tipi/limiti, schema non supportato, scope, retry dopo errore, consumo singolo, cancellazione, URL scaduti e assenza di replay nel contesto. Il test pubblico del Gatekeeper verifica consenso MCP Claude con input invariato e senza whitelist.
+- Windows debug/WebView2/IPC: **7 scenari offline passati** con `node tests/native-connectors.mjs`: form tipizzato, rifiuto incompleto, URL esplicito/redatto, risoluzione, schema non supportato, Stop, approvazione MCP Claude e stato sanificato. Catture locali in `.impeccable/review/connector-{form,url}.png`; controllata anche la visibilità iniziale della spiegazione.
+- Frontend: **72 test e 40 test browser passati**; build TypeScript/Vite, Rust, Clippy, formattazione e riferimenti documentali verificati. Suite browser finale: `npx playwright test --workers=2`, 40/40 in 45,8 s, separata dal harness nativo. Un tentativo concorrente ha perso il server condiviso sulla porta 1420; due corse browser iniziali hanno avuto un timeout ciascuna. Questi tentativi restano esiti falliti, non prove positive.
+
+Nessuna inferenza o login: budget live storico fermo a **13**, incremento **0**. Le prove usano frame della CLI simulati, non account remoti. Non certificano installazione/autorizzazione di ogni app GPT, OAuth Claude interattivo, parità Claude.ai/ChatGPT, accesso a GitHub/mail/Drive del segnalante o uso desktop macOS/Linux. Per attribuire il suo blocco servono ancora nome dello strumento, errore e provider effettivo; non si dichiara una riproduzione o risoluzione del caso Mac. Versione pubblicata 0.7.1 invariata; pacchetti e pubblicazione restano nella tranche 18.
+
+Riferimenti: [Codex app-server](https://learn.chatgpt.com/docs/app-server#mcp-server-elicitation-requests), [connettori Claude Code](https://code.claude.com/docs/en/mcp#use-mcp-servers-from-claudeai), [input/approvazioni Claude](https://code.claude.com/docs/en/agent-sdk/user-input). Lo schema locale Codex è stato generato senza inferenza per verificare i campi del protocollo.

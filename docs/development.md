@@ -21,6 +21,8 @@ The Windows portable distributable is the ZIP, not an executable copied without 
 
 ## Checks
 
+After a debug Cargo build, `node tests/native-connectors.mjs` checks MCP form/URL consent, typed validation/retry, decline, resolution/Stop expiry and Claude Ask approvals in real Windows WebView2/IPC with offline CLI fixtures. It never signs in or opens the fixture OAuth URL. Run it separately from Playwright and other native harnesses: they share port 1420, and an owning harness closing its server interrupts the others. See [scope and results](connector-interactions-0.8.md).
+
 ```sh
 npm run check
 npm run format:check

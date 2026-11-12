@@ -515,6 +515,8 @@ export default function App() {
   useEffect(() => {
     // While a reply streams, follow it without animation: a smooth scroll restarted every frame
     // stutters and keeps the compositor busy.
+    // Keep a connector's explanation visible while its form awaits explicit consent.
+    if (running && document.querySelector('.connector-request[data-pending="true"]')) return;
     bottom.current?.scrollIntoView({
       behavior: reduced || running ? 'instant' : 'smooth',
       block: 'end',

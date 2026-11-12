@@ -224,6 +224,14 @@ pub(crate) fn claude(message: &Value, session_cwd: &str) -> Result<Draft, String
             });
         }
         "Read" | "Glob" | "Grep" | "WebFetch" | "WebSearch" => {}
+        name if name
+            .strip_prefix("mcp__")
+            .and_then(|s| s.split_once("__"))
+            .is_some_and(|(server, tool)| !server.is_empty() && !tool.is_empty())
+            && name.len() <= 512
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_-./".contains(&b)) => {}
         _ => {
             d.kind = RequestKind::Unsupported;
             d.can_approve = false;

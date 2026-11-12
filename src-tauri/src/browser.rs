@@ -401,6 +401,7 @@ async fn result(scope: Arc<Scope>, name: &str, args: &Value) -> Value {
                 ],
                 multi_select: false,
                 secret: false,
+                optional: false,
             };
             let (activity, answer) =
                 connection.ask(vec![question], uuid::Uuid::new_v4().to_string())?;

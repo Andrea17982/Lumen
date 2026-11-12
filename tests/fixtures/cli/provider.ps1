@@ -21,6 +21,35 @@ if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_MCP_FIXTURE')) {
+    Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION;mcp_servers=@(@{name='offline-github';status='connected';url='https://example.com?secret=never-store-this'})}
+    Emit @{type='control_request';request_id='mcp-review';request=@{subtype='can_use_tool';tool_name='mcp__github__create_issue';input=@{repository='offline';title='Review once'}}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.response.behavior -ne 'allow' -or $answer.response.response.updatedInput.repository -ne 'offline') {throw 'MCP approval did not preserve native input'}
+    Emit @{type='result';is_error=$false;result='CONNECTOR_WIRE_OK'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
+    $params = @{threadId='fixture-thread';turnId='fixture-turn';serverName='Offline GitHub';message='Allow access for this request?';mode='form';requestedSchema=@{type='object';properties=@{count=@{type='integer';minimum=1;maximum=4};note=@{type='string'}};required=@('count')}}
+    if ($promptText.Contains('URL')) {
+        $params = @{threadId='fixture-thread';turnId='fixture-turn';serverName='Offline GitHub';message='Authorize https://example.com/auth?secret=never-store-this';mode='url';url='https://example.com/auth?secret=never-store-this';elicitationId='offline-auth'}
+    }
+    if ($promptText.Contains('UNSUPPORTED')) {$params.requestedSchema.properties.count.type='array'}
+    Emit @{id='connector-request';method='mcpServer/elicitation/request';params=$params}
+    if ($promptText.Contains('EXPIRE')) {
+        Start-Sleep -Seconds 3
+        Emit @{method='serverRequest/resolved';params=@{threadId='fixture-thread';requestId='connector-request'}}
+    } else {
+        $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+        $expected = if ($promptText.Contains('UNSUPPORTED')) {'cancel'} elseif ($promptText.Contains('DECLINE')) {'decline'} else {'accept'}
+        if ($answer.id -ne 'connector-request' -or $answer.result.action -ne $expected) {throw 'Connector response has the wrong wire shape or action'}
+        if ($expected -eq 'accept' -and !$promptText.Contains('URL') -and $answer.result.content.count -ne 3) {throw 'Expected a typed integer connector answer'}
+        if ($expected -ne 'accept' -and $null -ne $answer.result.content) {throw 'Declined connector must have null content'}
+    }
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='connector-answer';type='agentMessage';text='CONNECTOR_WIRE_OK'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
 if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a team') -and $promptText.Contains('ORCHESTRA_CONTINUITY_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-continuity-attempts.txt') -Value 'attempt'
     if ($promptText.Contains('WORKER_CANCEL')) {

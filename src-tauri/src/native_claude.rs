@@ -14,6 +14,16 @@ use tokio::{
 fn response(id: &Value, result: Value) -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":result}})
 }
+fn connector_status(value: &Value) -> Vec<Activity> {
+    if value["type"] != "system" || value["subtype"] != "init" {
+        return vec![];
+    }
+    value["mcp_servers"].as_array().into_iter().flatten().take(100).map(|server| {
+        let name: String = server["name"].as_str().unwrap_or("connector").chars().filter(|c| c.is_ascii_alphanumeric() || " _-.".contains(*c)).take(100).collect();
+        let state=match server["status"].as_str() {Some("connected")=>"connected",Some("pending")=>"pending",Some("needs-auth")=>"needs authentication",Some("failed")=>"failed",Some("disabled")=>"disabled",_=>"status unknown"};
+        Activity {kind:"connector-status".into(),text:format!("Claude connector {name}: {state}. Connections belong to the selected account and permission profile.")}
+    }).collect()
+}
 type Frame = (Value, Option<oneshot::Sender<bool>>);
 #[derive(Clone)]
 struct Transport(mpsc::Sender<Frame>);
@@ -204,6 +214,7 @@ pub async fn execute(
             let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
             questions.drain(&mut emit);
             if value["type"] == "system" && value["subtype"] == "init" && value["session_id"] != native_id { return Err("Claude started a different session than requested".into()); }
+            for status in connector_status(&value) {emit(status);}
             if value["type"] == "control_request" {
                 let id = value["request_id"].clone();
                 let request = &value["request"];

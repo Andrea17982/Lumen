@@ -6,6 +6,7 @@ mod browser;
 mod catalog;
 mod classify;
 mod codegraph;
+mod connectors;
 mod context;
 mod diagnostics;
 mod execution;
@@ -779,6 +780,7 @@ pub fn run() {
             context::count_tokens,
             interactions::pending_questions,
             interactions::answer_question,
+            interactions::open_connector_url,
             list_sessions,
             create_session,
             update_session,
