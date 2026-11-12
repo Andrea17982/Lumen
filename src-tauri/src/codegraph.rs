@@ -68,8 +68,8 @@ impl Impact {
                     .join("\n")
             ));
         }
-        if self.truncated || affected.len() > 40 || tests.len() > 20 {
-            out.push_str("Impact listing is bounded; additional dependents may exist.\n");
+        if self.truncated || affected.len() > 40 || tests.len() > 20 || self.contracts.len() > 16 {
+            out.push_str("Impact listing is bounded; additional dependents or declarations may exist. Query narrower targets for omitted detail.\n");
         }
         for unknown in &self.unknown {
             out.push_str(&format!("`{unknown}` is neither an indexed file nor a known symbol; its impact is unknown.\n"));
@@ -78,6 +78,21 @@ impl Impact {
             "Graph edges are approximate; absence of an edge is not proof that a change is safe.\n",
         );
         out
+    }
+}
+
+#[cfg(test)]
+mod projection_tests {
+    #[test]
+    fn context_budget_contract_omissions_are_explicit() {
+        let report = super::Impact {
+            contracts: (0..20).map(|i| format!("contract-{i}")).collect(),
+            ..Default::default()
+        };
+        let text = report.text();
+        assert!(text.contains("contract-15"));
+        assert!(!text.contains("contract-16"));
+        assert!(text.contains("bounded"));
     }
 }
 

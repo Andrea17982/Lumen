@@ -1,0 +1,232 @@
+{
+  "date": "2026-11-12",
+  "sourceBase": "250e6ec",
+  "protocol": "docs/context-graph-budget-0.8.md",
+  "inferenceCalls": 0,
+  "historicalLiveSlotsSpent": 13,
+  "rust": {
+    "passed": 180,
+    "failed": 0,
+    "ignored": 14,
+    "newRegressions": 5,
+    "baselineRegressionsFailed": 5
+  },
+  "corpus": [
+    {
+      "case": "react",
+      "baseline": {
+        "attachmentCopies": 2,
+        "bytes": 7305,
+        "case": "react",
+        "fullStateRequirements": 1,
+        "localTokens": 1198,
+        "requirementCopies": 4,
+        "workerBytes": 5696,
+        "workerLocalTokens": 797
+      },
+      "candidate": {
+        "attachmentCopies": 1,
+        "bytes": 4719,
+        "case": "react",
+        "fullStateRequirements": 1,
+        "localTokens": 862,
+        "requirementCopies": 2,
+        "workerBytes": 3264,
+        "workerLocalTokens": 512
+      },
+      "bytesChangePercent": -35.4,
+      "localTokensChangePercent": -28
+    },
+    {
+      "case": "godot",
+      "baseline": {
+        "attachmentCopies": 2,
+        "bytes": 106119,
+        "case": "godot",
+        "fullStateRequirements": 1,
+        "localTokens": 17033,
+        "requirementCopies": 4,
+        "workerBytes": 104512,
+        "workerLocalTokens": 16628
+      },
+      "candidate": {
+        "attachmentCopies": 1,
+        "bytes": 103533,
+        "case": "godot",
+        "fullStateRequirements": 1,
+        "localTokens": 16698,
+        "requirementCopies": 2,
+        "workerBytes": 102079,
+        "workerLocalTokens": 16345
+      },
+      "bytesChangePercent": -2.4,
+      "localTokensChangePercent": -2
+    }
+  ],
+  "attachments": {
+    "baseline": {
+      "duplicateCopies": 3,
+      "localTokens": 44881,
+      "payloadBytes": 94030,
+      "previewContentBytes": 81920
+    },
+    "candidate": {
+      "duplicateCopies": 1,
+      "localTokens": 28321,
+      "payloadBytes": 61262,
+      "previewContentBytes": 49152
+    }
+  },
+  "native": {
+    "samples": [
+      {
+        "case": "initial",
+        "baseline": {
+          "case": "initial",
+          "bytes": 29489,
+          "localTokens": 5999,
+          "nativeResume": false,
+          "requirementCopies": 4,
+          "attachmentCopies": 2
+        },
+        "candidate": {
+          "case": "initial",
+          "bytes": 27247,
+          "localTokens": 5677,
+          "nativeResume": false,
+          "requirementCopies": 2,
+          "attachmentCopies": 1
+        },
+        "bytesChangePercent": -7.6,
+        "localTokensChangePercent": -5.4
+      },
+      {
+        "case": "unchanged native continuation",
+        "baseline": {
+          "case": "unchanged native continuation",
+          "bytes": 758,
+          "localTokens": 148,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "candidate": {
+          "case": "unchanged native continuation",
+          "bytes": 758,
+          "localTokens": 148,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "bytesChangePercent": 0,
+        "localTokensChangePercent": 0
+      },
+      {
+        "case": "updated notes native continuation",
+        "baseline": {
+          "case": "updated notes native continuation",
+          "bytes": 6989,
+          "localTokens": 1481,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "candidate": {
+          "case": "updated notes native continuation",
+          "bytes": 23402,
+          "localTokens": 4996,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "bytesChangePercent": 234.8,
+        "localTokensChangePercent": 237.3
+      },
+      {
+        "case": "unchanged after update",
+        "baseline": {
+          "case": "unchanged after update",
+          "bytes": 758,
+          "localTokens": 148,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "candidate": {
+          "case": "unchanged after update",
+          "bytes": 758,
+          "localTokens": 148,
+          "nativeResume": true,
+          "requirementCopies": 0,
+          "attachmentCopies": 0
+        },
+        "bytesChangePercent": 0,
+        "localTokensChangePercent": 0
+      },
+      {
+        "case": "account handoff",
+        "baseline": {
+          "case": "account handoff",
+          "bytes": 30861,
+          "localTokens": 6378,
+          "nativeResume": false,
+          "requirementCopies": 4,
+          "attachmentCopies": 0
+        },
+        "candidate": {
+          "case": "account handoff",
+          "bytes": 28793,
+          "localTokens": 6100,
+          "nativeResume": false,
+          "requirementCopies": 2,
+          "attachmentCopies": 0
+        },
+        "bytesChangePercent": -6.7,
+        "localTokensChangePercent": -4.4
+      },
+      {
+        "case": "workspace switch",
+        "baseline": {
+          "case": "workspace switch",
+          "bytes": 8879,
+          "localTokens": 1697,
+          "nativeResume": false,
+          "requirementCopies": 4,
+          "attachmentCopies": 0
+        },
+        "candidate": {
+          "case": "workspace switch",
+          "bytes": 6811,
+          "localTokens": 1417,
+          "nativeResume": false,
+          "requirementCopies": 2,
+          "attachmentCopies": 0
+        },
+        "bytesChangePercent": -23.3,
+        "localTokensChangePercent": -16.5
+      }
+    ],
+    "checks": [
+      "Initial CLI payload preserves owner requirements, Unicode and project notes; exact duplicates measured",
+      "Unchanged notes/history are not resent on native continuation",
+      "Changed notes reach the resumed CLI including the middle requirement",
+      "Account handoff rebuilds current owner context without old project notes",
+      "Explicit directory change starts a full invocation in the new directory with only its project notes"
+    ]
+  },
+  "regressionChecks": {
+    "quality": 12,
+    "orchestra": 4,
+    "graphMcp": 5,
+    "graphCorpusExpectations": 23
+  },
+  "limits": [
+    "Raw inputs use different temporary UUIDs and paths; local o200k counts can vary slightly between runs.",
+    "Fixed fixtures and payload delivery, not provider-billed tokens, latency or code-quality comparisons.",
+    "Updated project notes deliberately grow versus the old clipped payload to retain middle requirements; unchanged native turns remain incremental.",
+    "48 KiB caps inline/preview attachment content bytes, not path/envelope bytes or the complete prompt.",
+    "No global model-context allocation, output reservation or native context-window guarantee is added.",
+    "Full durable task facts stay available; ordinary transcript excerpts and approximate graph limitations remain.",
+    "Compact metadata tuples, parser replacement and end-to-end model comprehension remain unproven; native desktop proof is Windows-only."
+  ]
+}

@@ -2292,6 +2292,66 @@ pub async fn compact_session(
 mod resume_tests {
     use super::*;
 
+    #[tokio::test]
+    async fn context_budget_actual_prompt_corpus() {
+        let f = crate::test_support::Fixture::new();
+        let mut results = vec![];
+        for (name, marker, extension, history_turns) in [
+            ("react", "REACT_REQUIREMENT", "tsx", 0),
+            ("godot", "GODOT_REQUIREMENT", "gd", 12),
+        ] {
+            let root = f.directory(name);
+            std::fs::write(
+                root.join(format!("main.{extension}")),
+                "ATTACHED_CONTRACT Ω",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("LUMEN.md"),
+                "Project contract: preserve reset, labels and palette.",
+            )
+            .unwrap();
+            let s = f
+                .core
+                .store
+                .create(root.to_string_lossy().into_owned())
+                .unwrap();
+            let mut request = msg(&format!("{name}-request"), "user", vec![]);
+            request.text = format!("Mantieni {marker}: reset, label and palette are approved. {} Preserve keyboard access Ω.", "Concrete implementation requirement. ".repeat(30));
+            f.core.store.save_message(&s.id, &request).unwrap();
+            for n in 0..history_turns {
+                let mut answer = msg(&format!("{name}-answer-{n}"), "assistant", vec![]);
+                answer.text = "Routine previous output. ".repeat(500);
+                f.core.store.save_message(&s.id, &answer).unwrap();
+            }
+            if history_turns > 0 {
+                let mut next = msg(&format!("{name}-continue"), "user", vec![]);
+                next.text = "procedi".into();
+                f.core.store.save_message(&s.id, &next).unwrap();
+            }
+            let mut options = crate::test_support::Fixture::options(AccessMode::Autopilot);
+            options.attachments = vec![format!("main.{extension}"), format!("./main.{extension}")];
+            let (prompt, worker) = build_prompt(&f.core, &s, &[], &options).await.unwrap();
+            let state = crate::workstate::refresh(&f.core.store, &s.id, None).unwrap();
+            assert!(state
+                .requirements
+                .iter()
+                .any(|fact| fact.text.contains(marker)));
+            assert!(prompt.contains("Autopilot"));
+            assert!(prompt.contains("Preserve keyboard access Ω"));
+            assert!(worker.contains(marker));
+            results.push(serde_json::json!({"case":name,"bytes":prompt.len(),"localTokens":context::estimate(&prompt),"workerBytes":worker.len(),"workerLocalTokens":context::estimate(&worker),"requirementCopies":prompt.matches(marker).count(),"attachmentCopies":prompt.matches("ATTACHED_CONTRACT").count(),"fullStateRequirements":state.requirements.len()}));
+        }
+        eprintln!(
+            "CONTEXT_PROMPT_METRICS {}",
+            serde_json::to_string(&results).unwrap()
+        );
+        for row in results {
+            assert!(row["requirementCopies"].as_u64().unwrap() <= 2, "{row}");
+            assert_eq!(row["attachmentCopies"], 1, "{row}");
+        }
+    }
+
     fn msg(id: &str, role: &str, activity: Vec<Activity>) -> Message {
         Message {
             id: id.into(),

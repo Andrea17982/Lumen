@@ -55,7 +55,10 @@ fn merge(mut current: Impact, before: Option<Impact>) -> Impact {
         current.truncated = true;
         current.files.truncate(120);
     }
-    current.contracts.truncate(24);
+    if current.contracts.len() > 24 {
+        current.truncated = true;
+        current.contracts.truncate(24);
+    }
     current
 }
 

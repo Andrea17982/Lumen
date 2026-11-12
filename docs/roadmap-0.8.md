@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota e quattordicesima su Auto/Orchestra implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota, quattordicesima su Auto/Orchestra e quindicesima sul contesto implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -149,19 +149,25 @@ Tre difetti dello scheduler riprodotti e corretti: dipendenze fallite considerat
 
 Cinque regressioni Rust aggiunte, quattro scenari Orchestra Windows con IPC/worktree reali e CLI offline e 12 regressioni native account/contesto/routing/audit coprono questo perimetro. Le regole Auto e cross-audit restano quelle approvate; nessuna nuova harness universale o prova di qualità multiaccount live. [Protocollo, risultati e limiti](auto-orchestra-continuity-0.8.md). Budget fermo a 13 slot; release 0.7.1 invariata.
 
-## Piano di chiusura — tre tranche residue, 14 e 16 completate
+### Tranche 15 — contesto, grafo e budget dei prompt
 
-Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14 e 16 sono completate nel perimetro dichiarato; restano 15, 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+Cinque regressioni riprodotte sulla baseline `250e6ec` e corrette: copie identiche dei fatti proiettati, allegati duplicati, anteprime fuori budget, requisiti centrali delle note persi alla ripresa e contratti omessi senza avviso di limite. I fatti completi con fonte rimangono persistiti; vengono rimossi solo duplicati già mostrati integralmente. Inline e preview rispettano 48 KiB di contenuto UTF-8, mantenendo i riferimenti ai file. Le note modificate vengono consegnate integralmente una volta, con revisione aggiornata anche per vecchie sessioni.
+
+Payload React 7.305→4.719 byte, Godot con cronologia lunga 106.119→103.533; input CLI iniziale reale offline 29.489→27.247. I turni nativi invariati restano 758 byte/148 token locali; l'aggiornamento di note lunghe cresce intenzionalmente per conservare requisiti prima omessi. Passano 180 Rust, 72 unitari frontend, sei catture native per versione, 12 regressioni qualità/continuità, quattro Orchestra e cinque grafo MCP; corpus import 23/23 preservato. [Protocollo e record](context-graph-budget-0.8.md). Nessuna nuova inferenza o prova di risparmio fatturato/qualità generale. JSON posizionale, parser nuovo, budget globale per modello e riserva d'output restano non dimostrati, senza cambiamento dei formati nativi.
+
+## Piano di chiusura — due tranche residue, 14–16 completate
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14–16 sono completate nel perimetro dichiarato; restano 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
 
 | Tranche prevista | Lavoro residuo | Criterio di uscita |
 | --- | --- | --- |
 | 14 — Auto e Orchestra — completata | Dipendenze, budget di ripresa, replay dei worker e pulizia su Stop corretti | Casi offline e confini di delega nel checkpoint sopra; qualità multiaccount live non certificata |
-| 15 — Contesto e grafo | Budget e duplicazione dei prompt, troncamento/requisiti, proiezioni dei metadati e copertura mirata dei linguaggi | Payload effettivi misurati offline e corpus finale; implementare correzioni dimostrate, classificare i candidati senza prova di qualità/token end-to-end |
-| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; contesto/grafo della 15 ancora aperto |
+| 15 — Contesto e grafo — completata | Duplicati e budget delle preview corretti, note di ripresa complete, limiti dei contratti espliciti | Payload costruiti e consegnati misurati offline; corpus preservato; candidati senza prova end-to-end classificati nel protocollo |
+| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; accettazione finale e release ancora aperte |
 | 17 — Prestazioni e accettazione finale | Consolidare misure release, regressioni e decisioni per virtualizzazione, pool CLI e Markdown/ANSI in Rust; riconciliare roadmap/validazione | Ogni candidato classificato con evidenza o rinvio esplicito e motivato; nessuna implementazione per il solo cambio di tecnologia; limiti live/piattaforma ancora visibili |
 | 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
 
-Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di tre comprende la tranche di integrazione e pubblicazione.
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di due comprende la tranche di integrazione e pubblicazione.
 
 ## Decisioni concordate
 
@@ -227,7 +233,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 3. Contesto, metadati e qualità del codice
 
-**Stato: misure parziali; confronto end-to-end da costruire.**
+**Stato: payload costruiti e consegnati misurati offline nella [tranche 15](context-graph-budget-0.8.md); duplicati, budget preview e requisiti delle note corretti. Qualità/token fatturati end-to-end, budget globale e riserva d'output non dimostrati.**
 
 - Misurare duplicazione, rilevanza, troncamento, budget, riserve di output e continuità dei requisiti nei percorsi effettivi.
 - Provare prima riduzione dei duplicati e proiezioni mirate dello stato; confrontare JSON con chiavi e formato compatto solo per metadati posseduti da Lumen.

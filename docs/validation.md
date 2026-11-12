@@ -2,6 +2,14 @@
 
 The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Update**; explicitly post-release 0.8 checkpoints belong to their implementation branches. Earlier sections retain their checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
 
+## Post-release 0.8 context/graph checkpoint — tranche 15
+
+Five regressions failed on `250e6ec` before the fixes. Prompt projections now remove identical same-source facts only after a complete earlier rendering; durable facts/snapshots stay intact. Canonical attachment duplicates are sent once and previews consume the 48 KiB UTF-8 content budget, retaining references after exhaustion. Native continuation sends changed project notes in full, including middle requirements previously clipped; a versioned revision refreshes older acknowledgements. Omitted graph contracts now mark the listing bounded.
+
+The fixed React/Godot build-prompt corpus drops from 7,305 to 4,719 and 106,119 to 103,533 bytes. Actual offline CLI capture falls from 29,489 to 27,247 bytes on initial invocation; unchanged native turns stay 758 bytes/148 local tokens. Changed-note input intentionally grows to preserve missing requirements. These are controlled payload counts, not billed tokens or live quality improvements. Six native captures per version, 12 quality/continuity scenarios, four Orchestra and five graph MCP cases pass; all 180 Rust tests (14 opt-in ignored), 72 frontend tests, builds and formatting/Clippy/docs checks pass locally. [Protocol, results and limits](context-graph-budget-0.8.md).
+
+No global model-context/output-reserve guarantee, native protocol rewrite or parser migration is introduced. Graph approximation and context-meter limitations remain explicit. Live budget remains 13, release remains 0.7.1; remaining tranches are 17 and 18.
+
 ## Post-release 0.8 Auto/Orchestra checkpoint — tranche 14
 
 Scheduler dependencies now require successful completion; failed/missing chains terminate without launching dependents. Resume preserves consumed admissions and the three-attempt limit. Worker errors after observed work stop rather than replaying; partial text/reason and quota cooldown survive. Explicit Stop lets provider termination finish before worktree cleanup. Three scheduler failures and a native cancellation failure were reproduced before their fixes.

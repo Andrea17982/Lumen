@@ -17,6 +17,9 @@ if (!$PromptText) {
         } else { $promptText = $firstLine + "`n" + [Console]::In.ReadToEnd() }
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
+if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
+    Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
+}
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
 if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a team') -and $promptText.Contains('ORCHESTRA_CONTINUITY_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-continuity-attempts.txt') -Value 'attempt'
