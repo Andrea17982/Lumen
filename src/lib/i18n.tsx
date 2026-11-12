@@ -3,6 +3,41 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
+  'Read only': 'Sola lettura',
+  'File edits': 'Modifica file',
+  'Choose agent permissions': 'Scegli i permessi dell’agente',
+  'Choose what the agent is allowed to do': 'Scegli cosa può fare l’agente',
+  'Inspect and answer without changing files.': 'Esamina e risponde senza modificare i file.',
+  'Allow project file changes within the provider’s controls.':
+    'Consenti modifiche ai file del progetto entro i controlli del provider.',
+  'Review tool actions before they run. Requires a provider that supports approvals.':
+    'Approva le azioni degli strumenti prima che vengano eseguite. Richiede un provider che supporti le approvazioni.',
+  'Allow available tools without approval prompts, with your OS account’s access.':
+    'Consenti gli strumenti disponibili senza richieste di conferma, con gli accessi del tuo account di sistema.',
+  'Your subscriptions. One place to work.': 'I tuoi abbonamenti. Un solo spazio di lavoro.',
+  'Take a quick tour': 'Scopri Lumen in pochi passi',
+  'Learn your way around Lumen': 'Come usare Lumen',
+  'Skip tour': 'Salta il tutorial',
+  'Close tutorial': 'Chiudi il tutorial',
+  'Tutorial progress': 'Avanzamento del tutorial',
+  'Previous step': 'Passo precedente',
+  Next: 'Avanti',
+  'Start exploring': 'Comincia a lavorare',
+  'Your projects, close at hand': 'I tuoi progetti, a portata di mano',
+  'Click the Lumen logo to show or hide projects and conversations. Choose a project folder to give the agent the right workspace.':
+    'Il logo di Lumen mostra o nasconde progetti e conversazioni. Scegli la cartella del progetto per dare all’agente lo spazio di lavoro corretto.',
+  'Bring your subscriptions together': 'Riunisci i tuoi abbonamenti',
+  'Connect your accounts in Settings → Accounts using each provider’s official sign-in. You can connect more than one account.':
+    'Collega i tuoi account in Impostazioni → Account, con l’accesso ufficiale di ciascun provider. Puoi collegare più di un account.',
+  'Choose who works with you': 'Scegli chi lavora con te',
+  'Pick a provider directly, or use Auto to choose for the task. Auto offers Budget, Default and Quality. Enable Orchestra in Settings for coordinated work across agents.':
+    'Scegli direttamente un provider oppure usa Auto per assegnare il compito. Auto offre Budget, Default e Quality. Attiva Orchestra nelle Impostazioni per coordinare più agenti.',
+  'Decide what the agent can do': 'Decidi cosa può fare l’agente',
+  'Permissions controls actions, not the model. Start in Read only, allow file edits, approve individual actions, or choose Autopilot. Opening this menu does not grant access.':
+    'I permessi regolano le azioni, non il modello. Parti da Sola lettura, consenti la modifica dei file, approva ogni azione o scegli Autopilot. Aprire questo menu non concede accessi.',
+  'Ask, then follow the work': 'Chiedi e segui il lavoro',
+  'Describe the result you want and attach useful files. Enter sends; Shift+Enter starts a new line. During a task, expand the progress summary to see tools, agents and checks. You can stop a response at any time.':
+    'Descrivi il risultato che vuoi e allega i file utili. Invio invia il messaggio; Maiusc+Invio va a capo. Durante un compito, espandi il riepilogo per vedere strumenti, agenti e verifiche. Puoi fermare una risposta in qualsiasi momento.',
   'Connect and check actions': 'Collega e verifica le azioni',
   'Controls are off until enabled for this project. Every action verifies that the connected editor belongs to this folder. No input is automated.':
     'I controlli restano disattivati finché non li abiliti per questo progetto. Ogni azione verifica che l’editor collegato appartenga a questa cartella. Nessun comando di input viene automatizzato.',

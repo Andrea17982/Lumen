@@ -9,7 +9,11 @@ import { seedPerformance } from './performance-fixtures.mjs';
 const arm = process.argv[2] || 'baseline';
 assert(['baseline', 'candidate', 'confirmation'].includes(arm));
 const executable = path.resolve(
-  `.impeccable/performance/${arm === 'candidate' ? 'candidate' : 'baseline'}/lumen.exe`,
+  path.join(
+    process.env.LUMEN_PERF_ROOT || '.impeccable/performance',
+    arm === 'candidate' ? 'candidate' : 'baseline',
+    'lumen.exe',
+  ),
 );
 const repetitions = Number(process.env.LUMEN_PERF_REPETITIONS || 20);
 const h = await performanceHarness(executable);
@@ -53,6 +57,13 @@ async function open(session) {
   );
   await settle();
 }
+async function emptyChat() {
+  const logo = h.page.locator('.sidebar-toggle');
+  if ((await logo.getAttribute('aria-expanded')) === 'false') await logo.click();
+  await h.page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await logo.click();
+  await settle();
+}
 try {
   const manifest = path.join(h.artifacts, 'sessions.json');
   let sessions;
@@ -66,8 +77,16 @@ try {
   }
   await h.page.reload();
   await h.page.locator('.session-row').first().waitFor();
+  report.windowState = await h.page.evaluate(() => ({
+    focused: document.hasFocus(),
+    visibility: document.visibilityState,
+    width: innerWidth,
+    height: innerHeight,
+    dpr: devicePixelRatio,
+    reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+  }));
   await open(sessions[0]);
-  await h.page.locator('.new-chat').first().click();
+  await emptyChat();
   await settle(); // module warmup, excluded
   await h.page.evaluate(() => {
     window.__perf = { frames: [], longTasks: [], keys: [], watch: false };
@@ -102,7 +121,7 @@ try {
         `${s.size}-${s.kind}` !== process.env.LUMEN_PERF_WORKLOAD
       )
         continue;
-      await h.page.locator('.new-chat').first().click();
+      await emptyChat();
       await settle();
       await h.page.evaluate(() =>
         Object.assign(window.__perf, { frames: [], longTasks: [], keys: [], watch: true }),
@@ -192,7 +211,10 @@ try {
         scroll,
         ...observed,
       };
-      if (repetition === 0 || repetition === repetitions - 1)
+      if (
+        process.env.LUMEN_PERF_SKIP_PRIVATE !== 'true' &&
+        (repetition === 0 || repetition === repetitions - 1)
+      )
         sample.processes = privateProcesses(h.pid);
       report.samples.push(sample);
       await flush();
@@ -207,10 +229,12 @@ try {
       );
     }
   }
-  await open(sessions.find((s) => s.size === 1000 && s.kind === 'mixed'));
-  await h.page.screenshot({ path: path.join(h.artifacts, `${arm}-light.png`) });
-  await h.page.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
-  await h.page.screenshot({ path: path.join(h.artifacts, `${arm}-dark.png`) });
+  if (process.env.LUMEN_PERF_NO_CAPTURES !== 'true') {
+    await open(sessions.find((s) => s.size === 1000 && s.kind === 'mixed'));
+    await h.page.screenshot({ path: path.join(h.artifacts, `${arm}-light.png`) });
+    await h.page.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
+    await h.page.screenshot({ path: path.join(h.artifacts, `${arm}-dark.png`) });
+  }
   report.completedAt = new Date().toISOString();
   await flush();
 } finally {

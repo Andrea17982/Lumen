@@ -40,6 +40,7 @@ export default function SettingsPanel({
   setBalanceUsage,
   theme,
   setTheme,
+  onTour,
 }: {
   open: boolean;
   tab?: SettingsTab;
@@ -55,6 +56,7 @@ export default function SettingsPanel({
   setBalanceUsage: (v: boolean) => void;
   theme: string;
   setTheme: (t: string) => void;
+  onTour: () => void;
 }) {
   const { t } = useI18n();
   const reduced = useReducedMotion();
@@ -159,6 +161,7 @@ export default function SettingsPanel({
             )}
             {current === 'general' && (
               <GeneralSettings
+                onTour={onTour}
                 theme={theme}
                 setTheme={setTheme}
                 onError={setError}

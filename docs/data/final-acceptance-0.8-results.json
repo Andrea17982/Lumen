@@ -1,0 +1,300 @@
+{
+  "date": "2026-11-12",
+  "sourceBase": "01bf144",
+  "protocol": "docs/final-acceptance-0.8.md",
+  "liveCalls": 0,
+  "historicalLiveSlotsSpent": 13,
+  "build": "Windows x64 optimized release, embedded frontend, isolated benchmark identity/profile; not a distributable package",
+  "blocks": [
+    {
+      "name": "baseline-a",
+      "sha256": "e8256f8489334033f2007da72c838ef650f3ca8e31fe98e1893ab1aeb2fd906e",
+      "samples": 20,
+      "medians": {
+        "openMs": 1159.66345,
+        "typingTaskMs": 136.55499999999998,
+        "typingMs": 140.54224999999997,
+        "streamMs": 688.3546000000001,
+        "streamTaskMs": 615.392,
+        "heapBytes": 67317690
+      },
+      "openingRangeMs": [
+        1075.1875000000002,
+        1332.0851999999998
+      ],
+      "openingP95Ms": 1279.3400000000001,
+      "typingTaskP95Ms": 161.98900000000015,
+      "windowState": {
+        "focused": true,
+        "visibility": "visible",
+        "width": 827,
+        "height": 547,
+        "dpr": 1.5,
+        "reducedMotion": true
+      },
+      "scrollFrameP95Ms": 29.199999999999818,
+      "startupObservationMs": 609.1773000000001
+    },
+    {
+      "name": "candidate-a",
+      "sha256": "42b026a8b3c276ac515c07a03f0582ee8f5e908e9f5c37b53077e3508f424289",
+      "samples": 20,
+      "medians": {
+        "openMs": 1151.77875,
+        "typingTaskMs": 140.7630000000001,
+        "typingMs": 146.30735000000004,
+        "streamMs": 706.77,
+        "streamTaskMs": 638.9969999999998,
+        "heapBytes": 67784050
+      },
+      "openingRangeMs": [
+        1094.9793000000002,
+        1821.8123999999998
+      ],
+      "openingP95Ms": 1520.0749,
+      "typingTaskP95Ms": 165.61399999999992,
+      "windowState": {
+        "focused": true,
+        "visibility": "visible",
+        "width": 827,
+        "height": 547,
+        "dpr": 1.5,
+        "reducedMotion": true
+      },
+      "scrollFrameP95Ms": 20.90000000000009,
+      "startupObservationMs": 678.0544
+    },
+    {
+      "name": "baseline-b",
+      "sha256": "e8256f8489334033f2007da72c838ef650f3ca8e31fe98e1893ab1aeb2fd906e",
+      "samples": 20,
+      "medians": {
+        "openMs": 1230.6721499999999,
+        "typingTaskMs": 157.10049999999995,
+        "typingMs": 159.94799999999987,
+        "streamMs": 694.4337999999998,
+        "streamTaskMs": 638.4350000000001,
+        "heapBytes": 66758964
+      },
+      "openingRangeMs": [
+        1106.7307999999998,
+        1558.9115000000002
+      ],
+      "openingP95Ms": 1511.8183999999999,
+      "typingTaskP95Ms": 195.82699999999997,
+      "windowState": {
+        "focused": true,
+        "visibility": "visible",
+        "width": 827,
+        "height": 547,
+        "dpr": 1.5,
+        "reducedMotion": true
+      },
+      "scrollFrameP95Ms": 20.90000000000009,
+      "startupObservationMs": 663.9597
+    },
+    {
+      "name": "candidate-b",
+      "sha256": "42b026a8b3c276ac515c07a03f0582ee8f5e908e9f5c37b53077e3508f424289",
+      "samples": 20,
+      "medians": {
+        "openMs": 1105.71215,
+        "typingTaskMs": 130.13699999999994,
+        "typingMs": 132.33600000000024,
+        "streamMs": 687.3076000000001,
+        "streamTaskMs": 602.0509999999999,
+        "heapBytes": 67156498
+      },
+      "openingRangeMs": [
+        1050.4878,
+        1171.5368999999998
+      ],
+      "openingP95Ms": 1159.3016,
+      "typingTaskP95Ms": 172.0759999999999,
+      "windowState": {
+        "focused": true,
+        "visibility": "visible",
+        "width": 827,
+        "height": 547,
+        "dpr": 1.5,
+        "reducedMotion": true
+      },
+      "scrollFrameP95Ms": 20.800000000000182,
+      "startupObservationMs": 548.0503
+    }
+  ],
+  "comparisons": [
+    {
+      "baseline": "baseline-a",
+      "candidate": "candidate-a",
+      "changePercent": {
+        "openMs": -0.7,
+        "typingTaskMs": 3.1
+      },
+      "passes": true
+    },
+    {
+      "baseline": "baseline-b",
+      "candidate": "candidate-b",
+      "changePercent": {
+        "openMs": -10.2,
+        "typingTaskMs": -17.2
+      },
+      "passes": true
+    }
+  ],
+  "regressionGate": "passed",
+  "nativeRelease": {
+    "at": "2026-11-12T14:41:03.934Z",
+    "sha256": "42b026a8b3c276ac515c07a03f0582ee8f5e908e9f5c37b53077e3508f424289",
+    "passed": true,
+    "checks": [
+      "Browser text find reaches the first historical message through content-visibility",
+      "Cross-history selection retains all 1000 messages and formatted code",
+      "Copy returns the real response; typing preserves historical DOM and open disclosure",
+      "Historical link stays keyboard reachable; local image loads, enlarges and restores focus",
+      "Streaming updates the latest body without replacing or collapsing historical messages",
+      "Compact handoff remains reachable without starting generation",
+      "Memoized message actions use the latest chat after navigation, not captured old state",
+      "Both comparison messages retain adjacent lane grouping and distinct visible bodies"
+    ],
+    "scope": "Native Windows release, synthetic fixtures. No screen-reader certification, external-editor launch, provider inference or universal accessibility claim."
+  },
+  "nativeDebug": {
+    "onboarding": [
+      "Real first-use five-step tour keeps draft/access and creates no account/session or model request",
+      "Opening explanations leaves backend access unchanged; explicit file-edit selection persists through actual IPC and reload",
+      "Tour replay from native settings exits by Escape with usable focus and no messages"
+    ],
+    "composer": [
+      "Text and attachments stay with their chat, including New conversation",
+      "Immediate pending bubble, single send, stable client ID and no late draft/chat overwrite",
+      "Rejection restores the source draft and preserves newer text; no replay",
+      "Uncertain readback is checked without resend, duplicate or draft overwrite",
+      "Rejected send with failed first readback remains recoverable after checking delivery",
+      "New-chat creation keeps its optimistic message and follow-up draft isolated",
+      "Delayed Compact preserves newer source text and does not navigate away from another chat"
+    ],
+    "execution": [
+      "Pending native question is distinct from silence and clears after the real answer",
+      "Promise-only response ends with zero tool evidence; diagnostics survive reload",
+      "Explicit tool start/end is observed without treating a completed result as still running",
+      "Provider failure is separate from normal return and no request is replayed",
+      "Actual 30-second silence is visible, status refresh is read-only, explicit Stop cancels without restart",
+      "Delayed read-only status refresh cannot overwrite another chat or its draft",
+      "Internal Orchestra interview keeps provider observations after save/reload",
+      "Persisted interruption is readable after reload in Italian/dark theme"
+    ]
+  },
+  "historical": [
+    {
+      "source": "docs/data/performance-0.8-results.json",
+      "sha256": "2cc6d4c4e492f1d1a33096bf5f14ba7ab47c3a6d26fb65396b14853a21eea8fe",
+      "scope": "Historical checkpoint; not a measurement of this final candidate"
+    },
+    {
+      "source": "docs/data/initial-open-0.8-results.json",
+      "sha256": "3aa013de7df8a4ec64ec5c3178c9c8907a8dc8ac9871a9d1dbf0e0eb5d0925b0",
+      "scope": "Historical checkpoint; not a measurement of this final candidate"
+    },
+    {
+      "source": "docs/data/turn-latency-0.8-results.json",
+      "sha256": "8e5486ccb90045899a8fd856d1a87ad3dc0cbf2b3de4631d55edef1f392766ff",
+      "scope": "Historical checkpoint; not a measurement of this final candidate"
+    },
+    {
+      "source": "docs/data/metadata-shutdown-0.8-results.json",
+      "sha256": "4a19dec4a7e00795681ae915f1b15cf1d1a6702346f2d75c14c12cb3c7db148b",
+      "scope": "Historical checkpoint; not a measurement of this final candidate"
+    },
+    {
+      "source": "docs/data/context-graph-budget-0.8-results.json",
+      "sha256": "7b261a2288599b21accd649e298445115e936bf92f05090a7b0a1830d07f2421",
+      "scope": "Historical checkpoint; not a measurement of this final candidate"
+    }
+  ],
+  "validation": {
+    "rustPassed": 180,
+    "rustOptInIgnored": 14,
+    "frontendUnitPassed": 72,
+    "browserPassed": 40
+  },
+  "excludedWarmSeries": {
+    "record": "excluded-warm-baseline.json",
+    "samples": 12,
+    "sha256": "e8256f8489334033f2007da72c838ef650f3ca8e31fe98e1893ab1aeb2fd906e",
+    "openingMs": [
+      1227.7007,
+      5933.1139,
+      13575.947,
+      17665.342099999994,
+      11948.526799999992,
+      12282.152900000016,
+      24752.901400000002,
+      27845.61170000001,
+      25298.19160000002,
+      21621.283400000015,
+      15430.106700000004,
+      19376.954299999983
+    ],
+    "reason": "Repeated openings in one baseline process were nonstationary before candidate measurement; retained and excluded from the fresh-process regression series"
+  },
+  "candidates": [
+    {
+      "name": "Repeated openings in one process",
+      "status": "unresolved: baseline nonstationarity; not certified by the fresh-process comparison"
+    },
+    {
+      "name": "Transcript/composer isolation",
+      "status": "integrated",
+      "evidence": "performance-0.8.md"
+    },
+    {
+      "name": "Literal paragraph fast path",
+      "status": "integrated",
+      "evidence": "initial-open-0.8.md"
+    },
+    {
+      "name": "Windows metadata Job Object shutdown",
+      "status": "integrated",
+      "evidence": "metadata-shutdown-0.8.md"
+    },
+    {
+      "name": "Windowed transcript prototype",
+      "status": "excluded: historical find/selection/access gates failed",
+      "evidence": "initial-open-0.8.md"
+    },
+    {
+      "name": "Broader MessageView memoization",
+      "status": "excluded: secondary scroll results unresolved; narrowed change integrated",
+      "evidence": "performance-0.8.md"
+    },
+    {
+      "name": "Rust Markdown/ANSI rendering",
+      "status": "deferred: no sufficient post-fix hotspot/prototype benefit evidence"
+    },
+    {
+      "name": "Warm CLI process pool",
+      "status": "deferred: no validated benefit and lifecycle/account/workspace isolation prototype"
+    },
+    {
+      "name": "Positional metadata encoding",
+      "status": "deferred: synthetic owned-data saving lacks model comprehension/quality evidence"
+    },
+    {
+      "name": "Graph parser replacement",
+      "status": "deferred: current scoped corpus passes; full semantics remain unsupported"
+    },
+    {
+      "name": "Global input/output reservation",
+      "status": "deferred: no validated allocation across native tool/history/provider paths"
+    }
+  ],
+  "limits": [
+    "No cold-start, universal absolute timing, provider TTFT or billed-token claim.",
+    "Synthetic 5000-message regression gate, not universal performance or memory acceptance.",
+    "Private memory/heap and frame timings are secondary, not INP or memory-saving certification.",
+    "Native macOS/Linux GUI, new audible screen-reader tutorial review and broader model-quality/live multiaccount tests remain unverified. CI is separate.",
+    "Signing and other owner exclusions remain unchanged; integration/version/packages/release are tranche 18."
+  ]
+}

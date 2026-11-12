@@ -2,6 +2,14 @@
 
 The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Update**; explicitly post-release 0.8 checkpoints belong to their implementation branches. Earlier sections retain their checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
 
+## Post-release 0.8 final acceptance checkpoint — tranche 17
+
+The current isolated Windows release passes 80 fresh-process A/B/A/B samples against `01bf144`: opening medians −0.7%/−10.2%, typing-task medians +3.1%/−17.2%, within the fixed 10% regression gate. Eight historical-content gates pass on that exact candidate hash. This does not establish a speedup caused by the UI. Opening p95 rises in the first comparison and falls in the second; tails and secondary figures remain visible. An earlier 12-sample same-process baseline became nonstationary (about 1.2–27.8 seconds), is retained/excluded before candidate comparison, and remains unresolved. Repeated-open steady-state, cold-start and universal latency are not certified.
+
+Permissions now exposes the current mode plus four explained explicit choices; opening/dismissing never changes access. A first-use optional five-step tour highlights actual controls, persists skip/completion and can be replayed from General settings/commands. It preserves draft/access and never invokes login/inference. English/Italian, both themes, narrow/intermediate/wide layouts, keyboard focus and reduced motion are checked visually and automatically. Three native onboarding/menu scenarios, seven composer and eight execution cases pass; 180 Rust tests (14 opt-in ignored), 72 frontend unit tests, 40 browser tests, builds/Clippy/format/docs pass locally.
+
+[Final protocol, source/binary hashes and candidate decisions](final-acceptance-0.8.md) separates current checks from historical gains. Rust Markdown/ANSI, CLI pooling, positional metadata, graph parser replacement and global context/output allocation remain deferred for insufficient evidence; incompatible windowing and broader memoization prototypes remain excluded. No new audible reader review or native macOS/Linux GUI acceptance is inferred. Live budget stays at 13. Only tranche 18 (integration/version/packages/release) remains; published 0.7.1 is unchanged.
+
 ## Post-release 0.8 context/graph checkpoint — tranche 15
 
 Five regressions failed on `250e6ec` before the fixes. Prompt projections now remove identical same-source facts only after a complete earlier rendering; durable facts/snapshots stay intact. Canonical attachment duplicates are sent once and previews consume the 48 KiB UTF-8 content budget, retaining references after exhaustion. Native continuation sends changed project notes in full, including middle requirements previously clipped; a versioned revision refreshes older acknowledgements. Omitted graph contracts now mark the listing bounded.

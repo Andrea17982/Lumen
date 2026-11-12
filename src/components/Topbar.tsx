@@ -78,7 +78,7 @@ export default function Topbar({
             {pill.label}
           </span>
         ))}
-        <IconButton label={t('Settings')} onClick={onOpenSettings}>
+        <IconButton data-tour="settings" label={t('Settings')} onClick={onOpenSettings}>
           <Settings2 size={17} />
         </IconButton>
       </div>

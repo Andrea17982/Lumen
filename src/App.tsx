@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink } from 'lucide-react';
+import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink, ArrowRight } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -31,6 +31,7 @@ import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerPart
 import { ProjectList, SessionList } from './components/Sidebar';
 import { active, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
+import GuidedTour, { TOUR_KEY } from './components/GuidedTour';
 import Topbar, { type HealthPill } from './components/Topbar';
 import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
@@ -79,6 +80,24 @@ export default function App() {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [sessionsReady, setSessionsReady] = useState(false);
+  const [accountsReady, setAccountsReady] = useState(false);
+  const [tourSeen, setTourSeen] = useState(() => !!localStorage.getItem(TOUR_KEY));
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const tourReturn = useRef<{ sidebar: boolean; opener: HTMLElement | null }>({
+    sidebar: false,
+    opener: null,
+  });
+  useEffect(() => {
+    if (sessionsReady && accountsReady && !tourSeen && (sessions.length || accounts.length)) {
+      setTourSeen(true);
+      try {
+        localStorage.setItem(TOUR_KEY, 'returning-user');
+      } catch {
+        /* Local dismissal still applies. */
+      }
+    }
+  }, [sessionsReady, accountsReady, tourSeen, sessions.length, accounts.length]);
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [refreshingExecution, setRefreshingExecution] = useState(false);
@@ -140,6 +159,7 @@ export default function App() {
   if (settings && !settingsUsed) setSettingsUsed(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const openSettings = (tab: SettingsTab = 'general') => {
+    if (tourStep !== null) closeTour(false, false);
     if (document.activeElement?.closest('#conversation-sidebar')) sidebarToggle.current?.focus();
     setSidebar(false);
     setContext(null);
@@ -315,15 +335,16 @@ export default function App() {
   const refresh = useCallback(async () => {
     const list = await call<Session[]>('list_sessions', { search, offset: 0 });
     setSessions(list);
+    setSessionsReady(true);
     setOffset(0);
     setHasMore(list.length === 100);
   }, [search]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
-  const loadAccounts = useCallback(
-    async () => setAccounts(await call<Account[]>('list_accounts')),
-    [],
-  );
+  const loadAccounts = useCallback(async () => {
+    setAccounts(await call<Account[]>('list_accounts'));
+    setAccountsReady(true);
+  }, []);
   useEffect(() => {
     localStorage.setItem('lumen-provider-mode', mode);
   }, [mode]);
@@ -503,6 +524,10 @@ export default function App() {
   const commandsRef = useRef<Command[]>([]);
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      if (tourStep !== null) {
+        if (e.key === 'Escape') closeTour(false);
+        return;
+      }
       if (settings && e.key !== 'Escape' && e.key !== 'Tab') return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -562,7 +587,7 @@ export default function App() {
     };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [settings, closeSidebar, context, projectForm]);
+  }, [settings, closeSidebar, context, projectForm, tourStep]);
 
   async function pickFolder() {
     if (!desktop) return 'Browser preview';
@@ -1139,6 +1164,35 @@ export default function App() {
       pin: (target) => void update(target, target.title, !target.pinned),
       remove: setDeleteTarget,
     });
+  function startTour() {
+    tourReturn.current = { sidebar, opener: document.activeElement as HTMLElement | null };
+    setSettings(false);
+    setPaletteOpen(false);
+    setUsageOpen(false);
+    setContext(null);
+    setTourStep(0);
+  }
+  function closeTour(completed: boolean, restore = true) {
+    setTourStep(null);
+    setTourSeen(true);
+    try {
+      localStorage.setItem(TOUR_KEY, completed ? 'completed' : 'skipped');
+    } catch {
+      /* The tour still closes if storage is unavailable. */
+    }
+    if (restore) {
+      setSidebar(tourReturn.current.sidebar);
+      requestAnimationFrame(() => {
+        const opener = tourReturn.current.opener;
+        if (opener?.isConnected && !opener.closest('[inert], .settings-panel, [role="dialog"]'))
+          opener.focus();
+        else input.current?.focus();
+      });
+    }
+  }
+  useEffect(() => {
+    if (tourStep !== null) setSidebar(tourStep === 0);
+  }, [tourStep]);
   const commands = appCommands({
     session,
     canAct: !!session && !running,
@@ -1161,6 +1215,7 @@ export default function App() {
     access: (mode) => void changeAccessMode(mode),
     theme: setTheme,
     sessionCommands,
+    tour: startTour,
   });
   useEffect(() => {
     commandsRef.current = commands;
@@ -1604,7 +1659,31 @@ export default function App() {
 
         <div className={`conversation ${visibleMessages.length ? 'has-messages' : ''}`}>
           {visibleMessages.length === 0 ? (
-            <Welcome reduced={!!reduced} />
+            <Welcome reduced={!!reduced}>
+              {sessionsReady &&
+                accountsReady &&
+                !sessions.length &&
+                !accounts.length &&
+                !tourSeen &&
+                tourStep === null && (
+                  <div className="tour-invitation">
+                    <p>{t('Your subscriptions. One place to work.')}</p>
+                    <button type="button" className="text-button" onClick={startTour}>
+                      {t('Take a quick tour')} <ArrowRight size={12} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button tour-skip"
+                      onClick={() => {
+                        closeTour(false, false);
+                        input.current?.focus();
+                      }}
+                    >
+                      {t('Skip tour')}
+                    </button>
+                  </div>
+                )}
+            </Welcome>
           ) : (
             <Transcript
               messages={visibleMessages}
@@ -1867,9 +1946,11 @@ export default function App() {
             setBalanceUsage={setBalanceUsage}
             theme={theme}
             setTheme={setTheme}
+            onTour={startTour}
           />
         </Suspense>
       )}
+      {tourStep !== null && <GuidedTour step={tourStep} onStep={setTourStep} onClose={closeTour} />}
     </div>
   );
 }

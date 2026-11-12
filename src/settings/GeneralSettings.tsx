@@ -13,12 +13,14 @@ export default function GeneralSettings({
   onError,
   setAutoPolicy,
   setBalanceUsage,
+  onTour,
 }: {
   theme: string;
   setTheme: (t: string) => void;
   onError: (s: string) => void;
   setAutoPolicy: (value: string) => void;
   setBalanceUsage: (value: boolean) => void;
+  onTour: () => void;
 }) {
   const { language, setLanguage, t } = useI18n();
   const { s, busy, run, save } = useSettingsEditor(onError);
@@ -47,6 +49,12 @@ export default function GeneralSettings({
     <>
       <section className="settings-section">
         <h3>{t('Interface')}</h3>
+        <div className="tutorial-setting">
+          <span>{t('Learn your way around Lumen')}</span>
+          <button type="button" className="text-button" onClick={onTour}>
+            {t('Take a quick tour')}
+          </button>
+        </div>
         <label className="language-control">
           <span>{t('Language')}</span>
           <select

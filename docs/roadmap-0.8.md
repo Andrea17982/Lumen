@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota, quattordicesima su Auto/Orchestra e quindicesima sul contesto implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota, quattordicesima su Auto/Orchestra e quindicesima sul contesto implementate nel ramo 0.8; tranche 16 verificata anticipatamente e tranche 17 completata nel perimetro dichiarato**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -155,19 +155,27 @@ Cinque regressioni riprodotte sulla baseline `250e6ec` e corrette: copie identic
 
 Payload React 7.305→4.719 byte, Godot con cronologia lunga 106.119→103.533; input CLI iniziale reale offline 29.489→27.247. I turni nativi invariati restano 758 byte/148 token locali; l'aggiornamento di note lunghe cresce intenzionalmente per conservare requisiti prima omessi. Passano 180 Rust, 72 unitari frontend, sei catture native per versione, 12 regressioni qualità/continuità, quattro Orchestra e cinque grafo MCP; corpus import 23/23 preservato. [Protocollo e record](context-graph-budget-0.8.md). Nessuna nuova inferenza o prova di risparmio fatturato/qualità generale. JSON posizionale, parser nuovo, budget globale per modello e riserva d'output restano non dimostrati, senza cambiamento dei formati nativi.
 
-## Piano di chiusura — due tranche residue, 14–16 completate
+### Tranche 17 — prestazioni, accettazione e primo utilizzo
 
-Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14–16 sono completate nel perimetro dichiarato; restano 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+Consolidate le decisioni: isolamento del transcript, paragrafi letterali e shutdown Windows integrati; finestra virtualizzata e memoizzazione più ampia escluse per i rispettivi gate; Rust Markdown/ANSI, pool CLI, metadati posizionali, parser nuovo e budget globale rinviati per prove insufficienti. I record storici restano distinti dalle nuove misure. [Protocollo e classificazione](final-acceptance-0.8.md).
+
+Il controllo originario nello stesso processo riproduce una deriva di apertura della baseline (12 campioni, circa 1,2–27,8 s), conservata ed esclusa prima del confronto candidato. La causa e la stabilità delle aperture ripetute restano non certificate. Ottanta campioni con processi freschi, A/B/A/B, superano il gate mirato di regressione del 10%: apertura −0,7%/−10,2%, task digitazione +3,1%/−17,2%. P95 e variazioni secondarie restano visibili, senza attribuire una nuova accelerazione alla UI. Otto gate del contenuto storico passano sul medesimo binario release isolato.
+
+Il controllo permessi mostra ora modalità e spiegazioni, con selezione esplicita. Il tutorial iniziale è saltabile, ripetibile, bilingue e guidato sugli elementi reali, con highlight, focus e movimento ridotto; non invia richieste né cambia accessi. Passano 180 Rust (14 opt-in ignorati), 72 unitari frontend, 40 browser e 18 scenari nativi debug (tre onboarding, sette composer, otto execution). Nuova verifica uditiva del tutorial, desktop non Windows e qualità/TTFT live non sono dedotti da queste prove. Budget fermo a 13; release pubblica ancora 0.7.1.
+
+## Piano di chiusura — una tranche residua, 14–17 completate nel perimetro dichiarato
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14–17 sono completate nel perimetro dichiarato; resta la 18. Risultati inconcludenti, candidati rinviati e prerequisiti rimangono espliciti nel protocollo 17, comprese le aperture ripetute nello stesso processo. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
 
 | Tranche prevista | Lavoro residuo | Criterio di uscita |
 | --- | --- | --- |
 | 14 — Auto e Orchestra — completata | Dipendenze, budget di ripresa, replay dei worker e pulizia su Stop corretti | Casi offline e confini di delega nel checkpoint sopra; qualità multiaccount live non certificata |
 | 15 — Contesto e grafo — completata | Duplicati e budget delle preview corretti, note di ripresa complete, limiti dei contratti espliciti | Payload costruiti e consegnati misurati offline; corpus preservato; candidati senza prova end-to-end classificati nel protocollo |
-| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; accettazione finale e release ancora aperte |
-| 17 — Prestazioni e accettazione finale | Consolidare misure release, regressioni e decisioni per virtualizzazione, pool CLI e Markdown/ANSI in Rust; riconciliare roadmap/validazione | Ogni candidato classificato con evidenza o rinvio esplicito e motivato; nessuna implementazione per il solo cambio di tecnologia; limiti live/piattaforma ancora visibili |
+| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; integrazione e release ancora aperte |
+| 17 — Prestazioni e accettazione finale — completata | Misure e candidati classificati, regressioni release mirate e permessi/tutorial verificati | Gate e limitazioni espliciti nel protocollo; non si certificano aperture ripetute a regime, qualità live o parità desktop |
 | 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
 
-Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di due comprende la tranche di integrazione e pubblicazione.
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La sola tranche residua comprende integrazione e pubblicazione.
 
 ## Decisioni concordate
 
@@ -269,7 +277,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 7. Markdown/ANSI in Rust
 
-**Stato: candidato subordinato al profiling, non implementazione promessa.**
+**Stato: rinviato per la 0.8, non implementazione promessa.** La [tranche 17](final-acceptance-0.8.md) non dispone di un confronto post-correzioni che giustifichi la migrazione. Un esperimento futuro richiede beneficio sul costo totale e gli stessi gate di contenuto/accessibilità; non si deduce inutilità del candidato dalla mancanza di prove.
 
 - Procedere al prototipo soltanto se parsing/rendering rappresentano un costo significativo dopo le misure del punto 0.
 - Confrontare il costo totale, compresi IPC e aggiornamento UI, mantenendo corretti immagini, link, streaming, selezione e accessibilità.

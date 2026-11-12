@@ -205,7 +205,8 @@ test('first run, provider controls and honest browser boundary', async ({ page }
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Both', exact: true })).toBeVisible();
   const permissions = page.getByRole('button', { name: /^Permissions:/ });
-  for (let i = 0; i < 3; i += 1) await permissions.click();
+  await permissions.click();
+  await page.getByRole('menuitemradio', { name: /^Autopilot/ }).click();
   await expect(permissions).toHaveAttribute('aria-label', 'Permissions: Autopilot');
   await expect(page.getByRole('button', { name: 'Both', exact: true })).toHaveCount(0);
 });
@@ -708,13 +709,17 @@ test('choosing File edits with Antigravity connected warns once, unless hidden',
   await page.goto('/');
   const access = page.getByRole('button', { name: /^Permissions:/ });
   await access.click();
+  await page.getByRole('menuitemradio', { name: /^File edits/ }).click();
   const notice = page.getByRole('dialog', { name: 'Antigravity in File edits' });
   await expect(notice).toBeVisible();
   await notice.getByRole('checkbox', { name: "Don't show again" }).check();
   await notice.getByRole('button', { name: 'OK' }).click();
   await expect(notice).toHaveCount(0);
-  for (let i = 0; i < 4; i += 1) await access.click();
-  await expect(access).toHaveAttribute('aria-label', 'Permissions: Edits');
+  await access.click();
+  await page.getByRole('menuitemradio', { name: /^Read only/ }).click();
+  await access.click();
+  await page.getByRole('menuitemradio', { name: /^File edits/ }).click();
+  await expect(access).toHaveAttribute('aria-label', 'Permissions: File edits');
   await expect(notice).toHaveCount(0);
 });
 

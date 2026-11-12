@@ -1,15 +1,9 @@
 import type { Command } from './commands';
-import { ACCESS_ORDER } from '../components/PermissionButton';
+import { ACCESS_ORDER, ACCESS_LABEL } from '../components/PermissionButton';
 import type { SettingsTab } from '../settings/SettingsPanel';
 import { active } from './messages';
 import type { AccessMode, Session } from './types';
 
-const ACCESS_LABEL: Record<AccessMode, string> = {
-  'read-only': 'Ask (read-only)',
-  'file-edits': 'Edits',
-  ask: 'Approve each action',
-  autopilot: 'Autopilot',
-};
 const SETTINGS_TABS: SettingsTab[] = ['general', 'accounts', 'auto', 'teamwork', 'tools', 'about'];
 
 /** Rename, pin and delete for one conversation; the sidebar menu and the palette share them. */
@@ -67,8 +61,16 @@ export function appCommands(c: {
   access: (mode: AccessMode) => void;
   theme: (name: string) => void;
   sessionCommands: (s: Session) => Command[];
+  tour?: () => void;
 }): Command[] {
   return [
+    {
+      id: 'quick-tour',
+      label: 'Take a quick tour',
+      group: 'Help',
+      available: !!c.tour,
+      run: () => c.tour?.(),
+    },
     {
       id: 'project-inspector',
       label: 'Project inspector',
