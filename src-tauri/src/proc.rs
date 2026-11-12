@@ -65,8 +65,21 @@ impl ServiceChild {
         }
         #[cfg(not(windows))]
         {
-            let _ = success;
+            if success {
+                // An MCP helper receives EOF before finish. Let it close its own
+                // native runtime (which can own a separate process group).
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), self.inner.wait())
+                    .await;
+            }
             crate::providers::terminate(&mut self.inner).await;
+            #[cfg(unix)]
+            if let Some(group) = self.group {
+                // child.id() is already None after an exited/reaped root. Its
+                // saved group still owns any surviving or stubborn descendants.
+                unsafe {
+                    libc::kill(-(group as i32), libc::SIGKILL);
+                }
+            }
         }
         self.finished = true;
         Ok(())
@@ -83,6 +96,60 @@ impl Drop for ServiceChild {
             }
         }
         // Windows KillOnDrop closes the owned Job Object even when cleanup is aborted.
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    #[tokio::test]
+    async fn finishing_an_exited_service_stops_its_remaining_process_group() {
+        let mut command = command("sh");
+        command
+            .args(["-c", "trap '' TERM; sleep 60 & echo $!"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let mut service = ServiceChild::spawn(command).unwrap();
+        let mut lines = BufReader::new(service.stdout.take().unwrap()).lines();
+        let descendant = lines
+            .next_line()
+            .await
+            .unwrap()
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        service.inner.wait().await.unwrap();
+        assert!(
+            service.inner.id().is_none(),
+            "Root must be reaped before exercising cleanup"
+        );
+        service.finish(true).await.unwrap();
+        let mut stopped = false;
+        for _ in 0..50 {
+            let status = super::command("ps")
+                .args(["-o", "stat=", "-p", &descendant.to_string()])
+                .output()
+                .await
+                .unwrap();
+            let state = String::from_utf8_lossy(&status.stdout);
+            // An orphan may remain as an OS-owned zombie until reaped; it can
+            // no longer execute or hold the service's files and connections.
+            if state.trim().is_empty() || state.trim().starts_with('Z') {
+                stopped = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        if !stopped {
+            unsafe {
+                libc::kill(descendant, libc::SIGKILL);
+            }
+        }
+        assert!(stopped, "Exited service left a running descendant");
     }
 }
 

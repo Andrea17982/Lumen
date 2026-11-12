@@ -50,6 +50,10 @@ struct Session {
 }
 
 impl Session {
+    async fn close(mut self) -> Result<(), String> {
+        drop(self.input);
+        self._child.finish(true).await
+    }
     async fn start(
         config: &Value,
         server: &str,
@@ -256,8 +260,8 @@ pub struct Hub {
 impl Hub {
     pub async fn close(&mut self) -> Result<(), String> {
         let mut failure = None;
-        for (_, mut session) in std::mem::take(&mut self.sessions) {
-            if session._child.finish(false).await.is_err() {
+        for (_, session) in std::mem::take(&mut self.sessions) {
+            if session.close().await.is_err() {
                 failure = Some("Shared MCP process cleanup failed".to_owned());
             }
         }
@@ -274,8 +278,23 @@ impl Hub {
             .parent()
             .and_then(Path::parent)
             .ok_or("Invalid account directory")?;
-        let mut servers =
+        let catalog = crate::capability_catalog::discover(data, Some(input.workspace));
+        let gateways =
             crate::capability_catalog::shared_servers(data, Some(input.workspace), input.access);
+        // Execute portable stdio from its original declaration in this process.
+        // Avoid an extra relay/group between the local client and its owned child.
+        let mut servers = catalog
+            .servers()
+            .into_iter()
+            .map(|(name, config)| {
+                let config = if config["lumenNativeProfile"].is_string() {
+                    gateways[&name].clone()
+                } else {
+                    config
+                };
+                (name, config)
+            })
+            .collect::<serde_json::Map<_, _>>();
         servers.extend(crate::integrations::enabled(data)?);
         if servers.len() > 64 {
             return Err("Too many shared MCP services (maximum 64)".into());
@@ -320,8 +339,8 @@ impl Hub {
             }
             .await;
             if let Err(reason) = result {
-                if let Some(mut session) = hub.sessions.remove(&name) {
-                    let _ = session._child.finish(false).await;
+                if let Some(session) = hub.sessions.remove(&name) {
+                    let _ = session.close().await;
                 }
                 emit(Activity {
                     kind: "connector-status".into(),
@@ -334,7 +353,6 @@ impl Hub {
                 });
             }
         }
-        let catalog = crate::capability_catalog::discover(data, Some(input.workspace));
         for entry in catalog
             .entries
             .into_iter()
@@ -396,8 +414,8 @@ impl Hub {
         {
             Ok(result) => result,
             Err(reason) => {
-                if let Some(mut session) = self.sessions.remove(&server) {
-                    let _ = session._child.finish(false).await;
+                if let Some(session) = self.sessions.remove(&server) {
+                    let _ = session.close().await;
                 }
                 error(&reason)
             }
