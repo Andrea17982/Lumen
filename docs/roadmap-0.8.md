@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind e decima su Compact implementate nel ramo 0.8**, 11 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact e undicesima su logo/sidebar implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -23,7 +23,7 @@ Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul
 | P0 | Osservabilità dell'esecuzione e analisi degli arresti segnalati | Stati basati su eventi reali e durata visibile; distinguere conclusione, domanda, errore e assenza di eventi; riproduzione controllata prima di modificare recupero/istruzioni | Riepilogo integrato e verificato Windows/offline; causa degli episodi live ancora da stabilire |
 | P1 | Qualità, continuità tra account e Auto; dipende da compiti e verifiche indipendenti | Compiti React/TS e Godot con requisiti/check fissati prima; misurare completamento senza solleciti, errori, correzioni, estranei, costo totale e attesa; limiti dichiarati, nessuna parità universale dedotta | Correzioni e fixture Windows integrate; GPT: candidata React 2/2 e Godot 3/3, confronto mirato; Claude live fermo per autenticazione; qualità generale/delega ordinaria ancora aperte |
 | P1 | Baseline release Windows e candidati prestazionali dei punti 0–4 | Misure ripetute e metrica/soglia fissate prima del prototipo; integrare solo benefici dimostrati | Digitazione CPU −63% sul primo carico primario; confronto successivo di 360 aperture: −26% sulla chat mista da 5.000 messaggi; finestra virtualizzata esclusa per perdita di contenuti raggiungibili; baseline assoluta stabile e altri candidati aperti |
-| P2 | Composizione visiva approvata, logo/sidebar, rifiniture e movimento | Chiaro/scuro, tastiera/focus e movimento ridotto; controlli accessibili pur mantenendo pochi elementi; confronto visivo nativo Windows | Direzione approvata; implementazione da avviare |
+| P2 | Composizione visiva approvata, logo/sidebar, rifiniture e movimento | Chiaro/scuro, tastiera/focus e movimento ridotto; controlli accessibili pur mantenendo pochi elementi; confronto visivo nativo Windows | Logo/sidebar implementati e verificati; rifiniture generali e screen reader restano aperti |
 | P1 | Attesa tra turni e avvio CLI/provider | Separare preparazione, processo, handshake, invio e testo; mantenere distinti fixture e provider reali | 80 turni release/offline e 40 inizializzazioni CLI reali senza inferenza; telemetria monotona integrata; inferenza live e Auto/Orchestra ancora da attribuire |
 | P2 | Regressioni mirate Windows e build/CI multipiattaforma | Copertura dei flussi modificati, con fixture/live/desktop distinti; account e hardware mancanti restano visibili | Da avviare |
 
@@ -118,6 +118,12 @@ Passano 166 test Rust Windows e nove scenari nativi offline Claude/Claude/GPT, i
 Riprodotta sulla baseline `1b8a941` la perdita di dettagli, diagnostica e sorgenti dei check nel contesto provider dopo Compact. Il nuovo seed conserva l'ultima evidenza strutturata per etichetta; continuazioni e cambio account leggono la stessa proiezione, ancora limitata agli otto check più recenti. Compact ripetuto conserva le sorgenti originali senza seguire puntatori alla chat precedente. I nuovi risultati sostituiscono quelli vecchi; nuovo incarico, Rewind e cambio progetto rispettano i rispettivi confini. Vecchi seed restano leggibili senza inventare informazioni perdute.
 
 [Protocollo e limiti](compact-evidence-0.8.md). Nessuna inferenza aggiuntiva: budget a 13 slot. Questa è continuità delle evidenze backend, non una misura della qualità generale del modello o chiusura della matrice completa.
+
+### Undicesima tranche — logo e sidebar
+
+Implementato il 12 novembre il logo come unico comando per aprire/chiudere la sidebar di vetro, anche sul desktop; menu mobile separato rimosso. Il logo resta ancorato, la chat occupa lo spazio disponibile, bozza e contenuti restano montati. La composizione con progetti resta quella iniziale sul desktop; la vista essenziale si richiama dal logo. Tastiera, focus, etichette inglesi/italiane, pannello chiuso `inert`, riflesso breve e movimento ridotto sono coperti dai controlli mirati. La selezione di una chat conserva il pannello desktop, mentre la finestra stretta lo chiude.
+
+[Perimetro, prove e limiti](logo-sidebar-0.8.md). Nessuna nuova inferenza o release; budget invariato a 13 slot. È il primo intervento sulla composizione approvata: rifiniture generali, persistenza della composizione e screen reader effettivo restano aperti.
 
 ## Decisioni concordate
 

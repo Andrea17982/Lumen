@@ -18,6 +18,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [0.8 graph reliability](graph-reliability-0.8.md) | Typed module/Godot import corrections, independent oracles and refresh/deleted-target handoff checks |
 | [0.8 Rewind continuity](continuity-rewind-0.8.md) | Invalidating discarded remote history and retiring check evidence at explicit task boundaries |
 | [0.8 Compact evidence](compact-evidence-0.8.md) | Source-linked backend checks and diagnostics preserved across repeated Compact and account handoffs |
+| [0.8 logo and sidebar](logo-sidebar-0.8.md) | Logo disclosure, two glass compositions, keyboard focus and reduced-motion checks |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |
 | [Validation and scope](validation.md) | Verified results, agreed exclusions and deferred acceptance |

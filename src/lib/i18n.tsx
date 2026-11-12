@@ -188,6 +188,8 @@ const it: Record<string, string> = {
   'Confirm reset': 'Conferma ripristino',
   Cancel: 'Annulla',
   'Open sidebar': 'Apri barra laterale',
+  'Close navigation overlay': 'Chiudi pannello di navigazione',
+  'Conversations and projects': 'Conversazioni e progetti',
   'Browser preview': 'Anteprima browser',
   'Project context': 'Contesto del progetto',
   'Project context: shared notes and files': 'Contesto del progetto: note e file condivisi',

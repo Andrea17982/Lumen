@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, Menu, Settings2, PanelRight } from 'lucide-react';
+import { ChevronDown, Folder, Settings2, PanelRight } from 'lucide-react';
 import { IconButton } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
@@ -19,7 +19,6 @@ export interface TopbarProps {
   /** Given for a conversation that has not started: the folder name becomes a picker. */
   onChooseFolder?: () => void;
   folderBusy?: boolean;
-  onOpenSidebar: () => void;
   onOpenSettings: () => void;
   onOpenInspector?: () => void;
 }
@@ -33,7 +32,6 @@ export default function Topbar({
   pills,
   onChooseFolder,
   folderBusy,
-  onOpenSidebar,
   onOpenSettings,
   onOpenInspector,
 }: TopbarProps) {
@@ -41,13 +39,6 @@ export default function Topbar({
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <IconButton
-          className="icon-button mobile-menu"
-          label={t('Open sidebar')}
-          onClick={onOpenSidebar}
-        >
-          <Menu size={19} />
-        </IconButton>
         {onChooseFolder ? (
           <button
             type="button"

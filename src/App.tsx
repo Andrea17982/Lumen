@@ -143,7 +143,14 @@ export default function App() {
     setSettingsTab(tab);
     setSettings(true);
   };
-  const [sidebar, setSidebar] = useState(false);
+  const [sidebar, setSidebar] = useState(() => window.matchMedia('(min-width: 801px)').matches);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
+  const [logoPulse, setLogoPulse] = useState(0);
+  const closeSidebar = useCallback(() => {
+    if (document.activeElement?.closest('#conversation-sidebar, .sidebar-scrim'))
+      sidebarToggle.current?.focus();
+    setSidebar(false);
+  }, []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -515,14 +522,20 @@ export default function App() {
         runCommand(commandsRef.current, 'search');
       }
       if (e.key === 'Escape') {
-        setContext(null);
-        setProjectForm(false);
-        setSidebar(false);
+        if (context) {
+          setContext(null);
+          return;
+        }
+        if (projectForm) {
+          setProjectForm(false);
+          return;
+        }
+        closeSidebar();
       }
     };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [settings]);
+  }, [settings, closeSidebar, context, projectForm]);
 
   async function pickFolder() {
     if (!desktop) return 'Browser preview';
@@ -1152,20 +1165,41 @@ export default function App() {
     });
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebar ? 'sidebar-open' : ''}`}>
       {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
+      <button
+        ref={sidebarToggle}
+        type="button"
+        className="brand-tile sidebar-toggle"
+        aria-label={t(sidebar ? 'Close sidebar' : 'Open sidebar')}
+        title={t(sidebar ? 'Close sidebar' : 'Open sidebar')}
+        aria-expanded={sidebar}
+        aria-controls="conversation-sidebar"
+        onClick={() => {
+          setLogoPulse((pulse) => pulse + 1);
+          if (sidebar) closeSidebar();
+          else setSidebar(true);
+        }}
+      >
+        <Mark small />
+        {logoPulse > 0 && <span key={logoPulse} className="logo-glint" aria-hidden="true" />}
+      </button>
       {sidebar && (
         <button
           className="sidebar-scrim"
-          aria-label={t('Close sidebar')}
-          onClick={() => setSidebar(false)}
+          aria-label={t('Close navigation overlay')}
+          tabIndex={-1}
+          onClick={closeSidebar}
         />
       )}
-      <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
+      <aside
+        id="conversation-sidebar"
+        className={`sidebar ${sidebar ? 'open' : ''}`}
+        aria-label={t('Conversations and projects')}
+        aria-hidden={!sidebar}
+        inert={!sidebar}
+      >
         <div className="brand">
-          <span className="brand-tile">
-            <Mark small />
-          </span>
           <span>Lumen</span>
         </div>
         <div className="new-actions">
@@ -1260,7 +1294,7 @@ export default function App() {
           hasMore={hasMore}
           onSelect={(id) => {
             setSelected(id);
-            setSidebar(false);
+            if (window.matchMedia('(max-width: 800px)').matches) closeSidebar();
           }}
           onReorder={(id, beforeId) =>
             void call('reorder_session', { id, beforeId })
@@ -1328,6 +1362,7 @@ export default function App() {
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation();
                 setContext(null);
                 contextTrigger.current?.focus();
               }
@@ -1498,7 +1533,6 @@ export default function App() {
           pills={providerPills}
           onChooseFolder={!session ? () => void chooseFolder() : undefined}
           folderBusy={folderBusy || running}
-          onOpenSidebar={() => setSidebar(true)}
           onOpenSettings={() => openSettings()}
           onOpenInspector={currentWorkspace ? () => setInspector((v) => !v) : undefined}
         />
