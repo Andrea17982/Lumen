@@ -295,7 +295,7 @@ La segnalazione 0.7.1 su macOS non è ancora riprodotta. Corrette separatamente 
 
 ## Chiusura della 0.8
 
-**Aggiornamento obbligatorio del 12 novembre:** il requisito di riuso di connettori/plugin/skill/MCP/mods tra tutti i provider amplia la precedente stima della tranche 18. Il [checkpoint delle capacità condivise](shared-capabilities-0.8.md) include catalogo, relay, gateway RPC dell'account Codex e consenso dell'host verificati offline. Restano necessari adattatori dei runtime proprietari, percorso MCP Ollama, formati/cicli di vita non coperti e accettazione degli account reali. La 0.8 non è quindi riducibile al solo packaging e queste capacità non sono dichiarate universalmente implementate.
+**Aggiornamento obbligatorio del 12 novembre:** il requisito di riuso di connettori/plugin/skill/MCP/mods tra tutti i provider amplia la precedente stima della tranche 18. Il [checkpoint delle capacità condivise](shared-capabilities-0.8.md) include catalogo, relay, gateway RPC dell'account Codex e consenso dell'host verificati offline. La [tranche Ollama](ollama-shared-tools-0.8.md) aggiunge MCP stdio, gateway dell'account e lettura delle skill nei due cicli locali. Restano necessari adattatori dei runtime proprietari, trasporti/API MCP non coperti e accettazione degli account reali. La 0.8 non è quindi riducibile al solo packaging e queste capacità non sono dichiarate universalmente implementate.
 
 - Per ogni candidato: decisione, numeri, carichi, limiti e stato dell'integrazione. Le prove inconcludenti restano aperte o vengono rinviate esplicitamente.
 - Test mirati per ogni modifica accettata, regressioni applicabili, verifica Windows nativa e CI/build multipiattaforma.

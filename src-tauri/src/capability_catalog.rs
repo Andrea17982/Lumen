@@ -540,7 +540,7 @@ pub async fn serve_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<
     child.finish(result.is_ok()).await?;
     result.map_err(|_| "Imported MCP connection closed".into())
 }
-fn expand(text: &str) -> Result<String, String> {
+pub(crate) fn expand(text: &str) -> Result<String, String> {
     let regex = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}").unwrap();
     let mut missing = false;
     let result = regex

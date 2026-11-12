@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import assert from 'node:assert/strict';
 
-export async function nativeHarness(name, { executable, offline = true } = {}) {
+export async function nativeHarness(name, { executable, offline = true, appEnv = {} } = {}) {
   const root = process.cwd();
   const data = await mkdtemp(path.join(tmpdir(), `lumen-${name}-`));
   const workspace = path.join(data, 'workspace');
@@ -57,6 +57,7 @@ export async function nativeHarness(name, { executable, offline = true } = {}) {
       stdio: 'pipe',
       env: {
         ...process.env,
+        ...appEnv,
         LUMEN_TEST_DATA_DIR: data,
         WEBVIEW2_USER_DATA_FOLDER: path.join(data, 'webview'),
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,

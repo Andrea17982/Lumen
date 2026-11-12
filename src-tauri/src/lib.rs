@@ -54,6 +54,7 @@ mod router;
 mod scheduling;
 mod screens;
 mod settings;
+mod shared_tools;
 mod store;
 #[cfg(test)]
 mod test_support;
