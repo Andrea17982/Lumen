@@ -18,6 +18,25 @@ if (!$PromptText) {
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($promptText.Contains('QUOTA_GUARD_')) {
+    $case = if ($promptText.Contains('QUOTA_GUARD_NESTED')) { 'nested' } elseif ($promptText.Contains('QUOTA_GUARD_TOOL')) { 'tool' } elseif ($promptText.Contains('QUOTA_GUARD_PARTIAL')) { 'partial' } else { 'safe' }
+    Add-Content -LiteralPath (Join-Path (Get-Location).Path "quota-attempt-$case.txt") -Value $Provider
+    if ($case -eq 'nested' -and $Provider -eq 'claude' -and $env:LUMEN_FIXTURE_RESUME -eq 'true') {
+        Emit @{type='result';is_error=$true;result='session not found'}
+        exit 0
+    }
+    if ($case -eq 'tool') { Add-Content -LiteralPath (Join-Path (Get-Location).Path 'quota-effect.txt') -Value $Provider }
+    if ($case -eq 'nested') { Add-Content -LiteralPath (Join-Path (Get-Location).Path 'quota-effect-nested.txt') -Value $Provider }
+    if ($Provider -eq 'claude') {
+        if ($case -in @('tool', 'nested')) { Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='quota-write';name='Write';input=@{file_path='quota-effect.txt';content='owned effect'}})}} }
+        if ($case -eq 'partial') { Emit @{type='stream_event';event=@{delta=@{type='text_delta';text='Preserve this partial result.'}}} }
+        Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    } else {
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='quota-answer';type='agentMessage';text='QUOTA_FALLBACK_RECOVERED'}}}
+        Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    }
+    exit 0
+}
 if ($promptText.Contains('REPLAY_TOOL_FIXTURE') -or $promptText.Contains('REPLAY_MISSING_FIXTURE')) {
     $tool = $promptText.Contains('REPLAY_TOOL_FIXTURE')
     $counter = if ($tool) { "replay-tool-$Provider.txt" } else { "replay-missing-$Provider.txt" }

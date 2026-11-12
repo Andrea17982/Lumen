@@ -553,8 +553,8 @@ pub async fn stage(
     .await
 }
 
-/// A stage that continues `resume` when given. A resume the CLI rejects (a deleted or expired
-/// session) is retried once as a full replay, so a stale record never fails a turn.
+/// A stage that continues `resume` when given. A missing session is replayed once
+/// only before observed work; completed effects must never be blindly repeated.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn stage_with(
     app: &tauri::AppHandle,
@@ -569,6 +569,41 @@ pub(crate) async fn stage_with(
     cancel: watch::Receiver<bool>,
     visible: bool,
     resume: Option<&Resume>,
+) -> Result<String, String> {
+    let mut replay_guard = ResumeReplayGuard::default();
+    stage_observed(
+        app,
+        core,
+        s,
+        out,
+        a,
+        prompt,
+        model,
+        effort,
+        access,
+        cancel,
+        visible,
+        resume,
+        &mut replay_guard,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stage_observed(
+    app: &tauri::AppHandle,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+    a: &Account,
+    prompt: &str,
+    model: Option<&str>,
+    effort: &str,
+    access: AccessMode,
+    cancel: watch::Receiver<bool>,
+    visible: bool,
+    resume: Option<&Resume>,
+    replay_guard: &mut ResumeReplayGuard,
 ) -> Result<String, String> {
     let config = config_dir(core, a);
     let mut trace = crate::execution::Trace::new(a.provider.binary());
@@ -663,7 +698,6 @@ pub(crate) async fn stage_with(
     }
     let mut measured = Measured::default();
     let mut native: Option<String> = None;
-    let mut replay_guard = ResumeReplayGuard::default();
     let retry_cancel = cancel.clone();
     let result = providers::execute(
         providers::Invocation {
@@ -775,7 +809,7 @@ pub(crate) async fn stage_with(
             } else {
                 None
             };
-            return Box::pin(stage_with(
+            return Box::pin(stage_observed(
                 app,
                 core,
                 s,
@@ -788,6 +822,7 @@ pub(crate) async fn stage_with(
                 retry_cancel,
                 visible,
                 None,
+                replay_guard,
             ))
             .await;
         }
@@ -822,7 +857,7 @@ pub(crate) async fn stage_with(
     result
 }
 
-/// A missing-session error is replayable only before any observed model work.
+/// Missing-session replay and quota fallback require no observed model work.
 /// Unknown activity is deliberately treated as work, not assumed harmless.
 #[derive(Default)]
 struct ResumeReplayGuard {
@@ -840,7 +875,11 @@ impl ResumeReplayGuard {
     }
 
     fn allows(&self, error: &str, text: &str, cancelled: bool) -> bool {
-        !cancelled && !self.work_observed && text.trim().is_empty() && resume_unavailable(error)
+        self.before_work(text, cancelled) && resume_unavailable(error)
+    }
+
+    fn before_work(&self, text: &str, cancelled: bool) -> bool {
+        !cancelled && !self.work_observed && text.trim().is_empty()
     }
 }
 
@@ -938,7 +977,7 @@ where
     Ok(())
 }
 
-/// Runs a stage; on a rate limit, cools the account and continues on another one.
+/// On a rate limit, cool the account; switch once only before observed work.
 #[allow(clippy::too_many_arguments)]
 async fn stage_fallback(
     app: &tauri::AppHandle,
@@ -954,7 +993,8 @@ async fn stage_fallback(
     visible: bool,
     resume: Option<&Resume>,
 ) -> Result<(String, Account), String> {
-    match stage_with(
+    let mut replay_guard = ResumeReplayGuard::default();
+    match stage_observed(
         app,
         core,
         s,
@@ -967,6 +1007,7 @@ async fn stage_fallback(
         cancel.clone(),
         visible,
         resume,
+        &mut replay_guard,
     )
     .await
     {
@@ -974,6 +1015,12 @@ async fn stage_fallback(
         Err(e) if e.starts_with(limits::RATE_LIMIT) => {
             let msg = e.trim_start_matches(limits::RATE_LIMIT).to_string();
             core.limits.cool(&a.id, limits::unlock_at(&msg, now()));
+            if *cancel.borrow() {
+                return Err("Cancelled".into());
+            }
+            if !replay_guard.before_work(&out.text, *cancel.borrow()) {
+                return Err(format!("{e}. Lumen did not replay this request on another account because work or output was already observed; inspect the recorded work before retrying."));
+            }
             let enabled = core
                 .settings
                 .lock()
@@ -2288,6 +2335,9 @@ mod resume_tests {
         assert!(!clean.allows("session not found", "partial response", false));
         assert!(!clean.allows("session not found", "", true));
         assert!(!clean.allows("connection closed", "", false));
+        assert!(clean.before_work("", false));
+        assert!(!clean.before_work("partial quota response", false));
+        assert!(!clean.before_work("", true));
         for kind in [
             "tool-start",
             "tool-end",
@@ -2314,6 +2364,10 @@ mod resume_tests {
             assert!(
                 !guard.allows("session not found", "", false),
                 "{kind} allowed a replay"
+            );
+            assert!(
+                !guard.before_work("", false),
+                "{kind} allowed account fallback"
             );
         }
     }

@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar e dodicesima sul recupero sessioni implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -130,6 +130,26 @@ Implementato il 12 novembre il logo come unico comando per aprire/chiudere la si
 Riprodotta sulla baseline `90f632e` una duplicazione: un errore di sessione dopo l'avvio di uno strumento, senza testo visibile, faceva ripetere il compito e la scrittura nella fixture. Il fallback ora osserva l'attività prima che i segnali vengano scartati/compattati e si ferma dopo lavoro osservato, eventi sconosciuti, testo parziale o cancellazione. Il recupero singolo con contesto completo resta disponibile per sessione mancante prima del lavoro osservato; l'errore spiega quando Lumen evita il replay.
 
 [Protocollo e limiti](resume-replay-0.8.md). Nessuna nuova inferenza, budget a 13 slot. La correzione riguarda questo fallback di ripresa nativa, non tutte le politiche di ritentativo o gli effetti non riportati dai provider.
+
+### Tredicesima tranche — quota senza replay del lavoro parziale
+
+Riprodotta sulla baseline `086469a` una seconda duplicazione: dopo lavoro osservato e quota esaurita, il cambio automatico account reinviava il compito e ripeteva la scrittura. Il guard monotono è ora condiviso con questo percorso: niente cambio automatico dopo attività, output parziale o cancellazione; testo ed evidenze restano conservati. Il cooldown viene registrato comunque. Prima del lavoro osservato resta disponibile un solo passaggio a un altro account con i permessi correnti.
+
+[Protocollo e limiti](quota-replay-0.8.md). Budget live invariato a 13 slot; nessuna inferenza o pubblicazione.
+
+## Piano di chiusura — cinque tranche residue dopo la tredicesima
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Questi cinque pacchetti raggruppano le voci ancora aperte; ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+
+| Tranche prevista | Lavoro residuo | Criterio di uscita |
+| --- | --- | --- |
+| 14 — Auto e Orchestra | Revisione conclusiva delle regole di assegnazione/aiuti/cross-audit e della continuità di esecuzione: coda, cancellazione, ripresa, modello/account/cartella e worker | Casi offline rappresentativi e perimetro di delega effettivamente supportato documentati; nessuna calibrazione live dichiarata senza prova |
+| 15 — Contesto e grafo | Budget e duplicazione dei prompt, troncamento/requisiti, proiezioni dei metadati e copertura mirata dei linguaggi | Payload effettivi misurati offline e corpus finale; implementare correzioni dimostrate, classificare i candidati senza prova di qualità/token end-to-end |
+| 16 — Interfaccia e Windows | Rifiniture necessarie della composizione approvata, tastiera/focus, domande, immagini, chat lunga, inspector, editor e accessibilità | Matrice nativa sui flussi modificati, confronto chiaro/scuro e verifica con lettore di schermo dove disponibile; prerequisiti mancanti distinti dai passaggi |
+| 17 — Prestazioni e accettazione finale | Consolidare misure release, regressioni e decisioni per virtualizzazione, pool CLI e Markdown/ANSI in Rust; riconciliare roadmap/validazione | Ogni candidato classificato con evidenza o rinvio esplicito e motivato; nessuna implementazione per il solo cambio di tecnologia; limiti live/piattaforma ancora visibili |
+| 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
+
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima di cinque comprende la tranche di integrazione e pubblicazione.
 
 ## Decisioni concordate
 
