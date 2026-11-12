@@ -17,6 +17,7 @@ Tauri owns the native window and IPC boundary. Rust owns storage, account config
 | `providers.rs`, `catalog.rs`, `proc.rs` | CLI launch, isolation, metadata, normalization and process-tree cancellation |
 | `orchestra.rs`, `scheduling.rs` | Task graph, worker worktrees, caps, integration and recovery |
 | `browser.rs`, `ollama_agent.rs`, `ollama.rs` | Shared Moli broker/MCP proxy, local API tool loop, model discovery/helpers |
+| `shared_tools.rs` | Turn-owned stdio MCP client for Ollama, scoped shared skills, host consent and process cleanup (0.8 branch) |
 | `store.rs`, `migrations.rs`, `workstate.rs` | SQLite persistence, atomic schema upgrades and durable decisions |
 | `context.rs`, `codegraph.rs`, `graph_mcp.rs`, `impact.rs` | Context, pattern-based graph tools and pre/post-edit impact |
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |

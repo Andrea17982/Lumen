@@ -26,6 +26,8 @@ All five providers can be selected directly. Catalog discovery is per account an
 
 Ollama conversations, discovery and helpers use its official local API. `OLLAMA_HOST` can select another loopback HTTP port; remote endpoints, proxy/redirect routing and cloud-model metadata are rejected. Lumen never pulls a missing model automatically. Install models through Ollama yourself. The browser loop does not add Claude/Codex filesystem or child-agent tools to Ollama.
 
+On the 0.8 development branch, [shared stdio MCP tools and skill resources](ollama-shared-tools-0.8.md) are also available to both local tool-calling paths. Tools keep their owning service/account, consent and permission profile. This does not expose the native providers' built-in filesystem/child-agent tools or establish universal plugin compatibility; HTTP MCP and proprietary runtime adapters remain open.
+
 ## Local directories and credentials
 
 Account metadata is stored in `lumen.db`; native configuration/history lives under `<app-data>/accounts/<UUID>`. Codex uses a file-backed store in its account home. Common inherited provider API-key/token environment variables are removed before subscription CLI execution to avoid silently selecting another identity/billing path.
