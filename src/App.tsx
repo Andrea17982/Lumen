@@ -140,6 +140,11 @@ export default function App() {
   if (settings && !settingsUsed) setSettingsUsed(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const openSettings = (tab: SettingsTab = 'general') => {
+    if (document.activeElement?.closest('#conversation-sidebar')) sidebarToggle.current?.focus();
+    setSidebar(false);
+    setContext(null);
+    setUsageOpen(false);
+    settingsOpener.current = document.activeElement as HTMLElement | null;
     setSettingsTab(tab);
     setSettings(true);
   };
@@ -279,11 +284,32 @@ export default function App() {
   const settingsOpener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!settings) {
-      settingsOpener.current?.focus();
+      const opener = settingsOpener.current;
+      if (opener) {
+        if (opener.isConnected && !opener.closest('[inert]') && opener !== document.body)
+          opener.focus();
+        else sidebarToggle.current?.focus();
+      }
       return;
     }
     // The panel moves focus in itself once its code has loaded.
-    settingsOpener.current = document.activeElement as HTMLElement | null;
+    const background = [
+      ...document.querySelectorAll<HTMLElement>('.workspace, .sidebar, .sidebar-toggle'),
+    ];
+    const previous = background.map((element) => ({
+      inert: element.inert,
+      hidden: element.getAttribute('aria-hidden'),
+    }));
+    background.forEach((element) => {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    });
+    return () =>
+      background.forEach((element, index) => {
+        element.inert = previous[index].inert;
+        if (previous[index].hidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', previous[index].hidden!);
+      });
   }, [settings]);
 
   const refresh = useCallback(async () => {
@@ -477,6 +503,7 @@ export default function App() {
   const commandsRef = useRef<Command[]>([]);
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      if (settings && e.key !== 'Escape' && e.key !== 'Tab') return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((open) => !open);

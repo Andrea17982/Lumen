@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
 import { errorText } from '../lib/util';
@@ -70,23 +70,44 @@ function QuestionForm({
   const { t } = useI18n();
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [custom, setCustom] = useState<Record<string, string>>({});
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const [statusFailed, setStatusFailed] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+  const status = useRef<HTMLElement>(null);
+  const restoreAnswerFocus = useRef(false);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!restoreAnswerFocus.current || busy || (!sent && !result && !error)) return;
+    if (
+      document.activeElement === document.body ||
+      form.current?.contains(document.activeElement)
+    ) {
+      if (error) form.current?.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus();
+      else status.current?.focus();
+    }
+    restoreAnswerFocus.current = false;
+  }, [sent, result, error, busy]);
   useEffect(() => {
     if (!live || sent || result) {
       setPending(false);
       return;
     }
+    setPending(null);
+    setStatusFailed(false);
     let mounted = true;
     const check = () =>
       void call<string[]>('pending_questions')
         .then((ids) => {
           if (mounted) setPending(ids.includes(request.id));
+          if (mounted) setStatusFailed(false);
         })
         .catch(() => {
-          if (mounted) setPending(false);
+          if (mounted) {
+            setPending(false);
+            setStatusFailed(true);
+          }
         });
     check();
     const timer = setInterval(check, 1500);
@@ -95,7 +116,7 @@ function QuestionForm({
       clearInterval(timer);
     };
   }, [request.id, live, sent, result]);
-  const enabled = pending && !sent && !result;
+  const enabled = pending === true && !sent && !result;
   const finalAnswers = Object.fromEntries(
     request.questions.map((q) => [
       q.id,
@@ -104,11 +125,13 @@ function QuestionForm({
   );
   return (
     <form
+      ref={form}
       className="native-questions"
       aria-label={t('Questions from the agent')}
       onSubmit={(e) => {
         e.preventDefault();
         if (!enabled || busy) return;
+        restoreAnswerFocus.current = true;
         setBusy(true);
         setError('');
         void call('answer_question', { id: request.id, answers: finalAnswers })
@@ -177,11 +200,15 @@ function QuestionForm({
           {t(busy ? 'Sending…' : 'Send answers')}
         </button>
       ) : (
-        <small role="status">
+        <small ref={status} role="status" tabIndex={-1}>
           {t(
             !cancelled && (sent || result)
               ? 'Answers sent'
-              : 'This question is no longer waiting for an answer',
+              : live && pending === null
+                ? 'Checking question status…'
+                : live && statusFailed
+                  ? 'Question status unavailable. Retrying…'
+                  : 'This question is no longer waiting for an answer',
           )}
         </small>
       )}

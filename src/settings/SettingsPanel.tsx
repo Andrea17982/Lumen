@@ -91,7 +91,7 @@ export default function SettingsPanel({
       {open && (
         <motion.aside
           role="dialog"
-          aria-modal="false"
+          aria-modal="true"
           className="settings-panel"
           initial={reduced ? false : { x: 35, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}

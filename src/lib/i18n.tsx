@@ -188,6 +188,8 @@ const it: Record<string, string> = {
   'Confirm reset': 'Conferma ripristino',
   Cancel: 'Annulla',
   'Open sidebar': 'Apri barra laterale',
+  'Checking question status…': 'Verifica dello stato della domanda…',
+  'Question status unavailable. Retrying…': 'Stato della domanda non disponibile. Nuovo tentativo…',
   'Close navigation overlay': 'Chiudi pannello di navigazione',
   'Conversations and projects': 'Conversazioni e progetti',
   'Browser preview': 'Anteprima browser',

@@ -438,6 +438,7 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
   );
   await expect(page.getByRole('switch', { name: /Balance usage/ })).toBeChecked();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open sidebar', exact: true }).click();
   await row.click();
   await expect(
     page.getByRole('combobox', { name: 'Project', exact: true }).locator('option:checked'),

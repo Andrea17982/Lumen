@@ -39,6 +39,7 @@ try {
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  if ((await logo.getAttribute('aria-expanded')) === 'false') await logo.click();
   await page.screenshot({ path: path.join(output, 'dark-open.png') });
   await logo.click();
   await expect(rail).toBeHidden();

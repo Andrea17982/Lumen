@@ -295,6 +295,10 @@ The top-left mark is now the single sidebar disclosure on desktop and narrow lay
 
 The rail slides with the existing spatial/ease tokens and a single 360ms glint crosses the mark on activation. Reduced motion removes both effects. The header reserves space for the mark in the closed composition; the separate mobile menu icon is removed. Desktop chat selection keeps the rail available; narrow selection closes it. The original material, themes and composer remain. This is a scoped first implementation of the approved composition, not a general redesign or screen-reader certification. [Native and browser checks](docs/logo-sidebar-0.8.md).
 
+## 0.8 Windows accessibility checkpoint
+
+Settings now implements the modal contract described above: `aria-modal=true`, inert/ARIA-hidden workspace, rail and logo, global commands suppressed while open, and a usable focus return when the opener disappears. In settings, inspector and native questions, keyboard focus uses theme-selected fill and a fine inset underline; this extends visible focus without adding global outline rings. Native questions announce checking/unavailable/expired states distinctly and restore focus to retry on failed delivery or to the sent status after success. Neither response options nor retries of answers are automatic. [Windows matrix and bounded Narrator acceptance](docs/windows-accessibility-0.8.md).
+
 ## 0.7 documentation and capture contract
 
 The GitHub surface is Read mode: a concise bilingual introduction, actual application gallery, working-mode explanation, platform package table and links to canonical guides. Keep the existing mark/material identity; documentation is not a product redesign. Native questions, child streams, Moli captures and inspector/layout affordances should be represented by actual implemented UI with isolated demonstration data. The gallery is not live-inference or accessibility certification.

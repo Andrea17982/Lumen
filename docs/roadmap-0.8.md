@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota implementate nel ramo 0.8; tranche 16 verificata anticipatamente**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -137,19 +137,25 @@ Riprodotta sulla baseline `086469a` una seconda duplicazione: dopo lavoro osserv
 
 [Protocollo e limiti](quota-replay-0.8.md). Budget live invariato a 13 slot; nessuna inferenza o pubblicazione.
 
-## Piano di chiusura — cinque tranche residue dopo la tredicesima
+### Tranche 16 — interfaccia e verifiche Windows/accessibilità
 
-Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Questi cinque pacchetti raggruppano le voci ancora aperte; ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+Eseguita anticipatamente su richiesta del proprietario il 12 novembre. Corrette le impostazioni non modali rispetto al focus, lo sfondo attivo/esposto, le scorciatoie dietro il dialogo e il ritorno all'opener. Focus da tastiera visibile con riempimento/sottolineatura, senza anelli globali. Le domande distinguono controllo iniziale, lettura fallita e scadenza, conservano la risposta dopo errore di invio e ripristinano il focus dopo errore/successo.
+
+Passano 35 scenari browser e 72 unitari; matrice WebView2 con dati isolati per impostazioni chiaro/scuro, domanda da tastiera, inspector, 1.000 messaggi ricercabili/esposti in AX e immagine locale. Provato realmente Assistente vocale, con conferma uditiva del proprietario sulle etichette; VS Code mostra la riga 13 richiesta dal backend con profilo temporaneo. Lettore e finestre editor ripristinati al termine. [Matrice e limiti](windows-accessibility-0.8.md), [risultato aggregato](data/windows-accessibility-0.8-results.json). Nessuna certificazione generale di accessibilità, NVDA o desktop non Windows; budget live invariato a 13 slot.
+
+## Piano di chiusura — quattro tranche residue, 16 completata
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, la tranche 16 è completata nel perimetro dichiarato; restano 14, 15, 17 e 18. Ogni pacchetto deve chiudere il proprio perimetro o classificare esplicitamente risultati inconcludenti e prerequisiti, senza inventare prove mancanti. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
 
 | Tranche prevista | Lavoro residuo | Criterio di uscita |
 | --- | --- | --- |
 | 14 — Auto e Orchestra | Revisione conclusiva delle regole di assegnazione/aiuti/cross-audit e della continuità di esecuzione: coda, cancellazione, ripresa, modello/account/cartella e worker | Casi offline rappresentativi e perimetro di delega effettivamente supportato documentati; nessuna calibrazione live dichiarata senza prova |
 | 15 — Contesto e grafo | Budget e duplicazione dei prompt, troncamento/requisiti, proiezioni dei metadati e copertura mirata dei linguaggi | Payload effettivi misurati offline e corpus finale; implementare correzioni dimostrate, classificare i candidati senza prova di qualità/token end-to-end |
-| 16 — Interfaccia e Windows | Rifiniture necessarie della composizione approvata, tastiera/focus, domande, immagini, chat lunga, inspector, editor e accessibilità | Matrice nativa sui flussi modificati, confronto chiaro/scuro e verifica con lettore di schermo dove disponibile; prerequisiti mancanti distinti dai passaggi |
+| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; 14 e 15 restano aperte |
 | 17 — Prestazioni e accettazione finale | Consolidare misure release, regressioni e decisioni per virtualizzazione, pool CLI e Markdown/ANSI in Rust; riconciliare roadmap/validazione | Ogni candidato classificato con evidenza o rinvio esplicito e motivato; nessuna implementazione per il solo cambio di tecnologia; limiti live/piattaforma ancora visibili |
 | 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
 
-Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima di cinque comprende la tranche di integrazione e pubblicazione.
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La stima residua di quattro comprende la tranche di integrazione e pubblicazione.
 
 ## Decisioni concordate
 
@@ -243,7 +249,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 6. Verifiche native Windows mirate
 
-**Stato: copertura parziale da completare sui flussi modificati.**
+**Stato: tranche 16 verificata nel perimetro Windows dichiarato; ulteriori lettori, zoom OS e altri desktop restano non collaudati.**
 
 - Verificare tastiera, focus, domande a scelta, immagini, chat lunga, inspector, scorciatoie e ripristino, includendo una prova effettiva con lettore di schermo.
 - Verificare apertura alla riga negli editor disponibili; dichiarare separatamente quelli non installati.

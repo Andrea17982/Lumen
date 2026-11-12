@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-12",
+  "baseline": "804f6f1",
+  "tranche": 16,
+  "liveSlotsBefore": 13,
+  "liveSlotsAfter": 13,
+  "frontend": { "unitTests": 72, "browserScenarios": 35 },
+  "nativeMatrix": {
+    "platform": "Windows debug WebView2",
+    "isolatedData": true,
+    "offlineProviderFixture": "claude",
+    "settingsBothThemes": true,
+    "modalBackgroundExcluded": true,
+    "questionReadFailureRecovery": true,
+    "questionDeliveryFailureFocus": true,
+    "noPreselectedAnswer": true,
+    "inspectorFocusRestored": true,
+    "historicalMessages": 1000,
+    "historicalFindAndAx": true,
+    "localImageFocusRestored": true
+  },
+  "manualWindows": {
+    "reader": "Windows Narrator",
+    "actuallyStarted": true,
+    "modalAndKeyboardObserved": true,
+    "audibleLabelsConfirmedByOwner": true,
+    "readerStoppedAfterTest": true,
+    "editor": "Installed VS Code with temporary profile",
+    "sourceLineRequested": 13,
+    "observedEditorStatus": "Ln 13, Col 1",
+    "temporaryEditorClosed": true
+  },
+  "limits": [
+    "Bounded Narrator sample with owner-confirmed audible labels; not WCAG certification",
+    "CDP AX and Windows UI Automation are distinct from speech validation",
+    "NVDA, braille, OS zoom at 200 percent and non-Windows desktop not tested",
+    "Other line editors were not available in the checked PATH",
+    "No live inference, provider login, software installation or security-setting change"
+  ]
+}
