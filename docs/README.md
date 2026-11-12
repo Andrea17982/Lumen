@@ -19,6 +19,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [0.8 Rewind continuity](continuity-rewind-0.8.md) | Invalidating discarded remote history and retiring check evidence at explicit task boundaries |
 | [0.8 Compact evidence](compact-evidence-0.8.md) | Source-linked backend checks and diagnostics preserved across repeated Compact and account handoffs |
 | [0.8 logo and sidebar](logo-sidebar-0.8.md) | Logo disclosure, two glass compositions, keyboard focus and reduced-motion checks |
+| [0.8 session replay guard](resume-replay-0.8.md) | Preventing automatic missing-session replay after observed work, with owned-effect offline checks |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |
 | [Validation and scope](validation.md) | Verified results, agreed exclusions and deferred acceptance |

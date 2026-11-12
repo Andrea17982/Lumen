@@ -663,6 +663,7 @@ pub(crate) async fn stage_with(
     }
     let mut measured = Measured::default();
     let mut native: Option<String> = None;
+    let mut replay_guard = ResumeReplayGuard::default();
     let retry_cancel = cancel.clone();
     let result = providers::execute(
         providers::Invocation {
@@ -687,6 +688,8 @@ pub(crate) async fn stage_with(
         },
         cancel,
         |activity| {
+            // Observe before lifecycle events are discarded or activity is compacted.
+            replay_guard.observe(&activity);
             // Timing signals carry no provider content and do not add IPC/SQLite writes.
             // The existing snapshot checkpoint/finish publishes the accumulated offsets.
             if activity.kind == "latency" {
@@ -760,7 +763,7 @@ pub(crate) async fn stage_with(
     trace.finish(&result);
     trace.publish(app, &s.id, out, true);
     if let (Some(_), Err(e)) = (resume, &result) {
-        if resume_unavailable(e) && out.text.trim().is_empty() {
+        if replay_guard.allows(e, &out.text, *retry_cancel.borrow()) {
             drop(permit);
             out.activity.retain(|x| x.kind != "native");
             let replay = if full_prompt.is_empty() {
@@ -789,6 +792,13 @@ pub(crate) async fn stage_with(
             .await;
         }
     }
+    let result = result.map_err(|error| {
+        if resume.is_some() && resume_unavailable(&error) && replay_guard.work_observed {
+            format!("{error}. Lumen did not replay this request because provider activity was already observed; inspect the recorded work before retrying.")
+        } else {
+            error
+        }
+    });
     if result.is_ok() {
         core.limits.record_turn(&a.id, now());
         if visible || resume.is_some() {
@@ -810,6 +820,28 @@ pub(crate) async fn stage_with(
         }
     }
     result
+}
+
+/// A missing-session error is replayable only before any observed model work.
+/// Unknown activity is deliberately treated as work, not assumed harmless.
+#[derive(Default)]
+struct ResumeReplayGuard {
+    work_observed: bool,
+}
+
+impl ResumeReplayGuard {
+    fn observe(&mut self, activity: &Activity) {
+        if !matches!(
+            activity.kind.as_str(),
+            "pid" | "session" | "latency" | "quota" | "usage" | "window"
+        ) {
+            self.work_observed = true;
+        }
+    }
+
+    fn allows(&self, error: &str, text: &str, cancelled: bool) -> bool {
+        !cancelled && !self.work_observed && text.trim().is_empty() && resume_unavailable(error)
+    }
 }
 
 fn resume_unavailable(error: &str) -> bool {
@@ -2239,6 +2271,50 @@ mod resume_tests {
             id: "acc".into(),
             name: "A".into(),
             provider: Provider::Claude,
+        }
+    }
+    #[test]
+    fn resume_replay_guard_rejects_work_partial_output_and_cancellation() {
+        let mut clean = ResumeReplayGuard::default();
+        for kind in ["pid", "session", "latency", "quota", "usage", "window"] {
+            clean.observe(&Activity {
+                kind: kind.into(),
+                text: "transport metadata".into(),
+            });
+        }
+        for error in ["session not found", "Thread not found", "unknown session"] {
+            assert!(clean.allows(error, "", false));
+        }
+        assert!(!clean.allows("session not found", "partial response", false));
+        assert!(!clean.allows("session not found", "", true));
+        assert!(!clean.allows("connection closed", "", false));
+        for kind in [
+            "tool-start",
+            "tool-end",
+            "tool",
+            "file",
+            "thinking",
+            "delta",
+            "replace",
+            "interaction",
+            "interaction-result",
+            "child",
+            "browser",
+            "future-protocol-event",
+        ] {
+            let mut guard = ResumeReplayGuard::default();
+            guard.observe(&Activity {
+                kind: kind.into(),
+                text: String::new(),
+            });
+            guard.observe(&Activity {
+                kind: "session".into(),
+                text: "later metadata cannot reset the guard".into(),
+            });
+            assert!(
+                !guard.allows("session not found", "", false),
+                "{kind} allowed a replay"
+            );
         }
     }
     #[test]

@@ -18,6 +18,21 @@ if (!$PromptText) {
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($promptText.Contains('REPLAY_TOOL_FIXTURE') -or $promptText.Contains('REPLAY_MISSING_FIXTURE')) {
+    $tool = $promptText.Contains('REPLAY_TOOL_FIXTURE')
+    $counter = if ($tool) { "replay-tool-$Provider.txt" } else { "replay-missing-$Provider.txt" }
+    Add-Content -LiteralPath (Join-Path (Get-Location).Path $counter) -Value 'invoked'
+    $fail = $tool -or $env:LUMEN_FIXTURE_RESUME -eq 'true'
+    if ($Provider -eq 'claude') {
+        if ($tool) { Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='replay-write';name='Write';input=@{file_path=$counter;content='owned fixture effect'}})}} }
+        Emit @{type='result';is_error=$fail;result=$(if ($fail) { 'session not found' } else { 'REPLAY_RECOVERED' })}
+    } else {
+        if ($tool) { Emit @{method='item/started';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='replay-write';type='commandExecution';command='fixture-owned write'}}} }
+        if (!$fail) { Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='replay-answer';type='agentMessage';text='REPLAY_RECOVERED'}}} }
+        Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status=$(if ($fail) { 'failed' } else { 'completed' });error=@{message='thread not found'}}}}
+    }
+    exit 0
+}
 if ($promptText.Contains('OBS_PROMISE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$false;result='I will implement the requested changes.'}
     exit 0

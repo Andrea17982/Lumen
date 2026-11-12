@@ -4,10 +4,12 @@ set fixtureDir=%~dp0
 if "%~1"=="auth" exit /b 0
 if "%~1"=="--version" (echo claude offline-fixture& exit /b 0)
 set LUMEN_FIXTURE_SESSION=
+set LUMEN_FIXTURE_RESUME=false
 :sessionargs
 if "%~1"=="" goto run
 if "%~1"=="--session-id" set LUMEN_FIXTURE_SESSION=%~2
 if "%~1"=="--resume" set LUMEN_FIXTURE_SESSION=%~2
+if "%~1"=="--resume" set LUMEN_FIXTURE_RESUME=true
 shift
 goto sessionargs
 :run

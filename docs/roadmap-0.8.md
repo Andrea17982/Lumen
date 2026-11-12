@@ -1,6 +1,6 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact e undicesima su logo/sidebar implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar e dodicesima sul recupero sessioni implementate nel ramo 0.8**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -124,6 +124,12 @@ Riprodotta sulla baseline `1b8a941` la perdita di dettagli, diagnostica e sorgen
 Implementato il 12 novembre il logo come unico comando per aprire/chiudere la sidebar di vetro, anche sul desktop; menu mobile separato rimosso. Il logo resta ancorato, la chat occupa lo spazio disponibile, bozza e contenuti restano montati. La composizione con progetti resta quella iniziale sul desktop; la vista essenziale si richiama dal logo. Tastiera, focus, etichette inglesi/italiane, pannello chiuso `inert`, riflesso breve e movimento ridotto sono coperti dai controlli mirati. La selezione di una chat conserva il pannello desktop, mentre la finestra stretta lo chiude.
 
 [Perimetro, prove e limiti](logo-sidebar-0.8.md). Nessuna nuova inferenza o release; budget invariato a 13 slot. È il primo intervento sulla composizione approvata: rifiniture generali, persistenza della composizione e screen reader effettivo restano aperti.
+
+### Dodicesima tranche — recupero sessioni senza replay dopo attività
+
+Riprodotta sulla baseline `90f632e` una duplicazione: un errore di sessione dopo l'avvio di uno strumento, senza testo visibile, faceva ripetere il compito e la scrittura nella fixture. Il fallback ora osserva l'attività prima che i segnali vengano scartati/compattati e si ferma dopo lavoro osservato, eventi sconosciuti, testo parziale o cancellazione. Il recupero singolo con contesto completo resta disponibile per sessione mancante prima del lavoro osservato; l'errore spiega quando Lumen evita il replay.
+
+[Protocollo e limiti](resume-replay-0.8.md). Nessuna nuova inferenza, budget a 13 slot. La correzione riguarda questo fallback di ripresa nativa, non tutte le politiche di ritentativo o gli effetti non riportati dai provider.
 
 ## Decisioni concordate
 

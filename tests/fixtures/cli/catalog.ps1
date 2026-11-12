@@ -7,7 +7,10 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
     $request=$line | ConvertFrom-Json
     if ($Provider -eq 'gpt') {
         if ($request.method -eq 'initialize') { Emit @{id=$request.id;result=@{userAgent='offline-fixture'}} }
-        if ($request.method -in @('thread/start','thread/resume')) { Emit @{id=$request.id;result=@{thread=@{id='fixture-thread'}}} }
+        if ($request.method -in @('thread/start','thread/resume')) {
+            $env:LUMEN_FIXTURE_RESUME = if ($request.method -eq 'thread/resume') { 'true' } else { 'false' }
+            Emit @{id=$request.id;result=@{thread=@{id='fixture-thread'}}}
+        }
         if ($request.method -eq 'turn/start') {
             Emit @{id=$request.id;result=@{turn=@{id='fixture-turn'}}}
             & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $request.params.input[0].text -AppServer
