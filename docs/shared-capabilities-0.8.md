@@ -30,6 +30,8 @@ Nessuna inferenza o login durante lo sviluppo: **budget live fermo a 13, increme
 
 Eseguire i due harness nativi e Playwright **in serie**: condividono la porta 1420. Un primo tentativo del nuovo harness ha superato il trasporto ma è fallito nel selettore della sezione Impostazioni; il selettore è stato corretto e la suite ripetuta. Le fixture non riproducono l'OAuth/account del segnalante e non certificano i servizi reali GitHub, Gmail, Drive o gli altri desktop.
 
+Verifica aggiuntiva opt-in: `node tests/native-installed-mcp.mjs` usa la **CLI Codex installata**, un profilo temporaneo senza login e il solo server MCP locale di prova. Il catalogo iniziale include il servizio anche con avvio ritardato di 2 s; la chiamata conserva gli argomenti tipizzati e l'ambiente dell'origine. Passata su Windows: catalogo disponibile in **3.073 ms**, compresi i 2 s artificiali; zero turni di inferenza. È evidenza di interoperabilità del protocollo e avvio iniziale, non un benchmark prestazionale né una verifica di account/OAuth reali. Il report JSON rimane nella directory temporanea stampata dal comando.
+
 ## Lavoro ancora obbligatorio per il requisito universale
 
 | Area | Stato effettivo / criterio ancora da soddisfare |

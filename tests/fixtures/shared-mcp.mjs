@@ -2,6 +2,8 @@
 import { createInterface } from 'node:readline';
 import { writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+if (process.env.STARTUP_DELAY_MS)
+  await new Promise((resolve) => setTimeout(resolve, Number(process.env.STARTUP_DELAY_MS)));
 if (process.env.FIXTURE_PID_FILE) writeFileSync(process.env.FIXTURE_PID_FILE, String(process.pid));
 const output = (id, result) =>
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n');
