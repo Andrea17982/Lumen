@@ -2,6 +2,48 @@
 fn main() {
     if std::env::args_os()
         .nth(1)
+        .is_some_and(|a| a == "--lumen-native-account-mcp")
+    {
+        let args: Vec<_> = std::env::args_os().collect();
+        let result = if args.len() == 5 {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map(|rt| {
+                    rt.block_on(lumen_lib::serve_native_account(
+                        args[2].clone().into(),
+                        args[3].clone().into(),
+                        args[4] != "full",
+                    ))
+                })
+        } else {
+            std::process::exit(1)
+        };
+        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
+    }
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "--lumen-shared-stdio")
+    {
+        let args: Vec<_> = std::env::args_os().collect();
+        let result = if args.len() == 5 {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map(|rt| {
+                    rt.block_on(lumen_lib::serve_shared_stdio(
+                        args[2].clone().into(),
+                        args[3].clone().into(),
+                        &args[4].to_string_lossy(),
+                    ))
+                })
+        } else {
+            std::process::exit(1)
+        };
+        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
+    }
+    if std::env::args_os()
+        .nth(1)
         .is_some_and(|a| a == "--lumen-browser-mcp")
     {
         let result = tokio::runtime::Builder::new_current_thread()

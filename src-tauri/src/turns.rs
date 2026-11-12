@@ -1103,7 +1103,11 @@ pub(crate) async fn build_prompt(
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
     let history = history_text(&messages, &workspace, exclude, true);
-    let shared = integrations::instructions(&core.root)?;
+    let shared = format!(
+        "{}{}",
+        integrations::instructions(&core.root)?,
+        crate::capability_catalog::instructions(&core.root, &workspace)
+    );
     let attached = if options.attachments.is_empty() {
         String::new()
     } else {
@@ -1324,7 +1328,11 @@ pub(crate) fn prompt_tokens(core: &Core, s: &Session) -> Result<usize, String> {
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
     let history = history_text(&messages, &workspace, &[], false);
-    let shared = integrations::instructions(&core.root)?;
+    let shared = format!(
+        "{}{}",
+        integrations::instructions(&core.root)?,
+        crate::capability_catalog::instructions(&core.root, &workspace)
+    );
     let prompt = assemble_prompt(
         &shared,
         &notes_block(&workspace),

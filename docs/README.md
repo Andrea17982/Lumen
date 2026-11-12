@@ -25,6 +25,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [0.8 context and graph budget](context-graph-budget-0.8.md) | Actual prompt measurements, exact duplicate removal, bounded attachment previews and complete changed notes |
 | [0.8 final acceptance](final-acceptance-0.8.md) | Current release regression gates, candidate decisions, explained permissions and the first-use guided tour |
 | [0.8 connector interactions](connector-interactions-0.8.md) | Explicit MCP consent, Claude tool approvals, scoped account connections and offline regression checks |
+| [0.8 shared capabilities](shared-capabilities-0.8.md) | Existing integration discovery, native account RPC gateway, shared consent and mandatory remaining runtime adapters |
 | [0.8 Windows accessibility](windows-accessibility-0.8.md) | Tranche 16: modal/focus fixes, native questions, historical content, Narrator and editor-line acceptance |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |

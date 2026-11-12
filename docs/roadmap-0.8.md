@@ -295,6 +295,8 @@ La segnalazione 0.7.1 su macOS non è ancora riprodotta. Corrette separatamente 
 
 ## Chiusura della 0.8
 
+**Aggiornamento obbligatorio del 12 novembre:** il requisito di riuso di connettori/plugin/skill/MCP/mods tra tutti i provider amplia la precedente stima della tranche 18. Il [checkpoint delle capacità condivise](shared-capabilities-0.8.md) include catalogo, relay, gateway RPC dell'account Codex e consenso dell'host verificati offline. Restano necessari adattatori dei runtime proprietari, percorso MCP Ollama, formati/cicli di vita non coperti e accettazione degli account reali. La 0.8 non è quindi riducibile al solo packaging e queste capacità non sono dichiarate universalmente implementate.
+
 - Per ogni candidato: decisione, numeri, carichi, limiti e stato dell'integrazione. Le prove inconcludenti restano aperte o vengono rinviate esplicitamente.
 - Test mirati per ogni modifica accettata, regressioni applicabili, verifica Windows nativa e CI/build multipiattaforma.
 - Documentazione coerente con i risultati effettivi; nessuna eliminazione della roadmap con voci irrisolte. Spostare nell'archivio soltanto dopo aver classificato ogni voce.

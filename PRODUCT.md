@@ -31,6 +31,8 @@ Lumen, with the established restrained Liquid Glass identity, system typography 
 
 ## Product Principles
 
+Owner requirement, 12 November: previously configured connectors, plugins, skills, MCP servers and mods must be usable through Lumen across providers/accounts, with the original identity and consent preserved. Portable discovery and a Codex account tool gateway are implemented on the 0.8 branch; arbitrary cloud/provider runtime extensions and Ollama MCP execution are not yet covered. This is an open acceptance requirement, not universal compatibility already delivered. [Implementation, evidence and required remaining adapters](docs/shared-capabilities-0.8.md).
+
 - Preserve explicit provider/model/workspace choices and useful task decisions.
 - Keep direct work direct; use Orchestra only when selected.
 - Do not ask again for an already approved execution plan.

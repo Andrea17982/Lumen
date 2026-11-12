@@ -3,6 +3,18 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
+  'Account tools': 'Strumenti dell’account',
+  'Native hooks': 'Hook nativi',
+  Skill: 'Skill',
+  Tool: 'Strumento',
+  'Shared tools are available to Claude, GPT, Gemini and Antigravity. Provider authentication and permission controls still apply.':
+    'Gli strumenti condivisi sono disponibili a Claude, GPT, Gemini e Antigravity. Restano validi autenticazione e permessi dei provider.',
+  'Detected integrations': 'Integrazioni rilevate',
+  'Portable tools and skills are discovered automatically. Cloud connectors and native hooks may require their original account or runtime.':
+    'Strumenti portabili e skill vengono rilevati automaticamente. Connettori cloud e hook nativi possono richiedere l’account o il runtime di origine.',
+  Configured: 'Configurato',
+  'Requires a native adapter': 'Richiede un adattatore nativo',
+  'Share in Lumen': 'Condividi in Lumen',
   'Request from a connector': 'Richiesta di un connettore',
   'Connector consent is separate from agent permissions. Your answers stay in this request and are not added to shared context.':
     'Il consenso al connettore è separato dai permessi dell’agente. Le risposte restano in questa richiesta e non entrano nel contesto condiviso.',

@@ -3,7 +3,11 @@ mod approvals;
 mod approvals_codex;
 mod assets;
 mod browser;
+mod capability_catalog;
 mod catalog;
+pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<(), String> {
+    capability_catalog::serve_stdio(data, workspace, id).await
+}
 mod classify;
 mod codegraph;
 mod connectors;
@@ -29,6 +33,14 @@ mod merge;
 mod metadata_windows;
 mod migrations;
 mod models;
+mod native_mcp;
+pub async fn serve_native_account(
+    profile: PathBuf,
+    workspace: PathBuf,
+    read_only: bool,
+) -> Result<(), String> {
+    native_mcp::serve(profile, workspace, read_only).await
+}
 mod native_claude;
 mod ollama;
 mod ollama_agent;
@@ -781,6 +793,7 @@ pub fn run() {
             interactions::pending_questions,
             interactions::answer_question,
             interactions::open_connector_url,
+            toggle_discovered_integration,
             list_sessions,
             create_session,
             update_session,
@@ -940,7 +953,27 @@ fn record_claude_usage(core: &Core, app: &tauri::AppHandle, account_id: &str, ra
 }
 #[tauri::command]
 fn integration_status(core: tauri::State<Arc<Core>>) -> Result<serde_json::Value, String> {
-    integrations::status(&core.root)
+    let mut state = integrations::status(&core.root)?;
+    let mut catalog = capability_catalog::discover(&core.root, None);
+    for account in core.store.accounts()? {
+        for entry in &mut catalog.entries {
+            entry.source = entry
+                .source
+                .replace(&format!("Lumen account {}", account.id), &account.name);
+        }
+    }
+    state["discovered"] = serde_json::to_value(catalog.entries)
+        .map_err(|_| "Could not read integration inventory")?;
+    state["warnings"] = serde_json::json!(catalog.warnings);
+    Ok(state)
+}
+#[tauri::command]
+fn toggle_discovered_integration(
+    core: tauri::State<Arc<Core>>,
+    id: String,
+    on: bool,
+) -> Result<(), String> {
+    capability_catalog::toggle(&core.root, &id, on)
 }
 #[tauri::command]
 async fn ollama_status(core: tauri::State<'_, Arc<Core>>) -> Result<ollama::OllamaStatus, String> {

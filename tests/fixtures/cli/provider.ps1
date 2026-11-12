@@ -21,6 +21,20 @@ if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ACCOUNT_GATEWAY_FIXTURE')) {
+    $gateway = Get-Content -LiteralPath (Join-Path (Get-Location).Path 'native-owner.json') -Raw | ConvertFrom-Json
+    & node (Join-Path $PSScriptRoot 'native-account-client.mjs') $gateway.executable $gateway.profile (Get-Location).Path
+    if ($LASTEXITCODE -ne 0) {throw 'Account gateway fixture failed'}
+    Emit @{type='result';is_error=$false;result='NATIVE_ACCOUNT_GATEWAY_OK'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ELICIT_FIXTURE')) {
+    Emit @{type='control_request';request_id='claude-consent';request=@{subtype='elicitation';mcp_server_name='Owner connector';message='Choose owner service scope';mode='form';requested_schema=@{type='object';properties=@{count=@{type='integer';minimum=1;maximum=4}};required=@('count')}}}
+    $answer=[Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.response.action -ne 'accept' -or $answer.response.response.content.count -ne 3) {throw 'Expected typed Claude connector consent'}
+    Emit @{type='result';is_error=$false;result='CONNECTOR_WIRE_OK'}
+    exit 0
+}
 if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_MCP_FIXTURE')) {
     Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION;mcp_servers=@(@{name='offline-github';status='connected';url='https://example.com?secret=never-store-this'})}
     Emit @{type='control_request';request_id='mcp-review';request=@{subtype='can_use_tool';tool_name='mcp__github__create_issue';input=@{repository='offline';title='Review once'}}}

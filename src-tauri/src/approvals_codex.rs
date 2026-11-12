@@ -294,8 +294,11 @@ pub async fn codex_turn(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
+    let mut _shared_config = None;
     if let Some(data) = input.config.parent().and_then(Path::parent) {
-        let (extra, _) = crate::integrations::args(data, &Provider::Gpt)?;
+        let (extra, _, guard) =
+            crate::integrations::args_for(data, &Provider::Gpt, Some(&cwd), input.access)?;
+        _shared_config = guard;
         c.args(extra);
         if providers::graph_enabled(data) {
             if let Some(extra) = crate::graph_mcp::cli_args(data, &cwd, &Provider::Gpt) {
@@ -399,7 +402,10 @@ async fn run(
 
     // Native resumes retain tool exchanges, project instructions and agent state.
     let mut params = support::codex_thread_params(&cwd.to_string_lossy());
-    params["approvalPolicy"] = json!(if input.access == AccessMode::Ask {
+    params["approvalPolicy"] = json!(if matches!(
+        input.access,
+        AccessMode::Ask | AccessMode::Autopilot
+    ) {
         "on-request"
     } else {
         "never"
@@ -437,7 +443,7 @@ async fn run(
     let mut turn = json!({
         "threadId": thread_id,
         "input": [{"type": "text", "text": input.prompt}],
-        "approvalPolicy": if input.access == AccessMode::Ask { "on-request" } else { "never" },
+        "approvalPolicy": if matches!(input.access, AccessMode::Ask | AccessMode::Autopilot) { "on-request" } else { "never" },
         "approvalsReviewer": "user",
         "cwd": cwd.to_string_lossy(),
         "sandboxPolicy": match input.access {

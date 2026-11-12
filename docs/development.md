@@ -21,6 +21,8 @@ The Windows portable distributable is the ZIP, not an executable copied without 
 
 ## Checks
 
+`node tests/native-shared-integrations.mjs` adds isolated Windows acceptance for discovered installations, stdio relay/process-tree cleanup, native account RPC without model turns, original skill resources, restricted catalogs, unsupported APIs and a Claude → ChatGPT-account tool call with consent shown by Lumen itself. It uses offline fixtures, never real credentials or inference. Run it serially with all other port-1420 suites. [Scope and remaining requirements](shared-capabilities-0.8.md).
+
 After a debug Cargo build, `node tests/native-connectors.mjs` checks MCP form/URL consent, typed validation/retry, decline, resolution/Stop expiry and Claude Ask approvals in real Windows WebView2/IPC with offline CLI fixtures. It never signs in or opens the fixture OAuth URL. Run it separately from Playwright and other native harnesses: they share port 1420, and an owning harness closing its server interrupts the others. See [scope and results](connector-interactions-0.8.md).
 
 ```sh

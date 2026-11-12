@@ -4,6 +4,8 @@ The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Upda
 
 ## Post-release 0.8 final acceptance checkpoint — tranche 17
 
+**Subsequent requirement, 12 November:** the owner made cross-provider reuse of existing integrations mandatory. [Shared-capability checkpoint](shared-capabilities-0.8.md) records implemented discovery/gateways and the remaining runtime/Ollama/real-account work. The earlier packaging-only completion estimate below predates that requirement and does not close the expanded 0.8 scope.
+
 Additional connector fixes are tracked in the [connector checkpoint](connector-interactions-0.8.md). It separates the reported macOS case (not reproduced without native logs) from verified protocol/adapter defects. It does not change the published 0.7.1 or the historical performance candidate below.
 
 The current isolated Windows release passes 80 fresh-process A/B/A/B samples against `01bf144`: opening medians −0.7%/−10.2%, typing-task medians +3.1%/−17.2%, within the fixed 10% regression gate. Eight historical-content gates pass on that exact candidate hash. This does not establish a speedup caused by the UI. Opening p95 rises in the first comparison and falls in the second; tails and secondary figures remain visible. An earlier 12-sample same-process baseline became nonstationary (about 1.2–27.8 seconds), is retained/excluded before candidate comparison, and remains unresolved. Repeated-open steady-state, cold-start and universal latency are not certified.

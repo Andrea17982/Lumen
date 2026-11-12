@@ -11,6 +11,8 @@ Tauri owns the native window and IPC boundary. Rust owns storage, account config
 | `native_claude.rs` | Bidirectional native Claude initialize/control/input/output stream |
 | `approvals_codex.rs` | Codex app-server, thread start/resume, questions and native events |
 | `approvals.rs`, `interactions.rs`, `activity.rs` | Scoped approvals/questions and bounded activity/child streams |
+| `capability_catalog.rs`, `integrations.rs` | Read-through integration discovery, original skill resources, per-source namespaces and per-invocation client configuration |
+| `native_mcp.rs` | Direct native-account tool/skill RPC gateway, with turn-scoped host consent and no model turn |
 | `execution.rs` | Bounded content-free invocation observations, phase/timing snapshots and internal-stage handoff |
 | `providers.rs`, `catalog.rs`, `proc.rs` | CLI launch, isolation, metadata, normalization and process-tree cancellation |
 | `orchestra.rs`, `scheduling.rs` | Task graph, worker worktrees, caps, integration and recovery |

@@ -118,6 +118,15 @@ try {
   checks.push(
     'Claude MCP waits for Ask approval, preserves exact input and shows sanitized connection status',
   );
+  const elicited = await start('CLAUDE_ELICIT_FIXTURE', claude);
+  await expect(form).toBeVisible({ timeout: 20000 });
+  await form.getByRole('radio', { name: 'Accept', exact: true }).check();
+  await form.getByRole('textbox', { name: 'Your answer', exact: true }).fill('3');
+  await form.getByRole('button', { name: 'Send answers' }).click();
+  await done(elicited);
+  checks.push(
+    'Claude native elicitation gets typed explicit consent in Autopilot without storing answers',
+  );
   console.log(JSON.stringify({ checks, liveCalls: 0 }, null, 2));
 } finally {
   await h.close();

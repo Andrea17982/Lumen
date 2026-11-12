@@ -9,9 +9,18 @@ interface Inventory {
   path: string;
   skills: string[];
   mcp: string;
+  discovered?: {
+    id: string;
+    name: string;
+    source: string;
+    kind: string;
+    status: string;
+    reason: string;
+  }[];
+  warnings?: string[];
 }
 
-/** One MCP hub and skill library shared by Claude and ChatGPT. */
+/** Shared tools plus read-through discovery of existing provider installations. */
 export default function IntegrationSettings({ onError }: { onError: (s: string) => void }) {
   const { t } = useI18n();
   const [inventory, setInventory] = useState<Inventory | null>(null);
@@ -48,7 +57,11 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           <Plus size={17} />
         </button>
       </div>
-      <p>{t('Turn a tool on once and both assistants can use it when edits are allowed.')}</p>
+      <p>
+        {t(
+          'Shared tools are available to Claude, GPT, Gemini and Antigravity. Provider authentication and permission controls still apply.',
+        )}
+      </p>
       {adding && (
         <form
           className="account-form"
@@ -87,7 +100,11 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           </button>
         </form>
       )}
-      {servers.length === 0 && !adding && <div className="account-empty">{t('No tools yet.')}</div>}
+      {servers.length === 0 &&
+        !adding &&
+        !inventory?.discovered?.some(
+          (entry) => entry.kind !== 'skill' && entry.status === 'available',
+        ) && <div className="account-empty">{t('No tools yet.')}</div>}
       {servers.map((s) => (
         <div className="mcp-row" key={s.name}>
           <span
@@ -118,6 +135,67 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
             <Trash2 size={14} />
           </button>
         </div>
+      ))}
+      {!!inventory?.discovered?.length && (
+        <details className="raw-config">
+          <summary>
+            {t('Detected integrations')} · {inventory.discovered.length}
+          </summary>
+          <p>
+            {t(
+              'Portable tools and skills are discovered automatically. Cloud connectors and native hooks may require their original account or runtime.',
+            )}
+          </p>
+          {inventory.discovered.map((entry) => (
+            <div className="mcp-row" key={entry.id}>
+              <div className="account-info">
+                <strong>{entry.name}</strong>
+                <small>
+                  {entry.source} ·{' '}
+                  {t(
+                    entry.kind === 'native-mcp'
+                      ? 'Account tools'
+                      : entry.kind === 'skill'
+                        ? 'Skill'
+                        : entry.kind === 'native-hooks'
+                          ? 'Native hooks'
+                          : 'Tool',
+                  )}{' '}
+                  ·{' '}
+                  {t(
+                    entry.status === 'available'
+                      ? 'Configured'
+                      : entry.status === 'disabled'
+                        ? 'Disabled'
+                        : 'Requires a native adapter',
+                  )}
+                </small>
+                {entry.reason && <small>{entry.reason}</small>}
+              </div>
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                aria-label={`${t('Share in Lumen')} ${entry.name} (${entry.source})`}
+                checked={entry.status === 'available'}
+                disabled={busy || !!entry.reason || !desktop}
+                onChange={(event) =>
+                  void act(() =>
+                    call('toggle_discovered_integration', {
+                      id: entry.id,
+                      on: event.target.checked,
+                    }),
+                  )
+                }
+              />
+            </div>
+          ))}
+        </details>
+      )}
+      {inventory?.warnings?.map((warning) => (
+        <p role="status" key={warning}>
+          {warning}
+        </p>
       ))}
       <div className="panel-row">
         <small>
