@@ -68,6 +68,21 @@ jobs:
       - run: node scripts/prepare-moli.mjs
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: npm run tauri build -- --target universal-apple-darwin --bundles dmg
+      - name: Mounted universal DMG helper smoke
+        shell: bash
+        run: |
+          dmg=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)
+          mount="$RUNNER_TEMP/lumen-dmg-smoke"
+          mkdir -p "$mount"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          export LUMEN_RELEASE_EXE=$(find "$mount" -path '*.app/Contents/MacOS/lumen' -type f -print -quit)
+          test -n "$LUMEN_RELEASE_EXE"
+          lipo -verify_arch arm64 x86_64 "$LUMEN_RELEASE_EXE"
+          arch=$(node -p 'process.arch === "arm64" ? "arm64" : "x64"')
+          export LUMEN_RELEASE_MOLI=$(find "$mount" -path "*/resources/moli/darwin-$arch/moli" -type f -print -quit)
+          test -n "$LUMEN_RELEASE_MOLI"
+          node tests/release-smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -91,6 +106,28 @@ jobs:
       - run: npm run check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: npm run tauri build -- --bundles deb,appimage
+      - name: Extracted Linux package helper smoke
+        shell: bash
+        run: |
+          deb=$(find src-tauri/target/release/bundle/deb -name '*.deb' -print -quit)
+          test "$(dpkg-deb -f "$deb" Version)" = "$(node -p 'require("./package.json").version')"
+          test "$(dpkg-deb -f "$deb" Architecture)" = amd64
+          extract="$RUNNER_TEMP/lumen-deb-smoke"
+          mkdir -p "$extract"
+          dpkg-deb -x "$deb" "$extract"
+          export LUMEN_RELEASE_EXE=$(find "$extract" -type f -name lumen -print -quit)
+          export LUMEN_RELEASE_MOLI=$(find "$extract" -path '*/resources/moli/linux-x64/moli' -type f -print -quit)
+          test -n "$LUMEN_RELEASE_EXE" && test -n "$LUMEN_RELEASE_MOLI"
+          node tests/release-smoke.mjs
+          appimage=$(realpath "$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' -print -quit)")
+          mkdir -p "$RUNNER_TEMP/lumen-appimage-smoke"
+          cd "$RUNNER_TEMP/lumen-appimage-smoke"
+          "$appimage" --appimage-extract > extract.log
+          export LUMEN_RELEASE_EXE=$(find "$PWD/squashfs-root" -type f -name lumen -print -quit)
+          export LUMEN_RELEASE_MOLI=$(find "$PWD/squashfs-root" -path '*/resources/moli/linux-x64/moli' -type f -print -quit)
+          test -n "$LUMEN_RELEASE_EXE" && test -n "$LUMEN_RELEASE_MOLI"
+          cd "$GITHUB_WORKSPACE"
+          node tests/release-smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: linux

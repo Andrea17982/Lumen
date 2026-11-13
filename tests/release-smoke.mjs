@@ -49,7 +49,9 @@ const browserReplies = browser.stdout
 assert.equal(browserReplies[0].result.serverInfo.name, 'lumen_browser');
 assert.equal(browserReplies[0].result.serverInfo.version, expectedVersion);
 assert.equal(browserReplies[1].result.tools.length, 8);
-const moli = path.join(path.dirname(executable), 'resources/moli/win32-x64/moli.exe');
+const moli =
+  process.env.LUMEN_RELEASE_MOLI ||
+  path.join(path.dirname(executable), 'resources/moli/win32-x64/moli.exe');
 assert(existsSync(moli), `Bundled browser missing: ${moli}`);
 const version = spawnSync(moli, ['--version'], {
   encoding: 'utf8',

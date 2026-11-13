@@ -1,7 +1,8 @@
 // Isolated native fixture plumbing. Run serially; offline by default, live callers opt out.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir } from 'node:fs/promises';
+import { once } from 'node:events';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
@@ -20,10 +21,26 @@ export async function nativeHarness(name, { executable, offline = true, appEnv =
   let vite;
   let browser;
   let app;
+  let page;
   const close = async () => {
     await browser?.close().catch(() => {});
-    if (app?.exitCode === null) app.kill();
-    if (vite?.exitCode === null) vite.kill();
+    for (const child of [app, vite]) {
+      if (child?.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit');
+        child.kill();
+        let timeout;
+        try {
+          await Promise.race([
+            exited,
+            new Promise((resolve) => {
+              timeout = setTimeout(resolve, 5000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+    }
     // A CLI descendant can inherit a pipe after its owned parent exits. Closing these
     // handles prevents a concluded multi-window experiment keeping Node alive.
     for (const child of [app, vite]) {
@@ -79,7 +96,7 @@ export async function nativeHarness(name, { executable, offline = true, appEnv =
       }
     }
     assert(browser, `No isolated WebView2: ${errors}`);
-    const page = browser
+    page = browser
       .contexts()[0]
       .pages()
       .find((p) => !p.url().startsWith('devtools:'));
@@ -93,6 +110,14 @@ export async function nativeHarness(name, { executable, offline = true, appEnv =
     assert.equal((await invoke('diagnostics')).dataDir, data);
     return { root, data, workspace, page, invoke, close, pid: app.pid };
   } catch (error) {
+    if (page) {
+      await writeFile(
+        path.join(data, 'startup-failure.html'),
+        await page.content().catch(() => ''),
+      ).catch(() => {});
+      await page.screenshot({ path: path.join(data, 'startup-failure.png') }).catch(() => {});
+      console.error(`Native startup evidence: ${data}; page: ${page.url()}`);
+    }
     await close();
     throw error;
   }
