@@ -8,11 +8,70 @@ import { nativeHarness } from './native-harness.mjs';
 
 const failures = [];
 let ownerId;
+let httpClosed = 0;
 const api = createServer(async (request, response) => {
   try {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks)) : {};
+    if (request.url === '/mcp') {
+      assert.equal(request.headers.authorization, 'Bearer localhost-fixture');
+      if (request.method === 'GET') {
+        response.writeHead(405).end();
+        return;
+      }
+      if (request.method === 'DELETE') {
+        httpClosed++;
+        response.end();
+        return;
+      }
+      response.setHeader('Content-Type', 'application/json');
+      if (body.method === 'initialize') {
+        response.setHeader('mcp-session-id', 'original-http');
+        response.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              protocolVersion: body.params.protocolVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: 'http-fixture', version: '1' },
+            },
+          }),
+        );
+        return;
+      }
+      assert.equal(request.headers['mcp-session-id'], 'original-http');
+      if (body.method === 'notifications/initialized') {
+        response.writeHead(202).end();
+        return;
+      }
+      const result =
+        body.method === 'tools/list'
+          ? {
+              tools: [
+                {
+                  name: 'http_echo',
+                  description: 'Original HTTP service',
+                  inputSchema: { type: 'object' },
+                  annotations: { readOnlyHint: true },
+                },
+              ],
+            }
+          : {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    owner: 'original-http',
+                    arguments: body.params.arguments,
+                  }),
+                },
+              ],
+            };
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+      return;
+    }
     const native = body.model !== 'schema-fixture';
     if (request.url === '/api/tags') {
       response.end(
@@ -35,18 +94,23 @@ const api = createServer(async (request, response) => {
     assert.equal(request.url, '/api/chat');
     const previous = body.messages.at(-1);
     const gateway = body.messages.some((message) => message.content?.includes('USE_OWNER_GATEWAY'));
+    const http = body.messages.some((message) => message.content?.includes('USE_HTTP_SHARED'));
     let message;
     if (!['tool', 'user'].includes(previous.role) || !previous.tool_name) {
       const name = native
         ? body.tools.find((tool) =>
-            tool.function.description.includes(gateway ? 'owner-service/read:' : '/echo:'),
+            tool.function.description.includes(
+              http ? '/http_echo:' : gateway ? 'owner-service/read:' : '/echo:',
+            ),
           ).function.name
         : body.format.properties.tool.enum.find((name) => name.startsWith('shared_'));
-      const args = gateway
-        ? { count: 11 }
-        : native
-          ? { elicit: true }
-          : { count: 3, enabled: false };
+      const args = http
+        ? { count: 13, enabled: false }
+        : gateway
+          ? { count: 11 }
+          : native
+            ? { elicit: true }
+            : { count: 3, enabled: false };
       message = native
         ? { role: 'assistant', content: '', tool_calls: [{ function: { name, arguments: args } }] }
         : {
@@ -56,7 +120,12 @@ const api = createServer(async (request, response) => {
     } else {
       const result = JSON.parse(previous.content);
       assert(!result.isError, previous.content);
-      if (gateway)
+      if (http)
+        assert.deepEqual(JSON.parse(result.content[0].text), {
+          owner: 'original-http',
+          arguments: { count: 13, enabled: false },
+        });
+      else if (gateway)
         assert.deepEqual(JSON.parse(result.content[0].text), {
           owner: ownerId,
           tool: 'read',
@@ -168,6 +237,20 @@ try {
   const nativeMethods = await readFile(path.join(gptProfile, 'native-rpc.txt'), 'utf8');
   assert(nativeMethods.includes('mcpServer/tool/call'));
   assert(!nativeMethods.includes('turn/start'));
+  await writeFile(
+    path.join(h.workspace, '.mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        httpOriginal: {
+          type: 'http',
+          url: `http://127.0.0.1:${api.address().port}/mcp`,
+          headers: { authorization: 'Bearer localhost-fixture' },
+        },
+      },
+    }),
+  );
+  await complete(await start('Local HTTP shared MCP', 'local-fixture', 'USE_HTTP_SHARED'));
+  assert(httpClosed > 0, 'Turn completion must close the HTTP MCP session');
   assert.deepEqual(failures, []);
   console.log(
     JSON.stringify(
@@ -177,6 +260,7 @@ try {
           'Ollama schema actions consume the original typed MCP result',
           'Ollama calls the owning ChatGPT gateway through direct RPC without starting GPT inference',
           'Turn completions clean up the original service process',
+          'Ollama consumes an authenticated HTTP MCP result and closes its original session',
         ],
         liveCalls: 0,
       },

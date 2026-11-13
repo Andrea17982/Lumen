@@ -426,6 +426,7 @@ async fn run(
     let mut thread = None::<String>;
     let mut routes = BTreeMap::<String, (String, String, Value)>::new();
     let mut skill_files = std::collections::BTreeSet::<PathBuf>::new();
+    let mut resource_servers = std::collections::BTreeSet::<String>::new();
     while let Some(line) = client
         .next_line()
         .await
@@ -470,6 +471,8 @@ async fn run(
             let mut tools = vec![
                 json!({"name":"list_account_skills","description":"Discover skills installed in the owning ChatGPT/Codex account, including plugin skills, without running its model.","inputSchema":{"type":"object","properties":{}},"annotations":{"readOnlyHint":true,"idempotentHint":true}}),
                 json!({"name":"read_account_skill","description":"Read a SKILL.md returned by list_account_skills, or a text resource relative to that skill. Only listed skills and files inside their folder can be read.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"resource":{"type":"string"}},"required":["path"]},"annotations":{"readOnlyHint":true,"idempotentHint":true}}),
+                json!({"name":"list_account_resources","description":"List MCP resources and URI templates available through the owning ChatGPT account. No model turn is run.","inputSchema":{"type":"object","properties":{},"additionalProperties":false},"annotations":{"readOnlyHint":true,"idempotentHint":true}}),
+                json!({"name":"read_account_resource","description":"Read an MCP resource through a server returned by list_account_resources, preserving the owning account authentication.","inputSchema":{"type":"object","properties":{"server":{"type":"string"},"uri":{"type":"string"}},"required":["server","uri"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"idempotentHint":true}}),
             ];
             for page in 0..20 {
                 let list=wire.rpc("mcpServerStatus/list",json!({"threadId":thread,"detail":"toolsAndAuthOnly","cursor":cursor,"limit":100}),client,output).await?;
@@ -515,6 +518,67 @@ async fn run(
             .await?;
         } else {
             let name = request["params"]["name"].as_str().unwrap_or("");
+            if name == "list_account_resources" {
+                let mut resources = vec![];
+                let mut cursor = Value::Null;
+                resource_servers.clear();
+                for page in 0..20 {
+                    let list = wire
+                        .rpc(
+                            "mcpServerStatus/list",
+                            json!({"threadId":thread,"detail":"full","cursor":cursor,"limit":100}),
+                            client,
+                            output,
+                        )
+                        .await?;
+                    for server in list["data"].as_array().into_iter().flatten() {
+                        if server["authStatus"] == "notLoggedIn"
+                            || server["runtimeStatus"]
+                                .as_str()
+                                .is_some_and(|status| status != "connected")
+                        {
+                            continue;
+                        }
+                        let Some(name) = server["name"].as_str() else {
+                            continue;
+                        };
+                        resource_servers.insert(name.to_owned());
+                        resources.push(json!({"server":name,"resources":server["resources"],"resourceTemplates":server["resourceTemplates"]}));
+                    }
+                    cursor = list["nextCursor"].clone();
+                    if cursor.is_null() {
+                        break;
+                    }
+                    if page == 19 {
+                        return Err("Native account resources exceed pagination limit".into());
+                    }
+                }
+                send(output,json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":json!(resources).to_string()}]}})).await?;
+                continue;
+            }
+            if name == "read_account_resource" {
+                let args = &request["params"]["arguments"];
+                let server = args["server"]
+                    .as_str()
+                    .filter(|name| resource_servers.contains(*name));
+                let uri = args["uri"]
+                    .as_str()
+                    .filter(|uri| !uri.is_empty() && uri.len() <= 16000);
+                if let (Some(server), Some(uri)) = (server, uri) {
+                    let result = wire
+                        .rpc(
+                            "mcpServer/resource/read",
+                            json!({"server":server,"uri":uri,"threadId":thread}),
+                            client,
+                            output,
+                        )
+                        .await?;
+                    send(output,json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":result.to_string()}]}})).await?;
+                } else {
+                    send(output,json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"List owning account resources first, then choose a listed server and resource URI"}})).await?;
+                }
+                continue;
+            }
             if name == "list_account_skills" {
                 let result = wire
                     .rpc(

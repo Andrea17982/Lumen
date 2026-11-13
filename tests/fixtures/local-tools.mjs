@@ -5,13 +5,17 @@ if (process.env.PID_FILE) writeFileSync(process.env.PID_FILE, String(process.pid
 const send = (frame) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...frame }) + '\n');
 const result = (id, value) => send({ id, result: value });
 let pending;
+let revised = false;
 for await (const line of createInterface({ input: process.stdin })) {
   const message = JSON.parse(line);
   if (message.method === 'initialize') {
     if (!message.params.capabilities.elicitation) throw new Error('Missing elicitation capability');
     result(message.id, {
       protocolVersion: '2025-06-18',
-      capabilities: { tools: {} },
+      capabilities: {
+        tools: { listChanged: true },
+        ...(process.env.RESOURCE_MODE ? { resources: {}, prompts: {} } : {}),
+      },
       serverInfo: { name: 'local-tools', version: '1' },
     });
   }
@@ -20,7 +24,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       result(message.id, {
         tools: [
           {
-            name: 'echo',
+            name: revised ? 'new_echo' : 'echo',
             description: 'Local fixture echo',
             inputSchema: { type: 'object' },
             annotations: { readOnlyHint: true },
@@ -36,7 +40,35 @@ for await (const line of createInterface({ input: process.stdin })) {
       });
     }
   }
+  if (message.method === 'resources/list')
+    result(message.id, {
+      resources: [{ uri: 'fixture://original', name: 'Original account resource' }],
+      ...(message.params.cursor ? {} : { nextCursor: 'resource-second' }),
+    });
+  if (message.method === 'resources/templates/list')
+    result(message.id, {
+      resourceTemplates: [{ uriTemplate: 'fixture://{name}', name: 'Account template' }],
+    });
+  if (message.method === 'resources/read')
+    result(message.id, { contents: [{ uri: message.params.uri, text: 'Original resource body' }] });
+  if (message.method === 'prompts/list')
+    result(message.id, {
+      prompts: [{ name: 'review', arguments: [{ name: 'subject', required: true }] }],
+    });
+  if (message.method === 'prompts/get')
+    result(message.id, {
+      messages: [
+        {
+          role: 'user',
+          content: { type: 'text', text: 'Review ' + message.params.arguments.subject },
+        },
+      ],
+    });
   if (message.method === 'tools/call') {
+    if (message.params.arguments.refresh) {
+      revised = true;
+      send({ method: 'notifications/tools/list_changed' });
+    }
     if (process.env.CALL_FILE) appendFileSync(process.env.CALL_FILE, message.params.name + '\n');
     if (message.params.arguments.wait) continue;
     if (message.params.arguments.malformed) {

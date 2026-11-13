@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.7.1"
+version = "0.8.0"
 description = "Native AI sessions, optional orchestration and Moli browsing"
 authors = ["Andrea17982"]
 edition = "2021"
@@ -36,6 +36,8 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+reqwest_mcp = { package = "reqwest", version = "0.13.2", default-features = false, features = ["json", "stream", "rustls"] }
+rmcp = { version = "=3.9.0", default-features = false, features = ["client", "elicitation", "transport-streamable-http-client-reqwest", "reqwest"] }
 tokio-tungstenite = "0.28"
 futures-util = "0.3"
 axum = "0.8"

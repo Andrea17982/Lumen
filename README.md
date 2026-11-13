@@ -4,7 +4,7 @@
   <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
   <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
   <p>
-    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.7.1</a> ·
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.8.0</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
     <a href="docs/README.md">Documentation</a> ·
     <a href="README.it.md">Italiano</a>

@@ -124,7 +124,7 @@ try {
   const gateway = connection(['--lumen-native-account-mcp', gptDir, h.workspace, 'full']);
   await gateway.rpc('initialize', { protocolVersion: '2025-06-18' });
   const tools = (await gateway.rpc('tools/list')).result.tools;
-  assert.equal(tools.length, 4);
+  assert.equal(tools.length, 6);
   const read = tools.find((t) => t.description.includes('/read:'));
   const result = await gateway.rpc(
     'tools/call',
@@ -137,6 +137,23 @@ try {
     arguments: { elicit: true, count: 7 },
   });
   await gateway.rpc('tools/call', { name: 'list_account_skills', arguments: {} });
+  await gateway.rpc('tools/call', { name: 'list_account_resources', arguments: {} });
+  const accountResource = await gateway.rpc('tools/call', {
+    name: 'read_account_resource',
+    arguments: { server: 'owner-service', uri: 'fixture://original' },
+  });
+  assert.equal(
+    JSON.parse(accountResource.result.content[0].text).contents[0].text,
+    'Owning account resource',
+  );
+  assert(
+    (
+      await gateway.rpc('tools/call', {
+        name: 'read_account_resource',
+        arguments: { server: 'another-account', uri: 'fixture://original' },
+      })
+    ).error,
+  );
   const skillPath = path.join(gptDir, 'skills/remote/SKILL.md');
   const skill = await gateway.rpc('tools/call', {
     name: 'read_account_skill',
@@ -169,7 +186,7 @@ try {
   );
   const readOnly = connection(['--lumen-native-account-mcp', gptDir, h.workspace, 'read-only']);
   await readOnly.rpc('initialize', { protocolVersion: '2025-06-18' });
-  assert.equal((await readOnly.rpc('tools/list')).result.tools.length, 3);
+  assert.equal((await readOnly.rpc('tools/list')).result.tools.length, 5);
   const denied = await readOnly.rpc('tools/call', {
     name: tools.find((t) => t.description.includes('/write:')).name,
     arguments: {},

@@ -17,6 +17,11 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
             Emit @{id=$request.id;result=@{data=@(@{cwd=(Get-Location).Path;skills=@(@{name='remote-skill';description='Owner plugin skill';path=(Join-Path $env:CODEX_HOME 'skills/remote/SKILL.md');enabled=$true});errors=@()})}}
             continue
         }
+        if ($request.method -eq 'mcpServer/resource/read') {
+            if ($request.params.server -ne 'owner-service') {throw 'Resource must keep its owning server'}
+            Emit @{id=$request.id;result=@{contents=@(@{uri=$request.params.uri;text='Owning account resource'})}}
+            continue
+        }
         if ($request.method -eq 'mcpServer/tool/call') {
             if ($request.params.arguments.elicit) {
                 Emit @{id='native-consent';method='mcpServer/elicitation/request';params=@{threadId='fixture-thread';serverName='owner-service';mode='form';message='Confirm owner service access';requestedSchema=@{type='object';properties=@{scope=@{type='string'}};required=@('scope')}}}

@@ -185,20 +185,71 @@ impl Catalog {
             }
         }
     }
-    fn plugins(&mut self, home: &Path, source: &str) {
+    fn plugins(&mut self, home: &Path, source: &str, workspace: Option<&Path>) {
         let index = home.join("plugins/installed_plugins.json");
         let Ok(value) = json_file(&index) else {
             return;
         };
-        let settings = json_file(&home.join("settings.json")).unwrap_or(Value::Null);
+        let settings_path = home.join("settings.json");
+        let mut settings = if settings_path.exists() {
+            match json_file(&settings_path) {
+                Ok(value) if value.is_object() => value,
+                _ => {
+                    self.warnings.push(format!(
+                        "{source}: plugin enablement could not be read; plugins were not imported"
+                    ));
+                    return;
+                }
+            }
+        } else {
+            json!({})
+        };
+        if let Some(workspace) = workspace {
+            for file in [".claude/settings.json", ".claude/settings.local.json"] {
+                let path = workspace.join(file);
+                let overrides = if path.exists() {
+                    match json_file(&path) {
+                        Ok(value) if value.is_object() => value,
+                        _ => {
+                            self.warnings.push("Current project: plugin enablement could not be read; plugins were not imported".into());
+                            return;
+                        }
+                    }
+                } else {
+                    Value::Null
+                };
+                if let Some(enabled) = overrides["enabledPlugins"].as_object() {
+                    if !settings["enabledPlugins"].is_object() {
+                        settings["enabledPlugins"] = json!({});
+                    }
+                    settings["enabledPlugins"]
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(enabled.clone());
+                }
+            }
+        }
         for (name, versions) in value["plugins"].as_object().into_iter().flatten() {
             if settings["enabledPlugins"][name] == false {
                 continue;
             }
             for version in versions.as_array().into_iter().flatten() {
-                // Project/local plugin installations are loaded only through their workspace.
-                if version["scope"].as_str().is_some_and(|s| s != "user") {
-                    continue;
+                if let Some(scope) = version["scope"]
+                    .as_str()
+                    .or_else(|| version["projectPath"].as_str().map(|_| "project"))
+                {
+                    if !matches!(scope, "user" | "project" | "local") {
+                        continue;
+                    }
+                    if scope != "user" {
+                        let declared = version["projectPath"]
+                            .as_str()
+                            .and_then(|path| dunce::canonicalize(path).ok());
+                        let current = workspace.and_then(|path| dunce::canonicalize(path).ok());
+                        if declared.is_none() || declared != current {
+                            continue;
+                        }
+                    }
                 }
                 let Some(path) = version["installPath"].as_str() else {
                     continue;
@@ -225,7 +276,7 @@ impl Catalog {
             }
         }
     }
-    fn profile(&mut self, home: &Path, source: &str) {
+    fn profile(&mut self, home: &Path, source: &str, workspace: Option<&Path>) {
         // Existence only: provider login credentials are never read or copied by discovery.
         if home.join("auth.json").is_file()
             && (home.join("config.toml").is_file()
@@ -253,7 +304,7 @@ impl Catalog {
             self.config(&home.join(file), source, None);
         }
         self.skills(&home.join("skills"), source, 0);
-        self.plugins(home, source);
+        self.plugins(home, source, workspace);
     }
     pub fn servers(&self) -> serde_json::Map<String, Value> {
         self.entries
@@ -302,7 +353,7 @@ pub fn discover(data: &Path, workspace: Option<&Path>) -> Catalog {
             ),
         ] {
             if let Some(path) = std::env::var_os(fixed).or_else(|| std::env::var_os(native)) {
-                catalog.profile(&PathBuf::from(path), label);
+                catalog.profile(&PathBuf::from(path), label, workspace);
             }
         }
         finalize(data, &mut catalog);
@@ -316,7 +367,7 @@ pub fn discover_at(data: &Path, workspace: Option<&Path>, home: Option<&Path>) -
             (home.join(".claude"), "Claude"),
             (home.join(".codex"), "ChatGPT / Codex"),
         ] {
-            out.profile(&folder, label);
+            out.profile(&folder, label, workspace);
         }
         out.config(&home.join(".claude.json"), "Claude", None);
         out.skills(&home.join(".agents/skills"), "Agent skills", 0);
@@ -356,6 +407,7 @@ pub fn discover_at(data: &Path, workspace: Option<&Path>, home: Option<&Path>) -
                 out.profile(
                     &account.path(),
                     &format!("Lumen account {}", account.file_name().to_string_lossy()),
+                    workspace,
                 );
             }
         }
@@ -695,6 +747,48 @@ mod tests {
             std::fs::read_to_string(a.join(".claude/skills/design/resources/file.txt")).unwrap(),
             "resource preserved"
         );
+    }
+    #[test]
+    fn project_plugin_installations_and_enablement_are_scoped_to_their_original_workspace() {
+        let f = crate::test_support::Fixture::new();
+        let home = f.directory("home");
+        let project = f.directory("project");
+        let another = f.directory("another");
+        let plugin = f.directory("original-plugin");
+        write(
+            &plugin.join("skills/review/SKILL.md"),
+            "Project plugin body",
+        );
+        write(
+            &plugin.join(".mcp.json"),
+            r#"{"mcpServers":{"project-plugin":{"command":"node","args":["${CLAUDE_PLUGIN_ROOT}/server.mjs"]}}}"#,
+        );
+        write(&home.join(".claude/plugins/installed_plugins.json"),&json!({"plugins":{"review@fixture":[{"scope":"project","projectPath":project,"installPath":plugin}]}}).to_string());
+        let visible = discover_at(&f.root, Some(&project), Some(&home));
+        assert_eq!(visible.servers().len(), 1);
+        assert!(visible.entries.iter().any(|entry| entry.kind == "skill"));
+        assert!(discover_at(&f.root, Some(&another), Some(&home))
+            .entries
+            .is_empty());
+        assert!(discover_at(&f.root, None, Some(&home)).entries.is_empty());
+        write(
+            &project.join(".claude/settings.local.json"),
+            r#"{"enabledPlugins":{"review@fixture":false}}"#,
+        );
+        assert!(discover_at(&f.root, Some(&project), Some(&home))
+            .entries
+            .is_empty());
+        assert_eq!(
+            std::fs::read_to_string(plugin.join("skills/review/SKILL.md")).unwrap(),
+            "Project plugin body"
+        );
+        write(&home.join(".claude/settings.json"), "[]");
+        let invalid = discover_at(&f.root, Some(&project), Some(&home));
+        assert!(invalid.entries.is_empty());
+        assert!(invalid
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("enablement")));
     }
     #[test]
     fn installed_plugins_use_original_resources_and_report_native_hooks() {
