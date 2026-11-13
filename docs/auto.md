@@ -1,6 +1,6 @@
 # Auto and Orchestra policy — 0.7
 
-Direct provider sessions are the default and bypass Lumen's classifier/planner. Auto is an explicit routing mode; Orchestra is an additional opt-in setting. An explicit manual provider/model is not overridden merely because the request mentions architecture or security.
+Direct provider sessions are the default and bypass Lumen's classifier/planner when Orchestra is off. Auto is an explicit routing mode; Orchestra is an additional opt-in setting that can plan complex work even with a manually selected coordinator. With Orchestra off, an explicit manual provider/model is not overridden merely because the request mentions architecture or security.
 
 ## Classification and model selection
 
@@ -29,6 +29,8 @@ Only recognized short continuations reuse the latest request's rating; unrelated
 Enabled Orchestra can handle complex Auto or approved multi-part work. Its coordinator uses an appropriate catalog model and preserves an explicit coordinator choice where supplied. A task graph records file ownership, dependencies and assignments; workers receive actual workspace/permissions, prior decisions and relevant graph/check context.
 
 The scheduler enforces concurrency, admitted-subtask totals and optional quota thresholds. Finished work frees concurrency, not the total-admission budget. Workers use separate worktrees for writes, and integration/final checks operate on their combined result. A live run can be stopped; crash recovery requires explicit Resume. Autopilot and already approved execution do not ask for the same plan approval again.
+
+The 0.8 continuity checkpoint makes only successful dependencies eligible, fails missing/failed dependency chains, and preserves consumed admission and attempt limits across Resume. Worker errors after observed work do not automatically replay; partial text and the reason remain visible, with quota cooldown preserved. Stop waits for provider process cleanup before removing worktrees. These are bounded offline Windows results, not live model-quality or universal delegation claims. [Protocol, reproduction and limits](auto-orchestra-continuity-0.8.md).
 
 ## Usage and fallback
 

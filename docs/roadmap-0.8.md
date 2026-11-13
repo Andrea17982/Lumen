@@ -1,6 +1,8 @@
 # Roadmap 0.8 — misure, qualità e continuità
 
-Stato: **sette tranche integrate o valutate; checkpoint completati raccolti nella 0.7.1 — Performance Update**, 11 novembre 2026. Pubblicazione autorizzata dal proprietario dopo verifiche e CI; questa roadmap 0.8 resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri. Virtualizzazione con perdita di ricerca/selezione/accessibilità esclusa; inferenza/TTFT live, tempi assoluti stabili e candidati rimasti non sono dichiarati risolti.
+Stato: **sette tranche pubblicate nella 0.7.1 — Performance Update; ottava sul grafo, nona su Rewind, decima su Compact, undicesima su logo/sidebar, dodicesima sul recupero sessioni e tredicesima sulla quota, quattordicesima su Auto/Orchestra e quindicesima sul contesto implementate nel ramo 0.8; tranche 16 verificata anticipatamente e tranche 17 completata nel perimetro dichiarato**, 12 novembre 2026. La release 0.7.1 resta invariata e questa roadmap resta aperta. Digitazione, apertura e chiusura metadati Windows superano i rispettivi criteri; il corpus mirato degli import passa da 9/23 a 23/23 aspettative. Virtualizzazione con perdita di contenuti esclusa; inferenza/TTFT live, tempi assoluti stabili e semantica completa del grafo non sono dichiarati risolti.
+
+**Consolidamento del 13 novembre:** il candidato 0.8.0 aggiunge HTTP MCP, risorse/prompts, cataloghi dinamici e plugin con ambito. [Gate e decisione di perimetro](release-readiness-0.8.md), [changelog candidato](release-notes/0.8.0.md). Il proprietario ha approvato esplicitamente «Pubblica 0.8 con limiti espliciti»: il requisito universale non soddisfatto passa alla [roadmap successiva](roadmap-next.md). Implementazione conclusa nel perimetro approvato; CI, pacchetti e pubblicazione finale in corso.
 
 ## Direzione approvata nell'intervista dell'11 novembre
 
@@ -23,9 +25,9 @@ Stato: **sette tranche integrate o valutate; checkpoint completati raccolti nell
 | P0 | Osservabilità dell'esecuzione e analisi degli arresti segnalati | Stati basati su eventi reali e durata visibile; distinguere conclusione, domanda, errore e assenza di eventi; riproduzione controllata prima di modificare recupero/istruzioni | Riepilogo integrato e verificato Windows/offline; causa degli episodi live ancora da stabilire |
 | P1 | Qualità, continuità tra account e Auto; dipende da compiti e verifiche indipendenti | Compiti React/TS e Godot con requisiti/check fissati prima; misurare completamento senza solleciti, errori, correzioni, estranei, costo totale e attesa; limiti dichiarati, nessuna parità universale dedotta | Correzioni e fixture Windows integrate; GPT: candidata React 2/2 e Godot 3/3, confronto mirato; Claude live fermo per autenticazione; qualità generale/delega ordinaria ancora aperte |
 | P1 | Baseline release Windows e candidati prestazionali dei punti 0–4 | Misure ripetute e metrica/soglia fissate prima del prototipo; integrare solo benefici dimostrati | Digitazione CPU −63% sul primo carico primario; confronto successivo di 360 aperture: −26% sulla chat mista da 5.000 messaggi; finestra virtualizzata esclusa per perdita di contenuti raggiungibili; baseline assoluta stabile e altri candidati aperti |
-| P2 | Composizione visiva approvata, logo/sidebar, rifiniture e movimento | Chiaro/scuro, tastiera/focus e movimento ridotto; controlli accessibili pur mantenendo pochi elementi; confronto visivo nativo Windows | Direzione approvata; implementazione da avviare |
+| P2 | Composizione visiva approvata, logo/sidebar, rifiniture e movimento | Chiaro/scuro, tastiera/focus e movimento ridotto; controlli accessibili pur mantenendo pochi elementi; confronto visivo nativo Windows | Tranche 16/17 completate nel perimetro: logo/sidebar, tastiera/focus, menu permessi e tour; etichette Narrator confermate dal proprietario. Nessuna certificazione generale WCAG |
 | P1 | Attesa tra turni e avvio CLI/provider | Separare preparazione, processo, handshake, invio e testo; mantenere distinti fixture e provider reali | 80 turni release/offline e 40 inizializzazioni CLI reali senza inferenza; telemetria monotona integrata; inferenza live e Auto/Orchestra ancora da attribuire |
-| P2 | Regressioni mirate Windows e build/CI multipiattaforma | Copertura dei flussi modificati, con fixture/live/desktop distinti; account e hardware mancanti restano visibili | Da avviare |
+| P2 | Regressioni mirate Windows e build/CI multipiattaforma | Copertura dei flussi modificati, con fixture/live/desktop distinti; account e hardware mancanti restano visibili | CI e regressioni Windows eseguite nei checkpoint; ripetizione e packaging del candidato 0.8 in corso, con limiti nativi non Windows distinti |
 
 La verifica iniziale ha confermato i difetti segnalati nel composer: stato unico per testo/allegati e svuotamento soltanto dopo `send_message`. La prima tranche sotto li corregge. La preparazione/classificazione/catalogo precede tuttora l'accettazione backend; il feedback immediato non misura né elimina quell'attesa. La descrizione obsoleta di link/immagini non interattivi in `DESIGN.md` è stata corretta sulla fonte `MessageBody`/`ResponseImage`, senza usare catture come prova live.
 
@@ -101,6 +103,82 @@ Confronto A/B/A/B delle CLI installate, 40 campioni per provider/variante: chiam
 
 Passano 158 test Rust Windows, 72 unitari frontend, 29 browser, 22 scenari nativi offline, build e controlli formali. [Misure, compromesso di avvio e limiti](metadata-shutdown-0.8.md). Il proprietario autorizza push/merge e release **0.7.1 — Performance Update** delle tranche concluse dopo CI e verifica dei pacchetti. Questa autorizzazione sostituisce il precedente rinvio della pubblicazione, senza chiudere l'intera roadmap 0.8. Budget live invariato a 13 slot; nessuna nuova inferenza.
 
+### Ottava tranche — import affidabili e contesto di impatto
+
+Il corpus dichiarato prima delle correzioni rileva 14 errori su 23 aspettative nella baseline 0.7.1. Risoluzione degli import typed `.mjs/.cjs`→`.mts/.cts`, priorità delle sorgenti TypeScript, GDScript con apici singoli/ereditarietà relativa e normalizzazione entro i confini portano il corpus a 23/23. Commenti su righe intere non creano più definizioni/import/riferimenti nei linguaggi mirati. Indice persistente 3→4, refresh dopo rinomina/cancellazione e conservazione dei chiamanti nell'handoff verificati.
+
+Passano 163 test Rust Windows, sei controlli con TypeScript/Node/Godot installati e cinque scenari MCP nativi; Clippy, build debug e controlli formali. [Protocollo e limiti](graph-reliability-0.8.md), [dati](data/graph-reliability-0.8-results.json). Nessun parser nuovo o inferenza; registro live a 13 slot. È una correzione mirata del contesto, non prova di accuratezza globale/risparmio token o chiusura dell'intero punto 4.
+
+### Nona tranche — Rewind e ritiro delle evidenze obsolete
+
+Due regressioni riprodotte sulla baseline `26ab3b9`: Rewind conservava identificatori CLI che puntavano a una cronologia remota contenente anche i turni rimossi; un nuovo incarico esplicito ritirava i check dallo stato di lavoro ma non dal contesto provider. La rimozione dei marcatori nativi è ora atomica con il taglio SQLite; il prossimo turno ricostruisce il contesto conservato. Le altre attività e chat restano intatte. La stessa regola di nuovo incarico governa entrambi i contesti; le continuazioni dichiarano quando il nuovo contesto sostituisce evidenze precedenti, anche se restano note di progetto.
+
+Passano 166 test Rust Windows e nove scenari nativi offline Claude/Claude/GPT, inclusi i due nuovi flussi Rewind/cambio incarico. [Protocollo, verifiche e limiti](continuity-rewind-0.8.md). Budget live invariato a 13 slot; nessuna nuova inferenza o pubblicazione. Non è un rollback della cronologia sul provider né una certificazione della continuità live generale.
+
+### Decima tranche — evidenze attraverso Compact
+
+Riprodotta sulla baseline `1b8a941` la perdita di dettagli, diagnostica e sorgenti dei check nel contesto provider dopo Compact. Il nuovo seed conserva l'ultima evidenza strutturata per etichetta; continuazioni e cambio account leggono la stessa proiezione, ancora limitata agli otto check più recenti. Compact ripetuto conserva le sorgenti originali senza seguire puntatori alla chat precedente. I nuovi risultati sostituiscono quelli vecchi; nuovo incarico, Rewind e cambio progetto rispettano i rispettivi confini. Vecchi seed restano leggibili senza inventare informazioni perdute.
+
+[Protocollo e limiti](compact-evidence-0.8.md). Nessuna inferenza aggiuntiva: budget a 13 slot. Questa è continuità delle evidenze backend, non una misura della qualità generale del modello o chiusura della matrice completa.
+
+### Undicesima tranche — logo e sidebar
+
+Implementato il 12 novembre il logo come unico comando per aprire/chiudere la sidebar di vetro, anche sul desktop; menu mobile separato rimosso. Il logo resta ancorato, la chat occupa lo spazio disponibile, bozza e contenuti restano montati. La composizione con progetti resta quella iniziale sul desktop; la vista essenziale si richiama dal logo. Tastiera, focus, etichette inglesi/italiane, pannello chiuso `inert`, riflesso breve e movimento ridotto sono coperti dai controlli mirati. La selezione di una chat conserva il pannello desktop, mentre la finestra stretta lo chiude.
+
+[Perimetro, prove e limiti](logo-sidebar-0.8.md). Nessuna nuova inferenza o release; budget invariato a 13 slot. È il primo intervento sulla composizione approvata: rifiniture generali, persistenza della composizione e screen reader effettivo restano aperti.
+
+### Dodicesima tranche — recupero sessioni senza replay dopo attività
+
+Riprodotta sulla baseline `90f632e` una duplicazione: un errore di sessione dopo l'avvio di uno strumento, senza testo visibile, faceva ripetere il compito e la scrittura nella fixture. Il fallback ora osserva l'attività prima che i segnali vengano scartati/compattati e si ferma dopo lavoro osservato, eventi sconosciuti, testo parziale o cancellazione. Il recupero singolo con contesto completo resta disponibile per sessione mancante prima del lavoro osservato; l'errore spiega quando Lumen evita il replay.
+
+[Protocollo e limiti](resume-replay-0.8.md). Nessuna nuova inferenza, budget a 13 slot. La correzione riguarda questo fallback di ripresa nativa, non tutte le politiche di ritentativo o gli effetti non riportati dai provider.
+
+### Tredicesima tranche — quota senza replay del lavoro parziale
+
+Riprodotta sulla baseline `086469a` una seconda duplicazione: dopo lavoro osservato e quota esaurita, il cambio automatico account reinviava il compito e ripeteva la scrittura. Il guard monotono è ora condiviso con questo percorso: niente cambio automatico dopo attività, output parziale o cancellazione; testo ed evidenze restano conservati. Il cooldown viene registrato comunque. Prima del lavoro osservato resta disponibile un solo passaggio a un altro account con i permessi correnti.
+
+[Protocollo e limiti](quota-replay-0.8.md). Budget live invariato a 13 slot; nessuna inferenza o pubblicazione.
+
+### Tranche 16 — interfaccia e verifiche Windows/accessibilità
+
+Eseguita anticipatamente su richiesta del proprietario il 12 novembre. Corrette le impostazioni non modali rispetto al focus, lo sfondo attivo/esposto, le scorciatoie dietro il dialogo e il ritorno all'opener. Focus da tastiera visibile con riempimento/sottolineatura, senza anelli globali. Le domande distinguono controllo iniziale, lettura fallita e scadenza, conservano la risposta dopo errore di invio e ripristinano il focus dopo errore/successo.
+
+Passano 35 scenari browser e 72 unitari; matrice WebView2 con dati isolati per impostazioni chiaro/scuro, domanda da tastiera, inspector, 1.000 messaggi ricercabili/esposti in AX e immagine locale. Provato realmente Assistente vocale, con conferma uditiva del proprietario sulle etichette; VS Code mostra la riga 13 richiesta dal backend con profilo temporaneo. Lettore e finestre editor ripristinati al termine. [Matrice e limiti](windows-accessibility-0.8.md), [risultato aggregato](data/windows-accessibility-0.8-results.json). Nessuna certificazione generale di accessibilità, NVDA o desktop non Windows; budget live invariato a 13 slot.
+
+### Tranche 14 — Auto/Orchestra e continuità
+
+Tre difetti dello scheduler riprodotti e corretti: dipendenze fallite considerate completate, quarto tentativo dopo ripresa e dipendenze inesistenti sospese. Solo completamenti riusciti sbloccano i dipendenti; ammissioni e tentativi già consumati restano tali. Nei worker, errori dopo lavoro osservato non avviano retry; output parziale, spiegazione e cooldown quota sono conservati. La prova nativa di cancellazione ha riprodotto processi figli superstiti: Stop attende ora la pulizia del provider prima di rimuovere le lane.
+
+Cinque regressioni Rust aggiunte, quattro scenari Orchestra Windows con IPC/worktree reali e CLI offline e 12 regressioni native account/contesto/routing/audit coprono questo perimetro. Le regole Auto e cross-audit restano quelle approvate; nessuna nuova harness universale o prova di qualità multiaccount live. [Protocollo, risultati e limiti](auto-orchestra-continuity-0.8.md). Budget fermo a 13 slot; release 0.7.1 invariata.
+
+### Tranche 15 — contesto, grafo e budget dei prompt
+
+Cinque regressioni riprodotte sulla baseline `250e6ec` e corrette: copie identiche dei fatti proiettati, allegati duplicati, anteprime fuori budget, requisiti centrali delle note persi alla ripresa e contratti omessi senza avviso di limite. I fatti completi con fonte rimangono persistiti; vengono rimossi solo duplicati già mostrati integralmente. Inline e preview rispettano 48 KiB di contenuto UTF-8, mantenendo i riferimenti ai file. Le note modificate vengono consegnate integralmente una volta, con revisione aggiornata anche per vecchie sessioni.
+
+Payload React 7.305→4.719 byte, Godot con cronologia lunga 106.119→103.533; input CLI iniziale reale offline 29.489→27.247. I turni nativi invariati restano 758 byte/148 token locali; l'aggiornamento di note lunghe cresce intenzionalmente per conservare requisiti prima omessi. Passano 180 Rust, 72 unitari frontend, sei catture native per versione, 12 regressioni qualità/continuità, quattro Orchestra e cinque grafo MCP; corpus import 23/23 preservato. [Protocollo e record](context-graph-budget-0.8.md). Nessuna nuova inferenza o prova di risparmio fatturato/qualità generale. JSON posizionale, parser nuovo, budget globale per modello e riserva d'output restano non dimostrati, senza cambiamento dei formati nativi.
+
+### Tranche 17 — prestazioni, accettazione e primo utilizzo
+
+Consolidate le decisioni: isolamento del transcript, paragrafi letterali e shutdown Windows integrati; finestra virtualizzata e memoizzazione più ampia escluse per i rispettivi gate; Rust Markdown/ANSI, pool CLI, metadati posizionali, parser nuovo e budget globale rinviati per prove insufficienti. I record storici restano distinti dalle nuove misure. [Protocollo e classificazione](final-acceptance-0.8.md).
+
+Il controllo originario nello stesso processo riproduce una deriva di apertura della baseline (12 campioni, circa 1,2–27,8 s), conservata ed esclusa prima del confronto candidato. La causa e la stabilità delle aperture ripetute restano non certificate. Ottanta campioni con processi freschi, A/B/A/B, superano il gate mirato di regressione del 10%: apertura −0,7%/−10,2%, task digitazione +3,1%/−17,2%. P95 e variazioni secondarie restano visibili, senza attribuire una nuova accelerazione alla UI. Otto gate del contenuto storico passano sul medesimo binario release isolato.
+
+Il controllo permessi mostra ora modalità e spiegazioni, con selezione esplicita. Il tutorial iniziale è saltabile, ripetibile, bilingue e guidato sugli elementi reali, con highlight, focus e movimento ridotto; non invia richieste né cambia accessi. Passano 180 Rust (14 opt-in ignorati), 72 unitari frontend, 40 browser e 18 scenari nativi debug (tre onboarding, sette composer, otto execution). Nuova verifica uditiva del tutorial, desktop non Windows e qualità/TTFT live non sono dedotti da queste prove. Budget fermo a 13; release pubblica ancora 0.7.1.
+
+## Piano di chiusura — una tranche residua, 14–17 completate nel perimetro dichiarato
+
+Stima operativa aggiornata il 12 novembre, non un numero di difetti garantito. Dei cinque pacchetti previsti, le tranche 14–17 sono completate nel perimetro dichiarato; resta la 18. Risultati inconcludenti, candidati rinviati e prerequisiti rimangono espliciti nel protocollo 17, comprese le aperture ripetute nello stesso processo. Nuovi difetti bloccanti possono richiedere lavoro ulteriore: la roadmap non viene dichiarata conclusa in anticipo.
+
+| Tranche prevista | Lavoro residuo | Criterio di uscita |
+| --- | --- | --- |
+| 14 — Auto e Orchestra — completata | Dipendenze, budget di ripresa, replay dei worker e pulizia su Stop corretti | Casi offline e confini di delega nel checkpoint sopra; qualità multiaccount live non certificata |
+| 15 — Contesto e grafo — completata | Duplicati e budget delle preview corretti, note di ripresa complete, limiti dei contratti espliciti | Payload costruiti e consegnati misurati offline; corpus preservato; candidati senza prova end-to-end classificati nel protocollo |
+| 16 — Interfaccia e Windows — completata | Impostazioni/focus/domande corretti; matrice nativa, editor alla riga e prova con Assistente vocale eseguiti | Perimetro e limiti nel checkpoint sopra; integrazione e release ancora aperte |
+| 17 — Prestazioni e accettazione finale — completata | Misure e candidati classificati, regressioni release mirate e permessi/tutorial verificati | Gate e limitazioni espliciti nel protocollo; non si certificano aperture ripetute a regime, qualità live o parità desktop |
+| 18 — Integrazione e release | Integrare i rami verificati, versione 0.8, CI, pacchetti, checksum e note di rilascio | Sorgente e pacchetti coerenti, controlli richiesti verdi e release verificata; nessuna eliminazione delle limitazioni irrisolte |
+
+Il budget live resta invariato: i confronti Claude/Gemini, le prove multiaccount live e l'attribuzione dell'inferenza senza prerequisiti/budget non vengono rilanciati. Saranno dichiarati non verificati o rinviati nel perimetro di accettazione; non diventano risultati positivi. Le prove desktop macOS/Linux richiedono tester esterni e restano separate dalla CI. La sola tranche residua comprende integrazione e pubblicazione.
+
 ## Decisioni concordate
 
 - Bilanciare fluidità, tempi di attesa e qualità del codice prodotto.
@@ -165,7 +243,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 3. Contesto, metadati e qualità del codice
 
-**Stato: misure parziali; confronto end-to-end da costruire.**
+**Stato: payload costruiti e consegnati misurati offline nella [tranche 15](context-graph-budget-0.8.md); duplicati, budget preview e requisiti delle note corretti. Qualità/token fatturati end-to-end, budget globale e riserva d'output non dimostrati.**
 
 - Misurare duplicazione, rilevanza, troncamento, budget, riserve di output e continuità dei requisiti nei percorsi effettivi.
 - Provare prima riduzione dei duplicati e proiezioni mirate dello stato; confrontare JSON con chiavi e formato compatto solo per metadati posseduti da Lumen.
@@ -175,7 +253,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 4. Affidabilità del grafo
 
-**Stato: copertura mirata da estendere.**
+**Stato: corpus import TS/JS e Godot, commenti su righe intere e refresh/handoff mirati verificati.** [Ottava tranche](graph-reliability-0.8.md): 23/23 aspettative contro 9/23, senza cambio parser. Alias/configurazioni arbitrarie, semantica completa dei linguaggi, altre forme di commenti/stringhe e accuratezza su progetti reali restano da estendere.
 
 - Creare fixture per dichiarazioni, riferimenti, rinomina, cancellazione e dipendenze nei linguaggi effettivamente coinvolti; registrare omissioni e falsi positivi.
 - Verificare che il contesto di impatto migliori le modifiche e i controlli selezionati, senza aggiungere rumore o eccessivo costo di indicizzazione.
@@ -183,7 +261,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 5. Continuità e comportamento nativo
 
-**Stato: implementazione esistente; matrice di regressione da ampliare.**
+**Stato: Rewind e cambio esplicito incarico corretti nella nona tranche; matrice generale da ampliare.**
 
 - Verificare requisiti e decisioni attraverso continuazione, Compact, Rewind, cambio modello/provider e cambio esplicito della cartella.
 - Riprodurre domande/approvazioni pendenti, cancellazione, coda, quota, riavvio e Resume ripetuto senza duplicare effetti o chiedere di approvare nuovamente un piano già autorizzato.
@@ -193,7 +271,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 6. Verifiche native Windows mirate
 
-**Stato: copertura parziale da completare sui flussi modificati.**
+**Stato: tranche 16 verificata nel perimetro Windows dichiarato; ulteriori lettori, zoom OS e altri desktop restano non collaudati.**
 
 - Verificare tastiera, focus, domande a scelta, immagini, chat lunga, inspector, scorciatoie e ripristino, includendo una prova effettiva con lettore di schermo.
 - Verificare apertura alla riga negli editor disponibili; dichiarare separatamente quelli non installati.
@@ -201,7 +279,7 @@ Prima del prototipo scegliere una metrica primaria, soglia e carico rappresentat
 
 ## 7. Markdown/ANSI in Rust
 
-**Stato: candidato subordinato al profiling, non implementazione promessa.**
+**Stato: rinviato per la 0.8, non implementazione promessa.** La [tranche 17](final-acceptance-0.8.md) non dispone di un confronto post-correzioni che giustifichi la migrazione. Un esperimento futuro richiede beneficio sul costo totale e gli stessi gate di contenuto/accessibilità; non si deduce inutilità del candidato dalla mancanza di prove.
 
 - Procedere al prototipo soltanto se parsing/rendering rappresentano un costo significativo dopo le misure del punto 0.
 - Confrontare il costo totale, compresi IPC e aggiornamento UI, mantenendo corretti immagini, link, streaming, selezione e accessibilità.
@@ -213,7 +291,13 @@ La 0.8 non include automaticamente avvio affiancato di applicazioni arbitrarie d
 
 Le verifiche live Claude/Gemini e le matrici account/versione/OS già aperte restano visibili in [Validazione](validation.md). Non dichiarare parità universale o qualità superiore se dimostrata soltanto su fixture o su un singolo provider.
 
+## Correzione aggiuntiva prima della release — connettori
+
+La segnalazione 0.7.1 su macOS non è ancora riprodotta. Corrette separatamente due falle dimostrate sulla sorgente: protocollo di consenso MCP GPT e approvazione dei tool MCP Claude in Ask. Scope, dati privati, URL, cancellazione e limiti sono nel [checkpoint connettori](connector-interactions-0.8.md). Nessuna migrazione di credenziali, inferenza aggiuntiva o modifica della release pubblicata; il lavoro confluisce nell'integrazione della tranche 18.
+
 ## Chiusura della 0.8
+
+**Aggiornamento obbligatorio del 12 novembre:** il requisito di riuso di connettori/plugin/skill/MCP/mods tra tutti i provider amplia la precedente stima della tranche 18. Il [checkpoint delle capacità condivise](shared-capabilities-0.8.md) include catalogo, relay, gateway RPC dell'account Codex e consenso dell'host verificati offline. La [tranche Ollama](ollama-shared-tools-0.8.md) aggiunge MCP stdio, gateway dell'account e lettura delle skill nei due cicli locali. Restano necessari adattatori dei runtime proprietari, trasporti/API MCP non coperti e accettazione degli account reali. La 0.8 non è quindi riducibile al solo packaging e queste capacità non sono dichiarate universalmente implementate.
 
 - Per ogni candidato: decisione, numeri, carichi, limiti e stato dell'integrazione. Le prove inconcludenti restano aperte o vengono rinviate esplicitamente.
 - Test mirati per ogni modifica accettata, regressioni applicabili, verifica Windows nativa e CI/build multipiattaforma.

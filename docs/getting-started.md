@@ -8,6 +8,8 @@ Install the official CLI for each subscription provider you want to use, or star
 
 ## First conversation
 
+The 0.8 branch adds an optional five-step tour on first use, with highlights on the real controls. Skip it at any time; replay it from Settings → General or the command palette. It preserves your draft and does not sign in, send messages or grant permissions. Published 0.7.1 is unchanged until the 0.8 release.
+
 1. Open Settings → Accounts and add a named provider slot.
 2. Use Sign in and finish the provider's official terminal/browser login. Lumen never asks you to paste credentials. Ollama needs no sign-in.
 3. Check the account connection, choose a project folder and return to the conversation.
@@ -16,6 +18,8 @@ Install the official CLI for each subscription provider you want to use, or star
 6. Expand activity for exposed tools, browser work, checks and provider summaries. Native questions appear as structured controls.
 
 **Read only** is the initial permission profile. **File edits**, **Autopilot** and **Approve each action** have different semantics and provider support; see [Permissions](workspace-models-permissions.md). Autopilot authorizes available tools under your OS account without additional Lumen plan-approval loops. It does not grant administrator privileges.
+
+In 0.8, the composer shows the current permission mode beside its shield. Click it to read the four explanations, then select a mode. Simply opening or closing the menu leaves access unchanged.
 
 ## Everyday controls
 

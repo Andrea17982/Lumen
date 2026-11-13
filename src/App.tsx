@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink } from 'lucide-react';
+import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink, ArrowRight } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -31,6 +31,7 @@ import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerPart
 import { ProjectList, SessionList } from './components/Sidebar';
 import { active, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
+import GuidedTour, { TOUR_KEY } from './components/GuidedTour';
 import Topbar, { type HealthPill } from './components/Topbar';
 import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
@@ -79,6 +80,24 @@ export default function App() {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [sessionsReady, setSessionsReady] = useState(false);
+  const [accountsReady, setAccountsReady] = useState(false);
+  const [tourSeen, setTourSeen] = useState(() => !!localStorage.getItem(TOUR_KEY));
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const tourReturn = useRef<{ sidebar: boolean; opener: HTMLElement | null }>({
+    sidebar: false,
+    opener: null,
+  });
+  useEffect(() => {
+    if (sessionsReady && accountsReady && !tourSeen && (sessions.length || accounts.length)) {
+      setTourSeen(true);
+      try {
+        localStorage.setItem(TOUR_KEY, 'returning-user');
+      } catch {
+        /* Local dismissal still applies. */
+      }
+    }
+  }, [sessionsReady, accountsReady, tourSeen, sessions.length, accounts.length]);
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [refreshingExecution, setRefreshingExecution] = useState(false);
@@ -140,10 +159,23 @@ export default function App() {
   if (settings && !settingsUsed) setSettingsUsed(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const openSettings = (tab: SettingsTab = 'general') => {
+    if (tourStep !== null) closeTour(false, false);
+    if (document.activeElement?.closest('#conversation-sidebar')) sidebarToggle.current?.focus();
+    setSidebar(false);
+    setContext(null);
+    setUsageOpen(false);
+    settingsOpener.current = document.activeElement as HTMLElement | null;
     setSettingsTab(tab);
     setSettings(true);
   };
-  const [sidebar, setSidebar] = useState(false);
+  const [sidebar, setSidebar] = useState(() => window.matchMedia('(min-width: 801px)').matches);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
+  const [logoPulse, setLogoPulse] = useState(0);
+  const closeSidebar = useCallback(() => {
+    if (document.activeElement?.closest('#conversation-sidebar, .sidebar-scrim'))
+      sidebarToggle.current?.focus();
+    setSidebar(false);
+  }, []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -272,25 +304,47 @@ export default function App() {
   const settingsOpener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!settings) {
-      settingsOpener.current?.focus();
+      const opener = settingsOpener.current;
+      if (opener) {
+        if (opener.isConnected && !opener.closest('[inert]') && opener !== document.body)
+          opener.focus();
+        else sidebarToggle.current?.focus();
+      }
       return;
     }
     // The panel moves focus in itself once its code has loaded.
-    settingsOpener.current = document.activeElement as HTMLElement | null;
+    const background = [
+      ...document.querySelectorAll<HTMLElement>('.workspace, .sidebar, .sidebar-toggle'),
+    ];
+    const previous = background.map((element) => ({
+      inert: element.inert,
+      hidden: element.getAttribute('aria-hidden'),
+    }));
+    background.forEach((element) => {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    });
+    return () =>
+      background.forEach((element, index) => {
+        element.inert = previous[index].inert;
+        if (previous[index].hidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', previous[index].hidden!);
+      });
   }, [settings]);
 
   const refresh = useCallback(async () => {
     const list = await call<Session[]>('list_sessions', { search, offset: 0 });
     setSessions(list);
+    setSessionsReady(true);
     setOffset(0);
     setHasMore(list.length === 100);
   }, [search]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
-  const loadAccounts = useCallback(
-    async () => setAccounts(await call<Account[]>('list_accounts')),
-    [],
-  );
+  const loadAccounts = useCallback(async () => {
+    setAccounts(await call<Account[]>('list_accounts'));
+    setAccountsReady(true);
+  }, []);
   useEffect(() => {
     localStorage.setItem('lumen-provider-mode', mode);
   }, [mode]);
@@ -461,6 +515,8 @@ export default function App() {
   useEffect(() => {
     // While a reply streams, follow it without animation: a smooth scroll restarted every frame
     // stutters and keeps the compositor busy.
+    // Keep a connector's explanation visible while its form awaits explicit consent.
+    if (running && document.querySelector('.connector-request[data-pending="true"]')) return;
     bottom.current?.scrollIntoView({
       behavior: reduced || running ? 'instant' : 'smooth',
       block: 'end',
@@ -470,6 +526,11 @@ export default function App() {
   const commandsRef = useRef<Command[]>([]);
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      if (tourStep !== null) {
+        if (e.key === 'Escape') closeTour(false);
+        return;
+      }
+      if (settings && e.key !== 'Escape' && e.key !== 'Tab') return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((open) => !open);
@@ -515,14 +576,20 @@ export default function App() {
         runCommand(commandsRef.current, 'search');
       }
       if (e.key === 'Escape') {
-        setContext(null);
-        setProjectForm(false);
-        setSidebar(false);
+        if (context) {
+          setContext(null);
+          return;
+        }
+        if (projectForm) {
+          setProjectForm(false);
+          return;
+        }
+        closeSidebar();
       }
     };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [settings]);
+  }, [settings, closeSidebar, context, projectForm, tourStep]);
 
   async function pickFolder() {
     if (!desktop) return 'Browser preview';
@@ -1099,6 +1166,35 @@ export default function App() {
       pin: (target) => void update(target, target.title, !target.pinned),
       remove: setDeleteTarget,
     });
+  function startTour() {
+    tourReturn.current = { sidebar, opener: document.activeElement as HTMLElement | null };
+    setSettings(false);
+    setPaletteOpen(false);
+    setUsageOpen(false);
+    setContext(null);
+    setTourStep(0);
+  }
+  function closeTour(completed: boolean, restore = true) {
+    setTourStep(null);
+    setTourSeen(true);
+    try {
+      localStorage.setItem(TOUR_KEY, completed ? 'completed' : 'skipped');
+    } catch {
+      /* The tour still closes if storage is unavailable. */
+    }
+    if (restore) {
+      setSidebar(tourReturn.current.sidebar);
+      requestAnimationFrame(() => {
+        const opener = tourReturn.current.opener;
+        if (opener?.isConnected && !opener.closest('[inert], .settings-panel, [role="dialog"]'))
+          opener.focus();
+        else input.current?.focus();
+      });
+    }
+  }
+  useEffect(() => {
+    if (tourStep !== null) setSidebar(tourStep === 0);
+  }, [tourStep]);
   const commands = appCommands({
     session,
     canAct: !!session && !running,
@@ -1121,6 +1217,7 @@ export default function App() {
     access: (mode) => void changeAccessMode(mode),
     theme: setTheme,
     sessionCommands,
+    tour: startTour,
   });
   useEffect(() => {
     commandsRef.current = commands;
@@ -1152,20 +1249,41 @@ export default function App() {
     });
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebar ? 'sidebar-open' : ''}`}>
       {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
+      <button
+        ref={sidebarToggle}
+        type="button"
+        className="brand-tile sidebar-toggle"
+        aria-label={t(sidebar ? 'Close sidebar' : 'Open sidebar')}
+        title={t(sidebar ? 'Close sidebar' : 'Open sidebar')}
+        aria-expanded={sidebar}
+        aria-controls="conversation-sidebar"
+        onClick={() => {
+          setLogoPulse((pulse) => pulse + 1);
+          if (sidebar) closeSidebar();
+          else setSidebar(true);
+        }}
+      >
+        <Mark small />
+        {logoPulse > 0 && <span key={logoPulse} className="logo-glint" aria-hidden="true" />}
+      </button>
       {sidebar && (
         <button
           className="sidebar-scrim"
-          aria-label={t('Close sidebar')}
-          onClick={() => setSidebar(false)}
+          aria-label={t('Close navigation overlay')}
+          tabIndex={-1}
+          onClick={closeSidebar}
         />
       )}
-      <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
+      <aside
+        id="conversation-sidebar"
+        className={`sidebar ${sidebar ? 'open' : ''}`}
+        aria-label={t('Conversations and projects')}
+        aria-hidden={!sidebar}
+        inert={!sidebar}
+      >
         <div className="brand">
-          <span className="brand-tile">
-            <Mark small />
-          </span>
           <span>Lumen</span>
         </div>
         <div className="new-actions">
@@ -1260,7 +1378,7 @@ export default function App() {
           hasMore={hasMore}
           onSelect={(id) => {
             setSelected(id);
-            setSidebar(false);
+            if (window.matchMedia('(max-width: 800px)').matches) closeSidebar();
           }}
           onReorder={(id, beforeId) =>
             void call('reorder_session', { id, beforeId })
@@ -1328,6 +1446,7 @@ export default function App() {
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation();
                 setContext(null);
                 contextTrigger.current?.focus();
               }
@@ -1498,7 +1617,6 @@ export default function App() {
           pills={providerPills}
           onChooseFolder={!session ? () => void chooseFolder() : undefined}
           folderBusy={folderBusy || running}
-          onOpenSidebar={() => setSidebar(true)}
           onOpenSettings={() => openSettings()}
           onOpenInspector={currentWorkspace ? () => setInspector((v) => !v) : undefined}
         />
@@ -1543,7 +1661,31 @@ export default function App() {
 
         <div className={`conversation ${visibleMessages.length ? 'has-messages' : ''}`}>
           {visibleMessages.length === 0 ? (
-            <Welcome reduced={!!reduced} />
+            <Welcome reduced={!!reduced}>
+              {sessionsReady &&
+                accountsReady &&
+                !sessions.length &&
+                !accounts.length &&
+                !tourSeen &&
+                tourStep === null && (
+                  <div className="tour-invitation">
+                    <p>{t('Your subscriptions. One place to work.')}</p>
+                    <button type="button" className="text-button" onClick={startTour}>
+                      {t('Take a quick tour')} <ArrowRight size={12} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button tour-skip"
+                      onClick={() => {
+                        closeTour(false, false);
+                        input.current?.focus();
+                      }}
+                    >
+                      {t('Skip tour')}
+                    </button>
+                  </div>
+                )}
+            </Welcome>
           ) : (
             <Transcript
               messages={visibleMessages}
@@ -1806,9 +1948,11 @@ export default function App() {
             setBalanceUsage={setBalanceUsage}
             theme={theme}
             setTheme={setTheme}
+            onTour={startTour}
           />
         </Suspense>
       )}
+      {tourStep !== null && <GuidedTour step={tourStep} onStep={setTourStep} onClose={closeTour} />}
     </div>
   );
 }

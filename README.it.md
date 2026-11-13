@@ -3,7 +3,7 @@
   <h1>Lumen</h1>
   <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
   <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
-  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.7.1</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
+  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.8.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
 </div>
 
 ![Lumen 0.7 su Windows](docs/images/desktop.png)

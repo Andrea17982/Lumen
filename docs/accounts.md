@@ -14,9 +14,19 @@ Add and name slots in Settings → Accounts, choose Sign in, finish the provider
 
 ## Model and provider access
 
+### Connectors and account scope — post-release 0.8
+
+The expanded [shared-capability layer](shared-capabilities-0.8.md) discovers portable MCP/skill installations across local profiles and adapts them to Claude, GPT, Gemini and Antigravity. A native Codex account gateway can expose its owner's tools/skills to another calling provider using direct RPC, without a second GPT model turn. Lumen's turn-scoped consent UI handles those requests independently of the calling CLI. Provider login credentials remain in the owning profile. This is implemented and checked offline, not a certification that every cloud connector, plugin or mod is portable; the linked checkpoint lists the required remaining adapters and the Ollama gap.
+
+Auto can select a different provider; it does not transfer Claude connector authorizations to GPT. Local Git/`gh` authentication is separate from a GitHub connector. Claude.ai connectors require the same subscription account in Claude Code; API-key authentication does not provide them. Complete any required connector authorization in the provider’s interface, using the isolated account selected in Lumen. Lumen does not copy credentials from another CLI profile.
+
+In the 0.8 implementation branch, supported Codex MCP form/URL requests require an explicit answer even in Autopilot. The browser sign-in page opens only on your click; choosing Accept asks the connector to verify the result. Responses are not saved as shared chat requirements. Claude MCP tools can be reviewed once in Ask; restricted modes retain their MCP restrictions. Check Activity for the connector states reported by Claude. See [connector scope, supported forms and validation limits](connector-interactions-0.8.md). These changes are not in the published 0.7.1.
+
 All five providers can be selected directly. Catalog discovery is per account and does not itself establish entitlement to every returned model. Provider plans, organization policies, CLI versions and actual quotas still apply. Auto's optional balancing/fallback is described in [Auto policy](auto.md); duplicate account slots do not create additional allowance.
 
 Ollama conversations, discovery and helpers use its official local API. `OLLAMA_HOST` can select another loopback HTTP port; remote endpoints, proxy/redirect routing and cloud-model metadata are rejected. Lumen never pulls a missing model automatically. Install models through Ollama yourself. The browser loop does not add Claude/Codex filesystem or child-agent tools to Ollama.
+
+On the 0.8 development branch, [shared stdio MCP tools and skill resources](ollama-shared-tools-0.8.md) are also available to both local tool-calling paths. Tools keep their owning service/account, consent and permission profile. This does not expose the native providers' built-in filesystem/child-agent tools or establish universal plugin compatibility; The 0.8 candidate adds Streamable HTTP MCP, resource/prompt APIs and tool-list refresh; proprietary runtime adapters and legacy transports remain open.
 
 ## Local directories and credentials
 
@@ -34,3 +44,5 @@ CODEX_HOME='/path/to/lumen/accounts/account-uuid' codex login
 Do not paste tokens into conversations or upload account directories in bug reports. Provider terms and distribution requirements apply independently; Lumen's native-CLI implementation is not legal certification. Consult the providers' official terms and authentication documentation for your deployment.
 
 [Permissions](workspace-models-permissions.md) · [Security](../SECURITY.md) · [Observed provider acceptance](validation.md)
+
+For shared MCP namespaces passed to Claude/GPT/Google CLIs, select **Ask first** or **Autopilot**. Read only/File edits expose only the filtered owning-account gateway; the local Ollama loop applies its own per-tool filter. Native provider-local configurations still follow their provider policies. A read-only annotation is not an OS sandbox, and a tool also marked destructive is excluded.

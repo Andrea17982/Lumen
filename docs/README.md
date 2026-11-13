@@ -1,4 +1,4 @@
-# Lumen 0.7 documentation
+# Lumen 0.8 documentation
 
 Start with [installation and the first conversation](getting-started.md). For the release overview, see the [English README](../README.md) or [Italian README](../README.it.md).
 
@@ -15,6 +15,21 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [0.8 initial chat opening](initial-open-0.8.md) | Paired release opening measurements, literal-paragraph optimization and excluded windowed prototype |
 | [0.8 turn waiting and CLI startup](turn-latency-0.8.md) | Source-stamped phase attribution, native offline turns and actual metadata-only CLI measurements |
 | [Windows metadata shutdown](metadata-shutdown-0.8.md) | Before/after installed-CLI measurements, bounded graceful shutdown and descendant/cancellation gates |
+| [0.8 graph reliability](graph-reliability-0.8.md) | Typed module/Godot import corrections, independent oracles and refresh/deleted-target handoff checks |
+| [0.8 Rewind continuity](continuity-rewind-0.8.md) | Invalidating discarded remote history and retiring check evidence at explicit task boundaries |
+| [0.8 Compact evidence](compact-evidence-0.8.md) | Source-linked backend checks and diagnostics preserved across repeated Compact and account handoffs |
+| [0.8 logo and sidebar](logo-sidebar-0.8.md) | Logo disclosure, two glass compositions, keyboard focus and reduced-motion checks |
+| [0.8 session replay guard](resume-replay-0.8.md) | Preventing automatic missing-session replay after observed work, with owned-effect offline checks |
+| [0.8 quota replay guard](quota-replay-0.8.md) | Preserving observed work and partial output when quota errors would otherwise replay on another account |
+| [0.8 Auto/Orchestra continuity](auto-orchestra-continuity-0.8.md) | Dependency failures, persisted attempt/admission limits, worker replay guards and cancellation cleanup |
+| [0.8 context and graph budget](context-graph-budget-0.8.md) | Actual prompt measurements, exact duplicate removal, bounded attachment previews and complete changed notes |
+| [0.8 final acceptance](final-acceptance-0.8.md) | Current release regression gates, candidate decisions, explained permissions and the first-use guided tour |
+| [0.8 connector interactions](connector-interactions-0.8.md) | Explicit MCP consent, Claude tool approvals, scoped account connections and offline regression checks |
+| [0.8 shared capabilities](shared-capabilities-0.8.md) | Existing integration discovery, native account RPC gateway, shared consent and mandatory remaining runtime adapters |
+| [0.8 Ollama shared tools](ollama-shared-tools-0.8.md) | Local native/JSON tool loops, original stdio integrations, skill resources, scoped consent and cleanup |
+| [0.8 release readiness](release-readiness-0.8.md) | Candidate acceptance, MCP HTTP/resources/prompts, release gates and approved integration limits and publication gates |
+| [Next roadmap](roadmap-next.md) | Universal-integration requirements and outstanding validation/research explicitly retained after the approved 0.8 scope |
+| [0.8 Windows accessibility](windows-accessibility-0.8.md) | Tranche 16: modal/focus fixes, native questions, historical content, Narrator and editor-line acceptance |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |
 | [Validation and scope](validation.md) | Verified results, agreed exclusions and deferred acceptance |

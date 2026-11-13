@@ -21,6 +21,10 @@ The Windows portable distributable is the ZIP, not an executable copied without 
 
 ## Checks
 
+`node tests/native-shared-integrations.mjs` adds isolated Windows acceptance for discovered installations, stdio relay/process-tree cleanup, native account RPC without model turns, original skill resources, restricted catalogs, unsupported APIs and a Claude → ChatGPT-account tool call with consent shown by Lumen itself. It uses offline fixtures, never real credentials or inference. Run it serially with all other port-1420 suites. [Scope and remaining requirements](shared-capabilities-0.8.md).
+
+After a debug Cargo build, `node tests/native-connectors.mjs` checks MCP form/URL consent, typed validation/retry, decline, resolution/Stop expiry and Claude Ask approvals in real Windows WebView2/IPC with offline CLI fixtures. It never signs in or opens the fixture OAuth URL. Run it separately from Playwright and other native harnesses: they share port 1420, and an owning harness closing its server interrupts the others. See [scope and results](connector-interactions-0.8.md).
+
 ```sh
 npm run check
 npm run format:check
@@ -55,6 +59,10 @@ Keep Vite running, build `cargo build --manifest-path src-tauri/Cargo.toml`, the
 ## Initial chat opening
 
 The separate [initial-opening experiment](initial-open-0.8.md) uses `LUMEN_PERF_ROOT` to isolate its evidence and an explicit build-time `VITE_TRANSCRIPT_EXPERIMENT=1` flag for baseline/plain/virtual comparisons in one binary. Ordinary builds remove the virtual module and ignore experiment query parameters. `tests/initial-open-native.mjs`, `initial-open-stock.mjs` and `initial-open-report.mjs` collect the comparison, verify the normal candidate and emit sanitized aggregates. A secondary run writes a separate file and never overwrites the main series. Unset the build-time flag before normal builds; these experiments do not require any account or inference.
+
+## Graph correctness checks
+
+The post-0.7.1 graph corpus runs in normal Rust tests. `node tests/graph-import-oracles.mjs` checks TypeScript/Node resolution and runs a tiny existing-Godot GDScript fixture in TEMP, without model calls. After a debug build, `node tests/native-graph.mjs` exercises the real graph MCP across edits, rename, restart/persistent cache and deletion. `tests/graph-reliability-report.mjs` aggregates the local retained baseline/native evidence. [Scope and reproduction](graph-reliability-0.8.md).
 
 ## Turn waiting and CLI metadata
 

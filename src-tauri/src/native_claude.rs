@@ -14,6 +14,16 @@ use tokio::{
 fn response(id: &Value, result: Value) -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":result}})
 }
+fn connector_status(value: &Value) -> Vec<Activity> {
+    if value["type"] != "system" || value["subtype"] != "init" {
+        return vec![];
+    }
+    value["mcp_servers"].as_array().into_iter().flatten().take(100).map(|server| {
+        let name: String = server["name"].as_str().unwrap_or("connector").chars().filter(|c| c.is_ascii_alphanumeric() || " _-.".contains(*c)).take(100).collect();
+        let state=match server["status"].as_str() {Some("connected")=>"connected",Some("pending")=>"pending",Some("needs-auth")=>"needs authentication",Some("failed")=>"failed",Some("disabled")=>"disabled",_=>"status unknown"};
+        Activity {kind:"connector-status".into(),text:format!("Claude connector {name}: {state}. Connections belong to the selected account and permission profile.")}
+    }).collect()
+}
 type Frame = (Value, Option<oneshot::Sender<bool>>);
 #[derive(Clone)]
 struct Transport(mpsc::Sender<Frame>);
@@ -97,8 +107,11 @@ pub async fn execute(
         .into(),
         native_id.clone(),
     ]);
+    let mut _shared_config = None;
     if let Some(data) = input.config.parent().and_then(std::path::Path::parent) {
-        let (extra, names) = crate::integrations::args(data, &Provider::Claude)?;
+        let (extra, names, guard) =
+            crate::integrations::args_for(data, &Provider::Claude, Some(&cwd), input.access)?;
+        _shared_config = guard;
         args.extend(extra);
         if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
             for name in names {
@@ -204,9 +217,22 @@ pub async fn execute(
             let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
             questions.drain(&mut emit);
             if value["type"] == "system" && value["subtype"] == "init" && value["session_id"] != native_id { return Err("Claude started a different session than requested".into()); }
+            for status in connector_status(&value) {emit(status);}
             if value["type"] == "control_request" {
                 let id = value["request_id"].clone();
                 let request = &value["request"];
+                if request["subtype"] == "elicitation" {
+                    let normalized=json!({"serverName":request["mcp_server_name"],"message":request["message"],"mode":request["mode"].as_str().unwrap_or("form"),"url":request["url"],"elicitationId":request["elicitation_id"],"requestedSchema":request["requested_schema"]});
+                    let pending=crate::connectors::Request::parse(&normalized).and_then(|parsed|questions.ask_connector(parsed.clone(),id.to_string()).map(|(activity,receive)|(parsed,activity,receive)));
+                    match pending {
+                        Ok((parsed,activity,receive))=>{
+                            emit(activity);let tx=tx.clone();
+                            jobs.spawn(async move {if let Ok(answers)=receive.await {let decision=parsed.response(&answers).unwrap_or(json!({"action":"cancel","content":null}));let _=tx.send(response(&id,decision)).await;}});
+                        }
+                        Err(reason)=>{emit(Activity {kind:"connector-status".into(),text:format!("Claude connector request cancelled: {reason}")});tx.send(response(&id,json!({"action":"cancel","content":null}))).await.map_err(|_|"Claude closed its input")?;}
+                    }
+                    continue;
+                }
                 if request["subtype"] == "can_use_tool" && request["tool_name"] == "AskUserQuestion" {
                     let (activity, receive) = questions.ask(crate::interactions::claude_questions(&request["input"])?,id.to_string())?;
                     emit(activity);

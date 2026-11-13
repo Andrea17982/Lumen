@@ -253,26 +253,72 @@ fn shell_words(s: &str) -> Vec<String> {
     }
     out
 }
+#[cfg(test)]
 pub fn args(
     data: &Path,
     provider: &crate::models::Provider,
 ) -> Result<(Vec<String>, Vec<String>), String> {
-    let servers = enabled(data)?;
+    let (args, names, _config) =
+        args_for(data, provider, None, crate::models::AccessMode::Autopilot)?;
+    Ok((args, names))
+}
+pub struct ActiveConfig(std::path::PathBuf);
+impl Drop for ActiveConfig {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+pub type Arguments = (Vec<String>, Vec<String>, Option<ActiveConfig>);
+pub fn allow_unfiltered_mcp(access: crate::models::AccessMode) -> bool {
+    matches!(
+        access,
+        crate::models::AccessMode::Ask | crate::models::AccessMode::Autopilot
+    )
+}
+pub fn read_only_tool(tool: &Value) -> bool {
+    tool["annotations"]["readOnlyHint"] == true && tool["annotations"]["destructiveHint"] != true
+}
+pub fn args_for(
+    data: &Path,
+    provider: &crate::models::Provider,
+    workspace: Option<&Path>,
+    access: crate::models::AccessMode,
+) -> Result<Arguments, String> {
+    let mut servers = crate::capability_catalog::shared_servers(data, workspace, access);
+    let manual = enabled(data)?;
+    if allow_unfiltered_mcp(access) {
+        servers.extend(manual);
+    }
     if servers.is_empty() {
-        return Ok((vec![], vec![]));
+        return Ok((vec![], vec![], None));
     }
     let names: Vec<String> = servers.keys().cloned().collect();
     if *provider == crate::models::Provider::Claude {
-        let path = root(data).join("mcp.active.json");
-        std::fs::write(
-            &path,
-            serde_json::to_vec_pretty(&json!({ "mcpServers": servers }))
-                .map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
+        let dir = root(data).join("active");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join(format!("mcp-{}.json", crate::models::id()));
+        let guard = ActiveConfig(path.clone());
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        use std::io::Write;
+        options
+            .open(&path)
+            .and_then(|mut file| {
+                file.write_all(
+                    &serde_json::to_vec_pretty(&json!({"mcpServers":servers}))
+                        .map_err(std::io::Error::other)?,
+                )
+            })
+            .map_err(|e| e.to_string())?;
         return Ok((
             vec!["--mcp-config".into(), path.to_string_lossy().into()],
             names,
+            Some(guard),
         ));
     }
     let mut args = vec![];
@@ -280,6 +326,12 @@ pub fn args(
         let mut converted = server.clone();
         if let Some(o) = converted.as_object_mut() {
             o.remove("type");
+            if server["args"][0] == "--lumen-native-account-mcp" {
+                o.insert(
+                    "env_vars".into(),
+                    json!(["LUMEN_BROWSER_URL", "LUMEN_BROWSER_CAP"]),
+                );
+            }
             if let Some(headers) = o.remove("headers") {
                 o.insert("http_headers".into(), headers);
             }
@@ -310,7 +362,7 @@ pub fn args(
             format!("mcp_servers.{name}={}", inline(&table)),
         ]);
     }
-    Ok((args, names))
+    Ok((args, names, None))
 }
 
 #[cfg(test)]

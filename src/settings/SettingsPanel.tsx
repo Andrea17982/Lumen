@@ -40,6 +40,7 @@ export default function SettingsPanel({
   setBalanceUsage,
   theme,
   setTheme,
+  onTour,
 }: {
   open: boolean;
   tab?: SettingsTab;
@@ -55,6 +56,7 @@ export default function SettingsPanel({
   setBalanceUsage: (v: boolean) => void;
   theme: string;
   setTheme: (t: string) => void;
+  onTour: () => void;
 }) {
   const { t } = useI18n();
   const reduced = useReducedMotion();
@@ -91,7 +93,7 @@ export default function SettingsPanel({
       {open && (
         <motion.aside
           role="dialog"
-          aria-modal="false"
+          aria-modal="true"
           className="settings-panel"
           initial={reduced ? false : { x: 35, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -159,6 +161,7 @@ export default function SettingsPanel({
             )}
             {current === 'general' && (
               <GeneralSettings
+                onTour={onTour}
                 theme={theme}
                 setTheme={setTheme}
                 onError={setError}

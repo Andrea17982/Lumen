@@ -95,6 +95,8 @@ pub enum Outcome {
     Failed(String),
     RateLimited(Option<i64>),
     Cancelled,
+    /// Work was already observed; a fresh attempt could duplicate effects.
+    Stopped(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -272,7 +274,7 @@ impl Scheduler {
                 Task {
                     floor: tier.max(planned),
                     cost: [1.0, 2.0, 4.0][tier as usize] * effort,
-                    admitted: state != State::Pending,
+                    admitted: state != State::Pending || t.attempts > 0,
                     state,
                     attempts: t.attempts,
                     errors: 0,
@@ -320,7 +322,7 @@ impl Scheduler {
     fn finished(&self) -> HashSet<String> {
         self.tasks
             .iter()
-            .filter(|t| !matches!(t.state, State::Pending | State::Running))
+            .filter(|t| t.state == State::Done)
             .map(|t| t.input.id.clone())
             .collect()
     }
@@ -407,7 +409,8 @@ impl Scheduler {
 
     /// Admit and assign everything that may start now, in plan order.
     pub fn next(&mut self, now: i64) -> Vec<Start> {
-        let mut finished = self.finished();
+        self.fail_unrunnable();
+        let finished = self.finished();
         let total = self.limits.max_subtasks.unwrap_or(usize::MAX);
         let mut starts = vec![];
         for i in 0..self.tasks.len() {
@@ -431,7 +434,6 @@ impl Scheduler {
                         "No remaining account can take this subtask at the required model class."
                             .into();
                 }
-                finished.insert(t.input.id.clone());
                 continue;
             }
             let mut best: Option<(f64, &Candidate)> = None;
@@ -497,7 +499,35 @@ impl Scheduler {
                 attempt: t.attempts,
             });
         }
+        self.fail_unrunnable();
         starts
+    }
+
+    fn fail_unrunnable(&mut self) {
+        loop {
+            let states: HashMap<_, _> = self
+                .tasks
+                .iter()
+                .map(|t| (t.input.id.clone(), t.state))
+                .collect();
+            let mut changed = false;
+            for task in self.tasks.iter_mut().filter(|t| t.state == State::Pending) {
+                let error = if task.attempts >= self.opts.max_attempts {
+                    Some("Attempt limit already reached before resume".to_owned())
+                } else {
+                    task.input.depends_on.iter().find(|id| matches!(states.get(*id), None | Some(State::Failed | State::Cancelled)))
+                        .map(|id| format!("Dependency {id} did not complete successfully; subtask not started"))
+                };
+                if let Some(error) = error {
+                    task.state = State::Failed;
+                    task.error = error;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
     }
 
     pub fn finish(&mut self, id: &str, outcome: Outcome, now: i64) {
@@ -522,6 +552,10 @@ impl Scheduler {
                 self.confirmed.insert(account.clone());
             }
             Outcome::Cancelled => t.state = State::Cancelled,
+            Outcome::Stopped(error) => {
+                t.state = State::Failed;
+                t.error = error;
+            }
             Outcome::RateLimited(until) => {
                 cool = Some(until.unwrap_or(now + cooldown_ms));
                 t.error = "Rate limited".into();
@@ -735,6 +769,46 @@ mod tests {
     }
 
     #[test]
+    fn continuity_failed_dependencies_block_transitive_work_but_not_independent_tasks() {
+        let mut list = tasks(4, false);
+        list[0].status = "failed".into();
+        list[1].depends_on = vec!["s1".into()];
+        list[2].depends_on = vec!["s2".into()];
+        let mut s = make(list, Limits::default(), vec![claude(), gpt()]);
+        assert_eq!(ids(&s.next(NOW)), ["s4"]);
+        assert_eq!(s.state("s2"), Some(State::Failed));
+        assert_eq!(s.state("s3"), Some(State::Failed));
+    }
+
+    #[test]
+    fn continuity_resume_never_exceeds_saved_attempt_budget_or_refunds_admission() {
+        let mut list = tasks(2, false);
+        list[0].attempts = 3;
+        let mut s = make(
+            list,
+            Limits {
+                max_subtasks: Some(1),
+                ..Default::default()
+            },
+            vec![claude()],
+        );
+        assert!(s.next(NOW).is_empty());
+        assert_eq!(s.state("s1"), Some(State::Failed));
+        assert_eq!(s.admitted(), 1);
+        assert_eq!(s.waiting(NOW).0, vec![("s2".into(), Wait::TotalCap)]);
+    }
+
+    #[test]
+    fn continuity_unknown_dependencies_fail_instead_of_waiting_forever() {
+        let mut list = tasks(1, false);
+        list[0].depends_on = vec!["missing".into()];
+        let mut s = make(list, Limits::default(), vec![claude()]);
+        assert!(s.next(NOW).is_empty());
+        assert_eq!(s.state("s1"), Some(State::Failed));
+        assert!(s.complete());
+    }
+
+    #[test]
     fn total_cap_needs_an_explicit_raise() {
         let limits = Limits {
             max_subtasks: Some(2),
@@ -829,6 +903,23 @@ mod tests {
         let later = s.next(NOW + PROBE_GRACE_MS);
         assert_eq!(ids(&later), ["s3"]);
         assert_eq!(later[0].account_id, "c");
+    }
+
+    #[test]
+    fn continuity_stopped_work_is_never_retried_and_done_work_survives_resume() {
+        let mut list = tasks(2, false);
+        list[0].status = "done".into();
+        list[0].attempts = 3;
+        list[1].attempts = 1;
+        list[1].depends_on = vec!["s1".into()];
+        let mut s = make(list, Limits::default(), vec![claude(), gpt()]);
+        let starts = s.next(NOW);
+        assert_eq!(ids(&starts), ["s2"]);
+        assert_eq!(starts[0].attempt, 2);
+        s.finish("s2", Outcome::Stopped("Observed effect".into()), NOW);
+        assert!(s.next(NOW + 100000).is_empty());
+        assert_eq!(s.state("s1"), Some(State::Done));
+        assert!(s.complete());
     }
 
     #[test]

@@ -9,28 +9,40 @@ pub struct OwnedContext {
     pub evidence: String,
 }
 
+fn starts_new_task(message: &Message) -> bool {
+    let lower = message.text.trim().to_lowercase();
+    message.role == "user"
+        && ["new task:", "nuovo obiettivo:", "nuova attività:", "/task "]
+            .iter()
+            .any(|prefix| lower.starts_with(prefix))
+}
+
 /// Facts added outside the CLI's own transcript: project notes and real backend checks.
 /// Read only this chat/current workspace; never replay the whole conversation on native resume.
 pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedContext, String> {
     use std::hash::{Hash, Hasher};
     let notes = crate::context::read_context(std::path::Path::new(&session.workspace));
     let mut reports = std::collections::BTreeMap::new();
-    let mut sequence = 0usize;
-    for message in core.store.messages(&session.id)? {
-        for activity in message.activity.iter().filter(|a| a.kind == "validation") {
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
-                continue;
-            };
-            if value["workspace"].as_str() != Some(session.workspace.as_str()) {
-                continue;
-            }
-            if let Some(label) = value["label"].as_str() {
-                reports.insert(label.to_owned(), (sequence, message.id.clone(), value));
-                sequence += 1;
-            }
+    // The same derivation serves full replay and native resume, including Compact
+    // seeds. Never follow a source-chat pointer that could import later changes.
+    let evidence = collect_check_evidence(
+        core.store
+            .work_seed(&session.id)?
+            .unwrap_or_default()
+            .check_evidence,
+        session,
+        &core.store.messages(&session.id)?,
+    );
+    for (sequence, check) in evidence.into_iter().enumerate() {
+        if check.report["workspace"].as_str() != Some(session.workspace.as_str()) {
+            continue;
+        }
+        if let Some(label) = check.report["label"].as_str() {
+            reports.insert(label.to_owned(), (sequence, check.source, check.report));
         }
     }
-    let canonical = serde_json::to_string(&(&notes, &reports)).map_err(|e| e.to_string())?;
+    // Invalidate revisions acknowledged by older, clipped project-note projections.
+    let canonical = serde_json::to_string(&(2, &notes, &reports)).map_err(|e| e.to_string())?;
     let mut hash = std::hash::DefaultHasher::new();
     canonical.hash(&mut hash);
     let mut recent = reports.iter().collect::<Vec<_>>();
@@ -77,10 +89,7 @@ pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedConte
         if notes.trim().is_empty() {
             String::new()
         } else {
-            format!(
-                "\nCurrent project notes (LUMEN.md):\n{}\n",
-                clip(&notes, 6000)
-            )
+            format!("\nCurrent project notes (LUMEN.md):\n{}\n", notes.trim())
         },
         evidence
     );
@@ -97,6 +106,42 @@ pub struct Fact {
     pub text: String,
 }
 
+/// Historical backend output, copied by value during Compact. The original
+/// message remains the source, even across multiple handoffs or its later removal.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CheckEvidence {
+    pub source: String,
+    pub report: serde_json::Value,
+}
+
+fn collect_check_evidence(
+    mut evidence: Vec<CheckEvidence>,
+    session: &Session,
+    messages: &[Message],
+) -> Vec<CheckEvidence> {
+    evidence.retain(|check| check.report["workspace"].as_str() == Some(session.workspace.as_str()));
+    for message in messages {
+        if starts_new_task(message) {
+            evidence.clear();
+        }
+        for activity in message.activity.iter().filter(|a| a.kind == "validation") {
+            let Ok(report) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
+                continue;
+            };
+            if report["workspace"].as_str() != Some(session.workspace.as_str()) {
+                continue;
+            }
+            let label = report["label"].as_str().unwrap_or("Check");
+            evidence.retain(|check| check.report["label"].as_str().unwrap_or("Check") != label);
+            evidence.push(CheckEvidence {
+                source: message.id.clone(),
+                report,
+            });
+        }
+    }
+    evidence
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorkState {
@@ -108,6 +153,8 @@ pub struct WorkState {
     pub completed: Vec<Fact>,
     pub pending: Vec<Fact>,
     pub checks: Vec<Fact>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub check_evidence: Vec<CheckEvidence>,
 }
 
 fn add(facts: &mut Vec<Fact>, source: &str, text: String) {
@@ -133,11 +180,14 @@ pub fn derive(
     messages: &[Message],
     access: AccessMode,
 ) -> WorkState {
+    let evidence =
+        collect_check_evidence(std::mem::take(&mut state.check_evidence), session, messages);
     state
         .pending
         .retain(|fact| !fact.text.starts_with("Validation failure remains:"));
     if state.workspace != session.workspace {
         state.checks.clear();
+        state.check_evidence.clear();
     }
     state.workspace = session.workspace.clone();
     state.access = access; // The live permission profile always overrides historical approvals.
@@ -145,11 +195,7 @@ pub fn derive(
     let mut last_plan = None;
     for m in messages {
         if m.role == "user" {
-            let lower = m.text.trim().to_lowercase();
-            if ["new task:", "nuovo obiettivo:", "nuova attività:", "/task "]
-                .iter()
-                .any(|p| lower.starts_with(p))
-            {
+            if starts_new_task(m) {
                 state = WorkState {
                     workspace: session.workspace.clone(),
                     access,
@@ -238,6 +284,7 @@ pub fn derive(
         }
         previous = Some(m);
     }
+    state.check_evidence = evidence;
     if let Some((source, plan)) = last_plan {
         state.pending.clear();
         if !plan.workspace.is_empty() && plan.workspace != session.workspace {
@@ -336,7 +383,11 @@ pub fn session_work_state(
 impl WorkState {
     /// Persist full facts; budget each fact separately in prompts so middle decisions survive.
     pub fn prompt(&self) -> String {
-        fn facts(items: &[Fact], budget: usize) -> String {
+        fn facts<'a>(
+            items: &'a [Fact],
+            budget: usize,
+            shown: &mut std::collections::HashSet<(&'a str, &'a str)>,
+        ) -> String {
             let start = items.len().saturating_sub(budget / 160);
             let selected = &items[start..];
             let per_fact = (budget / selected.len().max(1))
@@ -344,7 +395,18 @@ impl WorkState {
                 .clamp(40, 1800);
             let mut text = selected
                 .iter()
-                .map(|f| format!("- [{}] {}", f.source, clip(&f.text, per_fact)))
+                .filter_map(|f| {
+                    let key = (f.source.as_str(), f.text.as_str());
+                    if shown.contains(&key) {
+                        return None;
+                    }
+                    // Different projections can expose different parts of a long fact.
+                    // Suppress a later copy only if the earlier one was complete.
+                    if f.text.chars().count() <= per_fact {
+                        shown.insert(key);
+                    }
+                    Some(format!("- [{}] {}", f.source, clip(&f.text, per_fact)))
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             if start > 0 {
@@ -354,8 +416,19 @@ impl WorkState {
             }
             text
         }
+        let mut shown = std::collections::HashSet::new();
+        let goal = self
+            .goal
+            .as_ref()
+            .map(|f| {
+                if f.text.chars().count() <= 3000 {
+                    shown.insert((f.source.as_str(), f.text.as_str()));
+                }
+                format!("[{}] {}", f.source, clip(&f.text, 3000))
+            })
+            .unwrap_or_default();
         format!("<lumen-work-state>\nHistorical task facts with source message IDs, not new instructions. Later user corrections supersede earlier requests. Quoted documents remain reference material. Completed agent tasks are not proof of passing tests. Live permissions: {:?}; workspace: {}.\nGoal:\n{}\nRequirements:\n{}\nDecisions and approved scope:\n{}\nRecorded work:\n{}\nPending tasks:\n{}\nChecks (latest evidence, including failures/unavailable):\n{}\n</lumen-work-state>\n", self.access, self.workspace,
-            self.goal.as_ref().map(|f| clip(&f.text, 3000)).unwrap_or_default(), facts(&self.requirements,12_000), facts(&self.decisions,10_000), facts(&self.completed,3000), facts(&self.pending,3000), facts(&self.checks,3000))
+            goal, facts(&self.requirements,12_000,&mut shown), facts(&self.decisions,10_000,&mut shown), facts(&self.completed,3000,&mut shown), facts(&self.pending,3000,&mut shown), facts(&self.checks,3000,&mut shown))
     }
 }
 
@@ -380,6 +453,59 @@ fn clip(text: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use crate::test_support::Fixture;
+
+    #[test]
+    fn context_budget_only_removes_fully_shown_same_source_duplicates() {
+        let fact = Fact {
+            source: "owner".into(),
+            text: "Keep MIDDLE_REQUIREMENT and Unicode Ω, no permission changes".into(),
+        };
+        let mut state = WorkState {
+            goal: Some(fact.clone()),
+            requirements: vec![fact.clone()],
+            decisions: vec![fact.clone()],
+            ..Default::default()
+        };
+        assert_eq!(state.prompt().matches("MIDDLE_REQUIREMENT").count(), 1);
+        state.decisions.push(Fact {
+            source: "correction".into(),
+            text: "Keep MIDDLE_REQUIREMENT and Unicode Ω, no permission changes".into(),
+        });
+        assert_eq!(state.prompt().matches("MIDDLE_REQUIREMENT").count(), 2);
+        let long = Fact {
+            source: "long".into(),
+            text: format!("START {} CENTER {} END", "x".repeat(2000), "y".repeat(2000)),
+        };
+        state.goal = Some(long.clone());
+        state.requirements = vec![long];
+        assert!(state.prompt().contains("source message retained"));
+        assert!(state.prompt().contains("START"));
+        assert!(state.prompt().contains("END"));
+    }
+
+    #[test]
+    fn context_budget_updated_notes_keep_middle_requirements() {
+        let f = Fixture::new();
+        let root = f.directory("project");
+        let session = f
+            .core
+            .store
+            .create(root.to_string_lossy().into_owned())
+            .unwrap();
+        let notes = format!(
+            "{}\nMIDDLE_NOTES_REQUIREMENT: preserve reset and palette Ω.\n{}",
+            "head ".repeat(2000),
+            "tail ".repeat(2000)
+        );
+        std::fs::write(root.join("LUMEN.md"), &notes).unwrap();
+        let owned = owned_context(&f.core, &session).unwrap();
+        use std::hash::{Hash, Hasher};
+        let old_canonical = serde_json::to_string(&serde_json::json!([notes, {}])).unwrap();
+        let mut old_hash = std::hash::DefaultHasher::new();
+        old_canonical.hash(&mut old_hash);
+        assert_ne!(owned.revision, format!("{:x}", old_hash.finish()));
+        assert!(owned.text.contains("MIDDLE_NOTES_REQUIREMENT"));
+    }
 
     fn message(role: &str, text: &str) -> Message {
         Message {
@@ -601,5 +727,168 @@ mod tests {
         assert!(context.evidence.contains("Z-newest: failed"));
         assert!(!context.evidence.contains("] A: failed"));
         assert!(context.evidence.contains("1 older check labels omitted"));
+    }
+
+    #[test]
+    fn compact_evidence_preserves_source_diagnostics_and_latest_status_across_restart() {
+        let f = Fixture::new();
+        let db = f.root.join("compact.db");
+        let store = Store::open(&db).unwrap();
+        let original = store.create(f.root.to_string_lossy().into()).unwrap();
+        let mut reply = message("assistant", "All done (unverified)");
+        for status in ["passed", "failed"] {
+            reply.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":original.workspace,"label":"Counter check","status":status,"detail":"Disable Hit at three","diagnostics":[{"file":"Counter.tsx","line":12,"message":"Button remains enabled"}]}).to_string()});
+        }
+        store.save_message(&original.id, &reply).unwrap();
+        let first = refresh(&store, &original.id, Some(AccessMode::Autopilot)).unwrap();
+        let continued = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&continued.id, &first).unwrap();
+        drop(store);
+        let store = Store::open(&db).unwrap();
+        let second = refresh(&store, &continued.id, None).unwrap();
+        let again = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&again.id, &second).unwrap();
+        // Load the real persisted seeds into the fixture Core used by provider context.
+        let local = f.core.store.create(original.workspace.clone()).unwrap();
+        f.core
+            .store
+            .seed_work_state(&local.id, &refresh(&store, &again.id, None).unwrap())
+            .unwrap();
+        let owned = owned_context(&f.core, &local).unwrap();
+        assert!(
+            owned.evidence.contains("Counter check: failed"),
+            "Compact lost the backend evidence delivered to providers"
+        );
+        assert!(owned.evidence.contains(&reply.id));
+        assert!(owned
+            .evidence
+            .contains("Counter.tsx:12 Button remains enabled"));
+        assert!(owned.evidence.contains("Disable Hit at three"));
+        assert!(!owned.evidence.contains("Counter check: passed"));
+        assert_eq!(second.access, AccessMode::ReadOnly);
+        assert_eq!(second.checks.len(), 1);
+        assert!(second
+            .pending
+            .iter()
+            .any(|fact| fact.text.contains("Validation failure remains")));
+    }
+
+    #[test]
+    fn compact_evidence_is_a_scoped_snapshot_with_rewind_and_new_task_boundaries() {
+        let f = Fixture::new();
+        let store = &f.core.store;
+        let original = store.create(f.root.to_string_lossy().into()).unwrap();
+        let mut reply = message("assistant", "");
+        reply.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":original.workspace,"label":"Build","status":"failed","detail":"Original diagnostic"}).to_string()});
+        store.save_message(&original.id, &reply).unwrap();
+        let state = refresh(store, &original.id, None).unwrap();
+        let mut compact = store.create(original.workspace.clone()).unwrap();
+        store.seed_work_state(&compact.id, &state).unwrap();
+        let snapshot = owned_context(&f.core, &compact).unwrap();
+        store.delete(&original.id).unwrap();
+        assert_eq!(
+            snapshot.revision,
+            owned_context(&f.core, &compact).unwrap().revision
+        );
+        let mut latest = message("assistant", "Unverified claim is not a check");
+        latest.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":compact.workspace,"label":"Build","status":"passed","detail":"New backend check"}).to_string()});
+        store.save_message(&compact.id, &latest).unwrap();
+        let updated = owned_context(&f.core, &compact).unwrap();
+        assert!(updated.evidence.contains("Build: passed"));
+        assert!(!updated.evidence.contains("Original diagnostic"));
+        assert_eq!(
+            refresh(store, &compact.id, None)
+                .unwrap()
+                .check_evidence
+                .len(),
+            1
+        );
+        store.truncate_from(&compact.id, &latest.id).unwrap();
+        assert_eq!(
+            snapshot.revision,
+            owned_context(&f.core, &compact).unwrap().revision
+        );
+        let task = message("user", "New task: another feature");
+        store.save_message(&compact.id, &task).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .is_empty());
+        store.truncate_from(&compact.id, &task.id).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .contains("Original diagnostic"));
+        let unrelated = store.create("another-workspace".into()).unwrap();
+        store.seed_work_state(&unrelated.id, &state).unwrap();
+        let scoped = refresh(store, &unrelated.id, None).unwrap();
+        assert!(scoped.check_evidence.is_empty() && scoped.checks.is_empty());
+        assert!(!scoped
+            .pending
+            .iter()
+            .any(|fact| fact.text.starts_with("Validation failure remains:")));
+        compact.workspace = unrelated.workspace.clone();
+        store.update(&compact).unwrap();
+        assert!(owned_context(&f.core, &compact)
+            .unwrap()
+            .evidence
+            .is_empty());
+    }
+
+    #[test]
+    fn compact_evidence_legacy_seeds_remain_readable_without_invented_details() {
+        let f = Fixture::new();
+        let s = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let legacy: WorkState = serde_json::from_value(serde_json::json!({"workspace":s.workspace,"checks":[{"source":"old-message","text":"Build: failed"}]})).unwrap();
+        assert!(legacy.check_evidence.is_empty());
+        f.core.store.seed_work_state(&s.id, &legacy).unwrap();
+        assert!(owned_context(&f.core, &s).unwrap().evidence.is_empty());
+        assert_eq!(
+            refresh(&f.core.store, &s.id, None).unwrap().checks[0].text,
+            "Build: failed"
+        );
+    }
+
+    #[test]
+    fn continuity_new_task_retires_old_checks_and_rewind_restores_them() {
+        let f = Fixture::new();
+        let s = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let mut check = message("assistant", "");
+        check.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":s.workspace,"label":"Previous task","status":"passed"}).to_string()});
+        f.core.store.save_message(&s.id, &check).unwrap();
+        let before = owned_context(&f.core, &s).unwrap();
+        for prefix in ["New task:", "Nuovo obiettivo:", "Nuova attività:", "/task "] {
+            let request = message("user", &format!("{prefix} build another feature"));
+            f.core.store.save_message(&s.id, &request).unwrap();
+            let current = owned_context(&f.core, &s).unwrap();
+            assert!(
+                current.evidence.is_empty(),
+                "{prefix} inherited checks from an unrelated task"
+            );
+            assert_ne!(current.revision, before.revision);
+            assert!(refresh(&f.core.store, &s.id, None)
+                .unwrap()
+                .checks
+                .is_empty());
+            let mut latest = message("assistant", "New task: quoted text is not a user reset");
+            latest.activity.push(Activity {kind:"validation".into(), text:serde_json::json!({"workspace":s.workspace,"label":"Current task","status":"failed"}).to_string()});
+            f.core.store.save_message(&s.id, &latest).unwrap();
+            let evidence = owned_context(&f.core, &s).unwrap();
+            assert!(evidence.evidence.contains("Current task: failed"));
+            assert!(!evidence.evidence.contains("Previous task"));
+            f.core.store.truncate_from(&s.id, &request.id).unwrap();
+            assert_eq!(
+                owned_context(&f.core, &s).unwrap().revision,
+                before.revision
+            );
+        }
     }
 }

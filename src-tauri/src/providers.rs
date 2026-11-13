@@ -388,11 +388,46 @@ mod buffering_tests {
         assert_eq!(output[2].text, "tail");
     }
 }
+/// Google CLIs read MCP settings from their account home. Keep that configuration bound to
+/// one running workspace; a second turn on the same account waits without rewriting it.
+async fn configuration_lease(
+    config: &Path,
+    mut cancel: watch::Receiver<bool>,
+) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+    type Leases = std::collections::HashMap<PathBuf, std::sync::Weak<tokio::sync::Mutex<()>>>;
+    static LEASES: std::sync::OnceLock<std::sync::Mutex<Leases>> = std::sync::OnceLock::new();
+    if *cancel.borrow() {
+        return Err("Cancelled".into());
+    }
+    let lock = {
+        let mut leases = LEASES
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| "Account configuration lock failed")?;
+        leases.retain(|_, lease| lease.strong_count() > 0);
+        if let Some(lease) = leases.get(config).and_then(std::sync::Weak::upgrade) {
+            lease
+        } else {
+            let lease = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            leases.insert(config.into(), std::sync::Arc::downgrade(&lease));
+            lease
+        }
+    };
+    tokio::select! {biased;_=cancel.changed()=>Err("Cancelled".into()),guard=lock.lock_owned()=>Ok(guard)}
+}
 async fn execute_inner(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    let _configuration_lease = if matches!(
+        input.account.provider,
+        Provider::Gemini | Provider::Antigravity
+    ) {
+        Some(configuration_lease(input.config, cancel.clone()).await?)
+    } else {
+        None
+    };
     crate::models::share_global_instructions(&input.account.provider, input.config);
     if input.account.provider == Provider::Ollama {
         return crate::ollama_agent::execute(input, cancel, emit).await;
@@ -446,13 +481,16 @@ async fn execute_inner(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     let mut args = invocation_args(p, input.access, input.model, input.effort);
+    let mut _shared_config = None;
     if input.access != AccessMode::ReadOnly && matches!(p, Provider::Claude | Provider::Gpt) {
         let data = input
             .config
             .parent()
             .and_then(|p| p.parent())
             .ok_or("Invalid account directory")?;
-        let (shared, names) = crate::integrations::args(data, p)?;
+        let (shared, names, guard) =
+            crate::integrations::args_for(data, p, Some(&workspace), input.access)?;
+        _shared_config = guard;
         if *p == Provider::Gpt {
             args.pop();
             args.extend(shared);
@@ -492,7 +530,14 @@ async fn execute_inner(
     }
     if matches!(p, Provider::Gemini | Provider::Antigravity) {
         if let Some(data) = input.config.parent().and_then(Path::parent) {
-            crate::graph_mcp::configure_google(input.config, p, data, graph_enabled(data))?;
+            crate::graph_mcp::configure_google_for(
+                input.config,
+                p,
+                data,
+                graph_enabled(data),
+                Some(&workspace),
+                input.access,
+            )?;
             c.env("LUMEN_WORKSPACE_ROOT", &workspace);
         }
     }
@@ -871,6 +916,29 @@ pub(crate) async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::Duration;
+    #[tokio::test]
+    async fn account_configuration_waits_without_mutating_and_can_be_cancelled() {
+        let f = crate::test_support::Fixture::new();
+        let config = f.directory("account");
+        let (stop, rx) = watch::channel(false);
+        let first = configuration_lease(&config, rx.clone()).await.unwrap();
+        let waiting = configuration_lease(&config, rx.clone());
+        tokio::pin!(waiting);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut waiting)
+                .await
+                .is_err()
+        );
+        let other = f.directory("other-account");
+        let independent = configuration_lease(&other, rx.clone()).await.unwrap();
+        drop(independent);
+        stop.send(true).unwrap();
+        assert!(waiting.await.is_err());
+        drop(first);
+        let (_stop, rx) = watch::channel(false);
+        assert!(configuration_lease(&config, rx).await.is_ok());
+    }
     #[test]
     fn graph_server_args_keep_codex_stdin_last() {
         let mut args: Vec<String> = ["exec", "--json", "resume", "t1", "-"]

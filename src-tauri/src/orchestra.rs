@@ -827,7 +827,13 @@ struct Job {
     cancel: watch::Receiver<bool>,
 }
 
-async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, String> {
+async fn attempt(
+    job: &Job,
+    a: &Account,
+    model: Option<&str>,
+    guard: &mut turns::ResumeReplayGuard,
+    partial: &mut String,
+) -> Result<String, String> {
     let core = &job.core;
     let models = models_for(core, a, false, Some(job.cancel.clone())).await?;
     let selected = model
@@ -868,6 +874,7 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
         },
         job.cancel.clone(),
         |activity| {
+            guard.observe(&activity);
             if activity.kind == "quota" {
                 crate::record_claude_usage(core, app, &a.id, &activity.text);
                 return;
@@ -894,6 +901,15 @@ async fn attempt(job: &Job, a: &Account, model: Option<&str>) -> Result<String, 
                 return;
             }
             if activity.kind == "delta" || activity.kind == "replace" {
+                if activity.kind == "replace" {
+                    partial.clear();
+                }
+                partial.extend(
+                    activity
+                        .text
+                        .chars()
+                        .take(16000usize.saturating_sub(partial.chars().count())),
+                );
                 let payload =
                     serde_json::json!({"id": id, "kind": activity.kind, "text": activity.text});
                 event(
@@ -1011,7 +1027,12 @@ fn queue_of(sched: &Scheduler, t: i64) -> Option<Queue> {
 }
 
 /// Classify a finished attempt for the scheduler, which owns every retry.
-fn outcome_of(core: &Core, account: &str, r: &Result<String, String>) -> Outcome {
+fn outcome_of(
+    core: &Core,
+    account: &str,
+    r: &Result<String, String>,
+    replay_safe: bool,
+) -> Outcome {
     match r {
         Ok(_) => Outcome::Done,
         Err(e) if e == "Cancelled" => Outcome::Cancelled,
@@ -1019,17 +1040,42 @@ fn outcome_of(core: &Core, account: &str, r: &Result<String, String>) -> Outcome
             let msg = e.trim_start_matches(crate::limits::RATE_LIMIT);
             let until = crate::limits::unlock_at(msg, now());
             core.limits.cool(account, until);
-            Outcome::RateLimited(Some(until))
+            if replay_safe {
+                Outcome::RateLimited(Some(until))
+            } else {
+                Outcome::Stopped(format!(
+                    "{e}. Worker not retried after observed work; inspect its recorded result."
+                ))
+            }
         }
-        Err(e) => Outcome::Failed(e.clone()),
+        Err(e) if replay_safe => Outcome::Failed(e.clone()),
+        Err(e) => Outcome::Stopped(format!(
+            "{e}. Worker not retried after observed work; inspect its recorded result."
+        )),
     }
 }
 
+fn worker_failure_output(partial: &str, error: &str) -> String {
+    let detail = turns::friendly(error);
+    if partial.is_empty() {
+        return detail.chars().take(16000).collect();
+    }
+    let detail: String = detail.chars().take(4000).collect();
+    let text: String = partial
+        .chars()
+        .take(16000 - 2 - detail.chars().count())
+        .collect();
+    format!("{text}\n\n{detail}")
+}
+
 /// One attempt; the scheduler decides whether and where to retry.
-async fn run_job(job: Job) -> (String, String, Result<String, String>) {
+async fn run_job(job: Job) -> (String, String, Result<String, String>, bool, String) {
+    let mut guard = turns::ResumeReplayGuard::default();
+    let mut partial = String::new();
     let model = Some(job.model.as_str()).filter(|m| !m.is_empty());
-    let r = attempt(&job, &job.account, model).await;
-    (job.id.clone(), job.account.id.clone(), r)
+    let r = attempt(&job, &job.account, model, &mut guard, &mut partial).await;
+    let safe = guard.before_work(&partial, *job.cancel.borrow());
+    (job.id.clone(), job.account.id.clone(), r, safe, partial)
 }
 
 struct Lane {
@@ -1344,7 +1390,15 @@ pub async fn execute(
         let joined = tokio::select! {
             biased;
             _ = cancel.changed() => {
-                set.abort_all();
+                // Every worker has the same cancellation signal. Let provider cleanup
+                // terminate and reap its process tree before removing the worktree.
+                // Aborting the future skips that cleanup and can orphan CLI children.
+                while set.join_next().await.is_some() {}
+                for task in st.subtasks.iter_mut().filter(|t| t.status == "running") {
+                    task.status = "interrupted".into();
+                    task.pid = 0;
+                    task.ended_at = now();
+                }
                 for l in lanes.values() {
                     if let Some(top) = &top { gitops::remove_lane(top, &l.path, &l.branch).await; }
                 }
@@ -1365,10 +1419,10 @@ pub async fn execute(
             j = set.join_next(), if !set.is_empty() => j,
             _ = tick => continue,
         };
-        let Some(Ok((id, acc, result))) = joined else {
+        let Some(Ok((id, acc, result, replay_safe, partial))) = joined else {
             continue;
         };
-        sched.finish(&id, outcome_of(core, &acc, &result), now());
+        sched.finish(&id, outcome_of(core, &acc, &result, replay_safe), now());
         let Some(t) = st.subtasks.iter_mut().find(|t| t.id == id) else {
             continue;
         };
@@ -1401,7 +1455,7 @@ pub async fn execute(
                     .or(r.err())
                     .unwrap_or_default();
                 t.status = "failed".into();
-                t.output = turns::friendly(&e);
+                t.output = worker_failure_output(&partial, &e);
             }
         }
         t.output = t.output.chars().take(16_000).collect();
@@ -1745,6 +1799,31 @@ async fn cleanup(top: &Option<PathBuf>, lanes: &HashMap<String, Lane>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn continuity_worker_errors_after_work_are_terminal_and_keep_the_reason() {
+        let f = crate::test_support::Fixture::new();
+        let error = Err(format!("{}quota", crate::limits::RATE_LIMIT));
+        assert!(matches!(
+            outcome_of(&f.core, "writer", &error, false),
+            Outcome::Stopped(_)
+        ));
+        assert!(f.core.limits.cooling("writer", now()));
+        assert!(matches!(
+            outcome_of(&f.core, "other", &error, true),
+            Outcome::RateLimited(_)
+        ));
+        assert!(matches!(
+            outcome_of(&f.core, "writer", &Err("Cancelled".into()), false),
+            Outcome::Cancelled
+        ));
+        let text = worker_failure_output(
+            &"à⚙".repeat(12000),
+            "Worker not retried after observed work",
+        );
+        assert_eq!(text.chars().count(), 16000);
+        assert!(text.ends_with("Worker not retried after observed work"));
+    }
 
     fn stored_plan(st: &State) -> Message {
         Message {

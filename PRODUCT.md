@@ -1,6 +1,6 @@
 # Lumen
 
-0.7.1 — Performance Update packages the completed 0.8 performance/reliability checkpoints, including supervised Windows metadata shutdown. The remaining 0.8 roadmap and approved future visual composition stay open. [Release scope and measured limits](docs/release-notes/0.7.1.md).
+0.7.1 — Performance Update packages the completed 0.8 performance/reliability checkpoints, including supervised Windows metadata shutdown. The remaining 0.8 roadmap stays open; its first logo/sidebar composition is implemented on the 0.8 branch. [Release scope and measured limits](docs/release-notes/0.7.1.md).
 
 <!-- impeccable:product-schema 1 -->
 
@@ -31,6 +31,8 @@ Lumen, with the established restrained Liquid Glass identity, system typography 
 
 ## Product Principles
 
+Owner requirement, 12 November: previously configured connectors, plugins, skills, MCP servers and mods must be usable through Lumen across providers/accounts, with the original identity and consent preserved. Portable discovery and a Codex account tool gateway are implemented on the 0.8 branch. [Ollama now executes shared stdio tools and reads skill resources](docs/ollama-shared-tools-0.8.md); The 0.8 candidate also adds Streamable HTTP, MCP resources/prompts, dynamic tools and scoped project/local plugin components. Proprietary cloud/provider runtime extensions, legacy transports and real-account acceptance remain open. This is an open acceptance requirement, not universal compatibility already delivered. [Implementation, evidence and required remaining adapters](docs/shared-capabilities-0.8.md).
+
 - Preserve explicit provider/model/workspace choices and useful task decisions.
 - Keep direct work direct; use Orchestra only when selected.
 - Do not ask again for an already approved execution plan.
@@ -43,6 +45,8 @@ Lumen, with the established restrained Liquid Glass identity, system typography 
 
 ## Approved 0.8 direction
 
+The tranche 17 branch adds an explained permission picker and an optional first-use guided tour, replayable in General settings/commands. The tour uses actual controls, preserves draft/access and never initiates login or inference. Fresh-process Windows release regression gates and historical-content checks pass at their documented scope; repeated-open baseline instability remains unresolved. Remaining speculative optimizations are classified rather than claimed delivered. [Final acceptance and limits](docs/final-acceptance-0.8.md); integration, versioning and packages remain tranche 18.
+
 Coding React/TypeScript/JavaScript and Godot is the main use. The priority account mix is two Claude subscriptions and one ChatGPT subscription, sharing context within one chat; graph and repocontext provide targeted project knowledge. Execution without unnecessary stops comes first, then reasoning/code quality, then context continuity. Auto exposes Balance quota usage and Budget/Default/Quality; a responsible agent may request bounded help or cross-audit when useful. Orchestra remains explicit for broader coordinated parallel work and necessary discovery. These are acceptance targets, not proof that every algorithm is calibrated or every provider has equivalent delegation.
 
-The approved future visual composition keeps a floating glass composer and a quiet conversation. The top-left logo will toggle a glass project sidebar with a brief glint and transition, supporting both themes and reduced motion; that composition is not implemented yet. The current working tree now includes a compact expandable execution summary with observed phases, timing, explicit agent states and available structured checks. Provider return, pending input, silence and failure remain distinct; silent periods never trigger a new model request. These observations do not establish the cause of historical live interruptions or better model quality. Technical work proceeds through verification without mandatory code approval; subjective visual results are reviewed concretely before the authorized integration. Implementation progress and remaining experiments stay in the roadmap.
+The approved visual direction keeps a floating glass composer and a quiet conversation. The 0.8 branch implements the top-left logo as the glass project-sidebar disclosure, with a brief glint and transition, both themes and reduced motion. Desktop starts with projects visible and offers the quiet composition from the logo; narrow layouts start closed. Broader visual refinement remains open. The current working tree now includes a compact expandable execution summary with observed phases, timing, explicit agent states and available structured checks. Provider return, pending input, silence and failure remain distinct; silent periods never trigger a new model request. These observations do not establish the cause of historical live interruptions or better model quality. Technical work proceeds through verification without mandatory code approval; subjective visual results are reviewed concretely before the authorized integration. Implementation progress and remaining experiments stay in the roadmap.

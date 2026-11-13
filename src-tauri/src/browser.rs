@@ -381,6 +381,51 @@ fn failure(e: impl AsRef<str>) -> Value {
     json!({"content":[{"type":"text","text":e.as_ref()}],"isError":true})
 }
 async fn result(scope: Arc<Scope>, name: &str, args: &Value) -> Value {
+    if name == "lumen_connector_consent" {
+        // Consent belongs to the active Lumen turn, independently of the calling CLI's UI.
+        struct PendingInput {
+            connection: crate::interactions::Connection,
+            wire: String,
+            events: mpsc::UnboundedSender<Activity>,
+        }
+        impl Drop for PendingInput {
+            fn drop(&mut self) {
+                self.connection.cancel(&self.wire);
+                self.connection.drain(&mut |event| {
+                    let _ = self.events.send(event);
+                });
+            }
+        }
+        let pending = PendingInput {
+            connection: Default::default(),
+            wire: uuid::Uuid::new_v4().to_string(),
+            events: scope.events.clone(),
+        };
+        let request = crate::connectors::Request::parse(args);
+        let result = match request {
+            Ok(request) => match pending
+                .connection
+                .ask_connector(request.clone(), pending.wire.clone())
+            {
+                Ok((activity, receive)) => {
+                    let _ = scope.events.send(activity);
+                    receive
+                        .await
+                        .ok()
+                        .and_then(|answers| request.response(&answers).ok())
+                }
+                Err(_) => None,
+            },
+            Err(reason) => {
+                let _ = scope.events.send(Activity {
+                    kind: "connector-status".into(),
+                    text: format!("Connector consent cancelled: {reason}"),
+                });
+                None
+            }
+        };
+        return result.unwrap_or(json!({"action":"cancel","content":null}));
+    }
     let run = async {
         permitted(scope.access, name)?;
         if scope.access == AccessMode::Ask && mutable(name) {
@@ -401,6 +446,7 @@ async fn result(scope: Arc<Scope>, name: &str, args: &Value) -> Value {
                 ],
                 multi_select: false,
                 secret: false,
+                optional: false,
             };
             let (activity, answer) =
                 connection.ask(vec![question], uuid::Uuid::new_v4().to_string())?;
@@ -1073,6 +1119,88 @@ pub(crate) mod tests {
             true
         );
         assert!(readonly.scope.context.engine.lock().await.is_none());
+    }
+    #[tokio::test]
+    async fn connector_consent_uses_the_turn_scope_and_cancel_retires_its_ui() {
+        let f = crate::test_support::Fixture::new();
+        let (tx, mut events) = mpsc::unbounded_channel();
+        let registration = fixture_registration(&f, AccessMode::Autopilot, None, tx).await;
+        let request = json!({"requestId":"connector-input","name":"lumen_connector_consent","arguments":{"serverName":"Owning account","message":"Choose a scope","mode":"form","requestedSchema":{"type":"object","properties":{"scope":{"type":"integer"}},"required":["scope"]}}});
+        let (endpoint, token) = (
+            registration.endpoint.clone(),
+            registration.scope.token.clone(),
+        );
+        let input = request.clone();
+        let pending = tokio::spawn(async move {
+            client()
+                .post(endpoint)
+                .bearer_auth(token)
+                .json(&input)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        });
+        let event = events.recv().await.unwrap();
+        assert_eq!(event.kind, "interaction");
+        let id = serde_json::from_str::<Value>(&event.text).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        crate::interactions::answer_question(
+            id,
+            HashMap::from([
+                ("__lumen_connector_action__".into(), vec!["Accept".into()]),
+                ("scope".into(), vec!["3".into()]),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            pending.await.unwrap(),
+            json!({"action":"accept","content":{"scope":3}})
+        );
+        let result = events.recv().await.unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&result.text).unwrap()["answers"],
+            json!({})
+        );
+        let (endpoint, token) = (
+            registration.endpoint.clone(),
+            registration.scope.token.clone(),
+        );
+        let pending = tokio::spawn(async move {
+            client()
+                .post(endpoint)
+                .bearer_auth(token)
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        });
+        let event = events.recv().await.unwrap();
+        let id = serde_json::from_str::<Value>(&event.text).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        client()
+            .post(registration.endpoint.replace("/call", "/cancel"))
+            .bearer_auth(&registration.scope.token)
+            .json(&json!({"requestId":"connector-input"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(pending.await.unwrap()["isError"], true);
+        let cancelled = events.recv().await.unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&cancelled.text).unwrap()["cancelled"],
+            true
+        );
+        assert!(crate::interactions::answer_question(id, HashMap::new()).is_err());
     }
     #[tokio::test]
     async fn real_moli_fetch_dom_images_persistence_and_worker_isolation() {

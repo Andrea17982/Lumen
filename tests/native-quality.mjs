@@ -79,6 +79,56 @@ try {
   assert(isolated.messages.at(-1).text.includes('QUALITY_CONTEXT_ABSENT'));
   checks.push('Check context never leaks into a different chat using the same project/account');
 
+  for (const account of [a, g]) {
+    const chat = await h.invoke('create_session', { workspace: h.workspace });
+    await turn(chat, account, 'Keep the counter limit of 3. QUALITY_CONTEXT_FIXTURE');
+    appendValidation(h, chat.id, 'Independent counter check', 'failed', 'Current task check');
+    const changed = await turn(chat, account, 'New task: QUALITY_CONTEXT_FIXTURE');
+    assert(changed.messages.at(-1).text.includes('QUALITY_CONTEXT_ABSENT'));
+    const target = changed.messages.findLast((message) => message.role === 'user');
+    await h.invoke('rewind', { session: chat.id, message: target.id });
+    const retained = await h.invoke('get_messages', { id: chat.id });
+    assert(retained.every((message) => message.activity.every((row) => row.kind !== 'native')));
+    assert(retained.some((message) => message.activity.some((row) => row.kind === 'validation')));
+    const rebuilt = await turn(chat, account, 'QUALITY_CONTEXT_FIXTURE');
+    assert(rebuilt.messages.at(-1).text.includes('QUALITY_CONTEXT_PRESENT'));
+    assert.equal(native(rebuilt).account, account.id);
+    checks.push(
+      `${account.provider}: explicit new task retires old evidence; Rewind clears native IDs and rebuilds from retained checks`,
+    );
+  }
+
+  const compacted = await h.invoke('compact_session', { id: s.id, summary: null });
+  const state = await h.invoke('session_work_state', { id: compacted.id });
+  assert.equal(state.checkEvidence.length, 1);
+  assert.equal(state.checkEvidence[0].report.status, 'failed');
+  assert(state.checkEvidence[0].report.detail.includes('disable Hit at 3'));
+  const compactTurn = await turn(compacted, a, 'QUALITY_CONTEXT_FIXTURE');
+  assert(compactTurn.messages.at(-1).text.includes('QUALITY_CONTEXT_PRESENT'));
+  checks.push(
+    'Compact preserves structured backend evidence and delivers it to another Claude account',
+  );
+  const twice = await h.invoke('compact_session', {
+    id: compacted.id,
+    summary: 'Continue the approved counter task; preserve the limit.',
+  });
+  const twiceState = await h.invoke('session_work_state', { id: twice.id });
+  assert.deepEqual(twiceState.checkEvidence, state.checkEvidence);
+  const twiceTurn = await turn(twice, g, 'QUALITY_CONTEXT_FIXTURE');
+  assert(twiceTurn.messages.at(-1).text.includes('QUALITY_CONTEXT_PRESENT'));
+  const unchangedCompact = await turn(twice, g, 'QUALITY_CONTEXT_FIXTURE');
+  assert(unchangedCompact.messages.at(-1).text.includes('QUALITY_CONTEXT_ABSENT'));
+  checks.push(
+    'Repeated Compact with edited handoff preserves original evidence sources and delivers it once to GPT',
+  );
+  const resetCompact = await turn(twice, g, 'New task: QUALITY_CONTEXT_FIXTURE');
+  assert(resetCompact.messages.at(-1).text.includes('QUALITY_CONTEXT_ABSENT'));
+  const resetTarget = resetCompact.messages.findLast((message) => message.role === 'user');
+  await h.invoke('rewind', { session: twice.id, message: resetTarget.id });
+  const restoredCompact = await turn(twice, a, 'QUALITY_CONTEXT_FIXTURE');
+  assert(restoredCompact.messages.at(-1).text.includes('QUALITY_CONTEXT_PRESENT'));
+  checks.push('New task retires Compact seed evidence; Rewind restores it for a different account');
+
   const balanced = await h.invoke('create_session', { workspace: h.workspace });
   await turn(balanced, a, 'Start this conversation.');
   const at = Date.now();

@@ -1,0 +1,53 @@
+{
+  "at": "2026-11-11T18:07:47.941Z",
+  "versions": {
+    "typescript": "5.9.3",
+    "node": "v24.2.0",
+    "godot": "4.7.2.stable.mono.official.ed1daf0bf"
+  },
+  "checks": [
+    {
+      "oracle": "TypeScript",
+      "from": "web/typed.mts",
+      "spec": "./state.mjs",
+      "target": "web/state.mts",
+      "passed": true
+    },
+    {
+      "oracle": "TypeScript",
+      "from": "web/common-user.cts",
+      "spec": "./common.cjs",
+      "target": "web/common.cts",
+      "passed": true
+    },
+    {
+      "oracle": "TypeScript",
+      "from": "web/typed-user.ts",
+      "spec": "./source.js",
+      "target": "web/source.ts",
+      "passed": true
+    },
+    {
+      "oracle": "TypeScript",
+      "from": "web/view-user.ts",
+      "spec": "./view.js",
+      "target": "web/view.jsx",
+      "passed": true
+    },
+    {
+      "oracle": "Node.js",
+      "check": "Explicit JavaScript resolves emitted JS and does not substitute a missing .mjs with .mts",
+      "passed": true
+    },
+    {
+      "oracle": "Godot",
+      "check": "Single-quoted res:// preload and script-relative inheritance resolve the expected base script",
+      "passed": true
+    }
+  ],
+  "inferenceCalls": 0,
+  "limits": [
+    "Compiler/runtime checks validate fixture semantics; Rust graph conformance and mutation tests are separate.",
+    "Not a full TypeScript module resolver, GDScript parser, C# compiler or whole-project semantic certification."
+  ]
+}

@@ -11,10 +11,13 @@ Tauri owns the native window and IPC boundary. Rust owns storage, account config
 | `native_claude.rs` | Bidirectional native Claude initialize/control/input/output stream |
 | `approvals_codex.rs` | Codex app-server, thread start/resume, questions and native events |
 | `approvals.rs`, `interactions.rs`, `activity.rs` | Scoped approvals/questions and bounded activity/child streams |
+| `capability_catalog.rs`, `integrations.rs` | Read-through integration discovery, original skill resources, per-source namespaces and per-invocation client configuration |
+| `native_mcp.rs` | Direct native-account tool/skill RPC gateway, with turn-scoped host consent and no model turn |
 | `execution.rs` | Bounded content-free invocation observations, phase/timing snapshots and internal-stage handoff |
 | `providers.rs`, `catalog.rs`, `proc.rs` | CLI launch, isolation, metadata, normalization and process-tree cancellation |
 | `orchestra.rs`, `scheduling.rs` | Task graph, worker worktrees, caps, integration and recovery |
 | `browser.rs`, `ollama_agent.rs`, `ollama.rs` | Shared Moli broker/MCP proxy, local API tool loop, model discovery/helpers |
+| `shared_tools.rs` | Turn-owned stdio MCP client for Ollama, scoped shared skills, host consent and process cleanup (0.8 branch) |
 | `store.rs`, `migrations.rs`, `workstate.rs` | SQLite persistence, atomic schema upgrades and durable decisions |
 | `context.rs`, `codegraph.rs`, `graph_mcp.rs`, `impact.rs` | Context, pattern-based graph tools and pre/post-edit impact |
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |
@@ -34,11 +37,13 @@ Rust modules are under `src-tauri/src/`. Frontend components live under `src/com
 5. Normalize text, exposed summaries, questions, child agents, browser activity and images. Coalesce text deltas at 24 ms, flushing before control events.
 6. Persist checkpoints and complete optional review/integration/validation stages. Record the turn's return/error/interrupted state and release resources; a provider return does not certify completion of the requested task.
 
-Native Claude/Codex continuations send the new request and changed context. Missing native sessions/fallback use replay; saved requirements are separate from transcript truncation. Provider authentication remains native. Prompts are written to stdin, not assembled as shell command strings.
+Native Claude/Codex continuations send the new request and changed context. A missing native session can fall back once to full replay only before observed work, with no partial text or cancellation. The guard sees lifecycle events before compaction; tools, thinking, input and unknown activity prevent replay. [Recovery checks and limits](resume-replay-0.8.md) distinguish this from other fallback policies. Saved requirements are separate from transcript truncation. Provider authentication remains native. Prompts are written to stdin, not assembled as shell command strings.
 
 The 0.8 candidate fingerprints Lumen-owned project notes and current-chat/current-workspace check evidence. Native continuation sends this context only when changed; account handoffs include it in the full bounded prompt without crossing native account identities. Auto's quota selection is not overwritten by previous-account affinity. Explicit audit intent survives classifier output; a separate primary account, preferably another provider, performs read-only review. Both retains its Claude-plus-ChatGPT contract. See [task quality](task-quality.md) for bounds and [experiments](quality-experiments-0.8.md) for acceptance evidence.
 
 The 0.8 working tree adds versioned `execution` snapshots and `execution-phase` markers in existing message activity. They contain bounded timestamps/counts/phases, not prompt, response or command bodies. `stage_with` observes provider lifecycle, persists visible phase changes, and publishes other snapshots at most every 750 ms plus the final state. Internal Orchestra scratch stages explicitly merge execution snapshots into durable output. Native tool start/end identifiers update aggregate state rather than accumulating hidden per-tool rows. The selected-turn UI consumes snapshots, native input/approval state and structured validation. Read-only status refresh is guarded against newer streaming, approval events and chat switches. No silence-triggered retry is implemented. Pre-acceptance frontend waiting is separate from backend invocation observations; see the [roadmap](roadmap-0.8.md) for coverage and timing limits.
+
+Quota fallback shares the missing-session activity guard. It still cools the limited account, but preserves partial output and does not switch/replay after observed work or cancellation. A pre-work quota failure can switch once. The guard is shared through a nested missing-session replay, so later work cannot be forgotten by the outer quota handler. [Owned-effect regression cases](quota-replay-0.8.md).
 
 ## Browser boundary
 
@@ -47,6 +52,10 @@ The 0.8 working tree adds versioned `execution` snapshots and `execution-phase` 
 One-shot Moli fetches avoid layout/images/fonts. Interactive CDP engines are retained per conversation/worker/workspace and start lazily. Inputs, output, concurrency and deadlines are bounded. Permission enforcement is inside the broker. Original screenshots are saved in the conversation project and delivered to the UI; Antigravity's observed inline-image issue uses its native file/image path instead.
 
 Ollama requests stay on loopback with proxies/redirects disabled. `/api/show` selects native tool calling or a JSON-action format; tool results return to the same model. Remote model metadata/cloud aliases are rejected. [Detailed browser contract](moli.md).
+
+## Graph reliability
+
+The post-0.7.1 graph checkpoint corrects scoped typed-module extension substitution and Godot literal resource/inheritance paths. Full-line TS/JS/C#/GDScript comments are excluded from extraction/reference identifiers. Relative normalization stays within indexed repository/Godot-project boundaries; index format 4 invalidates earlier extraction records. Existing immutable pre-edit graph snapshots retain callers after deletions. This remains an approximate graph, not a complete compiler/configuration resolver. [Corpus, native MCP checks and limits](graph-reliability-0.8.md).
 
 ## Turn timing
 

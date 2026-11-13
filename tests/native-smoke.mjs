@@ -291,10 +291,8 @@ try {
       .evaluateAll((options) => options.map((o) => o.value)),
     ['', 'low', 'medium'],
   );
-  for (let i = 0; i < 4; i++) {
-    if (await page.getByRole('button', { name: 'Permissions: Autopilot' }).count()) break;
-    await page.getByRole('button', { name: /^Permissions: / }).click();
-  }
+  await page.getByRole('button', { name: /^Permissions: / }).click();
+  await page.getByRole('menuitemradio', { name: /^Autopilot/ }).click();
   await page.getByRole('button', { name: 'Permissions: Autopilot' }).waitFor();
   await page.getByRole('button', { name: 'Rename selected account' }).click();
   await page.getByRole('textbox', { name: 'Account name' }).fill('Composer renamed account');

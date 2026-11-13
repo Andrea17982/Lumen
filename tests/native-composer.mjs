@@ -98,8 +98,13 @@ try {
   });
   await page.reload();
   const row = (title) => page.locator('.session-row').filter({ hasText: title });
+  async function selectChat(title) {
+    const logo = page.locator('.sidebar-toggle');
+    if ((await logo.getAttribute('aria-expanded')) === 'false') await logo.click();
+    await row(title).click();
+  }
   const input = page.getByRole('textbox', { name: 'Message', exact: true });
-  await row('First composer chat').click();
+  await selectChat('First composer chat');
   await input.fill('First draft');
   await page.evaluate(async () => {
     const canvas = document.createElement('canvas');
@@ -113,17 +118,17 @@ try {
   });
   await expect(page.getByLabel('Attached files')).toContainText('clipboard-');
   const attachment = await page.locator('.attachment-chip').getAttribute('title');
-  await row('Second composer chat').click();
+  await selectChat('Second composer chat');
   await expect(input).toHaveValue('');
   await expect(page.getByLabel('Attached files')).toHaveCount(0);
   await input.fill('Second draft');
-  await row('First composer chat').click();
+  await selectChat('First composer chat');
   await expect(input).toHaveValue('First draft');
   await expect(page.getByLabel('Attached files')).toContainText('clipboard-');
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(input).toHaveValue('');
   await expect(page.getByLabel('Attached files')).toHaveCount(0);
-  await row('First composer chat').click();
+  await selectChat('First composer chat');
   await expect(input).toHaveValue('First draft');
   checks.push('Text and attachments stay with their chat, including New conversation');
 
@@ -167,7 +172,7 @@ try {
   await input.fill('Next draft in first chat');
   await input.press('Enter'); // Must not duplicate a submission during the acceptance window.
   assert.equal(await page.evaluate(() => window.__composerSendCalls), 1);
-  await row('Second composer chat').click();
+  await selectChat('Second composer chat');
   await expect(input).toHaveValue('Second draft');
   await page.evaluate(() => window.__composerRelease());
   await expect.poll(async () => (await invoke('get_messages', { id: first.id })).length).toBe(2);
@@ -182,7 +187,7 @@ try {
   await expect(page.locator('.conversation')).not.toContainText(
     'Send with a controlled acceptance delay',
   );
-  await row('First composer chat').click();
+  await selectChat('First composer chat');
   await expect(input).toHaveValue('Next draft in first chat');
   await expect(page.locator('.message.user')).toHaveCount(1);
   const stored = await invoke('get_messages', { id: first.id });
@@ -212,10 +217,10 @@ try {
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(input).toHaveValue('');
   await input.fill('Newer text must survive');
-  await row('Second composer chat').click();
+  await selectChat('Second composer chat');
   await page.evaluate(() => window.__composerRelease());
   await expect(input).toHaveValue('Second draft');
-  await row('First composer chat').click();
+  await selectChat('First composer chat');
   await expect(input).toHaveValue('Rejected original draft\n\nNewer text must survive');
   await expect(page.getByRole('alert')).toContainText('Draft restored');
   assert.equal((await invoke('get_messages', { id: first.id })).length, 2);
@@ -328,7 +333,7 @@ try {
     )
     .toBe('completed');
   await expect(input).toHaveValue('Follow-up draft in newly created chat');
-  await row('Second composer chat').click();
+  await selectChat('Second composer chat');
   await expect(input).toHaveValue(''); // Window-local drafts intentionally do not survive reload.
   await row('First message creates a new conversation')
     .filter({ hasNotText: '· continued' })
@@ -351,7 +356,7 @@ try {
     .poll(() => page.evaluate(() => typeof window.__composerCompactRelease))
     .toBe('function');
   await input.fill('New text while compacting the original chat');
-  await row('Second composer chat').click();
+  await selectChat('Second composer chat');
   await input.fill('Do not leave this chat');
   await page.evaluate(() => window.__composerCompactRelease());
   await expect(input).toHaveValue('Do not leave this chat');

@@ -1,6 +1,46 @@
 # Validation, release scope and known limits — 0.7
 
-The completed checkpoints below are included in **0.7.1 — Performance Update**. Earlier sections retain their 0.7.0/checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
+The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Update**; explicitly post-release 0.8 checkpoints belong to their implementation branches. Earlier sections retain their checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
+
+## Post-release 0.8 final acceptance checkpoint — tranche 17
+
+**Subsequent requirement, 12 November:** the owner made cross-provider reuse of existing integrations mandatory. [Shared-capability checkpoint](shared-capabilities-0.8.md) records implemented discovery/gateways and the remaining runtime/Ollama/real-account work. The earlier packaging-only completion estimate below predates that requirement and does not close the expanded 0.8 scope.
+
+Additional connector fixes are tracked in the [connector checkpoint](connector-interactions-0.8.md). It separates the reported macOS case (not reproduced without native logs) from verified protocol/adapter defects. It does not change the published 0.7.1 or the historical performance candidate below.
+
+The current isolated Windows release passes 80 fresh-process A/B/A/B samples against `01bf144`: opening medians −0.7%/−10.2%, typing-task medians +3.1%/−17.2%, within the fixed 10% regression gate. Eight historical-content gates pass on that exact candidate hash. This does not establish a speedup caused by the UI. Opening p95 rises in the first comparison and falls in the second; tails and secondary figures remain visible. An earlier 12-sample same-process baseline became nonstationary (about 1.2–27.8 seconds), is retained/excluded before candidate comparison, and remains unresolved. Repeated-open steady-state, cold-start and universal latency are not certified.
+
+Permissions now exposes the current mode plus four explained explicit choices; opening/dismissing never changes access. A first-use optional five-step tour highlights actual controls, persists skip/completion and can be replayed from General settings/commands. It preserves draft/access and never invokes login/inference. English/Italian, both themes, narrow/intermediate/wide layouts, keyboard focus and reduced motion are checked visually and automatically. Three native onboarding/menu scenarios, seven composer and eight execution cases pass; 180 Rust tests (14 opt-in ignored), 72 frontend unit tests, 40 browser tests, builds/Clippy/format/docs pass locally.
+
+[Final protocol, source/binary hashes and candidate decisions](final-acceptance-0.8.md) separates current checks from historical gains. Rust Markdown/ANSI, CLI pooling, positional metadata, graph parser replacement and global context/output allocation remain deferred for insufficient evidence; incompatible windowing and broader memoization prototypes remain excluded. No new audible reader review or native macOS/Linux GUI acceptance is inferred. Live budget stays at 13. Only tranche 18 (integration/version/packages/release) remains; published 0.7.1 is unchanged.
+
+## Post-release 0.8 context/graph checkpoint — tranche 15
+
+Five regressions failed on `250e6ec` before the fixes. Prompt projections now remove identical same-source facts only after a complete earlier rendering; durable facts/snapshots stay intact. Canonical attachment duplicates are sent once and previews consume the 48 KiB UTF-8 content budget, retaining references after exhaustion. Native continuation sends changed project notes in full, including middle requirements previously clipped; a versioned revision refreshes older acknowledgements. Omitted graph contracts now mark the listing bounded.
+
+The fixed React/Godot build-prompt corpus drops from 7,305 to 4,719 and 106,119 to 103,533 bytes. Actual offline CLI capture falls from 29,489 to 27,247 bytes on initial invocation; unchanged native turns stay 758 bytes/148 local tokens. Changed-note input intentionally grows to preserve missing requirements. These are controlled payload counts, not billed tokens or live quality improvements. Six native captures per version, 12 quality/continuity scenarios, four Orchestra and five graph MCP cases pass; all 180 Rust tests (14 opt-in ignored), 72 frontend tests, builds and formatting/Clippy/docs checks pass locally. [Protocol, results and limits](context-graph-budget-0.8.md).
+
+No global model-context/output-reserve guarantee, native protocol rewrite or parser migration is introduced. Graph approximation and context-meter limitations remain explicit. Live budget remains 13, release remains 0.7.1; remaining tranches are 17 and 18.
+
+## Post-release 0.8 Auto/Orchestra checkpoint — tranche 14
+
+Scheduler dependencies now require successful completion; failed/missing chains terminate without launching dependents. Resume preserves consumed admissions and the three-attempt limit. Worker errors after observed work stop rather than replaying; partial text/reason and quota cooldown survive. Explicit Stop lets provider termination finish before worktree cleanup. Three scheduler failures and a native cancellation failure were reproduced before their fixes.
+
+Five added Rust regressions, four real Windows IPC/worktree scenarios with offline CLI fixtures, and the existing 12 native account/context/routing/audit scenarios cover this bounded checkpoint. No live inference is spent; the historical budget remains 13. [Protocol and limitations](auto-orchestra-continuity-0.8.md). Native delegation remains provider-specific, live multiaccount quality is unverified, and concurrent Resume/finalization recovery is not newly certified. Remaining tranches: 15, 17 and 18; release stays 0.7.1.
+
+## Post-release 0.8 Windows/accessibility checkpoint — tranche 16
+
+Settings now matches its keyboard-modal behavior with modal semantics, inert/ARIA-hidden background and reliable opener restoration. Keyboard focus in settings/inspector/questions has a tonal fill and underline. Native question availability distinguishes checking, read failure and expiry; answer delivery failure preserves the choice and retry focus, success focuses the sent status. No option is preselected.
+
+The Windows debug matrix covers both settings themes, a real offline-provider question with controlled read/delivery faults, inspector focus return, 1,000 mounted messages with historical find/AX and local image-dialog focus. Installed VS Code opens the fixture file at the requested line; Windows UI Automation reports `Ln 13, Col 1` using a temporary profile. Narrator was actually started and exercised on the conversation/commands/settings; the owner confirmed audible labels were understandable. Reader and temporary editor windows were restored afterward. The five existing sidebar and eight execution scenarios pass; frontend build, 72 unit and 35 browser tests pass. [Matrix and limits](windows-accessibility-0.8.md), [sanitized result](data/windows-accessibility-0.8-results.json).
+
+This is bounded Windows acceptance, not WCAG or universal screen-reader certification. NVDA, braille, OS zoom at 200%, other line editors and non-Windows desktops remain untested. Live budget stays at 13 slots and release 0.7.1 is unchanged. At this checkpoint tranches 14/15/17/18 remained open; the later tranche 14 record above updates the remaining scope.
+
+## Post-release 0.8 graph checkpoint
+
+The next implementation branch corrects the TS/JS/Godot import corpus from 9/23 to 23/23 expectations, with full-line comment controls, bounded path normalization and index-format 4 migration. The six installed compiler/runtime checks (TypeScript/Node/Godot) and five Windows debug native graph MCP scenarios pass. Normal tests cover edited imports, rename/deletion, cache reuse/migration and deleted-target callers retained in the real impact handoff. The complete Windows Rust suite passes 163 tests (14 opt-in probes ignored); Clippy denies warnings and debug build/format/documentation checks pass. [Protocol/remaining semantics](graph-reliability-0.8.md), [aggregate](data/graph-reliability-0.8-results.json).
+
+These are isolated code-graph correctness checks, without provider inference, model-quality/token-saving claims, GUI/screen-reader or other-platform desktop certification. Size/mtime preservation, complete comment/string parsing, arbitrary config/alias resolution and dynamic/UID resource paths remain open. The published 0.7.1 is unchanged; the live ledger remains at 13 spent slots.
 
 ## 0.7.1 metadata shutdown acceptance
 

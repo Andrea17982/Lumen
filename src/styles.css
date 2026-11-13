@@ -106,6 +106,17 @@ select {
 :focus-visible {
   outline: none;
 }
+/* Tonal fill and underline make keyboard focus visible without global rings. */
+:is(.settings-panel, .project-inspector, .native-questions)
+  :is(button, input, select, textarea):focus-visible {
+  background-color: var(--selected);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.native-options label:has(input:focus-visible) {
+  background: var(--selected);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 button {
   transition:
     background var(--motion-fast) var(--motion-ease-standard),
@@ -181,20 +192,82 @@ html[data-text-size='large'] {
   --text-scale: 1.08;
 }
 .sidebar {
-  width: 280px;
+  --sidebar-width: 280px;
+  width: var(--sidebar-width);
+  margin-left: calc(0px - var(--sidebar-width));
+  transform: translateX(-12px);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    margin-left var(--motion-spatial) var(--motion-ease-enter),
+    transform var(--motion-spatial) var(--motion-ease-enter),
+    opacity var(--motion-normal) var(--motion-ease-standard),
+    visibility 0s var(--motion-spatial);
   flex-shrink: 0;
-  padding: 26px 16px 16px;
+  padding: 18px 16px 16px;
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38%), var(--glass);
   backdrop-filter: blur(30px) saturate(1.15);
   border-right: 1px solid var(--line);
 }
+.sidebar.open {
+  margin-left: 0;
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.app-shell:not(.sidebar-open) .topbar {
+  padding-left: 82px;
+}
+.brand-tile.sidebar-toggle {
+  position: absolute;
+  z-index: 31;
+  top: 18px;
+  left: 20px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.logo-glint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 70%
+  );
+  animation: logo-glint 360ms var(--motion-ease-enter) both;
+}
+@keyframes logo-glint {
+  from {
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+}
 .brand {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 6px 26px;
+  min-height: 40px;
+  padding: 0 6px 26px 54px;
   font-size: calc(19px * var(--text-scale, 1));
   font-weight: 500;
   letter-spacing: -0.4px;
@@ -526,9 +599,6 @@ html[data-text-size='large'] {
   border-radius: 7px;
   color: var(--muted);
   flex-shrink: 0;
-}
-.mobile-menu {
-  display: none;
 }
 .preview-label {
   font-size: calc(10px * var(--text-scale, 1));
@@ -1024,6 +1094,29 @@ html[data-text-size='large'] {
 .native-questions > button {
   justify-self: start;
 }
+.connector-request > p {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.connector-request > p small {
+  display: block;
+  color: var(--muted);
+}
+.connector-request fieldset:first-of-type .native-options {
+  display: flex;
+  flex-wrap: wrap;
+}
+.connector-request fieldset:first-of-type .native-options label {
+  flex: 1 1 100px;
+}
+.connector-request .native-custom input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--input);
+  color: var(--text);
+}
 .response-link {
   padding: 0;
   border: 0;
@@ -1189,6 +1282,188 @@ html[data-text-size='large'] {
 .access-control.enabled {
   color: var(--accent);
   background: var(--hover);
+}
+
+/* Permission choices and first-use coachmarks share the restrained popup material. */
+.permission-picker {
+  width: auto;
+  min-height: 30px;
+  white-space: nowrap;
+}
+.composer-toolbar .permission-picker > span {
+  display: inline;
+}
+.composer-toolbar .mode-control {
+  flex: 1 1 140px;
+  max-width: max-content;
+}
+@media (max-width: 520px) {
+  .composer-toolbar .mode-control {
+    flex: 1 0 calc(100% - 36px);
+    max-width: none;
+  }
+}
+.permission-menu {
+  position: fixed;
+  z-index: 220;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 12px 36px -12px #0005;
+}
+.permission-menu > p {
+  margin: 6px 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.permission-menu > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 8px;
+  border-radius: 7px;
+  color: var(--text);
+}
+.permission-menu > button > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.permission-menu > button > span {
+  flex: 1;
+}
+.permission-menu strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.permission-menu small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.permission-menu [aria-checked='true'] {
+  background: var(--selected);
+}
+.permission-menu button:focus-visible,
+.permission-picker:focus-visible,
+.tour-card button:focus-visible,
+.tour-invitation button:focus-visible,
+.tutorial-setting button:focus-visible {
+  background: var(--selected);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  outline: none;
+}
+.tour-invitation {
+  margin: 18px auto 0;
+  font-size: 13px;
+}
+.tour-invitation p {
+  color: var(--muted);
+  margin: 0 0 7px;
+}
+.tour-invitation button {
+  font-size: 12px;
+}
+.tour-invitation .tour-skip {
+  color: var(--muted);
+  margin-left: 14px;
+}
+.tutorial-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+.guided-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  pointer-events: none;
+}
+.tour-highlight {
+  position: fixed;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--hover);
+  transition:
+    left 180ms,
+    top 180ms,
+    width 180ms,
+    height 180ms;
+}
+.tour-card {
+  position: fixed;
+  pointer-events: auto;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  border-radius: 14px;
+  padding: 24px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 18px 50px -15px #0005;
+  animation: tour-arrive 180ms var(--motion-ease-enter);
+}
+.tour-card h2 {
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  margin: 0 18px 12px 0;
+  outline: none;
+  text-wrap: balance;
+}
+.tour-card p {
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0 0 24px;
+}
+.tour-close {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+}
+.tour-card footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.tour-count {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+.tour-card .text-button {
+  font-size: 11px;
+}
+.tour-card .primary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+@keyframes tour-arrive {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (max-width: 1050px) {
+  .permission-prefix {
+    display: none;
+  }
 }
 .send-button {
   display: flex;
@@ -2066,7 +2341,7 @@ label {
 }
 @media (min-width: 1500px) {
   .sidebar {
-    width: 300px;
+    --sidebar-width: 300px;
   }
   .welcome {
     padding-bottom: 90px;
@@ -2077,7 +2352,7 @@ label {
 }
 @media (max-width: 1050px) {
   .sidebar {
-    width: 225px;
+    --sidebar-width: 225px;
     padding-inline: 12px;
   }
   .topbar {
@@ -2111,6 +2386,7 @@ label {
     inset: 0 auto 0 0;
     z-index: 30;
     width: 256px;
+    margin-left: 0;
     transform: translateX(-100%);
     transition: transform var(--motion-spatial) var(--motion-ease-standard);
   }
@@ -2125,12 +2401,9 @@ label {
     z-index: 29;
     animation: motion-scrim-in var(--motion-normal) var(--motion-ease-standard) both;
   }
-  .mobile-menu {
-    display: flex;
-  }
   .topbar {
     height: 66px;
-    padding: 0 20px;
+    padding: 0 20px 0 76px;
   }
   .topbar-left {
     gap: 10px;

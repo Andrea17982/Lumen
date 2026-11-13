@@ -510,7 +510,15 @@ pub(crate) async fn resume_prompt(
     let delta = if changed && owned.text.is_empty() && old_context.is_some() {
         "\nLumen's current project/check context is empty. Previously supplied notes/checks are not current evidence; do not infer passing validation.\n".to_string()
     } else if changed {
-        owned.text
+        format!(
+            "{}{}",
+            if old_context.is_some() {
+                "\nThe following replaces Lumen's previously supplied project/check context. Omitted checks are not current evidence; do not infer passing validation.\n"
+            } else {
+                ""
+            },
+            owned.text
+        )
     } else {
         String::new()
     };
@@ -545,8 +553,8 @@ pub async fn stage(
     .await
 }
 
-/// A stage that continues `resume` when given. A resume the CLI rejects (a deleted or expired
-/// session) is retried once as a full replay, so a stale record never fails a turn.
+/// A stage that continues `resume` when given. A missing session is replayed once
+/// only before observed work; completed effects must never be blindly repeated.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn stage_with(
     app: &tauri::AppHandle,
@@ -561,6 +569,41 @@ pub(crate) async fn stage_with(
     cancel: watch::Receiver<bool>,
     visible: bool,
     resume: Option<&Resume>,
+) -> Result<String, String> {
+    let mut replay_guard = ResumeReplayGuard::default();
+    stage_observed(
+        app,
+        core,
+        s,
+        out,
+        a,
+        prompt,
+        model,
+        effort,
+        access,
+        cancel,
+        visible,
+        resume,
+        &mut replay_guard,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stage_observed(
+    app: &tauri::AppHandle,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+    a: &Account,
+    prompt: &str,
+    model: Option<&str>,
+    effort: &str,
+    access: AccessMode,
+    cancel: watch::Receiver<bool>,
+    visible: bool,
+    resume: Option<&Resume>,
+    replay_guard: &mut ResumeReplayGuard,
 ) -> Result<String, String> {
     let config = config_dir(core, a);
     let mut trace = crate::execution::Trace::new(a.provider.binary());
@@ -679,6 +722,8 @@ pub(crate) async fn stage_with(
         },
         cancel,
         |activity| {
+            // Observe before lifecycle events are discarded or activity is compacted.
+            replay_guard.observe(&activity);
             // Timing signals carry no provider content and do not add IPC/SQLite writes.
             // The existing snapshot checkpoint/finish publishes the accumulated offsets.
             if activity.kind == "latency" {
@@ -752,7 +797,7 @@ pub(crate) async fn stage_with(
     trace.finish(&result);
     trace.publish(app, &s.id, out, true);
     if let (Some(_), Err(e)) = (resume, &result) {
-        if resume_unavailable(e) && out.text.trim().is_empty() {
+        if replay_guard.allows(e, &out.text, *retry_cancel.borrow()) {
             drop(permit);
             out.activity.retain(|x| x.kind != "native");
             let replay = if full_prompt.is_empty() {
@@ -764,7 +809,7 @@ pub(crate) async fn stage_with(
             } else {
                 None
             };
-            return Box::pin(stage_with(
+            return Box::pin(stage_observed(
                 app,
                 core,
                 s,
@@ -777,10 +822,18 @@ pub(crate) async fn stage_with(
                 retry_cancel,
                 visible,
                 None,
+                replay_guard,
             ))
             .await;
         }
     }
+    let result = result.map_err(|error| {
+        if resume.is_some() && resume_unavailable(&error) && replay_guard.work_observed {
+            format!("{error}. Lumen did not replay this request because provider activity was already observed; inspect the recorded work before retrying.")
+        } else {
+            error
+        }
+    });
     if result.is_ok() {
         core.limits.record_turn(&a.id, now());
         if visible || resume.is_some() {
@@ -802,6 +855,32 @@ pub(crate) async fn stage_with(
         }
     }
     result
+}
+
+/// Missing-session replay and quota fallback require no observed model work.
+/// Unknown activity is deliberately treated as work, not assumed harmless.
+#[derive(Default)]
+pub(crate) struct ResumeReplayGuard {
+    work_observed: bool,
+}
+
+impl ResumeReplayGuard {
+    pub(crate) fn observe(&mut self, activity: &Activity) {
+        if !matches!(
+            activity.kind.as_str(),
+            "pid" | "session" | "latency" | "quota" | "usage" | "window" | "connector-status"
+        ) {
+            self.work_observed = true;
+        }
+    }
+
+    fn allows(&self, error: &str, text: &str, cancelled: bool) -> bool {
+        self.before_work(text, cancelled) && resume_unavailable(error)
+    }
+
+    pub(crate) fn before_work(&self, text: &str, cancelled: bool) -> bool {
+        !cancelled && !self.work_observed && text.trim().is_empty()
+    }
 }
 
 fn resume_unavailable(error: &str) -> bool {
@@ -898,7 +977,7 @@ where
     Ok(())
 }
 
-/// Runs a stage; on a rate limit, cools the account and continues on another one.
+/// On a rate limit, cool the account; switch once only before observed work.
 #[allow(clippy::too_many_arguments)]
 async fn stage_fallback(
     app: &tauri::AppHandle,
@@ -914,7 +993,8 @@ async fn stage_fallback(
     visible: bool,
     resume: Option<&Resume>,
 ) -> Result<(String, Account), String> {
-    match stage_with(
+    let mut replay_guard = ResumeReplayGuard::default();
+    match stage_observed(
         app,
         core,
         s,
@@ -927,6 +1007,7 @@ async fn stage_fallback(
         cancel.clone(),
         visible,
         resume,
+        &mut replay_guard,
     )
     .await
     {
@@ -934,6 +1015,12 @@ async fn stage_fallback(
         Err(e) if e.starts_with(limits::RATE_LIMIT) => {
             let msg = e.trim_start_matches(limits::RATE_LIMIT).to_string();
             core.limits.cool(&a.id, limits::unlock_at(&msg, now()));
+            if *cancel.borrow() {
+                return Err("Cancelled".into());
+            }
+            if !replay_guard.before_work(&out.text, *cancel.borrow()) {
+                return Err(format!("{e}. Lumen did not replay this request on another account because work or output was already observed; inspect the recorded work before retrying."));
+            }
             let enabled = core
                 .settings
                 .lock()
@@ -1016,7 +1103,11 @@ pub(crate) async fn build_prompt(
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
     let history = history_text(&messages, &workspace, exclude, true);
-    let shared = integrations::instructions(&core.root)?;
+    let shared = format!(
+        "{}{}",
+        integrations::instructions(&core.root)?,
+        crate::capability_catalog::instructions(&core.root, &workspace)
+    );
     let attached = if options.attachments.is_empty() {
         String::new()
     } else {
@@ -1237,7 +1328,11 @@ pub(crate) fn prompt_tokens(core: &Core, s: &Session) -> Result<usize, String> {
     let workspace = PathBuf::from(&s.workspace);
     let messages = core.store.messages(&s.id)?;
     let history = history_text(&messages, &workspace, &[], false);
-    let shared = integrations::instructions(&core.root)?;
+    let shared = format!(
+        "{}{}",
+        integrations::instructions(&core.root)?,
+        crate::capability_catalog::instructions(&core.root, &workspace)
+    );
     let prompt = assemble_prompt(
         &shared,
         &notes_block(&workspace),
@@ -2205,6 +2300,66 @@ pub async fn compact_session(
 mod resume_tests {
     use super::*;
 
+    #[tokio::test]
+    async fn context_budget_actual_prompt_corpus() {
+        let f = crate::test_support::Fixture::new();
+        let mut results = vec![];
+        for (name, marker, extension, history_turns) in [
+            ("react", "REACT_REQUIREMENT", "tsx", 0),
+            ("godot", "GODOT_REQUIREMENT", "gd", 12),
+        ] {
+            let root = f.directory(name);
+            std::fs::write(
+                root.join(format!("main.{extension}")),
+                "ATTACHED_CONTRACT Ω",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("LUMEN.md"),
+                "Project contract: preserve reset, labels and palette.",
+            )
+            .unwrap();
+            let s = f
+                .core
+                .store
+                .create(root.to_string_lossy().into_owned())
+                .unwrap();
+            let mut request = msg(&format!("{name}-request"), "user", vec![]);
+            request.text = format!("Mantieni {marker}: reset, label and palette are approved. {} Preserve keyboard access Ω.", "Concrete implementation requirement. ".repeat(30));
+            f.core.store.save_message(&s.id, &request).unwrap();
+            for n in 0..history_turns {
+                let mut answer = msg(&format!("{name}-answer-{n}"), "assistant", vec![]);
+                answer.text = "Routine previous output. ".repeat(500);
+                f.core.store.save_message(&s.id, &answer).unwrap();
+            }
+            if history_turns > 0 {
+                let mut next = msg(&format!("{name}-continue"), "user", vec![]);
+                next.text = "procedi".into();
+                f.core.store.save_message(&s.id, &next).unwrap();
+            }
+            let mut options = crate::test_support::Fixture::options(AccessMode::Autopilot);
+            options.attachments = vec![format!("main.{extension}"), format!("./main.{extension}")];
+            let (prompt, worker) = build_prompt(&f.core, &s, &[], &options).await.unwrap();
+            let state = crate::workstate::refresh(&f.core.store, &s.id, None).unwrap();
+            assert!(state
+                .requirements
+                .iter()
+                .any(|fact| fact.text.contains(marker)));
+            assert!(prompt.contains("Autopilot"));
+            assert!(prompt.contains("Preserve keyboard access Ω"));
+            assert!(worker.contains(marker));
+            results.push(serde_json::json!({"case":name,"bytes":prompt.len(),"localTokens":context::estimate(&prompt),"workerBytes":worker.len(),"workerLocalTokens":context::estimate(&worker),"requirementCopies":prompt.matches(marker).count(),"attachmentCopies":prompt.matches("ATTACHED_CONTRACT").count(),"fullStateRequirements":state.requirements.len()}));
+        }
+        eprintln!(
+            "CONTEXT_PROMPT_METRICS {}",
+            serde_json::to_string(&results).unwrap()
+        );
+        for row in results {
+            assert!(row["requirementCopies"].as_u64().unwrap() <= 2, "{row}");
+            assert_eq!(row["attachmentCopies"], 1, "{row}");
+        }
+    }
+
     fn msg(id: &str, role: &str, activity: Vec<Activity>) -> Message {
         Message {
             id: id.into(),
@@ -2231,6 +2386,65 @@ mod resume_tests {
             id: "acc".into(),
             name: "A".into(),
             provider: Provider::Claude,
+        }
+    }
+    #[test]
+    fn resume_replay_guard_rejects_work_partial_output_and_cancellation() {
+        let mut clean = ResumeReplayGuard::default();
+        for kind in [
+            "pid",
+            "session",
+            "latency",
+            "quota",
+            "usage",
+            "window",
+            "connector-status",
+        ] {
+            clean.observe(&Activity {
+                kind: kind.into(),
+                text: "transport metadata".into(),
+            });
+        }
+        for error in ["session not found", "Thread not found", "unknown session"] {
+            assert!(clean.allows(error, "", false));
+        }
+        assert!(!clean.allows("session not found", "partial response", false));
+        assert!(!clean.allows("session not found", "", true));
+        assert!(!clean.allows("connection closed", "", false));
+        assert!(clean.before_work("", false));
+        assert!(!clean.before_work("partial quota response", false));
+        assert!(!clean.before_work("", true));
+        for kind in [
+            "tool-start",
+            "tool-end",
+            "tool",
+            "file",
+            "thinking",
+            "delta",
+            "replace",
+            "interaction",
+            "interaction-result",
+            "child",
+            "browser",
+            "future-protocol-event",
+        ] {
+            let mut guard = ResumeReplayGuard::default();
+            guard.observe(&Activity {
+                kind: kind.into(),
+                text: String::new(),
+            });
+            guard.observe(&Activity {
+                kind: "session".into(),
+                text: "later metadata cannot reset the guard".into(),
+            });
+            assert!(
+                !guard.allows("session not found", "", false),
+                "{kind} allowed a replay"
+            );
+            assert!(
+                !guard.before_work("", false),
+                "{kind} allowed account fallback"
+            );
         }
     }
     #[test]
@@ -2310,6 +2524,68 @@ mod resume_tests {
         assert!(resumable(&chat, &["out"], &other, "/w", AccessMode::FileEdits).is_none());
     }
 
+    #[test]
+    fn continuity_rewind_invalidates_remote_history_without_touching_other_chats() {
+        let f = crate::test_support::Fixture::new();
+        let s = f.core.store.create("/w".into()).unwrap();
+        let other = f.core.store.create("/w".into()).unwrap();
+        for chat in [&s, &other] {
+            for m in [
+                msg("u1", "user", vec![]),
+                msg(
+                    "a1",
+                    "assistant",
+                    vec![
+                        native("acc", "/w"),
+                        Activity {
+                            kind: "file".into(),
+                            text: "keep.ts".into(),
+                        },
+                    ],
+                ),
+                msg("u2", "user", vec![]),
+            ] {
+                // Message IDs are globally unique, including across chats.
+                let mut m = m;
+                m.id = format!("{}-{}", chat.id, m.id);
+                f.core.store.save_message(&chat.id, &m).unwrap();
+            }
+        }
+        let removed = format!("{}-u2", s.id);
+        f.core.store.truncate_from(&s.id, &removed).unwrap();
+        f.core
+            .store
+            .save_message(&s.id, &msg("replacement", "user", vec![]))
+            .unwrap();
+        let history = f.core.store.messages(&s.id).unwrap();
+        assert!(
+            resumable(&history, &[], &claude(), "/w", AccessMode::ReadOnly).is_none(),
+            "remote CLI still contains the removed future turns"
+        );
+        assert!(history[1]
+            .activity
+            .iter()
+            .any(|a| a.kind == "file" && a.text == "keep.ts"));
+        assert!(resumable(
+            &f.core.store.messages(&other.id).unwrap(),
+            &[],
+            &claude(),
+            "/w",
+            AccessMode::ReadOnly
+        )
+        .is_some());
+        // An unknown rewind target must leave the surviving transcript unchanged.
+        assert!(f.core.store.truncate_from(&other.id, "missing").is_err());
+        assert!(resumable(
+            &f.core.store.messages(&other.id).unwrap(),
+            &[],
+            &claude(),
+            "/w",
+            AccessMode::ReadOnly
+        )
+        .is_some());
+    }
+
     #[tokio::test]
     async fn quality_native_resume_receives_lumen_owned_check_failures() {
         let f = crate::test_support::Fixture::new();
@@ -2327,6 +2603,52 @@ mod resume_tests {
             .await
             .unwrap();
         assert!(resumed.prompt.contains("Independent counter check: failed"));
+    }
+
+    #[tokio::test]
+    async fn continuity_native_resume_retires_checks_even_when_project_notes_remain() {
+        let f = crate::test_support::Fixture::new();
+        let folder = f.root.to_string_lossy().into_owned();
+        let s = f.core.store.create(folder.clone()).unwrap();
+        std::fs::write(f.root.join("LUMEN.md"), "Keep project conventions").unwrap();
+        let check = Activity {
+            kind: "validation".into(),
+            text: serde_json::json!({"workspace":folder,"label":"Old build","status":"passed"})
+                .to_string(),
+        };
+        f.core
+            .store
+            .save_message(&s.id, &msg("checked", "assistant", vec![check]))
+            .unwrap();
+        let revision = crate::workstate::owned_context(&f.core, &s)
+            .unwrap()
+            .revision;
+        let mut marker = native("acc", &folder);
+        let mut value: serde_json::Value = serde_json::from_str(&marker.text).unwrap();
+        value["context_revision"] = revision.into();
+        marker.text = value.to_string();
+        f.core
+            .store
+            .save_message(&s.id, &msg("reply", "assistant", vec![marker]))
+            .unwrap();
+        let mut request = msg("next", "user", vec![]);
+        request.text = "Nuovo obiettivo: implementa la ricerca".into();
+        f.core.store.save_message(&s.id, &request).unwrap();
+        let resumed = resume_prompt(
+            &f.core,
+            &s,
+            &[],
+            &claude(),
+            &crate::test_support::Fixture::options(AccessMode::ReadOnly),
+        )
+        .await
+        .unwrap();
+        assert!(resumed.prompt.contains("Keep project conventions"));
+        assert!(resumed
+            .prompt
+            .contains("Omitted checks are not current evidence"));
+        assert!(!resumed.prompt.contains("Old build: passed"));
+        assert!(resumed.prompt.contains("Read-only"));
     }
     #[tokio::test]
     async fn native_resume_sends_only_changed_or_removed_layout_constraints() {

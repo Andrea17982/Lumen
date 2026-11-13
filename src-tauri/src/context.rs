@@ -172,8 +172,12 @@ pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String>
     const PREVIEW: usize = 2 * 1024;
     let mut out = String::new();
     let mut budget: usize = 48 * 1024;
+    let mut seen = std::collections::HashSet::new();
     for selected in files.iter().take(50) {
         let path = attachment_path(workspace, selected)?;
+        if !seen.insert(path.clone()) {
+            continue;
+        }
         let display = Path::new(selected)
             .file_name()
             .and_then(|n| n.to_str())
@@ -208,18 +212,22 @@ pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String>
             ));
             continue;
         }
-        let mut cut = PREVIEW.min(text.len());
+        let mut cut = PREVIEW.min(text.len()).min(budget);
         while !text.is_char_boundary(cut) {
             cut -= 1;
         }
         let head = &text[..cut];
         let head = head.rsplit_once('\n').map_or(head, |(h, _)| h);
+        budget -= head.len();
         out.push_str(&format!(
             "\n<file path=\"{}\" bytes=\"{}\" lines=\"{}\">Attached by the user. Only the beginning is shown; read the rest of this file with your file-reading tool, only the parts you need.\n{head}\n…\n</file>\n",
             path.display(),
             metadata.len(),
             text.lines().count()
         ));
+    }
+    if files.len() > 50 {
+        out.push_str("\n[Lumen: only the first 50 attachment selections are included; additional selections were omitted.]\n");
     }
     Ok(out)
 }
@@ -372,6 +380,45 @@ pub fn verify_command(workspace: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn context_budget_deduplicates_files_and_charges_previews() {
+        let f = crate::test_support::Fixture::new();
+        let root = f.directory("attachments");
+        std::fs::write(root.join("small.txt"), "UNIQUE_ATTACHMENT_REQUIREMENT").unwrap();
+        let duplicate = attachments(
+            &root,
+            &[
+                "small.txt".into(),
+                "./small.txt".into(),
+                root.join("small.txt").to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+        let repeated = duplicate.matches("UNIQUE_ATTACHMENT_REQUIREMENT").count();
+        let mut files = vec![];
+        for n in 0..40 {
+            let name = format!("large-{n}.txt");
+            std::fs::write(root.join(&name), "éΩ".repeat(6000)).unwrap();
+            files.push(name);
+        }
+        let payload = attachments(&root, &files).unwrap();
+        let content_bytes = payload
+            .chars()
+            .filter(|c| *c == 'é' || *c == 'Ω')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        eprintln!(
+            "CONTEXT_ATTACHMENT_METRICS {}",
+            serde_json::json!({"duplicateCopies":repeated,"previewContentBytes":content_bytes,"payloadBytes":payload.len(),"localTokens":estimate(&payload)})
+        );
+        assert_eq!(repeated, 1);
+        assert!(content_bytes <= 48 * 1024);
+        assert_eq!(payload.matches("<file path=").count(), 40);
+        std::fs::write(root.join("other.txt"), "UNIQUE_ATTACHMENT_REQUIREMENT").unwrap();
+        let separate = attachments(&root, &["small.txt".into(), "other.txt".into()]).unwrap();
+        assert_eq!(separate.matches("UNIQUE_ATTACHMENT_REQUIREMENT").count(), 2);
+    }
+
     /// Opt-in synthetic comparison for Lumen-owned metadata only, never provider/MCP formats.
     #[test]
     #[ignore]

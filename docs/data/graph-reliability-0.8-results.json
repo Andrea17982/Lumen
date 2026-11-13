@@ -1,0 +1,105 @@
+{
+  "at": "2026-11-11T18:11:43.891Z",
+  "protocol": "docs/graph-reliability-0.8.md",
+  "sourceBase": "9b83e9184523ea78d2e6648876ed5e76be88558c",
+  "coreCorpus": {
+    "expectations": 23,
+    "baselinePassed": 9,
+    "baselineFailed": 14,
+    "candidatePassed": 23,
+    "candidateFailed": 0,
+    "scope": "11 direct-import and reverse-impact positive/negative pairs plus one cross-language C# reference control"
+  },
+  "additionalRustGates": [
+    "codegraph::tests::roadmap_typescript_and_godot_import_corpus",
+    "codegraph::tests::roadmap_comments_and_normalized_resource_paths",
+    "codegraph::tests::roadmap_graph_refreshes_edited_imports_renames_and_deletions",
+    "impact::tests::typed_and_godot_deleted_imports_keep_callers_in_the_handoff",
+    "repomap::tests::old_import_extraction_cache_is_rebuilt_even_with_matching_file_metadata"
+  ],
+  "rust": {
+    "passed": 163,
+    "failed": 0,
+    "ignored": 14
+  },
+  "native": {
+    "at": "2026-11-11T18:07:48.243Z",
+    "build": "Windows debug native graph MCP; isolated temporary project/data",
+    "passed": true,
+    "checks": [
+      "Native MCP exposes typed-module and relative-Godot callers and affected tests",
+      "Native symbol lookup preserves exact declaration location and body",
+      "One running native process refreshes edited imports and renamed targets without stale paths",
+      "A restarted native process reads the refreshed versioned disk index",
+      "Deleted targets stop being reported as indexed definitions"
+    ],
+    "inferenceCalls": 0
+  },
+  "oracles": {
+    "at": "2026-11-11T18:07:47.941Z",
+    "versions": {
+      "typescript": "5.9.3",
+      "node": "v24.2.0",
+      "godot": "4.7.2.stable.mono.official.ed1daf0bf"
+    },
+    "checks": [
+      {
+        "oracle": "TypeScript",
+        "from": "web/typed.mts",
+        "spec": "./state.mjs",
+        "target": "web/state.mts",
+        "passed": true
+      },
+      {
+        "oracle": "TypeScript",
+        "from": "web/common-user.cts",
+        "spec": "./common.cjs",
+        "target": "web/common.cts",
+        "passed": true
+      },
+      {
+        "oracle": "TypeScript",
+        "from": "web/typed-user.ts",
+        "spec": "./source.js",
+        "target": "web/source.ts",
+        "passed": true
+      },
+      {
+        "oracle": "TypeScript",
+        "from": "web/view-user.ts",
+        "spec": "./view.js",
+        "target": "web/view.jsx",
+        "passed": true
+      },
+      {
+        "oracle": "Node.js",
+        "check": "Explicit JavaScript resolves emitted JS and does not substitute a missing .mjs with .mts",
+        "passed": true
+      },
+      {
+        "oracle": "Godot",
+        "check": "Single-quoted res:// preload and script-relative inheritance resolve the expected base script",
+        "passed": true
+      }
+    ],
+    "inferenceCalls": 0,
+    "limits": [
+      "Compiler/runtime checks validate fixture semantics; Rust graph conformance and mutation tests are separate.",
+      "Not a full TypeScript module resolver, GDScript parser, C# compiler or whole-project semantic certification."
+    ]
+  },
+  "cacheFormat": {
+    "before": 3,
+    "after": 4
+  },
+  "inferenceCalls": 0,
+  "previousLiveSlotsSpent": 13,
+  "limits": [
+    "Approximate local graph, not complete language/compiler semantics.",
+    "Full-line comments are excluded in TS/JS, C# and GDScript. Inline/block comments, multiline strings and dynamic expressions are not fully parsed.",
+    "Arbitrary tsconfig paths, bundler overrides, package exports, Godot UID mapping and relative load/preload semantics are outside this checkpoint.",
+    "Content refresh still uses file size/mtime; edits preserving both stamps and configuration-only graph changes are not certified.",
+    "No universal graph accuracy, token saving, model-quality improvement or index-speed gain is inferred from this fixed corpus.",
+    "Native validation is Windows debug/MCP with isolated fixtures; other desktop environments remain separate."
+  ]
+}

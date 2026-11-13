@@ -294,8 +294,11 @@ pub async fn codex_turn(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
+    let mut _shared_config = None;
     if let Some(data) = input.config.parent().and_then(Path::parent) {
-        let (extra, _) = crate::integrations::args(data, &Provider::Gpt)?;
+        let (extra, _, guard) =
+            crate::integrations::args_for(data, &Provider::Gpt, Some(&cwd), input.access)?;
+        _shared_config = guard;
         c.args(extra);
         if providers::graph_enabled(data) {
             if let Some(extra) = crate::graph_mcp::cli_args(data, &cwd, &Provider::Gpt) {
@@ -399,7 +402,10 @@ async fn run(
 
     // Native resumes retain tool exchanges, project instructions and agent state.
     let mut params = support::codex_thread_params(&cwd.to_string_lossy());
-    params["approvalPolicy"] = json!(if input.access == AccessMode::Ask {
+    params["approvalPolicy"] = json!(if matches!(
+        input.access,
+        AccessMode::Ask | AccessMode::Autopilot
+    ) {
         "on-request"
     } else {
         "never"
@@ -437,7 +443,7 @@ async fn run(
     let mut turn = json!({
         "threadId": thread_id,
         "input": [{"type": "text", "text": input.prompt}],
-        "approvalPolicy": if input.access == AccessMode::Ask { "on-request" } else { "never" },
+        "approvalPolicy": if matches!(input.access, AccessMode::Ask | AccessMode::Autopilot) { "on-request" } else { "never" },
         "approvalsReviewer": "user",
         "cwd": cwd.to_string_lossy(),
         "sandboxPolicy": match input.access {
@@ -551,6 +557,47 @@ async fn handle(
     let scope = scope.as_ref().ok_or("No approval scope")?;
     let method = message["method"].as_str().unwrap_or("");
     if message.get("id").is_some() && !method.is_empty() {
+        if method == "mcpServer/elicitation/request" {
+            let request = crate::connectors::validate_scope(
+                &message["params"],
+                &scope.provider_session_id,
+                &scope.turn_id,
+            )
+            .and_then(|()| crate::connectors::Request::parse(&message["params"]))
+            .and_then(|request| {
+                questions
+                    .ask_connector(request.clone(), message["id"].to_string())
+                    .map(|(activity, receive)| (request, activity, receive))
+            });
+            match request {
+                Ok((request, activity, receive)) => {
+                    emit(activity);
+                    let out = wire.out.clone();
+                    let id = message["id"].clone();
+                    tokio::spawn(async move {
+                        if let Ok(answers) = receive.await {
+                            let result = request
+                                .response(&answers)
+                                .unwrap_or(json!({"action":"cancel","content":null}));
+                            let _ = out.send(json!({"id":id,"result":result})).await;
+                        }
+                    });
+                }
+                Err(reason) => {
+                    emit(Activity {
+                        kind: "connector-status".into(),
+                        text: format!("Connector request cancelled: {reason}"),
+                    });
+                    wire.out
+                        .send(
+                            json!({"id":message["id"],"result":{"action":"cancel","content":null}}),
+                        )
+                        .await
+                        .map_err(|_| "Codex closed its input")?;
+                }
+            }
+            return Ok(None);
+        }
         let dynamic =
             method == "item/tool/call" && message["params"]["tool"] == "lumen_request_user_input";
         if method == "item/tool/requestUserInput" || dynamic {
@@ -616,7 +663,7 @@ async fn handle(
                     text: format!("Declined: {method}\n{reason}"),
                 });
                 wire.out
-                    .send(decline(&message["id"]))
+                    .send(if matches!(method, "item/commandExecution/requestApproval" | "item/fileChange/requestApproval") {decline(&message["id"])} else {json!({"id":message["id"],"error":{"code":-32601,"message":"Unsupported server request; no permissions granted"}})})
                     .await
                     .map_err(|_| "Codex closed its input")?;
             }

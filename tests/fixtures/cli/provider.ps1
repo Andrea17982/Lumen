@@ -17,7 +17,102 @@ if (!$PromptText) {
         } else { $promptText = $firstLine + "`n" + [Console]::In.ReadToEnd() }
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
+if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
+    Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
+}
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ACCOUNT_GATEWAY_FIXTURE')) {
+    $gateway = Get-Content -LiteralPath (Join-Path (Get-Location).Path 'native-owner.json') -Raw | ConvertFrom-Json
+    & node (Join-Path $PSScriptRoot 'native-account-client.mjs') $gateway.executable $gateway.profile (Get-Location).Path
+    if ($LASTEXITCODE -ne 0) {throw 'Account gateway fixture failed'}
+    Emit @{type='result';is_error=$false;result='NATIVE_ACCOUNT_GATEWAY_OK'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ELICIT_FIXTURE')) {
+    Emit @{type='control_request';request_id='claude-consent';request=@{subtype='elicitation';mcp_server_name='Owner connector';message='Choose owner service scope';mode='form';requested_schema=@{type='object';properties=@{count=@{type='integer';minimum=1;maximum=4}};required=@('count')}}}
+    $answer=[Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.response.action -ne 'accept' -or $answer.response.response.content.count -ne 3) {throw 'Expected typed Claude connector consent'}
+    Emit @{type='result';is_error=$false;result='CONNECTOR_WIRE_OK'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_MCP_FIXTURE')) {
+    Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION;mcp_servers=@(@{name='offline-github';status='connected';url='https://example.com?secret=never-store-this'})}
+    Emit @{type='control_request';request_id='mcp-review';request=@{subtype='can_use_tool';tool_name='mcp__github__create_issue';input=@{repository='offline';title='Review once'}}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.response.behavior -ne 'allow' -or $answer.response.response.updatedInput.repository -ne 'offline') {throw 'MCP approval did not preserve native input'}
+    Emit @{type='result';is_error=$false;result='CONNECTOR_WIRE_OK'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
+    $params = @{threadId='fixture-thread';turnId='fixture-turn';serverName='Offline GitHub';message='Allow access for this request?';mode='form';requestedSchema=@{type='object';properties=@{count=@{type='integer';minimum=1;maximum=4};note=@{type='string'}};required=@('count')}}
+    if ($promptText.Contains('URL')) {
+        $params = @{threadId='fixture-thread';turnId='fixture-turn';serverName='Offline GitHub';message='Authorize https://example.com/auth?secret=never-store-this';mode='url';url='https://example.com/auth?secret=never-store-this';elicitationId='offline-auth'}
+    }
+    if ($promptText.Contains('UNSUPPORTED')) {$params.requestedSchema.properties.count.type='array'}
+    Emit @{id='connector-request';method='mcpServer/elicitation/request';params=$params}
+    if ($promptText.Contains('EXPIRE')) {
+        Start-Sleep -Seconds 3
+        Emit @{method='serverRequest/resolved';params=@{threadId='fixture-thread';requestId='connector-request'}}
+    } else {
+        $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+        $expected = if ($promptText.Contains('UNSUPPORTED')) {'cancel'} elseif ($promptText.Contains('DECLINE')) {'decline'} else {'accept'}
+        if ($answer.id -ne 'connector-request' -or $answer.result.action -ne $expected) {throw 'Connector response has the wrong wire shape or action'}
+        if ($expected -eq 'accept' -and !$promptText.Contains('URL') -and $answer.result.content.count -ne 3) {throw 'Expected a typed integer connector answer'}
+        if ($expected -ne 'accept' -and $null -ne $answer.result.content) {throw 'Declined connector must have null content'}
+    }
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='connector-answer';type='agentMessage';text='CONNECTOR_WIRE_OK'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a team') -and $promptText.Contains('ORCHESTRA_CONTINUITY_FIXTURE')) {
+    Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-continuity-attempts.txt') -Value 'attempt'
+    if ($promptText.Contains('WORKER_CANCEL')) {
+        $ownedChild = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -WindowStyle Hidden -PassThru
+        Set-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-cancel-pids.json') -Value (ConvertTo-Json -Compress @($PID, $ownedChild.Id))
+        Emit @{type='stream_event';event=@{delta=@{text='Worker waiting with owned child.'}}}
+        Start-Sleep -Seconds 60
+    } elseif ($promptText.Contains('WORKER_QUOTA_AFTER_EFFECT')) {
+        Set-Content -LiteralPath (Join-Path (Get-Location).Path 'owned-worker.txt') -Value 'owned worktree effect'
+        Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='worker-write';name='Write';input=@{file_path='owned-worker.txt'}})}}
+        Emit @{type='stream_event';event=@{delta=@{text='Preserve worker partial output.'}}}
+        Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    } else { Emit @{type='result';is_error=$false;result=$(if ($promptText.Contains('APPROVED_SCOPE_MARKER')) { 'WORKER_SCOPE_PRESENT' } else { 'WORKER_SCOPE_MISSING' })} }
+    exit 0
+}
+if ($promptText.Contains('QUOTA_GUARD_')) {
+    $case = if ($promptText.Contains('QUOTA_GUARD_NESTED')) { 'nested' } elseif ($promptText.Contains('QUOTA_GUARD_TOOL')) { 'tool' } elseif ($promptText.Contains('QUOTA_GUARD_PARTIAL')) { 'partial' } else { 'safe' }
+    Add-Content -LiteralPath (Join-Path (Get-Location).Path "quota-attempt-$case.txt") -Value $Provider
+    if ($case -eq 'nested' -and $Provider -eq 'claude' -and $env:LUMEN_FIXTURE_RESUME -eq 'true') {
+        Emit @{type='result';is_error=$true;result='session not found'}
+        exit 0
+    }
+    if ($case -eq 'tool') { Add-Content -LiteralPath (Join-Path (Get-Location).Path 'quota-effect.txt') -Value $Provider }
+    if ($case -eq 'nested') { Add-Content -LiteralPath (Join-Path (Get-Location).Path 'quota-effect-nested.txt') -Value $Provider }
+    if ($Provider -eq 'claude') {
+        if ($case -in @('tool', 'nested')) { Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='quota-write';name='Write';input=@{file_path='quota-effect.txt';content='owned effect'}})}} }
+        if ($case -eq 'partial') { Emit @{type='stream_event';event=@{delta=@{type='text_delta';text='Preserve this partial result.'}}} }
+        Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    } else {
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='quota-answer';type='agentMessage';text='QUOTA_FALLBACK_RECOVERED'}}}
+        Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    }
+    exit 0
+}
+if ($promptText.Contains('REPLAY_TOOL_FIXTURE') -or $promptText.Contains('REPLAY_MISSING_FIXTURE')) {
+    $tool = $promptText.Contains('REPLAY_TOOL_FIXTURE')
+    $counter = if ($tool) { "replay-tool-$Provider.txt" } else { "replay-missing-$Provider.txt" }
+    Add-Content -LiteralPath (Join-Path (Get-Location).Path $counter) -Value 'invoked'
+    $fail = $tool -or $env:LUMEN_FIXTURE_RESUME -eq 'true'
+    if ($Provider -eq 'claude') {
+        if ($tool) { Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='replay-write';name='Write';input=@{file_path=$counter;content='owned fixture effect'}})}} }
+        Emit @{type='result';is_error=$fail;result=$(if ($fail) { 'session not found' } else { 'REPLAY_RECOVERED' })}
+    } else {
+        if ($tool) { Emit @{method='item/started';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='replay-write';type='commandExecution';command='fixture-owned write'}}} }
+        if (!$fail) { Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='replay-answer';type='agentMessage';text='REPLAY_RECOVERED'}}} }
+        Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status=$(if ($fail) { 'failed' } else { 'completed' });error=@{message='thread not found'}}}}
+    }
+    exit 0
+}
 if ($promptText.Contains('OBS_PROMISE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$false;result='I will implement the requested changes.'}
     exit 0

@@ -10,11 +10,29 @@ pub const FLAG: &str = "--lumen-graph-mcp";
 pub const CONTEXT_FLAG: &str = "--lumen-graph-mcp-context";
 /// A stable per-account configuration with a per-process workspace. Concurrent turns never
 /// overwrite one another's project path; the CLI passes its root to the helper through env.
+#[cfg(test)]
 pub fn configure_google(
     config: &Path,
     provider: &crate::models::Provider,
     data: &Path,
     enabled: bool,
+) -> Result<(), String> {
+    configure_google_for(
+        config,
+        provider,
+        data,
+        enabled,
+        None,
+        crate::models::AccessMode::ReadOnly,
+    )
+}
+pub fn configure_google_for(
+    config: &Path,
+    provider: &crate::models::Provider,
+    data: &Path,
+    enabled: bool,
+    workspace: Option<&Path>,
+    access: crate::models::AccessMode,
 ) -> Result<(), String> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().map_err(|_| "Graph configuration lock failed")?;
@@ -44,6 +62,39 @@ pub fn configure_google(
     let servers = value["mcpServers"]
         .as_object_mut()
         .ok_or("The native mcpServers value is not an object")?;
+    servers.retain(|name, _| !name.starts_with("imported_") && !name.starts_with("lumen_shared_"));
+    servers.extend(crate::capability_catalog::shared_servers(
+        data, workspace, access,
+    ));
+    for (name, mut server) in crate::integrations::enabled(data)? {
+        if !crate::integrations::allow_unfiltered_mcp(access) {
+            continue;
+        }
+        if let Some(object) = server.as_object_mut() {
+            object.remove("type");
+        }
+        servers.insert(format!("lumen_shared_{name}"), server);
+    }
+    for (name, server) in servers
+        .iter_mut()
+        .filter(|(name, _)| name.starts_with("imported_") || name.starts_with("lumen_shared_"))
+    {
+        let _ = name;
+        if let Some(server) = server.as_object_mut() {
+            server.remove("type");
+            if let Some(url) = server.remove("url") {
+                server.insert(
+                    if *provider == crate::models::Provider::Gemini {
+                        "httpUrl"
+                    } else {
+                        "serverUrl"
+                    }
+                    .into(),
+                    url,
+                );
+            }
+        }
+    }
     if enabled {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         servers.insert(SERVER.into(),json!({"command":exe.to_string_lossy(),"args":[CONTEXT_FLAG,data.to_string_lossy()],"trust":true,"disabled":false}));
