@@ -44,3 +44,5 @@ CODEX_HOME='/path/to/lumen/accounts/account-uuid' codex login
 Do not paste tokens into conversations or upload account directories in bug reports. Provider terms and distribution requirements apply independently; Lumen's native-CLI implementation is not legal certification. Consult the providers' official terms and authentication documentation for your deployment.
 
 [Permissions](workspace-models-permissions.md) · [Security](../SECURITY.md) · [Observed provider acceptance](validation.md)
+
+For shared MCP namespaces passed to Claude/GPT/Google CLIs, select **Ask first** or **Autopilot**. Read only/File edits expose only the filtered owning-account gateway; the local Ollama loop applies its own per-tool filter. Native provider-local configurations still follow their provider policies. A read-only annotation is not an OS sandbox, and a tool also marked destructive is excluded.

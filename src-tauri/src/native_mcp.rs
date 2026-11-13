@@ -488,7 +488,7 @@ async fn run(
                         continue;
                     };
                     for (key, tool) in server["tools"].as_object().into_iter().flatten() {
-                        if read_only && tool["annotations"]["readOnlyHint"] != true {
+                        if read_only && !crate::integrations::read_only_tool(tool) {
                             continue;
                         }
                         let name = tool["name"].as_str().unwrap_or(key);

@@ -531,7 +531,7 @@ pub fn shared_servers(
     access: crate::models::AccessMode,
 ) -> serde_json::Map<String, Value> {
     let catalog = discover(data, workspace);
-    catalog.servers().into_iter().map(|(id,server)| {
+    catalog.servers().into_iter().filter(|(_,server)|crate::integrations::allow_unfiltered_mcp(access) || server["lumenNativeProfile"].is_string()).map(|(id,server)| {
         let config=if let Some(profile)=server["lumenNativeProfile"].as_str() {
             json!({"command":std::env::current_exe().unwrap_or_default(),"args":["--lumen-native-account-mcp",profile,workspace.unwrap_or(data),if matches!(access,crate::models::AccessMode::Ask|crate::models::AccessMode::Autopilot){"full"}else{"read-only"}]})
         }else if server["command"].is_string() {
@@ -636,6 +636,72 @@ mod tests {
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
+    }
+    #[test]
+    fn native_restricted_modes_do_not_whitelist_unfiltered_shared_namespaces() {
+        use crate::models::{AccessMode, Provider};
+        let f = crate::test_support::Fixture::new();
+        let project = f.directory("project");
+        write(
+            &project.join(".mcp.json"),
+            r#"{"mcpServers":{"discovered":{"command":"unfiltered"}}}"#,
+        );
+        write(&f.root.join("accounts/owner/auth.json"), "{}");
+        write(&f.root.join("accounts/owner/config.toml"), "");
+        crate::integrations::save_mcp(
+            &f.root,
+            r#"{"mcpServers":{"manual":{"command":"unfiltered"}}}"#,
+        )
+        .unwrap();
+        for access in [AccessMode::ReadOnly, AccessMode::FileEdits] {
+            let (args, names, _guard) =
+                crate::integrations::args_for(&f.root, &Provider::Gpt, Some(&project), access)
+                    .unwrap();
+            assert_eq!(
+                names.len(),
+                1,
+                "Only the filtered owning-account gateway may be shared"
+            );
+            assert!(args.join(" ").contains("read-only"));
+            assert!(!args.join(" ").contains("unfiltered"));
+            assert!(!names.iter().any(|name| name == "manual"));
+            for provider in [Provider::Gemini, Provider::Antigravity] {
+                let config = f.directory(provider.binary());
+                crate::graph_mcp::configure_google_for(
+                    &config,
+                    &provider,
+                    &f.root,
+                    false,
+                    Some(&project),
+                    access,
+                )
+                .unwrap();
+                let file = config.join(if provider == Provider::Gemini {
+                    ".gemini/settings.json"
+                } else {
+                    ".gemini/config/mcp_config.json"
+                });
+                let value: Value =
+                    serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+                assert_eq!(value["mcpServers"].as_object().unwrap().len(), 2);
+                assert!(
+                    value["mcpServers"].get(crate::browser::SERVER).is_some(),
+                    "Moli keeps its own enforced per-action guard"
+                );
+                assert!(value.to_string().contains("read-only"));
+                assert!(!value.to_string().contains("unfiltered"));
+            }
+        }
+        let (_, names, _) =
+            crate::integrations::args_for(&f.root, &Provider::Gpt, Some(&project), AccessMode::Ask)
+                .unwrap();
+        assert_eq!(names.len(), 3);
+        assert!(!crate::integrations::read_only_tool(
+            &json!({"annotations":{"readOnlyHint":true,"destructiveHint":true}})
+        ));
+        assert!(crate::integrations::read_only_tool(
+            &json!({"annotations":{"readOnlyHint":true}})
+        ));
     }
     #[test]
     fn concurrent_claude_configs_keep_their_workspace_and_are_removed_on_drop() {

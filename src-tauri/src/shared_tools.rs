@@ -374,7 +374,7 @@ impl Hub {
         self.remove_tools(name);
         for mut tool in tools {
             if matches!(access, AccessMode::ReadOnly | AccessMode::FileEdits)
-                && tool["annotations"]["readOnlyHint"] != true
+                && !crate::integrations::read_only_tool(&tool)
             {
                 continue;
             }

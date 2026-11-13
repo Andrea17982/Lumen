@@ -67,6 +67,9 @@ pub fn configure_google_for(
         data, workspace, access,
     ));
     for (name, mut server) in crate::integrations::enabled(data)? {
+        if !crate::integrations::allow_unfiltered_mcp(access) {
+            continue;
+        }
         if let Some(object) = server.as_object_mut() {
             object.remove("type");
         }

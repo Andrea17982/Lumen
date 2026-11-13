@@ -259,7 +259,7 @@ pub fn args(
     provider: &crate::models::Provider,
 ) -> Result<(Vec<String>, Vec<String>), String> {
     let (args, names, _config) =
-        args_for(data, provider, None, crate::models::AccessMode::ReadOnly)?;
+        args_for(data, provider, None, crate::models::AccessMode::Autopilot)?;
     Ok((args, names))
 }
 pub struct ActiveConfig(std::path::PathBuf);
@@ -269,6 +269,15 @@ impl Drop for ActiveConfig {
     }
 }
 pub type Arguments = (Vec<String>, Vec<String>, Option<ActiveConfig>);
+pub fn allow_unfiltered_mcp(access: crate::models::AccessMode) -> bool {
+    matches!(
+        access,
+        crate::models::AccessMode::Ask | crate::models::AccessMode::Autopilot
+    )
+}
+pub fn read_only_tool(tool: &Value) -> bool {
+    tool["annotations"]["readOnlyHint"] == true && tool["annotations"]["destructiveHint"] != true
+}
 pub fn args_for(
     data: &Path,
     provider: &crate::models::Provider,
@@ -276,7 +285,10 @@ pub fn args_for(
     access: crate::models::AccessMode,
 ) -> Result<Arguments, String> {
     let mut servers = crate::capability_catalog::shared_servers(data, workspace, access);
-    servers.extend(enabled(data)?);
+    let manual = enabled(data)?;
+    if allow_unfiltered_mcp(access) {
+        servers.extend(manual);
+    }
     if servers.is_empty() {
         return Ok((vec![], vec![], None));
     }

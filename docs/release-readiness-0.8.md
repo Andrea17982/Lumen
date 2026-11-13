@@ -33,3 +33,11 @@ Fonti verificate: [MCP Claude e connettori claude.ai](https://code.claude.com/do
 Il changelog candidato è in [0.8.0](release-notes/0.8.0.md). Versioni di npm/lockfile/Tauri/Cargo devono coincidere; documentazione e collegamenti devono passare. Verificare suite Rust, Clippy/rustfmt, build/unitari frontend, Prettier, Playwright e harness nativi applicabili. Gli harness Windows e Playwright si eseguono in serie; nessuna inferenza o login aggiuntivo. Il registro live rimane **13 slot storici, incremento 0**.
 
 La CI deve passare sul commit candidato, poi il workflow Release deve produrre installer e portable Windows, DMG universale macOS, DEB/AppImage Linux. Prima di rendere pubblica la release verificare pacchetti, manifesto SHA-256 e smoke dell'installer/portable; distinguere ciò dalle prove di OAuth e GUI native macOS/Linux. La chiusura riguarda il perimetro 0.8 approvato, con i requisiti non consegnati registrati nella roadmap successiva. La pubblicazione finale attende soltanto il superamento dei gate tecnici e la verifica dei pacchetti.
+
+## Verifiche locali del candidato
+
+203 test Rust Windows passati dopo l'ultimo gate delle configurazioni condivise (14 opt-in ignorati); 72 frontend e 56 scenari in otto suite native sono passati. La CI ripete il gate Rust sul commit finale. Il probe con CLI Codex installata e server locale ritardato 2 s passa in 3.003 ms, senza login/inferenza: è interoperabilità, non prestazione di un account reale.
+
+Il gate dei permessi omette i namespace MCP condivisi non filtrati dalle configurazioni native in Read only/File edits, compreso il percorso Google; lascia il gateway del proprietario in modalità filtrata. Ollama mantiene il proprio filtro per tool. Un'annotazione distruttiva esplicita prevale sul read-only hint. Configurazioni di intestazioni o abilitazioni plugin malformate sono rifiutate, non reinterpretate eliminandone i vincoli.
+
+Il primo batch nativo ha incontrato un timeout all'avvio del tour. L'harness ora attende l'uscita dei propri processi prima di avviare la suite seguente e conserva diagnostica di avvio; la ripetizione delle otto suite passa. Il timeout iniziale non è presentato come una regressione dimostrata del prodotto.
