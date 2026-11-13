@@ -204,6 +204,19 @@ impl Catalog {
         } else {
             json!({})
         };
+        let valid_switches = |settings: &Value| {
+            settings.get("enabledPlugins").is_none_or(|flags| {
+                flags
+                    .as_object()
+                    .is_some_and(|flags| flags.values().all(Value::is_boolean))
+            })
+        };
+        if !valid_switches(&settings) {
+            self.warnings.push(format!(
+                "{source}: plugin enablement format is unsupported; plugins were not imported"
+            ));
+            return;
+        }
         if let Some(workspace) = workspace {
             for file in [".claude/settings.json", ".claude/settings.local.json"] {
                 let path = workspace.join(file);
@@ -218,6 +231,10 @@ impl Catalog {
                 } else {
                     Value::Null
                 };
+                if !valid_switches(&overrides) {
+                    self.warnings.push("Current project: plugin enablement format is unsupported; plugins were not imported".into());
+                    return;
+                }
                 if let Some(enabled) = overrides["enabledPlugins"].as_object() {
                     if !settings["enabledPlugins"].is_object() {
                         settings["enabledPlugins"] = json!({});
@@ -789,6 +806,16 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("enablement")));
+        write(
+            &home.join(".claude/settings.json"),
+            r#"{"enabledPlugins":[]}"#,
+        );
+        let invalid = discover_at(&f.root, Some(&project), Some(&home));
+        assert!(invalid.entries.is_empty());
+        assert!(invalid
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("format")));
     }
     #[test]
     fn installed_plugins_use_original_resources_and_report_native_hooks() {

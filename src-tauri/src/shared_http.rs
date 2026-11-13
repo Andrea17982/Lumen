@@ -106,6 +106,9 @@ impl Session {
             .keys()
             .any(|key| !matches!(key.as_str(), "url" | "headers" | "type"))
             || config.get("type").is_some_and(|value| value != "http")
+            || config
+                .get("headers")
+                .is_some_and(|value| !value.is_object())
         {
             return Err("HTTP MCP policy requires an owner adapter; not discarded".into());
         }
@@ -380,6 +383,13 @@ mod tests {
         )
         .await
         .unwrap();
+        assert!(Session::start(
+            &json!({"url":url,"headers":["invalid"]}),
+            "invalid-header-config",
+            &browser
+        )
+        .await
+        .is_err());
         assert_eq!(
             session
                 .rpc("tools/list", json!({}), &browser)
