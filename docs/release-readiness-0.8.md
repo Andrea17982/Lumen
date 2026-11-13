@@ -1,6 +1,6 @@
 # Accettazione e pubblicazione 0.8
 
-Stato del 13 novembre 2026: **implementazione 0.8.0 completa nel perimetro approvato; verifiche e pubblicazione in corso**. Il proprietario ha risposto esplicitamente «Pubblica 0.8 con limiti espliciti». La compatibilità universale non è dichiarata soddisfatta: connettori e runtime non coperti restano nella [roadmap successiva](roadmap-next.md). Pubblicazione e changelog sono autorizzati; nessun aumento del budget live.
+Stato del 13 novembre 2026: **0.8.0 pubblicata; roadmap chiusa nel perimetro approvato**. [Release e download](https://github.com/Andrea17982/Lumen/releases/tag/v0.8.0). Il proprietario ha risposto esplicitamente «Pubblica 0.8 con limiti espliciti». La compatibilità universale non è dichiarata soddisfatta: connettori e runtime non coperti restano nella [roadmap successiva](roadmap-next.md). Il budget live resta invariato.
 
 ## Perimetro verificabile
 
@@ -32,7 +32,7 @@ Fonti verificate: [MCP Claude e connettori claude.ai](https://code.claude.com/do
 
 Il changelog candidato è in [0.8.0](release-notes/0.8.0.md). Versioni di npm/lockfile/Tauri/Cargo devono coincidere; documentazione e collegamenti devono passare. Verificare suite Rust, Clippy/rustfmt, build/unitari frontend, Prettier, Playwright e harness nativi applicabili. Gli harness Windows e Playwright si eseguono in serie; nessuna inferenza o login aggiuntivo. Il registro live rimane **13 slot storici, incremento 0**.
 
-La CI deve passare sul commit candidato, poi il workflow Release deve produrre installer e portable Windows, DMG universale macOS, DEB/AppImage Linux. Prima di rendere pubblica la release verificare pacchetti, manifesto SHA-256 e smoke dell'installer/portable; distinguere ciò dalle prove di OAuth e GUI native macOS/Linux. La chiusura riguarda il perimetro 0.8 approvato, con i requisiti non consegnati registrati nella roadmap successiva. La pubblicazione finale attende soltanto il superamento dei gate tecnici e la verifica dei pacchetti.
+I gate richiesti sono passati sul commit candidato: CI, installer e portable Windows, DMG universale macOS, DEB/AppImage Linux, download e manifesto SHA-256. Le prove dei pacchetti restano distinte da OAuth e GUI native macOS/Linux. La chiusura riguarda il perimetro 0.8 approvato, con i requisiti non consegnati registrati nella roadmap successiva. Le evidenze di distribuzione sono riportate sotto.
 
 ## Verifiche locali del candidato
 
@@ -41,3 +41,13 @@ La CI deve passare sul commit candidato, poi il workflow Release deve produrre i
 Il gate dei permessi omette i namespace MCP condivisi non filtrati dalle configurazioni native in Read only/File edits, compreso il percorso Google; lascia il gateway del proprietario in modalità filtrata. Ollama mantiene il proprio filtro per tool. Un'annotazione distruttiva esplicita prevale sul read-only hint. Configurazioni di intestazioni o abilitazioni plugin malformate sono rifiutate, non reinterpretate eliminandone i vincoli.
 
 Il primo batch nativo ha incontrato un timeout all'avvio del tour. L'harness ora attende l'uscita dei propri processi prima di avviare la suite seguente e conserva diagnostica di avvio; la ripetizione delle otto suite passa. Il timeout iniziale non è presentato come una regressione dimostrata del prodotto.
+
+## Commit e preflight dei pacchetti
+
+Il tag `v0.8.0` identifica il commit [`47ed088dccb806afe61ed6a5b8a5d90124783604`](https://github.com/Andrea17982/Lumen/commit/47ed088dccb806afe61ed6a5b8a5d90124783604), passato nella [CI finale](https://github.com/Andrea17982/Lumen/actions/runs/43402643640). Il [preflight completo](https://github.com/Andrea17982/Lumen/actions/runs/43402643011) sullo stesso commit passa: 203 test Rust Windows, 195 macOS e 195 Linux, con 14 opt-in ignorati per piattaforma.
+
+Installer e portable Windows superano i probe degli helper dopo installazione/estrazione. Il DMG montato contiene entrambe le architetture `arm64`/`x86_64`; DEB/AppImage superano gli stessi probe dopo estrazione. Ogni formato verifica discovery MCP grafo/browser, Moli incluso e SHA-256 degli 80 file di licenza delle nuove dipendenze. Il primo preflight aveva fallito soltanto l'ordine degli argomenti di `lipo`; il comando corretto e la ripetizione completa passano. Queste prove non equivalgono ad accettazione GUI/OAuth reale su macOS o Linux.
+
+Il [workflow del tag](https://github.com/Andrea17982/Lumen/actions/runs/43405778712) passa su tutte le piattaforme e assembla la release. I cinque pacchetti scaricati corrispondono al [manifesto SHA-256 pubblico](https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/SHA256SUMS.txt), alle dimensioni e ai digest GitHub. Il portable scaricato supera anche il probe locale degli helper e riporta versione file/prodotto 0.8.0. Nessuna apertura del profilo GUI reale è necessaria per queste prove.
+
+La release è stata pubblicata il **13 novembre 2026 alle 10:13:56 UTC**, con changelog e limiti espliciti, e verificata come latest tramite API pubblica senza autenticazione. Il manifesto è stato riscaricato senza autenticazione e confrontato con quello verificato. [Registro strutturato: commit, workflow, pacchetti e hash](data/release-08-validation.json). I pacchetti restano non firmati. Il tag identifica il sorgente dei binari; i successivi aggiornamenti di documentazione su `main` registrano la pubblicazione senza spostarlo.

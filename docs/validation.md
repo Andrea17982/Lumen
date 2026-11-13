@@ -1,6 +1,8 @@
-# Validation, release scope and known limits — 0.7
+# Validation, release scope and known limits
 
-The 0.7.1 checkpoint sections below are included in **0.7.1 — Performance Update**; explicitly post-release 0.8 checkpoints belong to their implementation branches. Earlier sections retain their checkpoint dates, versions and hashes as historical evidence; the remaining 0.8 roadmap is not closed. [0.7.1 release notes](release-notes/0.7.1.md).
+The current **0.8 scope, final checks and publication state** are recorded in the [release acceptance record](release-readiness-0.8.md). The owner approved shipping 0.8 with explicit integration limits on 13 November 2026; unsupported requirements remain in the [next roadmap](roadmap-next.md).
+
+The checkpoint sections below retain their original dates, versions, pending-work statements and hashes as historical evidence. The 0.7.1 sections belong to **0.7.1 — Performance Update**; later 0.8 sections describe intermediate implementation checkpoints, not the current publication state. [0.8 changelog](release-notes/0.8.0.md) · [0.7.1 release notes](release-notes/0.7.1.md).
 
 ## Post-release 0.8 final acceptance checkpoint — tranche 17
 

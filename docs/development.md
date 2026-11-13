@@ -1,4 +1,4 @@
-# Development, tests and releases — 0.7
+# Development, tests and releases
 
 ## Build
 

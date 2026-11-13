@@ -2,8 +2,9 @@
 
 [Current product guide](../features.md) · [Validation](../validation.md) · [Documentation](../README.md)
 
-Historical release notes describe their own versions, not the current capability/status matrix. The 0.7 update supersedes the temporary unreleased/roadmap work records.
+Historical release notes describe their own versions, not the current capability/status matrix. The 0.8 scope and remaining integration limits are recorded in its release notes and acceptance record.
 
+- [0.8.0](0.8.0.md) — continuity, shared tools, Liquid Glass and explicit integration limits
 - [0.7.1](0.7.1.md) — Performance Update: long chats, supervised metadata shutdown and execution reliability
 - [0.7.0](0.7.0.md) — native sessions, Moli, project workspace and cross-platform packaging
 - [0.6.0](0.6.0.md) — historical release

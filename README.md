@@ -22,11 +22,11 @@
 
 Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across every provider.
 
-Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.7 is an alpha release, not a claim of universal CLI or platform compatibility.
+Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.8 remains an alpha release; supported integrations and platform checks have explicit limits.
 
-## 0.7.1 — Performance Update
+## 0.8 — Continuity, shared tools and Liquid Glass
 
-Faster long-chat opening and typing, safer Windows metadata CLI shutdown, conversation-local drafts and clearer execution progress. The scoped Windows comparisons measure **25.6% faster opening** for 5,000 mixed messages and **37.2% / 57.4% lower complete metadata-call time** for the installed Claude/Codex CLIs. These are local benchmark results, not model-response latency guarantees. [0.7.1 release notes and limits](docs/release-notes/0.7.1.md).
+Safer continuation across accounts, clearer progress and connector consent, stronger Auto/Orchestra recovery, and targeted context/graph improvements. The glass sidebar opens from the logo; permissions are explained and a short first-use tour introduces the workspace. Shared MCP/skill discovery, the owning Codex gateway and local stdio/Streamable HTTP execution extend supported integrations. **Universal connector/plugin portability is not delivered:** proprietary cloud connectors, native hooks/mods and unsupported formats remain on the next roadmap. [0.8 changelog and limits](docs/release-notes/0.8.0.md).
 
 ## Native workspace features
 
@@ -38,7 +38,7 @@ Faster long-chat opening and typing, safer Windows metadata CLI shutdown, conver
 | Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
 | Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
 
-Read the [0.7.1 changelog](docs/release-notes/0.7.1.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [0.7.0 changelog](docs/release-notes/0.7.0.md) retains the native-session/Moli release history.
+Read the [0.8 changelog](docs/release-notes/0.8.0.md), [feature guide](docs/features.md) and [release evidence](docs/release-readiness-0.8.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
 
 ## Choose how to work
 
@@ -76,12 +76,12 @@ Context estimates use a local tokenizer; provider-reported usage remains distinc
 
 ## Download and start
 
-Get **[Lumen 0.7.1 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
+Get **[Lumen 0.8.0 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| Windows x64 | `Lumen_0.7.1_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.7.1_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources/moli` beside `Lumen.exe`. |
+| Windows x64 | `Lumen_0.8.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
+| Windows x64 portable | `Lumen_0.8.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. |
 | macOS | Universal `.dmg` | Intel and Apple silicon. |
 | Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 
@@ -110,9 +110,9 @@ The build prepares the pinned, checksum-verified Moli binary and license notices
 
 ## What has been checked
 
-The release preflight covers **135 Rust tests, 60 TypeScript tests and 29 UI tests**, formatting/Clippy, Windows native fixture runs, real Codex and Antigravity browser turns, and a real local Ollama model consuming Moli results. CI and packaging cover Windows, macOS and Linux. Clean Windows installation includes an installed-browser/helper smoke check.
+The 0.8 candidate passed **203 Rust Windows tests, 72 frontend unit tests, 40 browser tests and 56 native Windows scenarios**, plus formatting/Clippy and version/documentation checks. The native scenarios use isolated offline provider/API fixtures. Installed-CLI MCP metadata interoperability is checked separately without inference. CI and package helper checks cover Windows, macOS and Linux.
 
-Claude live inference remains deferred after account quota exhaustion; Gemini CLI login is completed by the user. Real non-Windows desktop/accessibility/device testing and the broader account/version matrix remain explicit validation limits. Fixtures and successful builds are not substitutes for these checks. See [validation and the closed release scope](docs/validation.md).
+The live ledger remains 13 historical slots, with no additional inference or login for this release closure. Real non-Windows desktop/accessibility checks, the broader account/version matrix and proprietary connector portability remain explicit limits. Fixtures and builds are distinct from those checks. See [0.8 release scope and evidence](docs/release-readiness-0.8.md), [integration support](docs/shared-capabilities-0.8.md) and the [next roadmap](docs/roadmap-next.md).
 
 Autopilot has broad access. Lumen does not add a common OS jail or encrypt its database; use OS permissions and disk encryption. Native CLIs retain their own policies. Moli routing disables supported built-in alternatives, but unrestricted shells/external tools are not an OS network sandbox. [Security and privacy](SECURITY.md).
 

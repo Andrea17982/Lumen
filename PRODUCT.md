@@ -1,6 +1,6 @@
 # Lumen
 
-0.7.1 — Performance Update packages the completed 0.8 performance/reliability checkpoints, including supervised Windows metadata shutdown. The remaining 0.8 roadmap stays open; its first logo/sidebar composition is implemented on the 0.8 branch. [Release scope and measured limits](docs/release-notes/0.7.1.md).
+0.8 delivers continuity, shared tools and Liquid Glass refinements within the scope explicitly approved on 13 November 2026. Universal integration support is retained for subsequent work, not claimed complete. [Release scope and evidence](docs/release-readiness-0.8.md) · [Changelog](docs/release-notes/0.8.0.md) · [Next roadmap](docs/roadmap-next.md).
 
 <!-- impeccable:product-schema 1 -->
 
@@ -27,11 +27,11 @@ Read only is the initial permission profile; Autopilot has full available access
 Lumen, with the established restrained Liquid Glass identity, system typography and light/dark themes. English and Italian UI. Public GitHub repository under Andrea17982. Completely AI Written disclosure, thanks to testers and optional PayPal support remain in documentation/About.
 
 ## Evidence on Hand
-0.7 preflight: automated native/UI/backend suites, cross-platform CI/packaging, real Codex/Antigravity browser turns and a real local Ollama tool-result loop. Exact evidence, account-dependent deferrals and non-Windows native acceptance limits are in [Validation](docs/validation.md). No general exponential-performance or accessibility-certification claim.
+0.8: 203 Rust Windows tests, 72 frontend unit tests, 40 browser tests and 56 isolated native Windows scenarios; cross-platform CI and package helper checks. Installed-CLI metadata interoperability is separate from model inference. The live ledger remains 13 historical slots with no new inference/login during release closure. [Exact evidence and limits](docs/release-readiness-0.8.md). Earlier live/model checkpoints remain historical evidence in [Validation](docs/validation.md). No general performance or accessibility-certification claim.
 
 ## Product Principles
 
-Owner requirement, 12 November: previously configured connectors, plugins, skills, MCP servers and mods must be usable through Lumen across providers/accounts, with the original identity and consent preserved. Portable discovery and a Codex account tool gateway are implemented on the 0.8 branch. [Ollama now executes shared stdio tools and reads skill resources](docs/ollama-shared-tools-0.8.md); The 0.8 candidate also adds Streamable HTTP, MCP resources/prompts, dynamic tools and scoped project/local plugin components. Proprietary cloud/provider runtime extensions, legacy transports and real-account acceptance remain open. This is an open acceptance requirement, not universal compatibility already delivered. [Implementation, evidence and required remaining adapters](docs/shared-capabilities-0.8.md).
+Owner requirement, 12 November: previously configured connectors, plugins, skills, MCP servers and mods should work across providers/accounts while preserving identity and consent. The owner approved a 0.8 release with explicit limits on 13 November. Portable discovery, the Codex owning-account gateway, shared stdio/Streamable HTTP execution, MCP resources/prompts, dynamic tools and scoped plugin components cover the implemented subset. Proprietary cloud/runtime extensions, legacy transports and real-account acceptance remain on the [next roadmap](docs/roadmap-next.md). This is not universal compatibility already delivered. [Support matrix](docs/shared-capabilities-0.8.md).
 
 - Preserve explicit provider/model/workspace choices and useful task decisions.
 - Keep direct work direct; use Orchestra only when selected.
@@ -45,7 +45,7 @@ Owner requirement, 12 November: previously configured connectors, plugins, skill
 
 ## Approved 0.8 direction
 
-The tranche 17 branch adds an explained permission picker and an optional first-use guided tour, replayable in General settings/commands. The tour uses actual controls, preserves draft/access and never initiates login or inference. Fresh-process Windows release regression gates and historical-content checks pass at their documented scope; repeated-open baseline instability remains unresolved. Remaining speculative optimizations are classified rather than claimed delivered. [Final acceptance and limits](docs/final-acceptance-0.8.md); integration, versioning and packages remain tranche 18.
+The release includes an explained permission picker and an optional first-use guided tour, replayable in General settings/commands. The tour uses actual controls, preserves draft/access and never initiates login or inference. Fresh-process Windows release regression gates and historical-content checks pass at their documented scope; repeated-open baseline instability remains unresolved. Remaining speculative optimizations are classified rather than claimed delivered. [Final performance acceptance](docs/final-acceptance-0.8.md) · [Distribution and approved scope](docs/release-readiness-0.8.md).
 
 Coding React/TypeScript/JavaScript and Godot is the main use. The priority account mix is two Claude subscriptions and one ChatGPT subscription, sharing context within one chat; graph and repocontext provide targeted project knowledge. Execution without unnecessary stops comes first, then reasoning/code quality, then context continuity. Auto exposes Balance quota usage and Budget/Default/Quality; a responsible agent may request bounded help or cross-audit when useful. Orchestra remains explicit for broader coordinated parallel work and necessary discovery. These are acceptance targets, not proof that every algorithm is calibrated or every provider has equivalent delegation.
 

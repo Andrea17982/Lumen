@@ -33,11 +33,11 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, screenshots and release procedure |
 | [Validation and scope](validation.md) | Verified results, agreed exclusions and deferred acceptance |
-| [Release history](release-notes/README.md) | 0.7.1 Performance Update, 0.7.0 native sessions/Moli and historical releases |
+| [Release history](release-notes/README.md) | 0.8 continuity/shared tools, 0.7.1 Performance Update and historical releases |
 
 [Design system](../DESIGN.md) · [Product brief](../PRODUCT.md) · [Security](../SECURITY.md) · [Third-party notices](../THIRD_PARTY_NOTICES.md) · [Contributing](../CONTRIBUTING.md)
 
-The [0.8 roadmap](roadmap-0.8.md) records the completed owner interview and locally implemented composer, execution-observability and targeted quality/continuity/Auto corrections. The [bounded quality experiment](quality-experiments-0.8.md) distinguishes controlled routing/account tests from direct GPT task outcomes and Claude's authentication limitation. Broader quality, live interruption diagnosis, the approved visual direction and measurement-led performance experiments remain open. Its scope uses Lumen and a tiny C#/GDScript Godot project, with at most three paired live A/B runs per task/provider for promising candidates; failed and invalidated attempts count. The previous roadmap was retired prematurely: 0.7 delivered substantial functionality, but conditional proposals and acceptance work were not all completed. Existing implementation evidence, working-tree checkpoints and live/platform limits remain in [Validation](validation.md).
+The [0.8 roadmap](roadmap-0.8.md) records the owner interview, delivered tranches, performance candidate decisions and accepted scope. On 13 November the owner approved shipping with explicit integration limits. The [release acceptance record](release-readiness-0.8.md) tracks final checks and publication; the [next roadmap](roadmap-next.md) retains universal integrations, broader live quality/platform acceptance and unresolved research. The [bounded quality experiment](quality-experiments-0.8.md) distinguishes controlled routing/account tests from live task outcomes and authentication limits. Its scope uses Lumen and a tiny C#/GDScript Godot project, with at most three paired live A/B runs per task/provider for promising candidates; failed and invalidated attempts count. The live ledger remains 13 historical slots with no additional inference or login during release closure. Historical checkpoint evidence remains in [Validation](validation.md).
 
 ## Gallery
 

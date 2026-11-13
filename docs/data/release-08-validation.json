@@ -1,0 +1,95 @@
+{
+  "version": "0.8.0",
+  "sourceCommit": "47ed088dccb806afe61ed6a5b8a5d90124783604",
+  "tag": "v0.8.0",
+  "releaseUrl": "https://github.com/Andrea17982/Lumen/releases/tag/v0.8.0",
+  "publishedAt": "2026-11-13T10:13:56Z",
+  "anonymouslyVerifiedAt": "2026-11-13T10:14:32.419Z",
+  "latestPublicRelease": true,
+  "manifestUrl": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/SHA256SUMS.txt",
+  "downloadedPackageHashesVerified": 5,
+  "packages": [
+    {
+      "name": "Lumen_0.8.0_amd64.AppImage",
+      "bytes": 130513400,
+      "sha256": "228007a5c5945d058318145865d01856198081d405e03728e7b060b9164d458e",
+      "url": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/Lumen_0.8.0_amd64.AppImage"
+    },
+    {
+      "name": "Lumen_0.8.0_amd64.deb",
+      "bytes": 57721106,
+      "sha256": "f9547009c71666e68ab04ee2951b4726f79bab1a3eb5536774047906562e781a",
+      "url": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/Lumen_0.8.0_amd64.deb"
+    },
+    {
+      "name": "Lumen_0.8.0_universal.dmg",
+      "bytes": 106764588,
+      "sha256": "db4ece286c803a86facd322a38c3850fcd057c2c372149225d1ae844c47a3033",
+      "url": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/Lumen_0.8.0_universal.dmg"
+    },
+    {
+      "name": "Lumen_0.8.0_x64-portable.zip",
+      "bytes": 57297653,
+      "sha256": "c23a5e384cb43108642b76937bbfc64ac5eb8ea4b179eea707a87cd5ea23e84b",
+      "url": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/Lumen_0.8.0_x64-portable.zip"
+    },
+    {
+      "name": "Lumen_0.8.0_x64-setup.exe",
+      "bytes": 38370292,
+      "sha256": "50d89793efb4cba5dd472b8d7d278f7944e182e77b318063fa5ae31123546c23",
+      "url": "https://github.com/Andrea17982/Lumen/releases/download/v0.8.0/Lumen_0.8.0_x64-setup.exe"
+    }
+  ],
+  "workflows": [
+    {
+      "id": 43402643640,
+      "conclusion": "success",
+      "headSha": "47ed088dccb806afe61ed6a5b8a5d90124783604",
+      "name": "CI",
+      "url": "https://github.com/Andrea17982/Lumen/actions/runs/43402643640"
+    },
+    {
+      "id": 43402643011,
+      "conclusion": "success",
+      "headSha": "47ed088dccb806afe61ed6a5b8a5d90124783604",
+      "name": "Release",
+      "url": "https://github.com/Andrea17982/Lumen/actions/runs/43402643011"
+    },
+    {
+      "id": 43405778712,
+      "conclusion": "success",
+      "headSha": "47ed088dccb806afe61ed6a5b8a5d90124783604",
+      "name": "Release",
+      "url": "https://github.com/Andrea17982/Lumen/actions/runs/43405778712"
+    }
+  ],
+  "validation": {
+    "rustWindows": {
+      "passed": 203,
+      "ignoredOptIn": 14
+    },
+    "rustMacOS": {
+      "passed": 195,
+      "ignoredOptIn": 14
+    },
+    "rustLinux": {
+      "passed": 195,
+      "ignoredOptIn": 14
+    },
+    "frontendUnitPassed": 72,
+    "browserPassed": 40,
+    "offlineNativeWindowsPassed": 56,
+    "downloadedWindowsPortable": "0.8.0 file/product version; graph/browser MCP discovery, Moli and dependency notice checks passed",
+    "packageHelpers": "Windows clean install and portable; mounted universal macOS DMG; extracted Linux DEB and AppImage"
+  },
+  "liveBudget": {
+    "historicalSlots": 13,
+    "newInferenceOrLogin": 0
+  },
+  "limitations": [
+    "Packages are unsigned",
+    "Universal proprietary cloud connector/plugin portability is not delivered; retained in docs/roadmap-next.md",
+    "Native macOS/Linux GUI and reporter-account GitHub/Gmail/Drive OAuth are not certified",
+    "Offline fixtures and installed-CLI metadata probes are distinct from live model quality"
+  ]
+}

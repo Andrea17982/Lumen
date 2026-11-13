@@ -12,11 +12,11 @@
 
 Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, continua la sessione nativa e lavora nella cartella corretta. Attiva **Orchestra** quando serve una squadra coordinata. **Moli** gestisce navigazione e ricerca web con ogni provider.
 
-Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.7 resta una versione alpha di un progetto indipendente.
+Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.8 resta una versione alpha di un progetto indipendente, con limiti espliciti sulle integrazioni e sulle piattaforme verificate.
 
-## 0.7.1 — Performance Update
+## 0.8 — Continuità, strumenti condivisi e Liquid Glass
 
-Apertura e digitazione delle chat lunghe più rapide, chiusura CLI dei metadati supervisionata su Windows, bozze separate per conversazione e avanzamento più chiaro. Nei confronti Windows dichiarati: apertura di 5.000 messaggi misti **−25,6%**; chiamate complete ai metadati CLI Claude/Codex **−37,2% / −57,4%**. Sono risultati locali, non garanzie sui tempi dei modelli. [Novità e limiti della 0.7.1](docs/release-notes/0.7.1.md).
+Continuità più sicura fra account, avanzamento e consenso dei connettori più chiari, recupero Auto/Orchestra e miglioramenti mirati a contesto e grafo. Il logo apre la sidebar di vetro; permessi spiegati e un breve tutorial introducono l'app. Catalogo MCP/skill, gateway Codex del proprietario ed esecuzione locale stdio/Streamable HTTP estendono le integrazioni supportate. **La portabilità universale non è consegnata:** connettori cloud proprietari, hook/mods nativi e formati non supportati restano nella roadmap successiva. [Novità e limiti della 0.8](docs/release-notes/0.8.0.md).
 
 ## Funzioni dell'applicazione
 
@@ -28,7 +28,7 @@ Apertura e digitazione delle chat lunghe più rapide, chiusura CLI dei metadati 
 | Resume nativo Claude/Codex, memoria del lavoro e cambio esplicito della cartella. | Diagnostica, controlli sui progetti interessati e integrazione Godot opzionali. |
 | Continuità tramite area di notifica. | Pacchetti Windows, macOS universale e Linux. |
 
-[Changelog 0.7.1](docs/release-notes/0.7.1.md) · [Guida alle funzioni](docs/features.md) · [Verifiche e limiti noti](docs/validation.md). Il [changelog 0.7.0](docs/release-notes/0.7.0.md) conserva la storia delle sessioni native e di Moli.
+[Changelog 0.8](docs/release-notes/0.8.0.md) · [Guida alle funzioni](docs/features.md) · [Evidenze della release](docs/release-readiness-0.8.md). Le misure prestazionali e le versioni precedenti restano nella [cronologia](docs/release-notes/README.md).
 
 ## Scegli come lavorare
 
@@ -66,7 +66,7 @@ Il registro persistente del lavoro conserva requisiti e decisioni attraverso tro
 
 I pacchetti sono in **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
-- **Windows x64:** `Lumen_0.7.1_x64-setup.exe`, oppure `Lumen_0.7.1_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources/moli` accanto a `Lumen.exe`.
+- **Windows x64:** `Lumen_0.8.0_x64-setup.exe`, oppure `Lumen_0.8.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources` accanto a `Lumen.exe`.
 - **macOS:** DMG universale per Intel e Apple silicon.
 - **Linux x64:** DEB e AppImage, compilati su Ubuntu 24.04.
 
@@ -94,9 +94,9 @@ La build prepara automaticamente Moli con versione e checksum fissati. `npm run 
 
 ## Verifiche e confini
 
-Il preflight comprende **135 test Rust, 60 TypeScript e 29 UI**, formattazione/Clippy, prove native Windows con simulatori, turni reali Codex/Antigravity e un modello Ollama locale che usa i risultati di Moli. CI e packaging coprono Windows, macOS e Linux, con installazione pulita Windows sul runner.
+Il candidato 0.8 ha superato **203 test Rust Windows, 72 unitari frontend, 40 browser e 56 scenari nativi Windows**, oltre a formattazione/Clippy e controlli di versioni/documentazione. Gli scenari nativi usano dati isolati e fixture provider/API offline. Un probe separato verifica i metadati MCP con la CLI installata, senza inferenza. CI e controlli degli helper nei pacchetti coprono Windows, macOS e Linux.
 
-Rimangono le prove già rinviate: inferenza Claude per quota, login personale nella CLI Gemini, tester desktop/accessibilità/dispositivi sugli altri sistemi e matrice estesa account/versioni. Questi confini non vengono presentati come verifiche concluse. [Registro di validazione](docs/validation.md).
+Il registro live resta a 13 slot storici, senza nuove inferenze o login per questa chiusura. Restano limiti espliciti sulle prove desktop/accessibilità non Windows, sulla matrice account/versioni e sulla portabilità dei connettori proprietari. Fixture e build non sostituiscono tali verifiche. [Perimetro ed evidenze 0.8](docs/release-readiness-0.8.md) · [Supporto integrazioni](docs/shared-capabilities-0.8.md) · [Roadmap successiva](docs/roadmap-next.md).
 
 Autopilot concede accesso ampio. Lumen non aggiunge una gabbia OS comune e non cifra internamente il database; usa permessi del sistema e cifratura del disco. Non sostituisce le politiche dei provider. [Sicurezza](SECURITY.md).
 

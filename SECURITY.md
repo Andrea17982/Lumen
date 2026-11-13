@@ -1,4 +1,4 @@
-# Security and privacy — 0.7
+# Security and privacy
 
 Lumen is an alpha, AI-written local desktop application without an independent security audit. Provider tools, project instructions and OS permissions remain part of its trust boundary.
 

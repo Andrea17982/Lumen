@@ -1,4 +1,4 @@
-# Features and working modes — 0.7
+# Features and working modes — 0.8
 
 This guide describes the current product. Historical changes belong in the [release notes](release-notes/README.md).
 
