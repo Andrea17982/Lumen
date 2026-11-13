@@ -78,7 +78,7 @@ jobs:
           trap 'hdiutil detach "$mount"' EXIT
           export LUMEN_RELEASE_EXE=$(find "$mount" -path '*.app/Contents/MacOS/lumen' -type f -print -quit)
           test -n "$LUMEN_RELEASE_EXE"
-          lipo -verify_arch arm64 x86_64 "$LUMEN_RELEASE_EXE"
+          lipo "$LUMEN_RELEASE_EXE" -verify_arch arm64 x86_64
           arch=$(node -p 'process.arch === "arm64" ? "arm64" : "x64"')
           export LUMEN_RELEASE_MOLI=$(find "$mount" -path "*/resources/moli/darwin-$arch/moli" -type f -print -quit)
           test -n "$LUMEN_RELEASE_MOLI"
