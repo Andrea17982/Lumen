@@ -3,3 +3,5 @@
 *.png binary
 *.ico binary
 *.icns binary
+# Preserve upstream notice bytes; hashes are recorded in the notice index.
+src-tauri/resources/legal/** -text -whitespace

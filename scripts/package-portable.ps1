@@ -8,4 +8,5 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) ('lumen-portable-' + [Guid]::NewGu
 New-Item -ItemType Directory -Path (Join-Path $stage 'resources/moli') -Force | Out-Null
 Copy-Item -LiteralPath $Executable -Destination (Join-Path $stage 'Lumen.exe')
 Copy-Item -LiteralPath $Moli -Destination (Join-Path $stage 'resources/moli') -Recurse
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../src-tauri/resources/legal') -Destination (Join-Path $stage 'resources') -Recurse
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $Destination -Force

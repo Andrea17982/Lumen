@@ -1,5 +1,6 @@
 // Runs the installed release helper on a clean packaging runner; no model/credentials needed.
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,4 +61,24 @@ const version = spawnSync(moli, ['--version'], {
 });
 assert.equal(version.status, 0, String(version.error || version.stderr));
 assert.match(version.stdout, /moli 1\.1\.23/);
-console.log('Installed release graph/browser MCP discovery and bundled Moli executable passed.');
+const legalRoot = path.resolve(path.dirname(moli), '../../legal');
+const notices = JSON.parse(await readFile(path.join(legalRoot, 'index.json'), 'utf8'));
+assert(notices.packages.some((pkg) => pkg.crate === 'rmcp'));
+for (const pkg of notices.packages) {
+  for (const file of pkg.files) {
+    const target = path.resolve(legalRoot, file.path);
+    assert(
+      target.startsWith(legalRoot + path.sep),
+      'Notice path must remain in the legal resources',
+    );
+    assert.equal(
+      createHash('sha256')
+        .update(await readFile(target))
+        .digest('hex'),
+      file.sha256,
+    );
+  }
+}
+console.log(
+  'Installed release graph/browser MCP discovery, bundled Moli and dependency notices passed.',
+);

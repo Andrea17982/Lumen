@@ -10,9 +10,15 @@ Windows metadata process supervision additionally uses [process-wrap](https://gi
 
 ## Bundled Moli
 
-Lumen 0.7 bundles [Moli](https://github.com/lexmount/moli) **1.1.23**, licensed **Apache-2.0 OR MIT** according to its release metadata. The platform package retains `LICENSE-APACHE`, `LICENSE-MIT`, `license-metadata.json` and the upstream `licenses/` notices, including the Chromium BSD and Selenium notices distributed with that release. These notices remain beside the browser in installed/portable resources.
+Lumen 0.8 bundles [Moli](https://github.com/lexmount/moli) **1.1.23**, licensed **Apache-2.0 OR MIT** according to its release metadata. The platform package retains `LICENSE-APACHE`, `LICENSE-MIT`, `license-metadata.json` and the upstream `licenses/` notices, including the Chromium BSD and Selenium notices distributed with that release. These notices remain beside the browser in installed/portable resources.
 
 `scripts/prepare-moli.mjs` acquires the exact release assets pinned in `src-tauri/moli-release.json`, verifies their published SHA-256 digests and copies the package with its notices. Consult those bundled files for full applicable texts and component attribution; Lumen's MIT license does not replace them.
+
+## MCP HTTP client and TLS
+
+The 0.8 HTTP integration adds the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk) `rmcp` 3.9.0, reqwest 0.13, rustls/platform verification and their locked dependencies, including AWS-LC cryptography. Upstream license/notice texts for the newly locked crates are reproduced under `resources/legal/` in installed and portable packages. The [source index](src-tauri/resources/legal/index.json) identifies exact versions, declared licenses, archive checksums and notice-file hashes. Texts retain their original bytes with a `.txt` filename suffix. Target-only Android/JNI crates without notice files in their archives are listed in the index but are not desktop package targets.
+
+This supplements the existing notices and lockfiles; it is not a claim that all third-party components share Lumen's MIT license or a replacement for Moli's own notice bundle.
 
 ## Separately installed software
 
