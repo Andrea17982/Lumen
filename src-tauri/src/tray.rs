@@ -1,8 +1,7 @@
-//! Notification-area icon, close-to-tray and open-at-login.
+//! Notification-area icon and interface closing.
 //!
-//! The X hides the window when "Keep Lumen in the notification area" is on; the
-//! tray menu offers Open Lumen and Quit. Without the tray, closing while a
-//! response runs asks the page to confirm first (`lumen:confirm-quit`).
+//! X hides the interface when the tray is enabled, otherwise it closes only the GUI.
+//! Accepted work stays in the daemon. Explicit Quit drains and stops the daemon.
 use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
