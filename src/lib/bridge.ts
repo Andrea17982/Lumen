@@ -245,6 +245,7 @@ export async function onServiceChange(
   return () => off.forEach((fn) => fn());
 }
 export function applyEvent(messages: Message[], event: RunEvent): Message[] {
+  if (!event.messageId) return messages;
   const current = messages.find((m) => m.id === event.messageId);
   if (event.seq && (current?.eventSeq || 0) >= event.seq) return messages;
   return applyEventContent(messages, event).map((m) =>
@@ -308,6 +309,11 @@ export async function decideApproval(decision: Decision): Promise<void> {
   await invoke('gatekeeper_decide', { decision });
 }
 /** Fires on every approval change, and when the listener lagged and the snapshot must reload. */
-export function onApprovalChange(handler: () => void) {
-  return desktop ? listen('lumen:gatekeeper', () => handler()) : Promise.resolve(() => {});
+export async function onApprovalChange(handler: () => void) {
+  if (!desktop) return () => {};
+  const off = await Promise.all([
+    listen('lumen:gatekeeper', handler),
+    listen('lumen:resync', handler),
+  ]);
+  return () => off.forEach((fn) => fn());
 }

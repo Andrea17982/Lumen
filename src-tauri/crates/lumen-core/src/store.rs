@@ -170,6 +170,10 @@ impl Store {
         Ok(())
     }
     pub fn append_event(&self, payload: &mut serde_json::Value) -> Result<(), String> {
+        // Broadcast/session status events have no message and already live in sessions.status.
+        if payload["messageId"].as_str().unwrap_or("").is_empty() {
+            return Ok(());
+        }
         self.with(|c| {
             let session = payload["sessionId"].as_str().unwrap_or("");
             let message = payload["messageId"].as_str().unwrap_or("");
@@ -198,6 +202,7 @@ impl Store {
             let events = q.query_map([session], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))?;
             for row in events {
                 let (seq, id, text) = row?;
+                if id.is_empty(){continue;}
                 let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
                 if !out.iter().any(|m|m["id"]==id) {
                     out.push(serde_json::json!({"id":id,"role":"assistant","text":"","activity":[],"eventSeq":0}));
@@ -702,6 +707,9 @@ mod service_tests {
         store.save_message(&session.id, &m).unwrap();
         let event = |kind: &str, text: &str| serde_json::json!({"sessionId":session.id,"messageId":m.id,"kind":kind,"text":text});
         let mut e = event("delta", "partial");
+        let mut session_event = serde_json::json!({"sessionId":session.id,"messageId":"","kind":"done","text":"completed"});
+        store.append_event(&mut session_event).unwrap();
+        assert_eq!(store.messages(&session.id).unwrap().len(), 1);
         store.append_event(&mut e).unwrap();
         assert!(e["seq"].as_i64().unwrap() > 0);
         let rows = store.message_snapshots(&session.id).unwrap();

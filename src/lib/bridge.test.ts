@@ -47,6 +47,10 @@ describe('stream reconciliation', () => {
 });
 
 describe('service snapshot ordering', () => {
+  it('does not turn a conversation-level broadcast completion into an empty assistant', () => {
+    const messages: Message[] = [];
+    expect(applyEvent(messages, { ...e('done', 'completed'), messageId: '' })).toBe(messages);
+  });
   it('deduplicates events covered by a snapshot and preserves events received while it loads', () => {
     const snapshot: Message[] = [
       { id: 'm', role: 'assistant', text: 'Hello', activity: [], eventSeq: 10, snapshotSeq: 10 },

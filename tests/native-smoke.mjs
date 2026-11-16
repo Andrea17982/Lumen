@@ -820,6 +820,15 @@ try {
   assert.notEqual(child.exitCode, null, 'Quit exits Lumen');
   console.log('Native offline checks passed. Temporary test data: ' + testData);
 } finally {
+  await new Promise((resolve) => {
+    const stop = spawn(
+      path.join(root, 'src-tauri/target/debug/lumen-daemon.exe'),
+      ['--data-dir', testData, '--shutdown'],
+      { windowsHide: true, stdio: 'ignore' },
+    );
+    stop.once('exit', resolve);
+    stop.once('error', resolve);
+  });
   ollamaFixture.close();
   if (browser) await browser.close().catch(() => {});
   if (!child.killed) child.kill();
