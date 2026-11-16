@@ -8,7 +8,7 @@ import type { Account, McpServer, Provider } from '../lib/types';
 import { errorText, Mark, PAYPAL, REPO } from '../lib/util';
 import AccountSettings from './AccountSettings';
 import { AutoPreferences } from './AutoSettings';
-import GeneralSettings from './GeneralSettings';
+import GeneralSettings, { GeneralFooter } from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
 import TeamworkSettings from './TeamworkSettings';
 import { useI18n } from '../lib/i18n';
@@ -160,14 +160,7 @@ export default function SettingsPanel({
               />
             )}
             {current === 'general' && (
-              <GeneralSettings
-                onTour={onTour}
-                theme={theme}
-                setTheme={setTheme}
-                onError={setError}
-                setAutoPolicy={setAutoPolicy}
-                setBalanceUsage={setBalanceUsage}
-              />
+              <GeneralSettings theme={theme} setTheme={setTheme} onError={setError} />
             )}
             {current === 'accounts' && (
               <AccountSettings
@@ -225,6 +218,15 @@ export default function SettingsPanel({
                   {t('Show')}
                 </button>
               </p>
+            )}
+            {current === 'general' && (
+              <GeneralFooter
+                onTour={onTour}
+                onError={setError}
+                setTheme={setTheme}
+                setAutoPolicy={setAutoPolicy}
+                setBalanceUsage={setBalanceUsage}
+              />
             )}
           </div>
           <footer className="settings-footer version">

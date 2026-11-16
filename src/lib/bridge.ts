@@ -88,6 +88,18 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       result = workspace;
       break;
     }
+    case 'rename_workspace':
+      data.workspaces = data.workspaces?.map((w) =>
+        w.id === args.id ? { ...w, name: String(args.name) } : w,
+      );
+      break;
+    case 'delete_workspace': {
+      const removed = data.sessions.filter((s) => s.workspaceId === args.id).map((s) => s.id);
+      data.sessions = data.sessions.filter((s) => s.workspaceId !== args.id);
+      for (const id of removed) if (data.messages) delete data.messages[id];
+      data.workspaces = data.workspaces?.filter((w) => w.id !== args.id);
+      break;
+    }
     case 'set_session_workspace':
       data.sessions = data.sessions.map((s) =>
         s.id === args.id

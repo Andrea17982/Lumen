@@ -1,7 +1,9 @@
+import ApiCost from './ApiCost';
 import { lazy, Suspense, useState } from 'react';
 import { Check, ChevronDown, Copy, MapPin, Paperclip, Repeat2, RotateCcw } from 'lucide-react';
 import AttachmentPreview from './AttachmentPreview';
 import NativeQuestions from './NativeQuestions';
+import QuotaResume from './QuotaResume';
 import ChildSessions from './ChildSessions';
 import ResponseImage from './ResponseImage';
 import { HIDDEN, orchestraOf, providerOf } from '../lib/messages';
@@ -63,6 +65,8 @@ export default function MessageView({
   const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
   const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
   const from = providerOf(m);
+  const automatic = m.activity.some((a) => a.kind === 'auto-assignment');
+  const assigned = m.activity.filter((a) => a.kind === 'model').at(-1)?.text;
   const other = from === 'claude' ? 'gpt' : 'claude';
   const orchestraState = m.role === 'assistant' ? orchestraOf(m) : null;
   const nogit = m.activity.some((a) => a.kind === 'orchestra-nogit');
@@ -122,6 +126,14 @@ export default function MessageView({
           )}
         </span>
       </div>
+      {automatic && assigned && (
+        <p className="assignment-note">
+          {t('Prompt assigned to')} {assigned}
+        </p>
+      )}
+      {latest && m.role === 'assistant' && (
+        <QuotaResume message={m} running={running} busy={busy} command={onOrchestra} />
+      )}
       {reasoning && (
         <details className="reasoning">
           <summary>
@@ -156,6 +168,7 @@ export default function MessageView({
           </div>
         </details>
       )}
+      {m.role === 'assistant' && <ApiCost activity={m.activity} />}
       <NativeQuestions activity={m.activity} live={live} />
       <ChildSessions activity={m.activity} />
       {orchestraState && (
@@ -164,7 +177,12 @@ export default function MessageView({
             key={`${m.id}-${orchestraState.stage}`}
             message={m}
             state={orchestraState}
-            accounts={accounts}
+            accounts={accounts.filter(
+              (a) =>
+                !['opencode', 'cursor', 'openaiapi', 'anthropicapi', 'googleapi'].includes(
+                  a.provider,
+                ),
+            )}
             busy={busy || (running && ['questions', 'plan'].includes(orchestraState.stage))}
             readOnly={readOnly}
             run={onOrchestra}
@@ -217,6 +235,11 @@ export default function MessageView({
             />
           );
         })}
+      {automatic && assigned && !live && m.text && (
+        <p className="assignment-note">
+          {t('Completed by')} {assigned}
+        </p>
+      )}
       {attachments && (
         <div className="attachment-chips">
           {attachments.map((f) => (

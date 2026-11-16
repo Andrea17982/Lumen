@@ -10,6 +10,8 @@ Autopilot authorizes available native tools, shell/network/filesystem actions an
 
 Provider binaries come from PATH, so use trusted official installations. Subscription authentication remains inside their own CLI flows/directories. Lumen does not copy token contents, implement provider OAuth endpoints or turn subscriptions into a shared inference gateway.
 
+OpenCode and Cursor use one existing native profile each with explicit selection. OpenCode verifies its official per-session policy before prompting; restricted profiles deny shell, external directories, custom subagents and Code Mode, and Ask uses one-shot ACP decisions. Only the active OpenCode session can emit events or request permission; callbacks during setup or from another session are denied. Native policies remain in effect. Cursor retains Autopilot only and no Lumen shared-tool bridge. Inherited inference API-key variables, including `CURSOR_API_KEY`, are removed from Lumen-launched provider processes to avoid silently changing billing identity. Removing the Lumen slot does not sign out or remove the native profile.
+
 ## Browser and Ollama
 
 Bundled Moli archives are pinned and SHA-256 verified at preparation time, with upstream notices retained. The browser broker is loopback-only, uses an invocation-specific capability and validates tool arguments, access, output/concurrency/deadlines and cancellation. Page content is untrusted data. Read only/File edits reject page mutations; Autopilot proceeds; Ask-first browser mutations require a scoped one-action decision.
@@ -37,3 +39,5 @@ Closing to the notification area preserves active work. Stop/normal Quit request
 Use [private vulnerability reporting](https://github.com/Andrea17982/Lumen/security/advisories/new) when available; otherwise request a private contact in an issue without exposing exploit details or secrets. Include the OS, app/CLI versions and a minimal redacted reproduction. There is no promised response SLA or paid bounty.
 
 [Permission guide](docs/workspace-models-permissions.md) · [Validation](docs/validation.md)
+
+Official API keys are separate OS-keychain entries, never environment variables or SQLite values. API requests use fixed HTTPS origins without redirects/proxies. Durable request reservations, output caps and explicit Auto opt-in bound estimated token spend; incorrect user rates, price changes and external tool fees remain outside that estimate. Uncertain requests retain reservations. [API security/budget boundaries](docs/api-access.md).

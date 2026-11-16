@@ -1,3 +1,4 @@
+import Select from '../../components/Select';
 import { useEffect, useState } from 'react';
 import type { LocalAssistant } from './assistant';
 import type { LocalAssistantConfig } from './types';
@@ -43,7 +44,7 @@ export default function LocalAssistantSettings({ assistant, config, onChange }: 
         <>
           <label>
             Model
-            <select value={config.model} onChange={(e) => set({ model: e.target.value })}>
+            <Select value={config.model} onChange={(e) => set({ model: e.target.value })}>
               <option value="">Choose…</option>
               {config.model && !models.includes(config.model) && (
                 <option value={config.model}>{config.model}</option>
@@ -53,7 +54,7 @@ export default function LocalAssistantSettings({ assistant, config, onChange }: 
                   {m}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label>
             <input

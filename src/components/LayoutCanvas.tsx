@@ -1,3 +1,4 @@
+import Select from './Select';
 import { useEffect, useRef, useState } from 'react';
 import { call } from '../lib/bridge';
 import { errorText } from '../lib/util';
@@ -181,11 +182,11 @@ export default function LayoutCanvas({ folder }: { folder: string }) {
           </label>
           <label>
             {t('Role')}
-            <select value={block.role} onChange={(e) => update(block.id, { role: e.target.value })}>
+            <Select value={block.role} onChange={(e) => update(block.id, { role: e.target.value })}>
               {['header', 'navigation', 'content', 'image', 'button', 'footer'].map((r) => (
                 <option key={r}>{r}</option>
               ))}
-            </select>
+            </Select>
           </label>
           {(['x', 'y', 'width', 'height'] as const).map((key) => (
             <label key={key}>

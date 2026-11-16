@@ -49,18 +49,69 @@ pub fn record(v: &Verdict) -> Activity {
 
 /// The verdict of the latest earlier request in this chat.
 pub fn previous(messages: &[Message]) -> Option<Verdict> {
-    let a = messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")?
-        .activity
-        .iter()
-        .find(|a| a.kind == "route")?;
-    let (task, complex) = parse(&a.text)?;
-    Some(Verdict {
-        task,
-        complex,
-        source: "previous request",
+    let mut end = messages.len();
+    let mut merged: Option<Verdict> = None;
+    while let Some(index) = messages[..end].iter().rposition(|m| m.role == "user") {
+        let request = &messages[index];
+        let mut verdict = request
+            .activity
+            .iter()
+            .find(|a| a.kind == "route")
+            .and_then(|a| parse(&a.text))
+            .map(|(task, complex)| Verdict {
+                task,
+                complex,
+                source: "previous request",
+            })
+            .unwrap_or_else(|| heuristic(&request.text));
+        for activity in messages[index + 1..end]
+            .iter()
+            .filter(|m| m.role == "assistant")
+            .flat_map(|m| &m.activity)
+            .filter(|a| a.kind == "model")
+        {
+            let name = activity
+                .text
+                .split('·')
+                .nth(1)
+                .unwrap_or(&activity.text)
+                .trim();
+            let model = crate::models::ModelInfo {
+                id: name.into(),
+                name: String::new(),
+                description: String::new(),
+                efforts: vec![],
+                default_effort: String::new(),
+                is_default: false,
+            };
+            verdict.task.tier = verdict.task.tier.max(crate::router::model_tier(&model));
+            verdict.task.effort = verdict.task.effort.max(
+                match activity.text.split('·').next_back().unwrap_or("").trim() {
+                    "high" | "xhigh" | "max" | "ultra" => 2,
+                    "medium" => 1,
+                    _ => 0,
+                },
+            );
+        }
+        if let Some(current) = &mut merged {
+            current.task.tier = current.task.tier.max(verdict.task.tier);
+            current.task.effort = current.task.effort.max(verdict.task.effort);
+            current.task.review |= verdict.task.review;
+            current.complex |= verdict.complex;
+            if current.task.audit == crate::router::AuditIntent::Auto {
+                current.task.audit = verdict.task.audit;
+            }
+        } else {
+            merged = Some(verdict);
+        }
+        if follow_up(Some(heuristic("")), &request.text).is_none() {
+            break;
+        }
+        end = index;
+    }
+    merged.map(|mut verdict| {
+        verdict.source = "previous request";
+        verdict
     })
 }
 
@@ -75,6 +126,8 @@ pub fn follow_up(previous: Option<Verdict>, request: &str) -> Option<Verdict> {
     let command = text.trim_end_matches(['.', '!']).to_lowercase();
     let continuation = [
         "procedi",
+        "prosegui",
+        "prosegui pure",
         "continua",
         "proceed",
         "continue",
@@ -302,7 +355,7 @@ mod tests {
                 activity: vec![],
             },
         ];
-        assert!(previous(&chat).is_none());
+        assert_eq!(previous(&chat).unwrap().task.tier, 0);
     }
     #[test]
     fn parses_a_verdict_inside_chatter() {
@@ -366,5 +419,38 @@ mod tests {
             m("user", "procedi"),
         ];
         assert_eq!(recent_context(&chat), "user: fix the race\nassistant: plan");
+    }
+    #[test]
+    fn prosegui_recovers_manual_flagship_even_after_an_old_bad_continuation() {
+        let user = |text: &str| Message {
+            id: crate::models::id(),
+            role: "user".into(),
+            text: text.into(),
+            activity: vec![],
+        };
+        let mut reply = Message {
+            id: "opus".into(),
+            role: "assistant".into(),
+            text: String::new(),
+            activity: vec![Activity {
+                kind: "model".into(),
+                text: "claude · Opus 5.5 · high".into(),
+            }],
+        };
+        let mut chat = vec![
+            user("Implement the next release block"),
+            reply.clone(),
+            user("Prosegui."),
+        ];
+        reply.activity[0].text = "codex · GPT-6-Luna · low".into();
+        chat.push(reply);
+        let verdict = follow_up(previous(&chat), "Prosegui.").unwrap();
+        assert_eq!((verdict.task.tier, verdict.task.effort), (2, 2));
+        chat.push(user("Translate hello to Italian"));
+        assert_eq!(previous(&chat).unwrap().task.tier, 0);
+        for _ in 0..2000 {
+            chat.push(user("Prosegui."));
+        }
+        assert_eq!(previous(&chat).unwrap().task.tier, 0);
     }
 }

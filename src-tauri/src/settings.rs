@@ -104,7 +104,7 @@ impl AppSettings {
         l.max_concurrent = l.max_concurrent.filter(|&n| n >= 1).map(|n| n.min(32));
         l.max_subtasks = l.max_subtasks.filter(|&n| n >= 1).map(|n| n.min(999));
         l.quota_thresholds.retain(|p, v| {
-            ["claude", "gpt", "gemini", "antigravity"].contains(&p.as_str())
+            ["claude", "gpt", "antigravity"].contains(&p.as_str())
                 && v.is_finite()
                 && *v > 0.0
                 && *v < 100.0

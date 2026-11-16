@@ -16,6 +16,9 @@ pub fn executable(p: &Provider) -> Result<PathBuf, String> {
     })
 }
 pub fn command(p: &Provider) -> Result<Command, String> {
+    if p.is_api() {
+        return Err("This provider uses its official HTTPS API, not a CLI".into());
+    }
     let exe = executable(p)?;
     // Rust's Windows process implementation handles .cmd/.bat quoting itself.
     // Manually prefixing cmd /c breaks launchers under paths containing spaces.
@@ -28,7 +31,7 @@ pub fn command(p: &Provider) -> Result<Command, String> {
 pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
     if *p == Provider::Antigravity {
         c.env("HOME", dir).env("USERPROFILE", dir);
-    } else if *p == Provider::Ollama {
+    } else if matches!(p, Provider::Ollama | Provider::Opencode | Provider::Cursor) {
         // Local models live in the user's own Ollama store; nothing to isolate.
     } else {
         c.env(p.env(), dir);
@@ -43,6 +46,7 @@ pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
         "CODEX_ACCESS_TOKEN",
         "GOOGLE_API_KEY",
         "GEMINI_API_KEY",
+        "CURSOR_API_KEY",
     ] {
         c.env_remove(key);
     }
@@ -82,6 +86,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             })
         }
     };
+    if *p == Provider::Cursor {
+        return crate::cursor::normalize(v);
+    }
     if *p == Provider::Gpt {
         if v["type"] == "thread.started" {
             push("session", v["thread_id"].as_str().unwrap_or("").into());
@@ -218,7 +225,20 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
             }
         }
     } else {
-        // Google CLIs. Antigravity print mode: step_update text deltas, then one result event.
+        if v["event"] == "init" {
+            if let Some(id) = v["conversation_id"].as_str() {
+                push("session", id.into());
+            }
+        }
+        if v["event"] == "step_update" {
+            if let Some(input) = v["step_update"]["usage"]["input_tokens"].as_u64() {
+                push("usage", input.to_string());
+            }
+            if v["step_update"]["step_type"] == "tool" {
+                push("tool", v["step_update"]["tool_info"].to_string());
+            }
+        }
+        // Antigravity print mode: step_update text deltas, then one result event.
         if v["event"] == "step_update" && v["step_update"]["step_type"] == "agent_response" {
             if let Some(t) = v["step_update"]["text_delta"].as_str() {
                 push("delta", t.into());
@@ -229,7 +249,11 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                 push("final", t.into());
             }
         }
-        if v["event"] == "result" && v["result"]["status"] == "ERROR" {
+        if v["event"] == "result"
+            && v["result"]["status"]
+                .as_str()
+                .is_some_and(|status| status != "SUCCESS")
+        {
             push(
                 "error",
                 v["result"]["error"]
@@ -268,6 +292,7 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
 }
 
 pub struct Invocation<'a> {
+    pub automatic: bool,
     pub browser_scope: Option<&'a str>,
     pub browser_artifacts: Option<&'a Path>,
     pub browser: Option<&'a crate::browser::Registration>,
@@ -289,12 +314,16 @@ pub async fn execute(
     cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity),
 ) -> Result<String, String> {
+    if input.account.provider == Provider::Cursor {
+        return crate::cursor::execute(input, cancel, emit).await;
+    }
     // IPC is limited to one text delta per frame. Control/diagnostic events flush pending text
     // first, so ordering and interactive questions are preserved without delaying decisions.
     let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
     let browser = crate::browser::Registration::new(&input, send.clone()).await?;
     let prompt = format!("{}\n\n{}", crate::browser::INSTRUCTIONS, input.prompt);
     let input = Invocation {
+        automatic: input.automatic,
         account: input.account,
         config: input.config,
         workspace: input.workspace,
@@ -320,7 +349,7 @@ pub async fn execute(
             result = &mut run => {
                 while let Ok(activity) = receive.try_recv() { buffered(activity, &mut text, &mut emit); }
                 flush_delta(&mut text, &mut emit);
-                return result;
+                return result.map_err(|e| if crate::limits::is_rate_limit(&e) && !e.starts_with(crate::limits::RATE_LIMIT) { format!("{}{e}", crate::limits::RATE_LIMIT) } else { e });
             }
             Some(activity) = receive.recv() => buffered(activity, &mut text, &mut emit),
             _ = interval.tick() => flush_delta(&mut text, &mut emit),
@@ -420,10 +449,13 @@ async fn execute_inner(
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity),
 ) -> Result<String, String> {
-    let _configuration_lease = if matches!(
-        input.account.provider,
-        Provider::Gemini | Provider::Antigravity
-    ) {
+    if input.account.provider == Provider::Opencode {
+        return crate::opencode_acp::execute(input, cancel, emit).await;
+    }
+    if input.account.provider.is_api() {
+        return crate::api::execute(input, cancel, emit).await;
+    }
+    let _configuration_lease = if matches!(input.account.provider, Provider::Antigravity) {
         Some(configuration_lease(input.config, cancel.clone()).await?)
     } else {
         None
@@ -432,7 +464,11 @@ async fn execute_inner(
     if input.account.provider == Provider::Ollama {
         return crate::ollama_agent::execute(input, cancel, emit).await;
     }
-    if matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
+    if crate::adapter_contract::contract(&input.account.provider)
+        .native_skills
+        .support
+        == crate::adapter_contract::Support::Available
+    {
         // Lumen's shared skills become native skills, loaded only when a task needs them.
         if let Some(data) = input.config.parent().and_then(Path::parent) {
             for dir in crate::integrations::enabled_skills(data) {
@@ -451,9 +487,13 @@ async fn execute_inner(
         }
     }
     if input.access == AccessMode::Ask {
-        if !matches!(input.account.provider, Provider::Claude | Provider::Gpt) {
+        if crate::adapter_contract::contract(&input.account.provider)
+            .ask_first
+            .support
+            != crate::adapter_contract::Support::Available
+        {
             return Err(
-                "Approve each action is available for Claude and Codex. Choose another permission mode."
+                "This provider does not support per-action approval. Choose another permission mode."
                     .into(),
             );
         }
@@ -509,6 +549,7 @@ async fn execute_inner(
     if let Some(id) = input.resume.filter(|id| !id.is_empty()) {
         match p {
             Provider::Claude => args.extend(["--resume".into(), id.into()]),
+            Provider::Antigravity => args.extend(["--conversation".into(), id.into()]),
             Provider::Gpt => {
                 // Exec flags stay before the subcommand; `-` still reads the prompt from stdin.
                 if args.last().map(String::as_str) == Some("-") {
@@ -528,7 +569,7 @@ async fn execute_inner(
             }
         }
     }
-    if matches!(p, Provider::Gemini | Provider::Antigravity) {
+    if matches!(p, Provider::Antigravity) {
         if let Some(data) = input.config.parent().and_then(Path::parent) {
             crate::graph_mcp::configure_google_for(
                 input.config,
@@ -655,7 +696,7 @@ pub fn invocation_args(
             "stream-json",
             "--include-partial-messages",
         ],
-        Provider::Gemini => vec!["--prompt", "", "--output-format", "stream-json"],
+
         // agy ignores stdin in plain print mode; stream-json input reads the prompt
         // as one NDJSON message, so long prompts never hit the command-line limit.
         Provider::Antigravity => vec![
@@ -667,6 +708,11 @@ pub fn invocation_args(
         ],
         // Prompt-only: Ollama reads stdin and prints plain text, never touching files.
         Provider::Ollama => vec!["run"],
+        Provider::Opencode
+        | Provider::Cursor
+        | Provider::Openaiapi
+        | Provider::Anthropicapi
+        | Provider::Googleapi => return vec![],
     }
     .into_iter()
     .map(str::to_owned)
@@ -749,35 +795,31 @@ pub fn invocation_args(
                 args.extend(["--effort".into(), effort.into()]);
             }
         }
-        Provider::Gemini | Provider::Antigravity => {
-            if *p == Provider::Gemini {
-                let permission = match access {
-                    AccessMode::ReadOnly | AccessMode::Ask => "--approval-mode=plan",
-                    AccessMode::FileEdits => "--approval-mode=auto_edit",
-                    AccessMode::Autopilot => "--approval-mode=yolo",
-                };
-                args.push(permission.into());
-            } else {
-                let permission = match access {
-                    AccessMode::ReadOnly | AccessMode::Ask => "--mode=plan",
-                    AccessMode::FileEdits => "--mode=accept-edits",
-                    AccessMode::Autopilot => "--dangerously-skip-permissions",
-                };
-                args.push(permission.into());
-                // Headless agy denies every shell command, even `dir`, and its allow
-                // rules only match command(*). In File edits it therefore gets all
-                // commands; the interface warns about this when File edits is chosen.
-                if access == AccessMode::FileEdits {
-                    args.extend([
-                        "--settings".into(),
-                        r#"{"permissions":{"allow":["command(*)"]}}"#.into(),
-                    ]);
-                }
+        Provider::Antigravity => {
+            let permission = match access {
+                AccessMode::ReadOnly | AccessMode::Ask => "--mode=plan",
+                AccessMode::FileEdits => "--mode=accept-edits",
+                AccessMode::Autopilot => "--dangerously-skip-permissions",
+            };
+            args.push(permission.into());
+            // Headless agy denies every shell command, even `dir`, and its allow
+            // rules only match command(*). In File edits it therefore gets all
+            // commands; the interface warns about this when File edits is chosen.
+            if access == AccessMode::FileEdits {
+                args.extend([
+                    "--settings".into(),
+                    r#"{"permissions":{"allow":["command(*)"]}}"#.into(),
+                ]);
             }
             if *p == Provider::Antigravity && !effort.is_empty() {
                 args.extend(["--effort".into(), effort.into()]);
             }
         }
+        Provider::Opencode
+        | Provider::Cursor
+        | Provider::Openaiapi
+        | Provider::Anthropicapi
+        | Provider::Googleapi => unreachable!("Adapter owns its invocation"),
         Provider::Ollama => {
             args.push(model.unwrap_or_default().into());
             args.extend(["--hidethinking".into(), "--nowordwrap".into()]);
@@ -787,13 +829,105 @@ pub fn invocation_args(
     if let Some(m) = model {
         args.extend(["--model".into(), m.into()]);
     }
-    if *p == Provider::Gemini && args.len() > 1 {
-        args[1] = "".into();
-    }
     if *p == Provider::Gpt {
         args.push("-".into());
     }
     args
+}
+
+pub(crate) async fn run_owned_json(
+    mut command: tokio::process::Command,
+    prompt: &str,
+    provider: &Provider,
+    mut cancel: watch::Receiver<bool>,
+    mut emit: impl FnMut(Activity),
+) -> Result<String, String> {
+    if *cancel.borrow() {
+        return Err("Cancelled".into());
+    }
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    crate::execution::signal(&mut emit, "spawn-start");
+    let mut child = crate::proc::ServiceChild::spawn(command).map_err(|e| e.to_string())?;
+    crate::execution::signal(&mut emit, "process-started");
+    if let Some(pid) = child.id() {
+        emit(Activity {
+            kind: "pid".into(),
+            text: pid.to_string(),
+        });
+    }
+    let stderr = child.stderr.take().ok_or("Missing CLI diagnostics")?;
+    let diagnostics = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        let mut tail = std::collections::VecDeque::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tail.push_back(line.chars().take(400).collect::<String>());
+            if tail.len() > 20 {
+                tail.pop_front();
+            }
+        }
+        tail.into_iter().collect::<Vec<_>>().join("\n")
+    });
+    let mut lines = BufReader::new(child.stdout.take().ok_or("Missing CLI stream")?).lines();
+    let mut text = String::new();
+    let mut completed = *provider != Provider::Cursor;
+    let mut stdin = child.stdin.take().ok_or("Missing CLI input")?;
+    let send = async move {
+        stdin
+            .write_all(prompt.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+        drop(stdin);
+        Ok::<(), String>(())
+    };
+    let receive = async {
+        loop {
+            let line = tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),line=lines.next_line()=>line.map_err(|e|e.to_string())?};
+            let Some(line) = line else { break };
+            let value: Value = serde_json::from_str(&line)
+                .map_err(|_| "CLI emitted an unsupported JSON stream")?;
+            for activity in normalize(provider, &value) {
+                match activity.kind.as_str() {
+                    "error" => return Err(activity.text),
+                    "completed" => completed = true,
+                    "final" if !text.is_empty() => {}
+                    "text" | "delta" | "final" => {
+                        text.push_str(&activity.text);
+                        emit(Activity {
+                            kind: "replace".into(),
+                            text: text.clone(),
+                        });
+                    }
+                    _ => emit(activity),
+                }
+            }
+        }
+        let status = tokio::select! {biased;_=cancel.changed()=>return Err("Cancelled".into()),status=child.wait()=>status?};
+        if !status.success() {
+            return Err(format!("{} exited unsuccessfully; check official CLI login, model access and workspace permissions", provider.binary()));
+        }
+        if !completed {
+            return Err("Cursor stream ended without a successful terminal result".into());
+        }
+        if text.trim().is_empty() {
+            return Err("CLI returned no assistant text".into());
+        }
+        Ok(())
+    };
+    let result = tokio::try_join!(send, receive).map(|_| ());
+    let cleanup = child.finish(result.is_ok()).await;
+    let tail = diagnostics.await.unwrap_or_default();
+    cleanup?;
+    if result.as_ref().is_err_and(|e| e != "Cancelled") && crate::limits::is_rate_limit(&tail) {
+        return Err(format!(
+            "{}{} quota exhausted; check the official CLI for reset details.",
+            crate::limits::RATE_LIMIT,
+            provider.binary()
+        ));
+    }
+    result.map(|_| text)
 }
 
 pub(crate) async fn run_command(
@@ -825,10 +959,12 @@ pub(crate) async fn run_command(
     let mut stdin = child.stdin.take().ok_or("CLI stdin unavailable")?;
     let prompt = prompt.to_owned();
     crate::execution::signal(&mut emit, "request-enqueued");
+    let keep_input = *p == Provider::Antigravity;
     let writer = tokio::spawn(async move {
-        let r = stdin.write_all(prompt.as_bytes()).await;
-        drop(stdin);
-        r
+        let result = stdin.write_all(prompt.as_bytes()).await;
+        // Stream input is a multi-turn connection: EOF can cancel an Antigravity turn.
+        let input = keep_input.then_some(stdin);
+        (result, input)
     });
     let stderr = child.stderr.take().ok_or("CLI stderr unavailable")?;
     // Drain diagnostics to prevent pipe deadlocks, but don't send raw auth logs to the UI.
@@ -868,7 +1004,9 @@ pub(crate) async fn run_command(
                             "final"=>{if text.is_empty(){text=a.text;emit(Activity{kind:"replace".into(),text:text.clone()});}},
                             "error"=>{error=Some(a.text);},_=>emit(a)
                         }
-                    }}
+                    }
+                    if *p == Provider::Antigravity && v["event"] == "result" { break; }
+                    }
                 }
             }
         }Ok(())
@@ -879,8 +1017,10 @@ pub(crate) async fn run_command(
         diagnostics.abort();
         return Err(e);
     }
-    let status = tokio::select! { biased; _=cancel.changed()=>{terminate(&mut child).await;writer.abort();diagnostics.abort();return Err("Cancelled".into());}, r=child.wait()=>r.map_err(|e|e.to_string())? };
-    let _ = writer.await;
+    let (written, input) = writer.await.map_err(|e| e.to_string())?;
+    drop(input);
+    written.map_err(|e| e.to_string())?;
+    let status = tokio::select! { biased; _=cancel.changed()=>{terminate(&mut child).await;diagnostics.abort();return Err("Cancelled".into());}, r=child.wait()=>r.map_err(|e|e.to_string())? };
     let stderr_tail = diagnostics.await.unwrap_or_default();
     if let Some(e) = error {
         if crate::limits::is_rate_limit(&e) {
@@ -916,6 +1056,34 @@ pub(crate) async fn run_command(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn antigravity_keeps_stdin_open_until_terminal_result() {
+        let mut command = crate::proc::command("node");
+        command.args(["-e", r#"
+            let ended = false;
+            process.stdin.on('end', () => { ended = true; });
+            process.stdin.once('data', () => setTimeout(() => {
+                if (ended) { process.exitCode = 3; return; }
+                console.log(JSON.stringify({event:'result', result:{status:'SUCCESS',response:'stream stayed open'}}));
+            }, 150));
+        "#]);
+        let (_send, cancel) = watch::channel(false);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            run_command(
+                command,
+                "{\"event\":\"user\"}\n",
+                &Provider::Antigravity,
+                cancel,
+                |_| {},
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.unwrap(), "stream stayed open");
+    }
     use std::time::Duration;
     #[tokio::test]
     async fn account_configuration_waits_without_mutating_and_can_be_cancelled() {

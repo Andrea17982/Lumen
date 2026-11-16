@@ -2,7 +2,7 @@
 //! side-by-side broadcast, with rate-limit fallback, checkpoints and self-healing.
 use crate::{
     account, config_dir, context, event, gitops, integrations, limits, models::*, models_for,
-    providers, resolve_effort, router, Core,
+    models_in, providers, resolve_effort, router, Core,
 };
 use std::{
     future::Future,
@@ -28,6 +28,27 @@ pub async fn send_message(
     options: RunOptions,
     client_message_id: Option<String>,
 ) -> Result<Plan, String> {
+    submit(
+        app,
+        core.inner().clone(),
+        id,
+        text,
+        options,
+        client_message_id,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn submit(
+    app: tauri::AppHandle,
+    core: Arc<Core>,
+    id: String,
+    text: String,
+    options: RunOptions,
+    client_message_id: Option<String>,
+    reservation: Option<watch::Receiver<bool>>,
+) -> Result<Plan, String> {
     let preparation_started = std::time::Instant::now();
     let message_id = match client_message_id {
         Some(id) => uuid::Uuid::parse_str(&id)
@@ -47,16 +68,53 @@ pub async fn send_message(
     if history.iter().any(|message| message.id == message_id) {
         return Err("This message was already accepted; reload the conversation".into());
     }
+    if reservation.is_none()
+        && core
+            .jobs
+            .lock()
+            .map_err(|_| "Jobs lock failed")?
+            .contains_key(&id)
+    {
+        return Err("This conversation already has a running or scheduled turn".into());
+    }
+    if reservation.as_ref().is_some_and(|cancel| *cancel.borrow()) {
+        return Err("Cancelled".into());
+    }
     let workspace_changed = crate::workspace::apply(&app, &core, &id, &text)?;
     if workspace_changed {
         session = core.store.session(&id)?;
     }
     let accounts = core.store.accounts()?;
-    if options.audit_of.is_none() {
+    let requested = (options.mode == "auto")
+        .then(|| router::requested_provider(&text))
+        .flatten();
+    let usage = if options.mode == "auto" && requested.is_none() {
+        crate::read_usage(&core)?
+    } else {
+        vec![]
+    };
+    let available = accounts
+        .iter()
+        .filter(|a| {
+            (!matches!(a.provider, Provider::Opencode | Provider::Cursor))
+                && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
+                && !core.limits.cooling(&a.id, now())
+                && !usage
+                    .iter()
+                    .find(|u| u.account_id == a.id)
+                    .and_then(|u| router::usage_pressure(u, now()))
+                    .is_some_and(|p| p >= 1000.0)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if options.mode == "auto" && requested.is_none() && available.is_empty() {
+        return Err("No account is currently available. Check provider credits or wait for the quota reset.".into());
+    }
+    if options.audit_of.is_none() && requested.is_none() {
         if let Some((message, _)) = crate::orchestra::continuation(&history, &text) {
             return crate::orchestra::continue_message(
                 app,
-                core.inner().clone(),
+                core.clone(),
                 id,
                 message,
                 text,
@@ -67,19 +125,19 @@ pub async fn send_message(
             .await;
         }
     }
-    let reused = (options.mode == "auto" && options.audit_of.is_none())
+    let reused = (options.mode == "auto" && options.audit_of.is_none() && requested.is_none())
         .then(|| crate::classify::follow_up(crate::classify::previous(&history), &text))
         .flatten();
-    let verdict = if let Some(v) = reused {
+    let mut verdict = if let Some(v) = reused {
         v
-    } else if options.mode == "auto" && options.audit_of.is_none() {
+    } else if options.mode == "auto" && options.audit_of.is_none() && requested.is_none() {
         let local = core.settings.lock().ok().and_then(|s| {
             let l = &s.local_assistant;
             (l.enabled && !l.model.is_empty()).then(|| (l.model.clone(), l.timeout_ms))
         });
         crate::classify::classify(
             &core.root,
-            &accounts,
+            &available,
             local,
             &text,
             &crate::classify::recent_context(&history),
@@ -88,39 +146,27 @@ pub async fn send_message(
     } else {
         crate::classify::heuristic(&text)
     };
-    let mut plan = router::route_with(verdict.task, &options, &accounts)?;
+    let mut routing = options.clone();
+    if let Some(provider) = requested {
+        routing.mode = provider.into();
+        routing.account_id = None;
+        routing.model = None;
+    }
+    let candidates = if options.mode == "auto" && requested.is_none() {
+        &available
+    } else {
+        &accounts
+    };
+    let mut plan = router::route_with(verdict.task, &routing, candidates)?;
     let wanted_review = plan.strategy == "review";
     if options.mode == "auto" {
-        let balanced = crate::balance(&core, &options, &accounts, &mut plan).await?;
-        stick_to_previous(&core, &history, &accounts, &mut plan, balanced);
-        // Skip an account that is cooling down after a rate limit.
-        if core.limits.cooling(&plan.account_id, now()) {
-            if let Some(b) = accounts.iter().find(|b| {
-                b.id != plan.account_id
-                    && matches!(b.provider, Provider::Claude | Provider::Gpt)
-                    && !core.limits.cooling(&b.id, now())
-            }) {
-                plan.provider = b.provider.clone();
-                plan.account_id = b.id.clone();
-                let available = accounts
-                    .iter()
-                    .filter(|a| !core.limits.cooling(&a.id, now()))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                plan.partner_account = if wanted_review {
-                    router::review_partner(&available, b).map(|a| a.id.clone())
-                } else {
-                    None
-                };
-                if plan.partner_account.is_none() {
-                    plan.strategy = "single".into();
-                }
-                plan.reason = "Preferred account is cooling down after a rate limit".into();
-            }
+        if requested.is_none() {
+            let balanced = crate::balance(&core, &options, &available, &mut plan).await?;
+            stick_to_previous(&core, &history, &available, &mut plan, balanced);
         }
         reconcile_review(verdict.task, &options, wanted_review, &mut plan)?;
         let a = account(&core, &plan.account_id)?;
-        let models = models_for(&core, &a, false, None).await?;
+        let models = models_in(&core, &a, false, None, &session.workspace).await?;
         let selected =
             router::select_tier(&models, verdict.task.tier).ok_or("No provider model available")?;
         plan.model = Some(selected.id.clone());
@@ -130,8 +176,25 @@ pub async fn send_message(
         }
     } else if options.mode != "both" {
         let a = account(&core, &plan.account_id)?;
-        let models = models_for(&core, &a, false, None).await?;
+        let models = models_in(&core, &a, false, None, &session.workspace).await?;
         crate::catalog::validate(&models, plan.model.as_deref(), &plan.effort)?;
+    }
+    if options.mode != "auto" {
+        let a = account(&core, &plan.account_id)?;
+        let models = models_in(&core, &a, false, None, &session.workspace).await?;
+        if let Some(selected) = plan
+            .model
+            .as_ref()
+            .and_then(|id| models.iter().find(|m| &m.id == id))
+            .or_else(|| models.iter().find(|m| m.is_default))
+        {
+            verdict.task.tier = verdict.task.tier.max(router::model_tier(selected));
+            verdict.task.effort = verdict.task.effort.max(match options.effort.as_str() {
+                "high" | "xhigh" | "max" | "ultra" => 2,
+                "medium" => 1,
+                _ => 0,
+            });
+        }
     }
     for f in &options.attachments {
         context::attachment_path(Path::new(&session.workspace), f)?;
@@ -139,6 +202,7 @@ pub async fn send_message(
     // Orchestra: complex Auto work is planned and split across agents.
     let mut orchestra_nogit = false;
     if options.audit_of.is_none()
+        && requested.is_none()
         && plan.strategy != "broadcast"
         && core.settings.lock().map(|s| s.orchestra).unwrap_or(false)
         && verdict.complex
@@ -155,12 +219,20 @@ pub async fn send_message(
         }
     }
     let (tx, rx) = watch::channel(false);
+    let reserved = reservation.is_some();
+    let rx = reservation.unwrap_or(rx);
     {
         let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
-        if jobs.contains_key(&id) {
-            return Err("This conversation already has a running turn".into());
+        if reserved {
+            if *rx.borrow() || !jobs.contains_key(&id) {
+                return Err("Cancelled".into());
+            }
+        } else {
+            if jobs.contains_key(&id) {
+                return Err("This conversation already has a running turn".into());
+            }
+            jobs.insert(id.clone(), tx);
         }
-        jobs.insert(id.clone(), tx);
     }
     let release = |core: &Core| {
         if let Ok(mut j) = core.jobs.lock() {
@@ -173,9 +245,11 @@ pub async fn send_message(
         text: text.clone(),
         activity: vec![],
     };
-    if options.mode == "auto" {
-        user.activity.push(crate::classify::record(&verdict));
-    }
+    user.activity.push(crate::classify::record(&verdict));
+    user.activity.push(Activity {
+        kind: "run-options".into(),
+        text: serde_json::to_string(&options).map_err(|e| e.to_string())?,
+    });
     if !options.attachments.is_empty() {
         user.activity.push(Activity {
             kind: "attachments".into(),
@@ -215,7 +289,7 @@ pub async fn send_message(
         release(&core);
         return Err(e);
     }
-    let core = core.inner().clone();
+    let core = core.clone();
     let returned = plan.clone();
     tauri::async_runtime::spawn(async move {
         let mut cancelled = rx.clone();
@@ -277,6 +351,21 @@ pub async fn send_message(
                 }
             };
             if let Err(e) = &r {
+                let retry = output
+                    .activity
+                    .iter()
+                    .rev()
+                    .find(|a| a.kind == "quota-reset")
+                    .and_then(|a| serde_json::from_str::<serde_json::Value>(&a.text).ok())
+                    .and_then(|v| v["at"].as_i64());
+                let failure = crate::adapter_contract::Failure::new(e, retry);
+                note(
+                    &app,
+                    &id,
+                    &mut output,
+                    "adapter-error",
+                    serde_json::to_string(&failure).unwrap(),
+                );
                 note(&app, &id, &mut output, "error", friendly(e));
             }
             crate::execution::phase(
@@ -335,6 +424,8 @@ fn reconcile_review(
 /// Token usage a provider reported for a turn, stored on the reply for the context meter.
 #[derive(serde::Serialize, Default)]
 struct Measured {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<Provider>,
     /// Input tokens of the latest request, cached reads and writes included.
     latest: u64,
     /// First request input minus the local prompt estimate: CLI instructions, tools and the
@@ -361,7 +452,10 @@ fn stick_to_previous(
     balanced: bool,
 ) {
     if balanced
-        || !matches!(plan.provider, Provider::Claude | Provider::Gpt)
+        || crate::adapter_contract::contract(&plan.provider)
+            .native_resume
+            .support
+            != crate::adapter_contract::Support::Available
         || plan.strategy == "broadcast"
     {
         return;
@@ -429,7 +523,7 @@ pub(crate) struct Resume {
     pub replay: Option<RunOptions>,
 }
 
-fn native_of(m: &Message) -> Option<Native> {
+pub(crate) fn native_of(m: &Message) -> Option<Native> {
     m.activity
         .iter()
         .rev()
@@ -447,7 +541,11 @@ pub(crate) fn resumable(
     workspace: &str,
     _access: AccessMode,
 ) -> Option<(String, Message)> {
-    if !matches!(account.provider, Provider::Claude | Provider::Gpt) {
+    if crate::adapter_contract::contract(&account.provider)
+        .native_resume
+        .support
+        != crate::adapter_contract::Support::Available
+    {
         return None;
     }
     let shown: Vec<&Message> = messages
@@ -611,14 +709,21 @@ async fn stage_observed(
     if visible {
         let _ = core.store.save_message(&s.id, out);
     }
-    let resume = resume.filter(|_| matches!(a.provider, Provider::Claude | Provider::Gpt));
-    let native_skills = matches!(a.provider, Provider::Claude | Provider::Gpt);
+    let capabilities = crate::adapter_contract::contract(&a.provider);
+    let resume = resume.filter(|_| {
+        capabilities.native_resume.support == crate::adapter_contract::Support::Available
+    });
+    let native_skills =
+        capabilities.native_skills.support == crate::adapter_contract::Support::Available;
     let stripped = if native_skills {
         without(prompt, SKILLS_OPEN, SKILLS_CLOSE)
     } else {
         prompt.to_owned()
     };
-    let stripped = if !matches!(a.provider, Provider::Ollama) {
+    let stripped = if !matches!(
+        a.provider,
+        Provider::Ollama | Provider::Opencode | Provider::Cursor
+    ) {
         stripped
     } else {
         without(&stripped, GRAPH_OPEN, GRAPH_CLOSE)
@@ -633,7 +738,7 @@ async fn stage_observed(
     if !out.activity.iter().any(|a| a.kind == "workspace-root") {
         note(app, &s.id, out, "workspace-root", s.workspace.clone());
     }
-    let models = match models_for(core, a, false, Some(cancel.clone())).await {
+    let models = match models_in(core, a, false, Some(cancel.clone()), &s.workspace).await {
         Ok(models) => models,
         Err(e) => {
             trace.finish(&Err(e.clone()));
@@ -696,11 +801,24 @@ async fn stage_observed(
     if visible {
         let _ = core.store.save_message(&s.id, out);
     }
-    let mut measured = Measured::default();
+    let mut measured = Measured {
+        provider: Some(a.provider.clone()),
+        ..Default::default()
+    };
     let mut native: Option<String> = None;
     let retry_cancel = cancel.clone();
     let result = providers::execute(
         providers::Invocation {
+            automatic: a.provider.is_api()
+                && core
+                    .store
+                    .messages(&s.id)?
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .and_then(|m| m.activity.iter().find(|a| a.kind == "run-options"))
+                    .and_then(|a| serde_json::from_str::<RunOptions>(&a.text).ok())
+                    .is_some_and(|o| o.mode == "auto"),
             browser: None,
             browser_scope: Some(&s.id),
             browser_artifacts: Some(std::path::Path::new(&s.workspace)),
@@ -797,7 +915,11 @@ async fn stage_observed(
     trace.finish(&result);
     trace.publish(app, &s.id, out, true);
     if let (Some(_), Err(e)) = (resume, &result) {
-        if replay_guard.allows(e, &out.text, *retry_cancel.borrow()) {
+        if replay_guard.allows(e, &out.text, *retry_cancel.borrow())
+            && !resume
+                .and_then(|r| r.replay.as_ref())
+                .is_some_and(|o| o.resume_only)
+        {
             drop(permit);
             out.activity.retain(|x| x.kind != "native");
             let replay = if full_prompt.is_empty() {
@@ -836,22 +958,29 @@ async fn stage_observed(
     });
     if result.is_ok() {
         core.limits.record_turn(&a.id, now());
-        if visible || resume.is_some() {
-            // Codex may not repeat the id on resume; the continued session keeps its own.
-            if let Some(session) = native.or_else(|| resume.map(|r| r.session.clone())) {
-                out.activity.retain(|x| x.kind != "native");
-                out.activity.push(Activity {
-                    kind: "native".into(),
-                    text: serde_json::to_string(&Native {
-                        account: a.id.clone(),
-                        session,
-                        workspace: s.workspace.clone(),
-                        layout_revision,
-                        context_revision,
-                    })
-                    .unwrap_or_default(),
-                });
-            }
+    }
+    // A quota interruption still belongs to a valid native session, including partial work.
+    if (result.is_ok()
+        || result
+            .as_ref()
+            .err()
+            .is_some_and(|error| limits::is_rate_limit(error)))
+        && (visible || resume.is_some())
+    {
+        // Codex may not repeat the id on resume; the continued session keeps its own.
+        if let Some(session) = native.or_else(|| resume.map(|r| r.session.clone())) {
+            out.activity.retain(|x| x.kind != "native");
+            out.activity.push(Activity {
+                kind: "native".into(),
+                text: serde_json::to_string(&Native {
+                    account: a.id.clone(),
+                    session,
+                    workspace: s.workspace.clone(),
+                    layout_revision,
+                    context_revision,
+                })
+                .unwrap_or_default(),
+            });
         }
     }
     result
@@ -866,9 +995,20 @@ pub(crate) struct ResumeReplayGuard {
 
 impl ResumeReplayGuard {
     pub(crate) fn observe(&mut self, activity: &Activity) {
+        if activity.kind == "error" && limits::is_rate_limit(&activity.text) {
+            return;
+        }
         if !matches!(
             activity.kind.as_str(),
-            "pid" | "session" | "latency" | "quota" | "usage" | "window" | "connector-status"
+            "pid"
+                | "session"
+                | "latency"
+                | "quota"
+                | "usage"
+                | "window"
+                | "connector-status"
+                | "api-cost"
+                | "provider-cost"
         ) {
             self.work_observed = true;
         }
@@ -993,96 +1133,160 @@ async fn stage_fallback(
     visible: bool,
     resume: Option<&Resume>,
 ) -> Result<(String, Account), String> {
-    let mut replay_guard = ResumeReplayGuard::default();
-    match stage_observed(
-        app,
-        core,
-        s,
-        out,
-        a,
-        prompt,
-        model,
-        effort,
-        access,
-        cancel.clone(),
-        visible,
-        resume,
-        &mut replay_guard,
-    )
-    .await
-    {
-        Ok(t) => Ok((t, a.clone())),
-        Err(e) if e.starts_with(limits::RATE_LIMIT) => {
-            let msg = e.trim_start_matches(limits::RATE_LIMIT).to_string();
-            core.limits.cool(&a.id, limits::unlock_at(&msg, now()));
+    let models = models_in(core, a, false, Some(cancel.clone()), &s.workspace).await?;
+    let target = model
+        .and_then(|id| models.iter().find(|m| m.id == id))
+        .map(router::model_tier)
+        .unwrap_or(1);
+    let mut current = a.clone();
+    let mut current_model = model.map(str::to_owned);
+    let mut current_effort = effort.to_owned();
+    let mut attempted = std::collections::HashSet::new();
+    let mut first = true;
+    loop {
+        attempted.insert(current.id.clone());
+        let mut guard = ResumeReplayGuard::default();
+        let replay = if !first && prompt.is_empty() {
+            if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
+                Some(build_prompt(core, s, &[&out.id], options).await?.0)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let result = stage_observed(
+            app,
+            core,
+            s,
+            out,
+            &current,
+            replay.as_deref().unwrap_or(prompt),
+            current_model.as_deref(),
+            &current_effort,
+            access,
+            cancel.clone(),
+            visible,
+            if first { resume } else { None },
+            &mut guard,
+        )
+        .await;
+        first = false;
+        let error = match result {
+            Ok(text) => return Ok((text, current)),
+            Err(e) => e,
+        };
+        if !limits::is_rate_limit(&error) {
+            return Err(error);
+        }
+        let reset = crate::quota_resume::reset_at(core, &current.id, &error);
+        core.limits.cool(&current.id, reset);
+        note(app, &s.id, out, "quota-reset", serde_json::json!({"at":reset,"accountId":current.id,"model":current_model,"effort":current_effort}).to_string());
+        core.store.save_message(&s.id, out)?;
+        if resume
+            .and_then(|r| r.replay.as_ref())
+            .is_some_and(|o| o.resume_only)
+        {
+            return Err(error);
+        }
+        if !guard.before_work(&out.text, *cancel.borrow()) {
+            return Err(format!("{error}. Lumen did not replay: work or output was already observed. Inspect the recorded work before retrying."));
+        }
+        if !core
+            .settings
+            .lock()
+            .map(|s| s.auto_fallback)
+            .unwrap_or(true)
+        {
+            return Err(error);
+        }
+        let usage = crate::read_usage(core)?;
+        let mut alternatives = core
+            .store
+            .accounts()?
+            .into_iter()
+            .filter(|b| {
+                (!matches!(b.provider, Provider::Opencode | Provider::Cursor))
+                    && (!b.provider.is_api() || crate::api::eligible(&core.root, b))
+                    && !attempted.contains(&b.id)
+                    && !core.limits.cooling(&b.id, now())
+                    && !usage
+                        .iter()
+                        .find(|u| u.account_id == b.id)
+                        .and_then(|u| router::usage_pressure(u, now()))
+                        .is_some_and(|p| p >= 1000.0)
+                    && (access != AccessMode::Ask
+                        || crate::adapter_contract::contract(&b.provider)
+                            .ask_first
+                            .support
+                            == crate::adapter_contract::Support::Available)
+            })
+            .collect::<Vec<_>>();
+        alternatives.sort_by_key(|b| (b.provider.fallback_rank(), b.provider == current.provider));
+        let mut next = None;
+        for candidate in alternatives {
+            if let Ok(models) = models_for(core, &candidate, false, Some(cancel.clone())).await {
+                if let Some(selected) = router::select_tier(&models, target) {
+                    next = Some((candidate, selected.clone()));
+                    break;
+                }
+            }
             if *cancel.borrow() {
                 return Err("Cancelled".into());
             }
-            if !replay_guard.before_work(&out.text, *cancel.borrow()) {
-                return Err(format!("{e}. Lumen did not replay this request on another account because work or output was already observed; inspect the recorded work before retrying."));
-            }
-            let enabled = core
-                .settings
-                .lock()
-                .map(|s| s.auto_fallback)
-                .unwrap_or(true);
-            let mut alternatives: Vec<Account> = core
-                .store
-                .accounts()?
-                .into_iter()
-                .filter(|b| b.id != a.id && !core.limits.cooling(&b.id, now()))
-                .collect();
-            // Other subscription first, then the emergency providers, local Ollama last.
-            alternatives.sort_by_key(|b| (b.provider.fallback_rank(), b.provider == a.provider));
-            let Some(b) = alternatives.into_iter().next().filter(|_| enabled) else {
-                return Err(e);
-            };
-            note(
-                app,
-                &s.id,
-                out,
-                "fallback",
-                format!(
-                    "{} ({}) hit a rate limit. Continuing on {} ({}) with the same message.",
-                    a.provider.binary(),
-                    a.name,
-                    b.provider.binary(),
-                    b.name
-                ),
-            );
-            out.text.clear();
-            event(app, &s.id, &out.id, "replace", "");
-            let model = if b.provider == a.provider {
-                model
-            } else {
-                None
-            };
-            let replay = if prompt.is_empty() {
-                if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
-                    Some(build_prompt(core, s, &[&out.id], options).await?.0)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let t = stage(
-                app,
-                core,
-                s,
-                out,
-                &b,
-                replay.as_deref().unwrap_or(prompt),
-                model,
-                effort,
-                access,
-                cancel,
-                visible,
-            )
-            .await?;
-            Ok((t, b))
         }
-        Err(e) => Err(e),
+        let Some((candidate, selected)) = next else {
+            return Err(format!(
+                "{error}. No other available account can handle this request."
+            ));
+        };
+        let next_effort = resolve_effort(&selected, effort);
+        let warning =
+            if router::model_tier(&selected) < target || candidate.provider == Provider::Ollama {
+                " This task may need a stronger model; expect a possible drop in quality."
+            } else {
+                ""
+            };
+        let question = crate::interactions::Question {
+            id: "switch".into(), header: "Provider limit".into(),
+            question: format!("{} ({}) is out of credits or rate limited. Send the same request to {} · {} ({})?{}", current.provider.binary(), current.name, selected.name, if next_effort.is_empty() { "provider default" } else { &next_effort }, candidate.name, warning),
+            options: vec![crate::interactions::OptionItem { label: "Continue".into(), description: "Send this request to the proposed model.".into() }, crate::interactions::OptionItem { label: "Stop".into(), description: "Keep the conversation here without another model request.".into() }],
+            multi_select: false, secret: false, optional: false,
+        };
+        let connection = crate::interactions::Connection::default();
+        let (activity, receive) = connection.ask(vec![question], "quota-fallback".into())?;
+        note(app, &s.id, out, &activity.kind, activity.text);
+        core.store.save_message(&s.id, out)?;
+        let mut cancelled = cancel.clone();
+        let answers = tokio::select! { biased;
+            _ = cancelled.changed() => { connection.cancel("quota-fallback"); None },
+            answer = receive => answer.ok(),
+        };
+        connection.drain(&mut |activity| note(app, &s.id, out, &activity.kind, activity.text));
+        core.store.save_message(&s.id, out)?;
+        if *cancel.borrow()
+            || !answers.is_some_and(|a| {
+                a.get("switch")
+                    .is_some_and(|v| v.as_slice() == ["Continue"])
+            })
+        {
+            return Err("Cancelled".into());
+        }
+        note(
+            app,
+            &s.id,
+            out,
+            "fallback",
+            format!(
+                "Approved switch to {} · {} · {}",
+                candidate.provider.binary(),
+                selected.name,
+                next_effort
+            ),
+        );
+        current = candidate;
+        current_model = Some(selected.id);
+        current_effort = next_effort;
     }
 }
 
@@ -1274,7 +1478,7 @@ fn permission_text(access: AccessMode) -> &'static str {
     match access {
         AccessMode::ReadOnly => "Read-only turn. Do not modify files.",
         AccessMode::FileEdits => "File edits are enabled in the chosen workspace.",
-        AccessMode::Autopilot => "Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Work autonomously on the requested task.",
+        AccessMode::Autopilot => "Autopilot is enabled: the user grants full access to available filesystem, network, shell and desktop-automation tools under their OS account. Complete the authorized task, including requested builds and checks. Preserve unrelated existing changes; a dirty working tree alone is not a reason to refuse. Follow project instructions, inspect the current state after interruptions, and report missing deliverables explicitly. Do not replace execution with another plan or claim checks you did not perform.",
         AccessMode::Ask => "Ask first: each action that needs permission waits for the user to approve or reject it in Lumen. If an action is rejected, do not retry it another way.",
     }
 }
@@ -1483,7 +1687,45 @@ async fn run_plan(
     options: &RunOptions,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<(), String> {
+    if options.mode == "auto" {
+        note(app, &s.id, out, "auto-assignment", "auto".into());
+    }
     let writer = account(core, &plan.account_id)?;
+    if options.mode == "auto" {
+        let history = core.store.messages(&s.id)?;
+        let explicit = history
+            .iter()
+            .rev()
+            .find(|m| m.role == "user")
+            .is_some_and(|m| router::requested_provider(&m.text).is_some());
+        let target = crate::classify::previous(&history)
+            .map(|v| v.task.tier)
+            .unwrap_or(0);
+        let models = models_in(core, &writer, false, Some(cancel.clone()), &s.workspace).await?;
+        if !explicit
+            && plan
+                .model
+                .as_ref()
+                .and_then(|id| models.iter().find(|m| &m.id == id))
+                .is_some_and(|m| router::model_tier(m) < target)
+        {
+            let connection = crate::interactions::Connection::default();
+            let question=crate::interactions::Question {id:"switch".into(),header:"Model capability".into(),question:"No available model meets this task's retained difficulty. Continue with the proposed weaker model? Expect a possible drop in quality.".into(),options:vec![crate::interactions::OptionItem{label:"Continue".into(),description:"Use the proposed model for this task.".into()},crate::interactions::OptionItem{label:"Stop".into(),description:"Keep the task here without sending it.".into()}],multi_select:false,secret:false,optional:false};
+            let (activity, receive) = connection.ask(vec![question], "model-downgrade".into())?;
+            note(app, &s.id, out, &activity.kind, activity.text);
+            core.store.save_message(&s.id, out)?;
+            let answer = tokio::select! {biased;_=cancel.changed()=>{connection.cancel("model-downgrade");None},answer=receive=>answer.ok()};
+            connection.drain(&mut |activity| note(app, &s.id, out, &activity.kind, activity.text));
+            core.store.save_message(&s.id, out)?;
+            if !answer.is_some_and(|a| {
+                a.get("switch")
+                    .is_some_and(|v| v.as_slice() == ["Continue"])
+            }) {
+                return Err("Cancelled".into());
+            }
+        }
+    }
+
     crate::execution::phase(app, &s.id, out, "workspace");
     let lock = workspace_lock(core, s)?;
     let other_sessions = conversations_on_workspace(core, s);
@@ -1529,6 +1771,9 @@ async fn run_plan(
         None
     };
     let resume = resume_prompt(core, s, &[&out.id], &writer, options).await;
+    if options.resume_only && resume.is_none() {
+        return Err("Native session is unavailable. Automatic resumption sent no request; resume manually after inspecting the work.".into());
+    }
     let (prompt, history) = if resume.is_some() && plan.strategy == "single" {
         (String::new(), String::new())
     } else {
@@ -2298,6 +2543,18 @@ pub async fn compact_session(
 
 #[cfg(test)]
 mod resume_tests {
+    #[test]
+    fn quota_error_itself_is_not_observed_work() {
+        let mut guard = super::ResumeReplayGuard::default();
+        guard.observe(&crate::models::Activity {kind:"error".into(), text:"Your workspace is out of credits. Ask your workspace owner to refill in order to continue.".into()});
+        assert!(guard.before_work("", false));
+        guard.observe(&crate::models::Activity {
+            kind: "tool".into(),
+            text: "write".into(),
+        });
+        assert!(!guard.before_work("", false));
+    }
+
     use super::*;
 
     #[tokio::test]
@@ -2522,6 +2779,21 @@ mod resume_tests {
         let mut other = claude();
         other.id = "b".into();
         assert!(resumable(&chat, &["out"], &other, "/w", AccessMode::FileEdits).is_none());
+        // A saved session marker cannot enable a capability absent from the adapter.
+        for provider in [
+            Provider::Claude,
+            Provider::Gpt,
+            Provider::Antigravity,
+            Provider::Ollama,
+        ] {
+            let mut account = claude();
+            account.provider = provider.clone();
+            assert_eq!(
+                resumable(&chat, &["out"], &account, "/w", AccessMode::FileEdits).is_some(),
+                matches!(provider, Provider::Claude | Provider::Gpt),
+                "{provider:?}"
+            );
+        }
     }
 
     #[test]

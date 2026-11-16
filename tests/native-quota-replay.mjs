@@ -23,6 +23,15 @@ try {
       },
     });
     for (let i = 0; i < 300; i++) {
+      const messages = await h.invoke('get_messages', { id: chat.id });
+      const questions = await h.invoke('pending_questions');
+      for (const row of messages.at(-1)?.activity ?? []) {
+        if (row.kind !== 'interaction') continue;
+        const request = JSON.parse(row.text);
+        if (questions.includes(request.id) && request.questions?.some((q) => q.id === 'switch'))
+          await h.invoke('answer_question', { id: request.id, answers: { switch: ['Continue'] } });
+      }
+
       const session = (await h.invoke('list_sessions', { search: '', offset: 0 })).find(
         (row) => row.id === chat.id,
       );

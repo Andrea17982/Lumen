@@ -5,6 +5,7 @@ import type { McpServer } from '../lib/types';
 import { useI18n } from '../lib/i18n';
 import { useBusy } from '../lib/busy';
 import { errorText } from '../lib/util';
+import AdapterCapabilities from './AdapterCapabilities';
 interface Inventory {
   path: string;
   skills: string[];
@@ -59,7 +60,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
       </div>
       <p>
         {t(
-          'Shared tools are available to Claude, GPT, Gemini and Antigravity. Provider authentication and permission controls still apply.',
+          'Shared tools are available to Claude, GPT and Antigravity. Provider authentication and permission controls still apply.',
         )}
       </p>
       {adding && (
@@ -220,6 +221,7 @@ export default function IntegrationSettings({ onError }: { onError: (s: string) 
           {t('Import skill')}
         </button>
       </div>
+      <AdapterCapabilities />
       <details className="raw-config">
         <summary>{t('Edit as JSON')}</summary>
         <textarea

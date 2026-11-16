@@ -68,8 +68,8 @@ typography:
     fontSize: '.9em'
 rounded:
   micro: '4px'
-  segment: '6px'
-  control: '7px'
+  segment: '8px'
+  control: '8px'
   row: '8px'
   inset: '9px'
   card: '10px'
@@ -137,174 +137,48 @@ components:
     padding: '6px'
 ---
 
-# Design System: Lumen
+# Lumen design system
 
-## Overview
+Lumen is an Operate surface: a quiet desktop workspace in restrained Liquid Glass. Preserve the cool neutral palette, system typography, compact controls, English/Italian UI and light/dark themes. CSS in `src/styles.css` is the runtime source; the tokens above describe its roles. Product scope lives in [PRODUCT.md](PRODUCT.md), implementation evidence in [validation](docs/validation.md).
 
-**Creative North Star: "A clear space for a brighter idea."** This is the implemented invitation and the organizing metaphor, rather than a new visual direction. Lumen uses the user's pinned Apple Liquid Glass aesthetic for a Windows-first Tauri 2 desktop application with English and Italian interface languages. The conversation remains the dominant surface: a compact rail, a quiet header, and an anchored composer frame a clear reading area.
+## Identity
 
-Cool frosted material, soft blue accents, system typography, and restrained controls define the identity. Light and dark themes share the same composition. Advanced controls stay close to their task and appear on request. The product works in Operate mode; legibility and familiar desktop behavior lead.
+The approved transparent satin-glass `lm` monogram in `public/lumen.png` is the sole app mark. Platform icons are generated from it with `tauri icon`; no CSS reconstruction. The top-left logo opens the glass project sidebar. It starts visible on desktop and closed on narrow screens; hiding it preserves drafts and focus, and hidden controls are inert. Brief motion respects reduced motion.
 
-Key characteristics:
+## Layout and material
 
-- One principal reading surface, with generous space in the empty state.
-- A frosted session rail and a soft intersecting three-bar mark.
-- Compact controls, subtle dividers, muted metadata, and a minimal visual treatment.
-- Direct native provider selected by default, with model/reasoning controls disclosed progressively; Auto/Orchestra remain explicit choices.
+The conversation and floating composer share an 820px reading width. The sidebar is 280px, 300px on large screens; below 800px it becomes an overlay. The settings panel overlays the workspace with an opaque frosted surface. At narrow widths it fills the window. Settings tabs wrap so every section, including About, remains reachable. Long prose wraps; code, tables and their own content may scroll horizontally.
 
-This document records `src/styles.css` and the components in `src/App.tsx`, `src/components/` and `src/settings/`. Tokens above are extracted values; CSS remains the runtime source of truth. Screenshots of the current implementation are in `docs/images/`.
+Glass belongs to navigation, composer and menus. Use the existing `surface`, `glass`, `panel`, `input`, `text`, `muted`, `accent`, `line`, `hover` and `selected` variables in both themes. No hard-coded light menu colors in dark mode. Background blur stays behind readable text.
 
-## Colors
+## Controls
 
-The palette is cool neutral with a restrained blue primary accent. Frontmatter suffixes identify light and dark values; runtime CSS exposes their semantic names without suffixes through `:root` and `:root[data-theme=dark]`.
+Compact controls share an 8px corner radius, including send/stop, Usage, Context and project actions. Larger message containers use 12px; the floating composer uses 22px. Fields retain a fine `line` border and theme-aware input fill. Focus must remain visible.
 
-### Primary
+All single-choice fields use `src/components/Select.tsx`. Its menu is rendered outside clipping panels, positioned within the viewport, softly rounded and briefly animated. It supports arrows, Home/End, type-to-select, Enter/Space, Escape, Tab and outside dismissal. Labels, selected state and disabled options remain accessible. The hidden native select preserves form values; it is not an additional visible control.
 
-`accent` is the blue used for leading suggestion icons, links, caret, and running indicators. `button` supplies the contrasting solid send and primary-action fill; its foreground is `surface`. Hovered primary actions use `accent`.
+The provider bar starts with Auto and adds only configured providers, always visible using wrapping rather than horizontal scrolling. Explicit sessions disclose Account, Model and Reasoning. Models come from the account's official catalog. Google inference uses Antigravity with Google/Gemini models only. Permissions retain the separate explanatory picker and never change from opening a menu.
 
-### Neutral
+## Conversation and status
 
-`surface` is the reading canvas. `glass` is the sidebar material. `panel` is the almost opaque settings and popup material. `input` supports the composer and suggestion controls. `text` carries content; `muted` carries metadata and secondary labels. `line` is a low-contrast separator, while `faint` supports scrollbars and quotation rules. `hover` is a tonal interaction fill; `selected` lifts active navigation and segmented selections.
+The composer has no permanent commit suggestion, keyboard instructions or provider/strategy banner. Auto records a quiet model/effort assignment in the chat, repeated at completion. Only final elapsed time is shown outside the transcript; detailed observations remain recorded for diagnostics. Errors, pending questions and permission approvals remain visible and actionable.
 
-`error`, `ok`, and the fixed amber `waiting` express status. Session status is also supplied as accessible text; errors have visible text. Theme-specific semantic colors should be used for new controls rather than copying a light value. The CSS also contains fixed decorative colors for the mark, provider avatars, scrim, and selection; those are implementation details rather than a second semantic palette.
+Usage lists only reported five-hour and weekly windows for configured providers; no unavailable rows, decorative status dots or manual refresh/close controls. Outside click and Escape dismiss it. Queries happen on opening the menu rather than an idle subprocess timer. Context explicitly marks an estimate and uses the larger of local prompt size and last provider input, plus the draft. Its explanation must retain limitations about compaction, attachments and estimated model capacity.
 
-Autopilot uses its own amber foreground in each theme and a shared translucent amber background, recorded in the `autopilot-*` tokens. Read only and File edits on retain the muted permission-control treatment; File edits on does not use the former blue toggle emphasis. The visible mode label accompanies the color.
+## Projects and settings
 
-Theme selection offers Light, Dark, and System. It persists locally, and System responds to the OS color-scheme media query.
+Show All conversations only when projects exist; there is no Unsorted folder. Conversations and projects expose context menus on right click; keyboard users can use Shift+F10 on conversation rows. Project deletion requires explicit confirmation, removes contained conversations and preserves filesystem files. Running conversations block deletion. Move conversations before deleting a project to preserve them.
 
-## Typography
+General contains interface and window controls, then the enabled advanced-options notice, a small replay-tour link and Restore defaults. The system handles display scaling; there is no separate Larger text preference. Account identities and conversations survive restoring preferences. Settings navigation and menus must work at half-screen widths in both themes.
 
-The shared system stack resolves to Segoe UI Variable or Segoe UI on Windows. There is no downloaded display face. Headings use balanced wrapping and restrained negative tracking.
+## Verification
 
-- **Welcome headline:** frontmatter `headline`; `clamp(34px, 4.1vw, 62px)` with weight 400 and -1.8px tracking, dropping to 30px at 520px and below.
-- **Settings title:** frontmatter `title`; 30px, weight 450. Section titles are 13px/600; the about heading is 20px/1.3/450.
-- **Conversation body:** 14px/1.8, dropping to 13px at 520px and below. Composer text is 14px/1.6. Markdown headings use 24px, 20px, and 17px at weight 600.
-- **Controls:** chiefly 11-12px. Metadata and composer location/permission controls range from 9-10px. The ALPHA badge has been removed. These intentionally compact desktop sizes are observed values, not evidence that all text meets enlarged-text accessibility needs.
-- **Code:** Cascadia Code, Consolas, monospace; inline code is .9em, fenced blocks are 12px/1.7, activity diagnostics are 11px/1.6.
+Check rendered light/dark and narrow layouts; labels, keyboard navigation, dismissal, overflow and reduced motion matter as much as appearance. Screenshots and fixtures establish layout only, not real account access, inference quality or performance. Historical experiment details remain in their linked reports rather than being duplicated here.
 
-Body line length is governed by a 760px conversation column rather than a character-count token. Long prose and diagnostics wrap; code blocks and tables scroll horizontally as needed.
+### Monogram and anchored controls
 
-## Layout
+Keep the LM monogram transparent and free of a visible tile, border or geometric background. Use its cropped content viewport, 32px navigation mark and 78px welcome mark, with the welcome mark grouped closely with the heading. Single-choice menus attach within 6px of their trigger, opening above when needed; short menus keep their natural height. Account/Model/Reasoning share typography and control height. Keep all connected providers on one row; move neighboring composer actions below rather than wrapping a provider onto a second line.
 
-The shell is a horizontal flex composition at `100dvh`, with a 480px minimum height and clipped outer overflow. The desktop sidebar is 280px wide (300px at 1500px and wider) with `26px 16px 16px` padding. The workspace owns its independently scrolling conversation; the composer remains below it, with 24px bottom padding on its region (15px at 520px and below). The header is 72px high with 26px horizontal padding. Shell footer slogans, the AI-written corner link, the rail privacy tagline, and the model tagline have been removed. Authorship, thanks, and support remain in About.
+### Approved satin-glass Lm
 
-Messages and composer share a `--reading-width` maximum of 820px and a `calc(100% - 100px)` width, so the composer stays aligned with the reading column. The welcome headline scales with `clamp(34px, 4.1vw, 62px)`, and the welcome area is at most 750px wide and vertically centers with automatic margins. Its three suggestions form one row on wide layouts. The composer uses a 59px minimum textarea height, content-based sizing, and a 200px maximum height. Settings overlays the workspace from the right rather than reflowing the conversation. Its near-opaque frosted panel uses a softly tinted header, compact section tabs, and a language selector above appearance controls in General.
-
-Responsive states, in CSS cascade order:
-
-| Condition       | Implemented changes                                                                                                                                                                                                                                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| At least 1500px | Sidebar 300px; more welcome bottom space; composer bottom margin 12px.                                                                                                                                                                                                                                                 |
-| At most 1050px  | Sidebar 225px with 12px inline padding; reading/composer gutters total 55px; denser suggestions; shorter title allowance; new-conversation keyboard hint hides; workspace/folder controls move together to a full-width second toolbar row with an 8px top gap and fine divider, preserving provider, permissions, and send on the first row. |
-| At most 800px   | Sidebar becomes a 256px sliding overlay with scrim and menu button; header 66px; gutters total 42px; settings 400px.                                                                                                                                                                                                                          |
-| At most 520px   | Suggestions stack at 225px width; gutters total 28px; settings fills width; provider advanced fields stack; permission shield icon and keyboard caption hide while the permission dropdown remains; provider segmented labels drop their icons so the send button stays on the first toolbar row; welcome mark hides; textarea minimum becomes 44px.                                                                                        |
-
-Spacing uses small 4–16px control gaps, around 22–30px section/frame separation, and larger welcome-state pauses. Exact role-specific values take priority over rounding every measurement to a uniform grid.
-
-## Elevation & Depth
-
-The principal glass material belongs to the sidebar: a soft top highlight over `glass`, 30px backdrop blur, and a fine right border. The workspace behind the conversation carries a decorative blurred "aurora" (`.aurora`, clipped to the workspace, `z-index: -1`) made of the `--aurora-*` tokens; it never sits above text. The composer is glass too: a 1px `line` border, an inset top highlight line, and `--composer-shadow`. Message content keeps stable tonal fills. The CSS mark simulates glass with translucent gradients and inset highlights.
-
-Current settings is a secondary layering exception to sidebar-only glass: `panel` is 97% opaque in light and 98% opaque in dark, but `.settings-panel` also applies 30px backdrop blur. Preserve this distinction when documenting the shipped appearance; do not claim that blur currently exists exclusively in the rail. Settings uses a left edge shadow and border; there is no desktop full-screen dimming scrim for settings.
-
-Shadow vocabulary:
-
-- **Selected/raised control, light:** `0 8px 24px -15px rgba(42,61,83,.22)`.
-- **Selected/raised control, dark:** `0 8px 26px -12px rgba(0,0,0,.45)`.
-- **Composer, light:** `0 24px 60px -32px rgba(42,61,83,.38)`.
-- **Composer, dark:** `0 28px 60px -30px rgba(0,0,0,.7)`.
-- **Popup:** `0 8px 25px -8px #0003`.
-- **Settings:** `-20px 0 70px -35px #263b5545`.
-- **Active provider segment:** `0 2px 5px -3px #354a6a44`.
-
-Motion is small and local: button color/background transitions take .16s; sidebar translation takes .2s; settings enters from x=35 with opacity over .2s. The welcome mark floats 5px on an 8s ease-in-out cycle. Running status breathes over 1.4s; the working spinner rotates over 1.3s. New messages scroll into view smoothly. Reduced motion disables CSS animations/transitions and uses immediate scrolling and a zero-duration welcome animation. Settings skips its initial animation and exits without translation or fading, with a zero-duration transition under reduced motion.
-
-## Shapes
-
-Use small softened rectangles for compact controls, not oversized pill buttons. Radii range from 4px for keyboard hints and inline code to 6-8px for controls, segments, fields, and rows; suggestions and new conversation use 10px. User message panels use 12px; the composer is the largest recurring rounded container at 17px. Send and avatar controls are circular. Borders are generally 1px in `line`.
-
-## Components
-
-Settings uses progressive disclosure: Simple exposes only the Orchestra switch; Advanced exposes the remaining sections. General contains a two-step Restore defaults action. Reset copy states that accounts and conversations are preserved.
-
-### Buttons and navigation
-
-New conversation is a softly raised full-width 12px control with an icon and keyboard hint. Session rows are compact, left aligned, ellipsized, and 8px rounded; selection uses `selected` plus the theme shadow. Status dots accompany accessible status text, and pins remain small supporting marks. Icon buttons are normally 28px square; account-row icon buttons are 22px wide. Disabled buttons reduce opacity to .42 and stop advertising a pointer cursor. These sizes reflect desktop density, not a verified touch-target system.
-
-Suggestion cards use `input`, a 1px `line` border, 10px corners, and 13px/14px padding. They populate a draft and focus the composer. Secondary text actions use `accent`; destructive actions use `error`. Global hover treatment applies only to enabled buttons. Incumbent button controls do not add a visual focus ring; text fields retain the native caret. The execution disclosure's keyboard-focus outline is the narrow exception described above.
-
-### Composer and fields
-
-The composer is a glass input panel with a 22px radius, a fine `line` border, and a wrapping toolbar beneath the textarea. The mode picker is a bordered segmented group; the send button is a 34px circle filled with `button`, which is light in dark theme. Auto/Claude/GPT form a segmented control with `aria-pressed` states. Selecting Claude or GPT opens the optional account/model/reasoning controls; the chevron can collapse them. The 31px circular send button becomes a stop action while a response runs. Enter sends, Shift+Enter adds a line, and IME composition is excluded from the send shortcut. Only the right-aligned keyboard hint remains below the composer.
-
-Workspace selection and the conversation folder button sit together immediately after the AI selector and its optional chevron. The workspace select uses 10px type, 5px/2px padding, and a 70–112px width range. The folder control uses a 14px icon, 10px type, 6px padding, and 6px corners; its label truncates at 95px on wide layouts and 170px in the grouped second row at 1050px and below. Tooltips expose the workspace name and full folder path. Named workspace association and conversation folder are separate; location controls disable while queued/running or changing a folder. A long label must not displace send onto the location row.
-
-Permissions shows its current mode beside the shield and opens an explanatory menu: Read only, File edits, Approve each action, Autopilot. Opening or dismissing the menu never changes access; selection is explicit. Each option explains allowed actions and provider constraints. The selected item has radio semantics; arrows/Home/End navigate, Escape dismisses and restores the trigger. Read only remains the startup default and Autopilot retains the amber treatment. This is provider permission configuration, not administrator access or a guarantee of particular native tools. The label prefix hides at intermediate widths while the current mode stays visible; a narrow layout gives the provider picker its own row so permissions, attachments and Send stay together.
-
-Account, Model, and Reasoning use native dropdowns. Model choices come from the selected account's official CLI catalog; reasoning choices follow the selected model, with Provider default available. Model selection is not free text. Loading or unavailable catalogs disable dependent selectors and show explicit placeholders; discovery errors appear as recoverable alert text. A refresh icon requests a new catalog. The send control stays disabled for a desktop explicit-provider conversation until a catalog is ready. Fixture screenshots demonstrate these UI states, not real-account entitlement or successful inference.
-
-The account heading includes a pencil for inline rename and a settings action for account management; settings also offers account rename. Rename is an input with save/cancel icon buttons, an 80-character limit, and a disabled save for blank names or while saving. It updates the display name while preserving account identity, isolation folder, and login state. Field-heading icon controls are 24px square; the heading/reasoning label row is 28px high.
-
-Fields use 7px corners, `surface`, a `line` border, and 8px padding. The search field is an unboxed rail control. Error banners use readable text, an error icon, a dismiss action, and `role="alert"`.
-
-### Conversation and activity
-
-Assistant prose sits directly on the reading surface. User prose uses a softly filled, content-sized 12px rounded panel. Assistant responses offer copy. Activity and diagnostics are nested native disclosure elements, keeping orchestration inspectable without dominating the transcript.
-
-The 0.8 render-isolation tranche preserves this exact composition and the complete transcript DOM. Composer-only changes reuse the transcript; actual message updates render normally. Historical find, selection, disclosures, image enlargement, Both lanes and current-chat actions remain reachable. It adds no visual control or new scroll policy. Native light/dark captures and the scoped CPU/scroll evidence are documented in [Windows performance](docs/performance-0.8.md). The subsequent [opening optimization](docs/initial-open-0.8.md) keeps identical paragraph markup for literal text and the original Markdown path otherwise. The windowed prototype loses historical content access and stays excluded from ordinary builds; compatible full virtualization remains open.
-
-The 0.8 working tree adds a single selected-turn execution disclosure above the composer, aligned to its existing column. Its 12px summary uses `text` for legibility over the aurora in both themes, an Activity icon, explicit chevron, wrapping tabular timing and only available agent/check counts. Expanded details scroll within a 230px maximum height and retain native keyboard disclosure/focus behavior. Stage milestones report local observed times; inputs, permissions, silence, errors and interruption remain distinct. "Turn ended" does not claim task completion. A read-only refresh updates local execution evidence; silence never triggers a new model request. The separate 0.8 logo/sidebar checkpoint below records its implementation. Native captures validate the tested desktop size, not screen-reader certification or every responsive layout.
-
-Markdown uses GFM lists and tables. `MessageBody` renders links as buttons that use the validated backend opener, and images through `ResponseImage`. Local images are scoped to the message's project folder; remote images require explicit loading. Images nested in links do not create nested interactive controls. These are implemented affordances, not proof that every editor or remote image host works.
-
-### Settings modal side panel
-
-Settings is a right-side `role="dialog"` with `aria-modal="true"` and 420px desktop width. A fixed header holds the close button, the 22px title and a **Simple | Advanced** segmented control, above a tab row (General · Accounts · Auto · Teamwork · Tools · About; Tools only in Advanced). The selected tab uses `text` and a 2px `accent` underline. Only the section body scrolls (0/30px padding); a fixed footer keeps the version and feedback link. In Simple mode, a muted line counts Advanced options that are on, with a **Show** link. Opening focuses its first button. Tab/Shift+Tab wrap through visible enabled controls; closing restores the previously focused element. The sidebar and workspace become `inert` while settings is open. Escape and explicit Workspace/close controls dismiss it. Appearance is a three-way segmented control; accounts, conversation folder, and about/support are separated by fine rules. Account rename is available beside the account's existing sign-in/check/remove actions. Settings errors have a dismissible alert inside the panel. Returning from settings preserves the selected model where still available.
-
-Opening settings closes the navigation sidebar and conversation action menu before focusing the panel. This clears the narrow sidebar and its scrim from the modal path, even though their z-indices are higher than settings. No screen-reader or native-webview focus certification is implied by the implemented focus trap.
-
-### Notices
-
-One-time notices (for example Antigravity in File edits) use the centered dialog: a 13px bold title, muted 12px explanation, a **Don't show again** checkbox and a single OK button. They never block work beyond one click.
-
-Incumbent button controls draw no focus ring, at the owner's request; hover and selected fills carry the state instead. The new execution disclosure summaries retain a visible 2px `accent` keyboard-focus outline, without changing the button policy. Popovers open beside the control that opened them (Usage beside its button, Rename beside the conversation), over an invisible click-catcher that never changes color.
-
-Usage uses compact single-line quota rows with a thin meter, percentage and time to reset. Missing, stale or manually entered data has a discreet status label; its detail is available from the tooltip and accessible name. General → Appearance includes an optional, persistent 8% interface enlargement; the default remains unchanged. Icon-only actions use the shared `IconButton` component for consistent labels and title hints.
-
-The context indicator sits beside Usage and reuses its button, popover, scrim and meter track. Its dot is green under 50%, orange from 50% and red from 80% of the model's window; the popover shows the exact `used / window` count, a thicker track in the same colour, the parts of the count and **Compact into a fresh session**. It states whether the figures were measured by the provider or estimated locally. Popovers opened from the sidebar are rendered on `document.body`, because the sidebar's transform would clip a fixed element.
-
-### Orchestra card
-
-Orchestra steps render as a card inside the assistant message: `input` fill, 1px `line` border, 12px radius, 14/16px padding, 12px text. The header pairs an accent workflow icon with **Orchestra** and the orchestrator model in muted 10px type. Questions use stacked labels with `surface` inputs prefilled with the recommendation; the plan uses rows separated by `line`, each with title, muted difficulty/files/dependency metadata, an agent dropdown and a remove icon. Progress rows are disclosures with a status icon (spinner, `ok` check, `error` alert, muted dot), the agent and tabular elapsed time; output opens in 11px monospace, at most 240px high. Interrupted runs show an amber note under the header; superseded steps collapse to a muted line. Primary actions (Continue, Approve, Keep branches) use the primary button; secondary ones are text buttons. The read-only notice uses the amber `waiting` color. Closed steps collapse to a single muted line. The composer shows a small accent **Orchestra** badge next to Auto while the setting is on.
-
-## Do's and Don'ts
-
-- **Do** keep the user's Liquid Glass identity, English/Italian copy, system typography, and light/dark semantic pairing.
-- **Do** keep the aurora decorative and behind content, and keep text contrast readable over it in both themes.
-- **Do** keep the transcript dominant and the composer aligned with its 760px reading column.
-- **Do** preserve inert modal background, status text, disclosure controls, and reduced-motion preferences.
-- **Do** use subdued tonal fills and fine dividers for ordinary reading and writing surfaces.
-- **Don't** spread heavy transparency or blur across message content or the composer.
-- **Don't** turn every secondary action into a prominent card or primary button.
-- **Don't** invent provider performance, native behavior, accessibility conformance, or live-account validation from a browser screenshot.
-- **Don't** treat the documentation sidecar's illustrative controls as replacements for application logic or accessible dialog behavior.
-
-## 0.8 logo/sidebar checkpoint
-
-The top-left mark is now the single sidebar disclosure on desktop and narrow layouts. Its 40px glass button stays at a fixed shell position, exposes translated Open/Close sidebar names and expanded/controls state, and has a visible keyboard focus outline. The rail is initially open on desktop; closing it expands the conversation area without unmounting the rail or changing the draft. Narrow layouts start closed and use an overlay. A closed rail is inert and hidden from the accessibility tree. Escape from the rail and scrim dismissal return focus to the mark; search opens and focuses the rail. Conversation-menu Escape dismisses only that menu.
-
-The rail slides with the existing spatial/ease tokens and a single 360ms glint crosses the mark on activation. Reduced motion removes both effects. The header reserves space for the mark in the closed composition; the separate mobile menu icon is removed. Desktop chat selection keeps the rail available; narrow selection closes it. The original material, themes and composer remain. This is a scoped first implementation of the approved composition, not a general redesign or screen-reader certification. [Native and browser checks](docs/logo-sidebar-0.8.md).
-
-## 0.8 Windows accessibility checkpoint
-
-Settings now implements the modal contract described above: `aria-modal=true`, inert/ARIA-hidden workspace, rail and logo, global commands suppressed while open, and a usable focus return when the opener disappears. In settings, inspector and native questions, keyboard focus uses theme-selected fill and a fine inset underline; this extends visible focus without adding global outline rings. Native questions announce checking/unavailable/expired states distinctly and restore focus to retry on failed delivery or to the sent status after success. Neither response options nor retries of answers are automatic. [Windows matrix and bounded Narrator acceptance](docs/windows-accessibility-0.8.md).
-
-## 0.8 first-use guidance
-
-A fresh profile with no accounts or chats offers a brief tour below the welcome invitation. It is optional, remembers completion/skip, and can be replayed from General settings or the command palette. Returning profiles are marked as seen after their initial data loads, so clearing or filtering them does not trigger onboarding later.
-
-Five nonmodal coachmarks identify the real logo/sidebar, Settings/accounts, provider/Auto/Orchestra picker, permissions and composer/progress workflow. One thin tonal highlight moves between targets; the near-opaque theme panel carries readable text, progress, Back/Next and persistent Skip/Close controls. It uses one short arrival motion and respects reduced motion. Focus moves to each step heading and returns to the opener or composer after dismissal; no focus trap blocks exploration. The tour itself never invokes sign-in, sends a prompt or changes access. Temporary sidebar changes are restored. English and Italian copy share the same composition. This is functional keyboard/WebView2 acceptance, not a new screen-reader comprehension certificate. [Final acceptance](docs/final-acceptance-0.8.md).
-
-## 0.7 documentation and capture contract
-
-The GitHub surface is Read mode: a concise bilingual introduction, actual application gallery, working-mode explanation, platform package table and links to canonical guides. Keep the existing mark/material identity; documentation is not a product redesign. Native questions, child streams, Moli captures and inspector/layout affordances should be represented by actual implemented UI with isolated demonstration data. The gallery is not live-inference or accessibility certification.
+The owner selected proposal 2, frosted/satin glass, on 13 November. Use the approved pale ice-blue Lm with its soft lavender fold, unchanged in both themes. The owner explicitly accepts its lower contrast on light surfaces; do not introduce a darker light-theme variant. The transparent PNG is `public/lumen.png`; the UI SVG viewport trims its transparent canvas. `.codex/lumen-satin-icon.svg` is the square, transparent build input for the platform icon pipeline. Keep the monogram free of a visible frame or tile.

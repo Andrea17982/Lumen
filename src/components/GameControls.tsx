@@ -1,3 +1,4 @@
+import Select from './Select';
 import { useEffect, useState } from 'react';
 import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
@@ -94,7 +95,7 @@ export default function GameControls({
       {servers.length ? (
         <label className="native-custom">
           {t('Godot MCP server')}
-          <select
+          <Select
             value={settings.server || servers[0]}
             disabled={busy}
             onChange={(e) => void save({ ...settings, server: e.target.value })}
@@ -102,7 +103,7 @@ export default function GameControls({
             {servers.map((s) => (
               <option key={s}>{s}</option>
             ))}
-          </select>
+          </Select>
         </label>
       ) : (
         <p>

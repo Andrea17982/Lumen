@@ -1,0 +1,279 @@
+{
+  "realAccounts": {
+    "startedAt": "2026-11-13T14:30:02.949Z",
+    "scope": "Real configured native accounts; isolated Lumen DB and disposable workspace; no credential copying",
+    "checks": [
+      {
+        "label": "Antigravity reads actual file",
+        "requestedMode": "antigravity",
+        "status": "completed",
+        "switches": 0,
+        "selectedProvider": "antigravity",
+        "model": "gemini-3.8-flash-high",
+        "elapsedMs": 14117,
+        "models": [
+          "agy \u00c2\u00b7 Gemini 3.8 Flash (High) \u00c2\u00b7 provider default reasoning"
+        ],
+        "errors": [],
+        "fallbacks": [],
+        "reply": "LUMEN_REAL_FILE_A_7319\n",
+        "passed": true
+      },
+      {
+        "label": "Antigravity consecutive turn is fresh",
+        "requestedMode": "antigravity",
+        "status": "completed",
+        "switches": 0,
+        "selectedProvider": "antigravity",
+        "model": "gemini-3.8-flash-high",
+        "elapsedMs": 13200,
+        "models": [
+          "agy \u00c2\u00b7 Gemini 3.8 Flash (High) \u00c2\u00b7 provider default reasoning"
+        ],
+        "errors": [],
+        "fallbacks": [],
+        "reply": "LUMEN_REAL_REPLY_B_7319\n",
+        "passed": true
+      },
+      {
+        "label": "Auto respects explicit Antigravity",
+        "requestedMode": "auto",
+        "status": "completed",
+        "switches": 0,
+        "selectedProvider": "antigravity",
+        "model": "gemini-3.8-flash-high",
+        "elapsedMs": 19295,
+        "models": [
+          "agy \u00c2\u00b7 Gemini 3.8 Flash (High) \u00c2\u00b7 provider default reasoning"
+        ],
+        "errors": [],
+        "fallbacks": [],
+        "reply": "LUMEN_REAL_EXPLICIT_7319\n",
+        "passed": true
+      },
+      {
+        "label": "Auto real credit exhaustion and approved fallback",
+        "requestedMode": "auto",
+        "status": "completed",
+        "switches": 0,
+        "selectedProvider": "gpt",
+        "model": "gpt-6-luna",
+        "elapsedMs": 10712,
+        "models": [
+          "codex \u00c2\u00b7 GPT-6-Luna \u00c2\u00b7 low"
+        ],
+        "errors": [],
+        "fallbacks": [],
+        "reply": "LUMEN_REAL_FALLBACK_7319",
+        "passed": true
+      }
+    ],
+    "configsRestored": true,
+    "accounts": [
+      {
+        "provider": "claude",
+        "ready": true
+      },
+      {
+        "provider": "gpt",
+        "ready": true
+      },
+      {
+        "provider": "antigravity",
+        "ready": true
+      }
+    ],
+    "googleCatalogOnly": true,
+    "realFallbackObserved": false,
+    "finishedAt": "2026-11-13T14:31:06.938Z"
+  },
+  "controlledFallback": {
+    "startedAt": "2026-11-13T14:48:21.810Z",
+    "scope": "Real configured native accounts; isolated Lumen DB and disposable workspace; no credential copying",
+    "checks": [
+      {
+        "label": "Auto real credit exhaustion and approved fallback",
+        "requestedMode": "claude",
+        "status": "completed",
+        "switches": 2,
+        "selectedProvider": "claude",
+        "model": "sonnet",
+        "elapsedMs": 9082,
+        "models": [
+          "claude \u00c2\u00b7 Sonnet fixture \u00c2\u00b7 low",
+          "codex \u00c2\u00b7 GPT Terra fixture \u00c2\u00b7 low",
+          "agy \u00c2\u00b7 Gemini 3.8 Flash (High) \u00c2\u00b7 provider default reasoning"
+        ],
+        "errors": [
+          "Your workspace is out of credits. Ask your workspace owner to refill in order to continue."
+        ],
+        "fallbacks": [
+          "Approved switch to codex \u00c2\u00b7 GPT Terra fixture \u00c2\u00b7 low",
+          "Approved switch to agy \u00c2\u00b7 Gemini 3.8 Flash (account) \u00c2\u00b7 "
+        ],
+        "reply": "LUMEN_REAL_FALLBACK_7319\n",
+        "passed": true
+      }
+    ],
+    "controlledQuota": true,
+    "failureSource": "Offline Claude/GPT quota replies at CLI boundary; real Antigravity account and inference",
+    "configsRestored": true,
+    "accounts": [
+      {
+        "provider": "claude",
+        "ready": true
+      },
+      {
+        "provider": "gpt",
+        "ready": true
+      },
+      {
+        "provider": "antigravity",
+        "ready": true
+      }
+    ],
+    "realFallbackObserved": false,
+    "controlledFallbackToRealAccountPassed": true,
+    "finishedAt": "2026-11-13T14:48:36.183Z"
+  },
+  "terminal": {
+    "eventObservationStartedAt": "2026-11-13T14:48:58.160Z",
+    "finishedAt": "2026-11-13T15:07:28.907Z",
+    "ownedConsoleWindows": 0,
+    "allObservedConsoleEvents": 3,
+    "positiveControlOwnedEvents": 6,
+    "sampledStates": {
+      "foreground": 58,
+      "visible-background": 117,
+      "minimized": 156,
+      "tray": 386
+    },
+    "stateSampleIntervalSeconds": 1,
+    "sampledStateStart": "2026-11-13T14:55:24.7498905Z",
+    "sampledStateEnd": "2026-11-13T15:07:28.7084349Z",
+    "autostartIsolationPassed": true,
+    "configsRestored": true,
+    "note": "State sampler begins after initial six-minute nominal phase; the initial phase was partly minimized. Planned labels are not uninterrupted foreground-duration claims.",
+    "externalWindowsTerminalStartedAt": "2026-11-13T10:03:05.950371+01:00"
+  },
+  "compilerComparison": {
+    "method": "20 alternating AB/BA fresh-process pairs; same source and isolated synthetic 5,000-message mixed history; warm OS/profile. Tokenizer: 20 warm IPC calls/arm.",
+    "arms": {
+      "baseline": {
+        "samples": 20,
+        "exeBytes": 26509312,
+        "metrics": {
+          "startupMs": {
+            "median": 496.12030000000004,
+            "p95": 648.0167
+          },
+          "openMs": {
+            "median": 1308.7669,
+            "p95": 1379.3711999999998
+          },
+          "typingMs": {
+            "median": 103.19810000000007,
+            "p95": 153.1594
+          },
+          "typingTaskMs": {
+            "median": 92.22700000000006,
+            "p95": 144.20999999999995
+          },
+          "streamTaskMs": {
+            "median": 564.3460000000002,
+            "p95": 637.6179999999998
+          },
+          "heapBytes": {
+            "median": 65770388,
+            "p95": 71134428
+          },
+          "tokenMs": {
+            "median": 26.813099999999395,
+            "p95": 28.691900000005262
+          }
+        },
+        "privateBytes": 673558528,
+        "zipBytes": 56178793
+      },
+      "candidate": {
+        "samples": 20,
+        "exeBytes": 36527616,
+        "metrics": {
+          "startupMs": {
+            "median": 504.02869999999996,
+            "p95": 624.7678999999999
+          },
+          "openMs": {
+            "median": 1302.9603,
+            "p95": 1321.9170000000001
+          },
+          "typingMs": {
+            "median": 103.2831000000001,
+            "p95": 136.53219999999965
+          },
+          "typingTaskMs": {
+            "median": 95.14100000000015,
+            "p95": 128.98900000000003
+          },
+          "streamTaskMs": {
+            "median": 560.7380000000002,
+            "p95": 589.2780000000002
+          },
+          "heapBytes": {
+            "median": 63059060,
+            "p95": 70928584
+          },
+          "tokenMs": {
+            "median": 22.65529999998398,
+            "p95": 27.26720000000205
+          }
+        },
+        "privateBytes": 679940096,
+        "zipBytes": 59779680
+      }
+    },
+    "equalWindowStatesVerified": true,
+    "allHistoryMountedAndTypingChecksPassed": true,
+    "retainedConfiguration": "opt-level=3 + target-cpu=native; measured tokenizer benefit, similar UI median, larger package; no universal fastest/smallest claim",
+    "compilerFlags": {
+      "baseline": {
+        "optLevel": "s",
+        "targetCpu": "portable default"
+      },
+      "candidate": {
+        "optLevel": "3",
+        "targetCpu": "native"
+      },
+      "common": {
+        "lto": true,
+        "codegenUnits": 1,
+        "strip": true
+      }
+    },
+    "sourceSnapshot": "b7e89dfa3315bc9ead3ff86c3a25d8f89475738926d08a8f809383e29bc53b10",
+    "note": "After freezing both comparison binaries, only three cfg(test) single-element loops were simplified for Clippy; production paths remain identical between arms."
+  },
+  "packages": {
+    "verified": true,
+    "files": [
+      {
+        "file": "Lumen_0.8.0_x64-setup.exe",
+        "bytes": 41204414,
+        "sha256": "59b575fff5bc520be2246acfe416017be7a7af8527932a06062a5d0d27a5a0d1"
+      },
+      {
+        "file": "Lumen_0.8.0_x64-portable-updated-20261113T150904Z.exe",
+        "bytes": 36527616,
+        "sha256": "5b5a282b7e546a0c4deceb962f781b268b735882d0dda2c52e09cafdfa48e365"
+      },
+      {
+        "file": "Lumen_0.8.0_x64-portable-updated-20261113T150904Z.zip",
+        "bytes": 59779683,
+        "sha256": "ce93c847dddc02d89c851a394fe89eec15b79b8bd724eb92c20d0e9475f12d99"
+      }
+    ],
+    "zipExecutableMatches": true,
+    "browserAndLegalBundled": true,
+    "benchmarkIdentifierAbsent": true
+  }
+}

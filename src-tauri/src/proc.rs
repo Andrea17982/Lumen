@@ -30,6 +30,7 @@ pub fn std_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Comman
 pub struct ServiceChild {
     pub stdin: Option<tokio::process::ChildStdin>,
     pub stdout: Option<tokio::process::ChildStdout>,
+    pub stderr: Option<tokio::process::ChildStderr>,
     #[cfg(windows)]
     inner: crate::metadata_windows::MetadataChild,
     #[cfg(not(windows))]
@@ -52,11 +53,25 @@ impl ServiceChild {
         Ok(Self {
             stdin: inner.stdin.take(),
             stdout: inner.stdout.take(),
+            stderr: inner.stderr.take(),
             inner,
             #[cfg(unix)]
             group,
             finished: false,
         })
+    }
+    pub fn id(&mut self) -> Option<u32> {
+        self.inner.id()
+    }
+    pub async fn wait(&mut self) -> Result<std::process::ExitStatus, String> {
+        #[cfg(windows)]
+        {
+            self.inner.wait().await
+        }
+        #[cfg(not(windows))]
+        {
+            self.inner.wait().await.map_err(|e| e.to_string())
+        }
     }
     pub async fn finish(&mut self, success: bool) -> Result<(), String> {
         #[cfg(windows)]

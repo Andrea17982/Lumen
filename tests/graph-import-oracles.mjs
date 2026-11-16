@@ -105,8 +105,9 @@ const report = {
     'Not a full TypeScript module resolver, GDScript parser, C# compiler or whole-project semantic certification.',
   ],
 };
+await mkdir('.impeccable/graph-reliability', { recursive: true });
 await writeFile(
-  'docs/data/graph-import-oracles-0.8-results.json',
+  '.impeccable/graph-reliability/import-oracles-results.json',
   JSON.stringify(report, null, 2) + '\n',
 );
 console.log(JSON.stringify(report));

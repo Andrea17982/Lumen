@@ -175,7 +175,7 @@ try {
     ['Test', 'gpt-luna-fixture', 'low'],
     ['Traduci questa email', 'gpt-luna-fixture', 'low'],
     ['Correggi un errore CSS', 'gpt-terra-fixture', 'low'],
-    ['Trova un bug intermittente di concorrenza', 'gpt-terra-fixture', 'medium'],
+    ['Trova un bug intermittente di concorrenza', 'opus', 'medium'],
     ['Progetta una migrazione del database', 'opus', 'low'],
     ["Controlla la sicurezza dell'autenticazione", 'opus', 'low'],
   ]) {
@@ -283,14 +283,15 @@ try {
   await page.screenshot({ path: '.impeccable/review/native-activity-fixture.png' });
   await page.getByRole('button', { name: 'GPT', exact: true }).click();
   await page.getByRole('button', { name: 'Advanced provider options' }).click();
-  await page.getByRole('combobox', { name: 'Model', exact: true }).selectOption('gpt-fast-fixture');
-  assert.deepEqual(
-    await page
-      .getByRole('combobox', { name: 'Reasoning effort' })
-      .locator('option')
-      .evaluateAll((options) => options.map((o) => o.value)),
-    ['', 'low', 'medium'],
-  );
+  await page.getByRole('combobox', { name: 'Model', exact: true }).click();
+  await page.getByRole('option', { name: 'GPT fast fixture', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Reasoning effort' }).click();
+  assert.deepEqual(await page.getByRole('listbox').getByRole('option').allTextContents(), [
+    'Provider default',
+    'low',
+    'medium',
+  ]);
+  await page.getByRole('combobox', { name: 'Reasoning effort' }).press('Escape');
   await page.getByRole('button', { name: /^Permissions: / }).click();
   await page.getByRole('menuitemradio', { name: /^Autopilot/ }).click();
   await page.getByRole('button', { name: 'Permissions: Autopilot' }).waitFor();
@@ -299,8 +300,8 @@ try {
   await page.getByRole('button', { name: 'Save account name' }).click();
   await page
     .getByRole('combobox', { name: 'Account', exact: true })
-    .getByRole('option', { name: 'Composer renamed account' })
-    .waitFor({ state: 'attached' });
+    .getByText('Composer renamed account', { exact: true })
+    .waitFor();
   await page.screenshot({ path: '.impeccable/review/native-provider-controls.png' });
   await page.getByRole('button', { name: 'Manage accounts' }).click();
   await page.getByRole('button', { name: 'Rename Composer renamed account' }).click();
@@ -485,6 +486,22 @@ try {
     text: 'RATE_FIXTURE please',
     options: { ...options, mode: 'claude', accountId: claude.id },
   });
+  // Runtime fallback now requires an explicit decision before sending to another account.
+  let fallbackQuestion;
+  for (let i = 0; i < 200; i++) {
+    const m = (await invoke('get_messages', { id: limited.id })).at(-1);
+    const row = m?.activity.find(
+      (a) =>
+        a.kind === 'interaction' && JSON.parse(a.text).questions?.some((q) => q.id === 'switch'),
+    );
+    if (row) {
+      fallbackQuestion = JSON.parse(row.text);
+      break;
+    }
+    await sleep(50);
+  }
+  assert(fallbackQuestion, 'Fallback must wait for consent');
+  await invoke('answer_question', { id: fallbackQuestion.id, answers: { switch: ['Continue'] } });
   await waitSession(limited.id, 'completed');
   const fell = (await invoke('get_messages', { id: limited.id }))[1];
   assert(

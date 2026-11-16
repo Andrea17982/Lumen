@@ -674,6 +674,7 @@ pub(crate) mod tests {
         let mut hub = Hub::default();
         hub.connect(
             &Invocation {
+                automatic: false,
                 account: &account,
                 config: &f.directory("accounts/local"),
                 workspace: &f.directory("project"),

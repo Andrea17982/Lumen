@@ -1,3 +1,4 @@
+import Select from '../../components/Select';
 import { visibleInterval } from '../../lib/visible';
 import { useEffect, useState } from 'react';
 import { decisionBlocker, sameScope, visibleText, whitelistCommands } from './contracts';
@@ -170,7 +171,7 @@ function Whitelist({
       </p>
       {onAddRule && (
         <div className="gatekeeper-actions">
-          <select
+          <Select
             aria-label="Exact command to whitelist"
             value={command}
             disabled={working}
@@ -179,7 +180,7 @@ function Whitelist({
             {whitelistCommands.map((value) => (
               <option key={value}>{value}</option>
             ))}
-          </select>
+          </Select>
           <button
             type="button"
             disabled={working}

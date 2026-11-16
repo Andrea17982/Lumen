@@ -7,7 +7,7 @@ test('every connected provider can be selected directly without changing its mod
     localStorage.setItem(
       'lumen-preview-v1',
       JSON.stringify({
-        accounts: ['claude', 'gpt', 'gemini', 'antigravity', 'ollama'].map((provider) => ({
+        accounts: ['claude', 'gpt', 'antigravity', 'ollama'].map((provider) => ({
           id: provider,
           name: provider,
           provider,
@@ -18,7 +18,7 @@ test('every connected provider can be selected directly without changing its mod
   );
   await page.goto('/');
   const picker = page.getByRole('group', { name: 'AI provider' });
-  for (const name of ['Gemini CLI', 'Antigravity', 'Ollama', 'Claude', 'GPT']) {
+  for (const name of ['Antigravity', 'Ollama', 'Claude', 'GPT']) {
     const button = picker.getByRole('button', { name, exact: true });
     await button.click();
     await expect(button).toHaveAttribute('aria-pressed', 'true');
@@ -57,11 +57,11 @@ test('usage shows an empty state when no cloud account is configured', async ({ 
   await page.goto('/');
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Provider usage' })).toContainText(
-    'No cloud providers configured.',
+    'No usage limits reported yet.',
   );
 });
 
-test('usage excludes local Ollama and explains unavailable cloud quotas', async ({ page }) => {
+test('usage omits accounts without reported windows', async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem(
       'lumen-preview-v1',
@@ -78,11 +78,10 @@ test('usage excludes local Ollama and explains unavailable cloud quotas', async 
   await page.goto('/');
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
   const usage = page.getByRole('dialog', { name: 'Provider usage' });
-  await expect(usage).toContainText('Work');
-  await expect(usage).toContainText('Google');
+  await expect(usage).not.toContainText('Work');
+  await expect(usage).not.toContainText('Google');
   await expect(usage).not.toContainText('Local');
-  await expect(usage).toContainText('use /usage in Claude Code');
-  await expect(usage.getByLabel('No quota data available')).toHaveCount(2);
+  await expect(usage).toContainText('No usage limits reported yet.');
 });
 
 test('usage displays Codex windows and Antigravity model groups', async ({ page }) => {
@@ -101,7 +100,7 @@ test('usage displays Codex windows and Antigravity model groups', async ({ page 
             updatedAt: Date.now(),
             source: 'codex-cli',
             windows: [
-              { windowMinutes: 299, usedPercent: 23, resetsAt: Date.now() + 60000 },
+              { windowMinutes: 300, usedPercent: 23, resetsAt: Date.now() + 60000 },
               { windowMinutes: 1440, usedPercent: 67, resetsAt: Date.now() + 60000 },
               { windowMinutes: 43200, usedPercent: 42, resetsAt: Date.now() + 60000 },
             ],
@@ -132,19 +131,10 @@ test('usage displays Codex windows and Antigravity model groups', async ({ page 
   await page.goto('/');
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
   const usage = page.getByRole('dialog', { name: 'Provider usage' });
-  for (const value of [
-    '23%',
-    '67%',
-    '1 day',
-    '42%',
-    '30 day',
-    'Gemini Models',
-    '10%',
-    'Claude Models',
-    '55%',
-  ]) {
-    await expect(usage).toContainText(value);
-  }
+  for (const value of ['23%', 'Gemini Models', '10%']) await expect(usage).toContainText(value);
+  for (const value of ['67%', '42%', 'Claude Models', '55%', 'Unavailable', 'Updated'])
+    await expect(usage).not.toContainText(value);
+  await expect(usage.getByRole('button')).toHaveCount(0);
 });
 
 test('Claude usage resets at the reported deadline without a refresh request', async ({ page }) => {
@@ -177,6 +167,15 @@ test('Claude usage resets at the reported deadline without a refresh request', a
 });
 
 test('first run, provider controls and honest browser boundary', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({
+        accounts: ['claude', 'gpt'].map((provider) => ({ id: provider, name: provider, provider })),
+        sessions: [],
+      }),
+    ),
+  );
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
@@ -241,12 +240,15 @@ test('moving between projects preserves the conversation folder across reloads',
   );
   await page.goto('/');
   await page.getByRole('button', { name: /^(?!Actions for).*Linked conversation/ }).click();
-  await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption('w2');
+  await page.getByRole('combobox', { name: 'Project', exact: true }).click();
+  await page.getByRole('option', { name: 'Code workspace', exact: true }).click();
   await expect(page.locator('.workspace-name')).toHaveText('Code workspace');
   await expect(page.locator('.workspace-name')).toHaveAttribute('title', 'C:/Original');
   await page.reload();
   await page.getByRole('button', { name: /^(?!Actions for).*Linked conversation/ }).click();
-  await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toHaveValue('w2');
+  await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toHaveText(
+    'Code workspace',
+  );
   await expect(page.locator('.workspace-name')).toHaveAttribute('title', 'C:/Original');
 });
 
@@ -268,12 +270,10 @@ test('accounts can be renamed from Settings without changing identity', async ({
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: 'GPT', exact: true }).click();
   await page.getByRole('button', { name: 'Advanced provider options' }).click();
-  await expect(page.getByRole('combobox', { name: 'Account', exact: true })).toHaveValue('g');
-  await expect(
-    page
-      .getByRole('combobox', { name: 'Account', exact: true })
-      .getByRole('option', { name: 'After' }),
-  ).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: 'Account', exact: true })).toHaveText('After');
+  await page.getByRole('combobox', { name: 'Account', exact: true }).click();
+  await expect(page.getByRole('option', { name: 'After', exact: true })).toHaveCount(1);
+  await page.getByRole('combobox', { name: 'Account', exact: true }).press('Escape');
 });
 
 test('settings, theme and support information persist across reloads', async ({ page }) => {
@@ -393,23 +393,22 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
   }
   await page
     .locator('.project-list')
-    .getByRole('button', { name: 'Unsorted', exact: true })
+    .getByRole('button', { name: 'All conversations', exact: true })
     .click();
-  const actions = page.getByRole('button', { name: 'Actions for Move me' });
+  const actions = page.locator('.session-row').filter({ hasText: 'Move me' });
   await actions.focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+F10');
   await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(actions).toBeFocused();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+F10');
   await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
   await page.getByRole('textbox', { name: 'Conversation title' }).fill('Renamed conversation');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const row = page.locator('.session-row').filter({ hasText: 'Renamed conversation' });
   await row.click({ button: 'right' });
-  await page
-    .getByRole('combobox', { name: 'Move conversation to project' })
-    .selectOption({ label: 'Project A' });
+  await page.getByRole('combobox', { name: 'Move conversation to project' }).click();
+  await page.getByRole('option', { name: 'Project A', exact: true }).click();
   await page
     .locator('.project-list')
     .getByRole('button', { name: 'Project A', exact: true })
@@ -441,9 +440,9 @@ test('projects support shortcuts, context actions, drag and persistent Auto pref
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.getByRole('button', { name: 'Open sidebar', exact: true }).click();
   await row.click();
-  await expect(
-    page.getByRole('combobox', { name: 'Project', exact: true }).locator('option:checked'),
-  ).toHaveText('Project B');
+  await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toHaveText(
+    'Project B',
+  );
   await row.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.getByRole('button', { name: 'Delete conversation', exact: true }).click();
@@ -606,7 +605,12 @@ test('Orchestra cards show questions, an editable plan and live progress', async
   const plan = page.getByRole('region', { name: 'Orchestra plan' });
   await expect(plan.getByText('Split API and UI')).toBeVisible();
   const agent = plan.getByRole('combobox', { name: 'Agent for API' });
-  await expect(agent.locator('option[value="o"]')).toBeDisabled();
+  // Flush automatic scrolling before opening a menu that dismisses on parent scroll.
+  await agent.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await agent.click();
+  await expect(page.getByRole('option', { name: 'Ollama · Local' })).toBeDisabled();
+  await agent.press('Escape');
   await plan.getByRole('button', { name: 'Remove UI' }).click();
   await expect(plan.getByText('UI', { exact: true })).toHaveCount(0);
   await expect(plan.getByRole('button', { name: 'Remove API' })).toBeDisabled();
@@ -678,6 +682,12 @@ test('Orchestra limits are optional and saved from Teamwork settings', async ({ 
 });
 
 test('the Orchestra switch shows a composer badge that turns it off', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'lumen-preview-v1',
+      JSON.stringify({ accounts: [{ id: 'c', name: 'Claude', provider: 'claude' }], sessions: [] }),
+    ),
+  );
   await page.addInitScript(() =>
     localStorage.setItem('lumen-preview-settings', JSON.stringify({ orchestra: true })),
   );
@@ -796,7 +806,7 @@ test('the context meter shows a coloured dot, exact tokens and a Compact action'
   await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
   // 240,000 characters is 60,000 tokens: 30% of a 200k window, so the dot is green.
   const meter = page.getByRole('button', { name: /^Context \d+%/ });
-  await expect(meter).toHaveText(/Context 30%/);
+  await expect(meter).toHaveText(/Context ~30%/);
   await expect(meter).toHaveClass(/context-meter low/);
   await meter.click();
   const popover = page.getByRole('dialog', { name: 'Context window' });
@@ -814,7 +824,7 @@ test('the context dot turns orange and red at 50% and 80%', async ({ page }) => 
   await page.goto('/');
   await page.getByRole('button', { name: /^(?!Actions for).*Context fixture/ }).click();
   const meter = page.getByRole('button', { name: /^Context \d+%/ });
-  await expect(meter).toHaveText(/Context 85%/);
+  await expect(meter).toHaveText(/Context ~85%/);
   await expect(meter).toHaveClass(/context-meter high/);
 });
 

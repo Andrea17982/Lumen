@@ -25,6 +25,12 @@ impl MetadataChild {
         unsafe { self.child.try_inner_child_mut() }
             .ok_or("Metadata process handle unavailable".into())
     }
+    pub fn id(&mut self) -> Option<u32> {
+        self.root().ok().and_then(|child| child.id())
+    }
+    pub async fn wait(&mut self) -> Result<std::process::ExitStatus, String> {
+        self.root()?.wait().await.map_err(|e| e.to_string())
+    }
     pub fn spawn(command: Command) -> std::io::Result<Self> {
         let mut command = CommandWrap::from(command);
         command

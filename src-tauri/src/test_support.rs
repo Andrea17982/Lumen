@@ -10,20 +10,12 @@ impl Fixture {
     pub fn new() -> Self {
         let root = std::env::temp_dir().join(format!("lumen-regression-{}", models::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let core = Arc::new(Core {
-            store: store::Store::open(std::path::Path::new(":memory:")).unwrap(),
-            root: root.clone(),
-            jobs: Mutex::new(HashMap::new()),
-            slots: Arc::new(Semaphore::new(4)),
-            inference: Arc::new(Semaphore::new(8)),
-            workspace_locks: Mutex::new(HashMap::new()),
-            catalogs: Mutex::new(HashMap::new()),
-            usage_lock: Mutex::new(()),
-            orchestra_raises: Mutex::new(HashMap::new()),
-            limits: Default::default(),
-            settings: Mutex::new(Default::default()),
-            approvals: None,
-        });
+        let core = Arc::new(Core::new(
+            store::Store::open(std::path::Path::new(":memory:")).unwrap(),
+            root.clone(),
+            Default::default(),
+            None,
+        ));
         Self { core, root }
     }
 

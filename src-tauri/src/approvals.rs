@@ -248,6 +248,7 @@ mod tests {
         let (_tx, rx) = watch::channel(false);
         let result = claude_turn(
             Invocation {
+            automatic: false,
                 browser: None,
                 browser_scope: None,
                 browser_artifacts: None,

@@ -16,9 +16,14 @@ export function contextWindow(provider: Provider, model: string): number {
       return 200_000;
     case 'gpt':
       return 400_000;
-    case 'gemini':
     case 'antigravity':
       return 1_000_000;
+    case 'openaiapi':
+    case 'anthropicapi':
+    case 'googleapi':
+    case 'cursor':
+    case 'opencode':
+      return 0; // Native profile models have no verified context-window metadata yet.
     case 'ollama':
       return 8_192;
   }
@@ -40,6 +45,7 @@ export function contextLevel(used: number, window: number): ContextLevel {
 export interface Measurement {
   /** Input tokens of the latest request, cached reads and writes included. */
   latest: number;
+  provider?: Provider;
   /** CLI instructions and tools on top of Lumen's prompt, measured on the turn's first request. */
   overhead: number | null;
   /** Context window the CLI reported for the model. */
@@ -49,7 +55,7 @@ export interface Measurement {
 const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
 
 /** The newest reply's measurement. Older replies stored a bare number of input tokens. */
-export function lastMeasurement(messages: Message[]): Measurement | null {
+export function lastMeasurement(messages: Message[], provider?: Provider): Measurement | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const usage = messages[i].activity.find((a) => a.kind === 'usage');
     if (!usage) continue;
@@ -59,12 +65,29 @@ export function lastMeasurement(messages: Message[]): Measurement | null {
     } catch {
       return null;
     }
+    const reportedProvider =
+      value && typeof value === 'object' && 'provider' in value ? value.provider : undefined;
+    const model = messages[i].activity.filter((a) => a.kind === 'model').at(-1)?.text ?? '';
+    const identity =
+      reportedProvider ??
+      (
+        { claude: 'claude', codex: 'gpt', agy: 'antigravity', ollama: 'ollama' } as Record<
+          string,
+          Provider
+        >
+      )[model.split(' · ')[0]];
+    if (provider && identity !== provider) continue;
     if (count(value) !== null) return { latest: value as number, overhead: null, window: null };
     const v = (value ?? {}) as Record<string, unknown>;
     const latest = count(v.latest);
     return latest === null
       ? null
-      : { latest, overhead: count(v.overhead), window: count(v.window) };
+      : {
+          latest,
+          overhead: count(v.overhead),
+          window: count(v.window),
+          ...(identity ? { provider: identity as Provider } : {}),
+        };
   }
   return null;
 }
@@ -91,7 +114,7 @@ export function contextUse(
   const overhead = measurement?.overhead ?? null;
   const window = measurement?.window ?? fallbackWindow;
   return {
-    ...contextLevel(prompt + draft + (overhead ?? 0), window),
+    ...contextLevel(Math.max(prompt + (overhead ?? 0), measurement?.latest ?? 0) + draft, window),
     prompt,
     draft,
     overhead,

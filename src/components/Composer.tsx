@@ -1,3 +1,4 @@
+import Select from './Select';
 import { ArrowUp, ChevronDown, ChevronUp, Paperclip, Square, Workflow } from 'lucide-react';
 import ModeControl from './ModeControl';
 import PermissionButton from './PermissionButton';
@@ -41,6 +42,11 @@ export function ComposerToolbar(p: {
         providers={p.providers}
         onChange={p.onMode}
       />
+      {p.mode === 'cursor' && p.accessMode !== 'autopilot' && (
+        <span className="catalog-status">
+          {p.mode === 'cursor' ? 'Cursor' : 'OpenCode'} requires Autopilot
+        </span>
+      )}
       {p.orchestra && (
         <button
           className="orchestra-badge"
@@ -55,7 +61,7 @@ export function ComposerToolbar(p: {
       )}
       {p.workspaces.length > 0 && (
         <div className="workspace-controls">
-          <select
+          <Select
             aria-label="Project"
             title={p.workspaceName || t('Choose project')}
             value={p.workspaceId}
@@ -68,7 +74,7 @@ export function ComposerToolbar(p: {
                 {w.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
       {direct && (
@@ -115,7 +121,6 @@ export function TokenCaption({
   /** The draft holds a large encoded blob. */
   heavy: boolean;
 }) {
-  const { t } = useI18n();
   return (
     <div className="composer-caption">
       {tokens > 0 && (
@@ -130,10 +135,6 @@ export function TokenCaption({
           ~{compactTokens(tokens)} tokens · {heavy ? 'Heavy' : impact}
         </span>
       )}
-      <span>
-        {t('Enter to send')} <span className="caption-dot">·</span>{' '}
-        {t('Shift Enter for a new line')}
-      </span>
     </div>
   );
 }

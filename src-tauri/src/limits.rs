@@ -28,6 +28,10 @@ pub fn is_rate_limit(text: &str) -> bool {
 /// Best-effort unlock time from messages such as "try again in 2h 5m" or "resets in 37 minutes".
 pub fn unlock_at(text: &str, now: i64) -> i64 {
     let l = text.to_lowercase();
+    let relative = ["resets in ", "try again in ", "retry in ", "available in "]
+        .iter()
+        .find_map(|prefix| l.find(prefix).map(|i| &l[i + prefix.len()..]));
+    let l = relative.unwrap_or("");
     let mut total: i64 = 0;
     let words: Vec<&str> = l
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -51,7 +55,7 @@ pub fn unlock_at(text: &str, now: i64) -> i64 {
         } else {
             continue;
         };
-        total += n * ms;
+        total = total.saturating_add(n.saturating_mul(ms));
     }
     now + if total > 0 {
         total.min(7 * 24 * 3_600_000)
@@ -146,5 +150,17 @@ mod tests {
         assert!(l.cooling("a", 50));
         assert_eq!(l.health("a", None, 50).state, "cooldown");
         assert_eq!(l.health("b", Some(2.0), 50).state, "near");
+    }
+    #[test]
+    fn quota_window_name_is_not_a_retry_delay() {
+        assert_eq!(
+            unlock_at("You hit the 5-hour limit. Resets in 30 minutes.", 0),
+            30 * 60_000
+        );
+        assert_eq!(unlock_at("You hit the 5-hour limit.", 0), 15 * 60_000);
+        assert_eq!(
+            unlock_at("Retry in 999999999999999999 hours", 0),
+            7 * 24 * 3_600_000
+        );
     }
 }

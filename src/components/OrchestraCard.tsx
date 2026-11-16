@@ -1,3 +1,4 @@
+import Select from './Select';
 import { visibleInterval } from '../lib/visible';
 import { useEffect, useState } from 'react';
 import {
@@ -213,7 +214,7 @@ export default function OrchestraCard({
                 {t.dependsOn.length ? ` · after ${t.dependsOn.join(', ')}` : ''}
               </small>
             </div>
-            <select
+            <Select
               aria-label={`Agent for ${t.title}`}
               value={assign[t.id] ?? t.accountId}
               disabled={busy}
@@ -224,7 +225,7 @@ export default function OrchestraCard({
                   {a.id === t.accountId && t.agent ? t.agent : `${nameOf(a.provider)} · ${a.name}`}
                 </option>
               ))}
-            </select>
+            </Select>
             <button
               className="icon-button"
               aria-label={`Remove ${t.title}`}

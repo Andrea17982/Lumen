@@ -12,7 +12,7 @@ export function accountMetadata() {
     'python',
     [
       '-c',
-      'import sqlite3,sys,json; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print(json.dumps(c.execute("SELECT provider,id FROM accounts WHERE provider IN (\'claude\',\'gpt\')").fetchall()))',
+      'import sqlite3,sys,json; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print(json.dumps(c.execute("SELECT provider,id FROM accounts WHERE provider IN (\'claude\',\'gpt\',\'antigravity\')").fetchall()))',
       path.join(root, 'lumen.db'),
     ],
     { encoding: 'utf8', windowsHide: true },

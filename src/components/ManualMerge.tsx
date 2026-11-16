@@ -1,3 +1,4 @@
+import Select from './Select';
 import { useState } from 'react';
 import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
@@ -99,7 +100,7 @@ export default function ManualMerge({
               )}
               <label>
                 {t('Result for')} {f.path}
-                <select
+                <Select
                   aria-label={`${t('Result for')} ${f.path}`}
                   value={choices[f.path] || ''}
                   disabled={busy}
@@ -113,7 +114,7 @@ export default function ManualMerge({
                   <option value="base">{t('Original project version')}</option>
                   <option value="delete">{t('Delete file')}</option>
                   {!f.binary && <option value="manual">{t('Edit merged text')}</option>}
-                </select>
+                </Select>
               </label>
               {choices[f.path] === 'manual' && (
                 <label>

@@ -28,7 +28,7 @@ pub fn configure_google(
 }
 pub fn configure_google_for(
     config: &Path,
-    provider: &crate::models::Provider,
+    _provider: &crate::models::Provider,
     data: &Path,
     enabled: bool,
     workspace: Option<&Path>,
@@ -36,11 +36,7 @@ pub fn configure_google_for(
 ) -> Result<(), String> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().map_err(|_| "Graph configuration lock failed")?;
-    let path = config.join(if *provider == crate::models::Provider::Gemini {
-        ".gemini/settings.json"
-    } else {
-        ".gemini/config/mcp_config.json"
-    });
+    let path = config.join(".gemini/config/mcp_config.json");
     let original = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
@@ -83,15 +79,7 @@ pub fn configure_google_for(
         if let Some(server) = server.as_object_mut() {
             server.remove("type");
             if let Some(url) = server.remove("url") {
-                server.insert(
-                    if *provider == crate::models::Provider::Gemini {
-                        "httpUrl"
-                    } else {
-                        "serverUrl"
-                    }
-                    .into(),
-                    url,
-                );
+                server.insert("serverUrl".into(), url);
             }
         }
     }
@@ -102,27 +90,6 @@ pub fn configure_google_for(
         servers.remove(SERVER);
     }
     crate::browser::google_settings(&mut value)?;
-    if *provider == crate::models::Provider::Gemini {
-        if value.get("tools").is_some_and(|v| !v.is_object()) {
-            return Err(
-                "Native tools settings must be an object; settings were not overwritten".into(),
-            );
-        }
-        if value.get("tools").is_none() {
-            value["tools"] = json!({});
-        }
-        if value["tools"].get("exclude").is_none() {
-            value["tools"]["exclude"] = json!([]);
-        }
-        let excluded = value["tools"]["exclude"]
-            .as_array_mut()
-            .ok_or("Native tools.exclude must be an array")?;
-        for name in ["google_web_search", "web_fetch"] {
-            if !excluded.iter().any(|v| v == name) {
-                excluded.push(json!(name));
-            }
-        }
-    }
     if previous_settings == value {
         return Ok(());
     }
@@ -144,7 +111,7 @@ pub fn configure_google_for(
     Ok(())
 }
 
-fn tools() -> Value {
+pub(crate) fn tools() -> Value {
     let read_only = json!({"readOnlyHint": true, "idempotentHint": true, "openWorldHint": false});
     let tool = |name: &str, description: &str, properties: Value, required: Value| {
         json!({
@@ -369,13 +336,11 @@ mod tests {
     #[test]
     fn google_configuration_is_stable_preserves_other_servers_and_rejects_invalid_json() {
         let fixture = crate::test_support::Fixture::new();
-        for (provider, relative) in [
-            (crate::models::Provider::Gemini, ".gemini/settings.json"),
-            (
+        {
+            let (provider, relative) = (
                 crate::models::Provider::Antigravity,
                 ".gemini/config/mcp_config.json",
-            ),
-        ] {
+            );
             let account = fixture.directory(provider.binary());
             let path = account.join(relative);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -395,13 +360,6 @@ mod tests {
                 value["mcpServers"][crate::browser::SERVER]["args"][0],
                 crate::browser::FLAG
             );
-            if provider == crate::models::Provider::Gemini {
-                assert!(value["tools"]["exclude"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|v| v == "web_fetch"));
-            }
             assert!(!String::from_utf8(first)
                 .unwrap()
                 .contains("LUMEN_WORKSPACE_ROOT"));

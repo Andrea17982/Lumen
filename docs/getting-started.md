@@ -1,4 +1,4 @@
-# Getting started — 0.7
+# Getting started
 
 ## Install
 
@@ -6,20 +6,22 @@ Download from [GitHub Releases](https://github.com/Andrea17982/Lumen/releases/la
 
 Install the official CLI for each subscription provider you want to use, or start Ollama with an installed local model. Restart Lumen after changing PATH. You need your own authorized provider access and a trusted project directory. [Account setup](accounts.md).
 
+The 0.9 implementation adds OpenCode through official ACP with session-scoped permissions, Cursor CLI with explicit Autopilot selection, and the three official API adapters. Native profiles/policies remain in control; [API accounts](api-access.md) require their own key, confirmed model rates and budget. [Current adapter limits](integrations.md).
+
 ## First conversation
 
-The 0.8 branch adds an optional five-step tour on first use, with highlights on the real controls. Skip it at any time; replay it from Settings → General or the command palette. It preserves your draft and does not sign in, send messages or grant permissions. Published 0.7.1 is unchanged until the 0.8 release.
+Lumen offers an optional five-step tour on first use, with highlights on the real controls. Skip it at any time; replay it from Settings → General or the command palette. It preserves your draft and does not sign in, send messages or grant permissions.
 
 1. Open Settings → Accounts and add a named provider slot.
 2. Use Sign in and finish the provider's official terminal/browser login. Lumen never asks you to paste credentials. Ollama needs no sign-in.
 3. Check the account connection, choose a project folder and return to the conversation.
 4. Select a direct provider; expand its options to choose the available model/reasoning level.
-5. Select permissions, type a request and send. Direct sessions are the default; Auto and Orchestra are explicit choices.
+5. Select permissions, type a request and send. Auto is the initial mode; choose a provider to pin it, and enable Orchestra explicitly.
 6. Expand activity for exposed tools, browser work, checks and provider summaries. Native questions appear as structured controls.
 
 **Read only** is the initial permission profile. **File edits**, **Autopilot** and **Approve each action** have different semantics and provider support; see [Permissions](workspace-models-permissions.md). Autopilot authorizes available tools under your OS account without additional Lumen plan-approval loops. It does not grant administrator privileges.
 
-In 0.8, the composer shows the current permission mode beside its shield. Click it to read the four explanations, then select a mode. Simply opening or closing the menu leaves access unchanged.
+The composer shows the current permission mode beside its shield. Click it to read the four explanations, then select a mode. Simply opening or closing the menu leaves access unchanged.
 
 ## Everyday controls
 

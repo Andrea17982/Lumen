@@ -1,3 +1,5 @@
+import Select from '../components/Select';
+import ApiAccountSettings from './ApiAccountSettings';
 import { useEffect, useState } from 'react';
 import { Circle, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { AccountRename } from '../components/ProviderOptions';
@@ -96,7 +98,7 @@ export default function AccountSettings({
       </div>
       <p>
         {t(
-          'Sign in through the official CLI. Each account gets its own configuration folder. Antigravity, Gemini CLI and Ollama (local) are emergency fallbacks in Auto, used only after Claude and GPT are rate limited or out of quota.',
+          'Sign in through the official CLI. Claude, Codex and Antigravity have isolated profiles. OpenCode and Cursor each use one existing native profile with explicit selection. OpenCode supports scoped permissions; Cursor currently requires Autopilot. Model catalogs do not establish account entitlement. Antigravity and Ollama (local) are emergency fallbacks in Auto, used only after Claude and GPT are rate limited or out of quota.',
         )}
       </p>
       {diag && (
@@ -108,10 +110,6 @@ export default function AccountSettings({
           <span className={diag.gpt ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
             Codex CLI {t(diag.gpt ? 'found' : 'not found')}
-          </span>
-          <span className={diag.gemini ? 'available' : ''}>
-            <Circle size={7} fill="currentColor" />
-            Gemini CLI {t(diag.gemini ? 'found' : 'not found')}
           </span>
           <span className={diag.antigravity ? 'available' : ''}>
             <Circle size={7} fill="currentColor" />
@@ -131,15 +129,19 @@ export default function AccountSettings({
       {accounts.map((a) => (
         <div className="account-row" key={a.id}>
           <div className={`provider-avatar ${a.provider}`}>
-            {a.provider === 'claude'
-              ? 'C'
-              : a.provider === 'gpt'
-                ? 'G'
-                : a.provider === 'gemini'
-                  ? 'Gm'
-                  : a.provider === 'ollama'
-                    ? 'Ol'
-                    : 'Ag'}
+            {
+              {
+                claude: 'C',
+                gpt: 'G',
+                ollama: 'Ol',
+                antigravity: 'Ag',
+                opencode: 'Oc',
+                cursor: 'Cu',
+                openaiapi: 'OA',
+                anthropicapi: 'An',
+                googleapi: 'Go',
+              }[a.provider]
+            }
           </div>
           <div className="account-info">
             <strong>{a.name}</strong>
@@ -156,7 +158,7 @@ export default function AccountSettings({
               )}
             </small>
           </div>
-          {a.provider !== 'ollama' ? (
+          {a.provider !== 'ollama' && !a.provider.endsWith('api') ? (
             <button
               className="text-button"
               disabled={pending}
@@ -225,7 +227,7 @@ export default function AccountSettings({
           {a.provider === 'ollama' && advanced && settings && ollama?.models.length ? (
             <label className="ollama-model">
               {t('Model')}
-              <select
+              <Select
                 aria-label={t('Ollama model')}
                 value={settings.ollamaModel}
                 disabled={pending}
@@ -242,9 +244,10 @@ export default function AccountSettings({
                     {m.name} · {m.size}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : null}
+          {a.provider.endsWith('api') && <ApiAccountSettings account={a} onError={onError} />}
           {confirm === a.id && (
             <div className="account-confirm">
               <span>{t('Remove this account and its local login files?')}</span>
@@ -294,13 +297,17 @@ export default function AccountSettings({
           </label>
           <label>
             {t('Provider')}
-            <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
+            <Select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
               <option value="claude">Claude Code</option>
               <option value="gpt">ChatGPT / Codex</option>
-              <option value="gemini">Gemini CLI (emergency)</option>
-              <option value="antigravity">Antigravity CLI (emergency)</option>
-              <option value="ollama">Ollama (local, emergency)</option>
-            </select>
+              <option value="antigravity">Antigravity</option>
+              <option value="ollama">Ollama (local)</option>
+              <option value="opencode">OpenCode</option>
+              <option value="cursor">Cursor CLI</option>
+              <option value="openaiapi">OpenAI API</option>
+              <option value="anthropicapi">Anthropic API</option>
+              <option value="googleapi">Google API</option>
+            </Select>
           </label>
           <button className="primary-button" disabled={pending || !name.trim()} type="submit">
             {pending ? 'Adding…' : 'Add account'}

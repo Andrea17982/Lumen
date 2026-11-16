@@ -1,6 +1,5 @@
-import { AlertCircle, Sparkles, X } from 'lucide-react';
-import type { Plan } from '../lib/types';
-import { IconButton, nameOf } from '../lib/util';
+import { AlertCircle, X } from 'lucide-react';
+import { IconButton } from '../lib/util';
 
 /** A dismissible error line, used by the composer and the Settings panel. */
 export function ErrorBanner({
@@ -46,25 +45,6 @@ export function AttachmentList({
           </span>
         );
       })}
-    </div>
-  );
-}
-
-const STRATEGY: Record<string, string> = {
-  single: 'Direct',
-  broadcast: 'Claude and ChatGPT side by side',
-  orchestra: 'Orchestra',
-};
-
-/** How Auto planned the last turn: provider, strategy and reasoning effort. */
-export function PlanLine({ plan }: { plan: Plan }) {
-  return (
-    <div className="plan-line">
-      <Sparkles size={13} />
-      <span>
-        {nameOf(plan.provider)} · {STRATEGY[plan.strategy] ?? 'Answer + cross-audit'} ·{' '}
-        {plan.effort} reasoning
-      </span>
     </div>
   );
 }

@@ -3,12 +3,59 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Language = 'en' | 'it';
 
 const it: Record<string, string> = {
+  'Provider capabilities': 'Capacità dei provider',
+  'Capabilities integrated in Lumen. This does not check installation, sign-in or model availability.':
+    'Capacità integrate in Lumen. Non verifica installazione, accesso o disponibilità dei modelli.',
+  'Open the desktop app to view provider capabilities.':
+    'Apri l’app desktop per vedere le capacità dei provider.',
+  'Loading provider capabilities…': 'Caricamento delle capacità dei provider…',
+  'Could not load provider capabilities.': 'Impossibile caricare le capacità dei provider.',
+  'Provider capability comparison': 'Confronto delle capacità dei provider',
+  Capability: 'Capacità',
+  'Native session resume': 'Ripresa della sessione nativa',
+  'Per-action approvals': 'Approvazioni per azione',
+  'Native skills': 'Skill native',
+  'Reported input tokens': 'Token di input riportati',
+  'Cost per turn': 'Costo per turno',
+  'Stop a running turn': 'Interruzione del turno',
+  Supported: 'Supportato',
+  Limited: 'Limitato',
+  Unavailable: 'Non disponibile',
+  'Shared tools': 'Strumenti condivisi',
+  Retry: 'Riprova',
+  'Expand a provider for its limits. Supported features still follow the selected permissions.':
+    'Espandi un provider per leggere i limiti. Le capacità supportate rispettano comunque i permessi scelti.',
+  'Lumen replays conversation context; it does not resume a native session.':
+    'Lumen reinvia il contesto della conversazione; non riprende una sessione nativa.',
+  'Per-action approvals are not integrated. Choose another permission profile.':
+    'Le approvazioni per azione non sono integrate. Scegli un altro profilo di permessi.',
+  'Skills are supplied as references in context, outside the native skill runtime.':
+    'Le skill sono fornite come riferimenti nel contesto, fuori dal runtime nativo delle skill.',
+  'Lumen filters shared tools per permission profile. Model tool support varies.':
+    'Lumen filtra gli strumenti condivisi per profilo di permessi. Il supporto degli strumenti varia in base al modello.',
+  'Shared namespaces require Ask first or Autopilot. Restricted profiles use the filtered account gateway.':
+    'I namespace condivisi richiedono Chiedi prima o Autopilot. I profili limitati usano il gateway dell’account filtrato.',
+  'The context meter uses an estimate; this adapter does not report input tokens.':
+    'Il misuratore del contesto usa una stima; questo adapter non riporta i token di input.',
+  'Input tokens are shown only when reported by the provider; missing values remain estimates.':
+    'I token di input sono mostrati solo quando riportati dal provider; i valori mancanti restano stime.',
+  'Lumen does not report a monetary cost per turn for this adapter.':
+    'Lumen non riporta un costo monetario per turno per questo adapter.',
+  'Rename project': 'Rinomina progetto',
+  'Delete project': 'Elimina progetto',
+  'Close project menu': 'Chiudi menu progetto',
+  'All conversations in this project will be deleted. Move any conversations you want to keep first. Files in the project folder are kept.':
+    'Tutte le conversazioni del progetto verranno eliminate. Sposta prima quelle che vuoi conservare. I file nella cartella del progetto vengono mantenuti.',
+  'Prompt assigned to': 'Prompt affidato a',
+  'Completed by': 'Completato da',
+  Duration: 'Durata',
+
   'Account tools': 'Strumenti dell’account',
   'Native hooks': 'Hook nativi',
   Skill: 'Skill',
   Tool: 'Strumento',
-  'Shared tools are available to Claude, GPT, Gemini and Antigravity. Provider authentication and permission controls still apply.':
-    'Gli strumenti condivisi sono disponibili a Claude, GPT, Gemini e Antigravity. Restano validi autenticazione e permessi dei provider.',
+  'Shared tools are available to Claude, GPT and Antigravity. Provider authentication and permission controls still apply.':
+    'Gli strumenti condivisi sono disponibili a Claude, GPT e Antigravity. Restano validi autenticazione e permessi dei provider.',
   'Detected integrations': 'Integrazioni rilevate',
   'Portable tools and skills are discovered automatically. Cloud connectors and native hooks may require their original account or runtime.':
     'Strumenti portabili e skill vengono rilevati automaticamente. Connettori cloud e hook nativi possono richiedere l’account o il runtime di origine.',
@@ -201,9 +248,6 @@ const it: Record<string, string> = {
   Light: 'Chiaro',
   Dark: 'Scuro',
   System: 'Sistema',
-  'Larger text': 'Testo pi\u00f9 grande',
-  'Increase interface text size while keeping the current layout style.':
-    "Aumenta il testo dell'interfaccia mantenendo il layout attuale.",
   'Conversation folder': 'Cartella della conversazione',
   'Linked to this conversation. New conversations use your last selection.':
     "Collegata a questa conversazione. Le nuove conversazioni useranno l'ultima selezione.",
@@ -262,7 +306,6 @@ const it: Record<string, string> = {
   'Project name': 'Nome del progetto',
   'Cancel new project': 'Annulla nuovo progetto',
   Create: 'Crea',
-  Unsorted: 'Senza progetto',
   'A clear space': 'Uno spazio per',
   'for a brighter idea.': 'idee pi\u00f9 luminose.',
   'AI provider': 'Provider AI',
@@ -286,8 +329,6 @@ const it: Record<string, string> = {
   'Send message': 'Invia messaggio',
   Message: 'Messaggio',
   "What's on your mind?": 'A cosa stai pensando?',
-  'Enter to send': 'Invio per inviare',
-  'Shift Enter for a new line': 'Maiusc+Invio per andare a capo',
   'All conversations': 'Tutte le conversazioni',
   'Search conversations': 'Cerca conversazioni',
   Usage: 'Utilizzo',
@@ -302,8 +343,8 @@ const it: Record<string, string> = {
   'No features behind a paywall.': 'Nessuna funzione a pagamento.',
   'Connected accounts': 'Account collegati',
   'Account setup and provider requirements': 'Configurazione account e requisiti dei provider',
-  'Sign in through the official CLI. Each account gets its own configuration folder. Antigravity, Gemini CLI and Ollama (local) are emergency fallbacks in Auto, used only after Claude and GPT are rate limited or out of quota.':
-    'Accedi tramite la CLI ufficiale. Ogni account ha una propria cartella di configurazione. Antigravity, Gemini CLI e Ollama (locale) sono alternative di emergenza per Auto, usate solo quando Claude e GPT raggiungono il limite o esauriscono la quota.',
+  'Sign in through the official CLI. Each account gets its own configuration folder. Antigravity and Ollama (local) are emergency fallbacks in Auto, used only after Claude and GPT are rate limited or out of quota.':
+    'Accedi tramite la CLI ufficiale. Ogni account ha una propria cartella di configurazione. Antigravity e Ollama (locale) sono alternative di emergenza per Auto, usate solo quando Claude e GPT raggiungono il limite o esauriscono la quota.',
   found: 'rilevato',
   'not found': 'non rilevato',
   'Connection unchecked': 'Connessione non verificata',

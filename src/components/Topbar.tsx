@@ -2,20 +2,11 @@ import { ChevronDown, Folder, Settings2, PanelRight } from 'lucide-react';
 import { IconButton } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
-/** Provider availability chip, derived from account health in App. */
-export interface HealthPill {
-  key: string;
-  state: 'active' | 'near' | 'cooldown';
-  label: string;
-  title: string;
-}
-
 export interface TopbarProps {
   desktop: boolean;
   workspaceLabel: string;
   workspaceTitle?: string;
   conversationTitle: string;
-  pills: HealthPill[];
   /** Given for a conversation that has not started: the folder name becomes a picker. */
   onChooseFolder?: () => void;
   folderBusy?: boolean;
@@ -29,7 +20,6 @@ export default function Topbar({
   workspaceLabel,
   workspaceTitle,
   conversationTitle,
-  pills,
   onChooseFolder,
   folderBusy,
   onOpenSettings,
@@ -72,12 +62,7 @@ export default function Topbar({
           </IconButton>
         )}
         {!desktop && <span className="preview-label">{t('Browser preview')}</span>}
-        {pills.map((pill) => (
-          <span key={pill.key} className={`health-pill ${pill.state}`} title={pill.title}>
-            <span className={`health-dot ${pill.state}`} />
-            {pill.label}
-          </span>
-        ))}
+
         <IconButton data-tour="settings" label={t('Settings')} onClick={onOpenSettings}>
           <Settings2 size={17} />
         </IconButton>

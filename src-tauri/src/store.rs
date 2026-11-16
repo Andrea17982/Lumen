@@ -278,7 +278,9 @@ impl Store {
     }
     pub fn accounts(&self) -> Result<Vec<Account>, String> {
         self.with(|c| {
-            let mut q = c.prepare("SELECT id,name,provider FROM accounts ORDER BY rowid")?;
+            let mut q = c.prepare(
+                "SELECT id,name,provider FROM accounts WHERE provider != 'gemini' ORDER BY rowid",
+            )?;
             let rows = q.query_map([], |r| {
                 let p: String = r.get(2)?;
                 Ok(Account {
@@ -287,9 +289,13 @@ impl Store {
                     provider: match p.as_str() {
                         "claude" => Provider::Claude,
                         "gpt" => Provider::Gpt,
-                        "gemini" => Provider::Gemini,
                         "antigravity" => Provider::Antigravity,
                         "ollama" => Provider::Ollama,
+                        "opencode" => Provider::Opencode,
+                        "cursor" => Provider::Cursor,
+                        "openaiapi" => Provider::Openaiapi,
+                        "anthropicapi" => Provider::Anthropicapi,
+                        "googleapi" => Provider::Googleapi,
                         _ => Provider::Gpt,
                     },
                 })
@@ -306,9 +312,14 @@ impl Store {
         let p = match &a.provider {
             Provider::Claude => "claude",
             Provider::Gpt => "gpt",
-            Provider::Gemini => "gemini",
+
             Provider::Antigravity => "antigravity",
             Provider::Ollama => "ollama",
+            Provider::Opencode => "opencode",
+            Provider::Cursor => "cursor",
+            Provider::Openaiapi => "openaiapi",
+            Provider::Anthropicapi => "anthropicapi",
+            Provider::Googleapi => "googleapi",
         };
         self.with(|c| {
             c.execute(
@@ -352,6 +363,30 @@ impl Store {
             )
         })?;
         Ok(w)
+    }
+    pub fn rename_workspace(&self, id: &str, name: &str) -> Result<(), String> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE workspaces SET name=?2 WHERE id=?1",
+                params![id, name],
+            )
+        })?;
+        Ok(())
+    }
+    pub fn workspace_sessions(&self, id: &str) -> Result<Vec<String>, String> {
+        self.with(|c| {
+            let mut q = c.prepare("SELECT id FROM sessions WHERE workspace_id=?1")?;
+            let rows = q.query_map([id], |r| r.get(0))?;
+            rows.collect()
+        })
+    }
+    pub fn delete_workspace(&self, id: &str) -> Result<(), String> {
+        self.with(|c| {
+            let tx = c.unchecked_transaction()?;
+            tx.execute("DELETE FROM sessions WHERE workspace_id=?1", [id])?;
+            tx.execute("DELETE FROM workspaces WHERE id=?1", [id])?;
+            tx.commit()
+        })
     }
     pub fn bind_workspace(
         &self,
@@ -467,5 +502,55 @@ mod tests {
             assert_eq!(updated[0].name, "After");
         }
         let _ = std::fs::remove_file(path);
+    }
+}
+
+#[cfg(test)]
+mod project_lifecycle_tests {
+    use super::*;
+    #[test]
+    fn deleting_project_cascades_messages_but_keeps_moved_conversations() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        let first = store
+            .add_workspace("First".into(), "folder".into())
+            .unwrap();
+        let second = store
+            .add_workspace("Second".into(), "folder".into())
+            .unwrap();
+        let deleted = store.create("folder".into()).unwrap();
+        let kept = store.create("folder".into()).unwrap();
+        for session in [&deleted, &kept] {
+            store
+                .bind_workspace(&session.id, Some(&first.id), "folder")
+                .unwrap();
+            store
+                .insert_message(
+                    &session.id,
+                    &Message {
+                        id: id(),
+                        role: "user".into(),
+                        text: "saved".into(),
+                        activity: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        store.rename_workspace(&first.id, "Renamed").unwrap();
+        assert!(store
+            .workspaces()
+            .unwrap()
+            .iter()
+            .any(|p| p.id == first.id && p.name == "Renamed"));
+        store
+            .bind_workspace(&kept.id, Some(&second.id), "folder")
+            .unwrap();
+        store.delete_workspace(&first.id).unwrap();
+        assert!(store.session(&deleted.id).is_err());
+        assert!(store.messages(&deleted.id).unwrap().is_empty());
+        assert_eq!(store.messages(&kept.id).unwrap().len(), 1);
+        assert_eq!(
+            store.session(&kept.id).unwrap().workspace_id.as_deref(),
+            Some(second.id.as_str())
+        );
     }
 }

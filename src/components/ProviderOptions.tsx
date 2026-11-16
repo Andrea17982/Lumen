@@ -1,3 +1,4 @@
+import Select from './Select';
 import { useEffect, useRef, useState } from 'react';
 import { Check, Pencil, RefreshCw, Settings2, X } from 'lucide-react';
 import { call } from '../lib/bridge';
@@ -57,6 +58,7 @@ export function AccountRename({
 
 export default function ProviderOptions({
   provider,
+  workspace,
   visible,
   accounts,
   accountId,
@@ -72,6 +74,7 @@ export default function ProviderOptions({
   paused,
 }: {
   provider: Provider;
+  workspace: string;
   visible: boolean;
   accounts: Account[];
   accountId: string;
@@ -115,7 +118,7 @@ export default function ProviderOptions({
     }
     setAccountId(effectiveId);
     setLoading(true);
-    void call<ModelInfo[]>('list_models', { id: effectiveId, refresh: revision > 0 })
+    void call<ModelInfo[]>('list_models', { id: effectiveId, refresh: revision > 0, workspace })
       .then((rows) => {
         if (gone) return;
         setModels(rows);
@@ -141,7 +144,7 @@ export default function ProviderOptions({
       gone = true;
     };
     // Re-query on identity/refresh/dialog changes; changing a model must not restart discovery.
-  }, [effectiveId, provider, revision, setModel, setEffort, onReady, paused]);
+  }, [effectiveId, provider, workspace, revision, setModel, setEffort, onReady, paused]);
   const selected = models.find((m) => m.id === model);
   return (
     <div hidden={!visible}>
@@ -169,7 +172,7 @@ export default function ProviderOptions({
               </button>
             </div>
           </div>
-          <select
+          <Select
             id="account-picker"
             aria-label="Account"
             value={effectiveId || ''}
@@ -182,7 +185,7 @@ export default function ProviderOptions({
                 {a.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <div className="field-heading">
@@ -197,7 +200,7 @@ export default function ProviderOptions({
               <RefreshCw size={13} className={loading ? 'spin' : ''} />
             </button>
           </div>
-          <select
+          <Select
             id="model-picker"
             aria-label="Model"
             disabled={loading || !models.length}
@@ -222,11 +225,11 @@ export default function ProviderOptions({
                 {m.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <label className="reasoning-field">
           Reasoning
-          <select
+          <Select
             aria-label="Reasoning effort"
             value={effort}
             disabled={loading || !selected?.efforts.length}
@@ -238,7 +241,7 @@ export default function ProviderOptions({
                 {level}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       {rename && account && (

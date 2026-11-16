@@ -1,7 +1,8 @@
+import Select from './components/Select';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { Check, Folder, Plus, Search, Sparkles, X, Circle, Shrink, ArrowRight } from 'lucide-react';
+import { Check, Folder, Plus, Search, X, Circle, Shrink, ArrowRight } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
 import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
@@ -19,7 +20,6 @@ import {
   subscribe,
   type ApprovalSnapshot,
 } from './lib/bridge';
-import { formatResetCountdown } from './lib/usage';
 import { localAssistant } from './features/local-assistant/instance';
 import { nameNewChat } from './features/local-assistant/autoTitle';
 import { Draft } from './features/local-assistant/draft';
@@ -27,12 +27,12 @@ import DraftSheet from './components/DraftSheet';
 import Transcript from './components/Transcript';
 import { useLatestCallback } from './lib/useLatestCallback';
 import ExecutionSummary from './components/ExecutionSummary';
-import { AttachmentList, ErrorBanner, PlanLine } from './components/ComposerParts';
+import { AttachmentList, ErrorBanner } from './components/ComposerParts';
 import { ProjectList, SessionList } from './components/Sidebar';
 import { active, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import GuidedTour, { TOUR_KEY } from './components/GuidedTour';
-import Topbar, { type HealthPill } from './components/Topbar';
+import Topbar from './components/Topbar';
 import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
 import ContextMeter from './components/ContextMeter';
@@ -53,7 +53,6 @@ import type {
   Mode,
   Plan,
   AccountUsage,
-  Health,
   RewindPreview,
   RunEvent,
   Session,
@@ -100,7 +99,6 @@ export default function App() {
   }, [sessionsReady, accountsReady, tourSeen, sessions.length, accounts.length]);
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [refreshingExecution, setRefreshingExecution] = useState(false);
   const streamRevision = useRef(0);
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
@@ -135,11 +133,21 @@ export default function App() {
   const [agyHide, setAgyHide] = useState(false);
   const [mode, setMode] = useState<Mode>(() => {
     const saved = localStorage.getItem('lumen-provider-mode');
-    return ['claude', 'gpt', 'gemini', 'antigravity', 'ollama', 'auto', 'both'].includes(
-      saved || '',
-    )
+    return [
+      'claude',
+      'gpt',
+      'antigravity',
+      'ollama',
+      'opencode',
+      'cursor',
+      'openaiapi',
+      'anthropicapi',
+      'googleapi',
+      'auto',
+      'both',
+    ].includes(saved || '')
       ? (saved as Mode)
-      : 'claude';
+      : 'auto';
   });
   const [accountId, setAccountId] = useState('');
   const [model, setModel] = useState('');
@@ -183,10 +191,7 @@ export default function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [usage, setUsage] = useState<AccountUsage[]>([]);
   const [usageClock, setUsageClock] = useState(Date.now());
-  const [usageErrors, setUsageErrors] = useState<Record<string, string>>({});
   const usageRequests = useRef(new Map<string, Promise<void>>());
-  /** Last background quota query per account; -1 after a failure. */
-  const usageAttempts = useRef(new Map<string, number>());
   useEffect(() => {
     return visibleInterval(() => setUsageClock(Date.now()), 15_000);
   }, []);
@@ -229,7 +234,6 @@ export default function App() {
   useEffect(() => {
     if (appSettings) localAssistant.configure(appSettings.localAssistant);
   }, [appSettings]);
-  const [health, setHealth] = useState<Health[]>([]);
   const [rewindTarget, setRewindTarget] = useState<{ id: string; preview: RewindPreview } | null>(
     null,
   );
@@ -349,43 +353,29 @@ export default function App() {
     localStorage.setItem('lumen-provider-mode', mode);
   }, [mode]);
   useEffect(() => {
-    if (
-      accounts.length &&
-      mode !== 'auto' &&
-      mode !== 'both' &&
-      !accounts.some((a) => a.provider === mode)
-    ) {
-      setMode(
-        accounts.find((a) => ['claude', 'gpt'].includes(a.provider))?.provider ||
-          accounts[0].provider,
-      );
-    }
-  }, [accounts, mode]);
+    if (!accountsReady || mode === 'auto') return;
+    const available =
+      mode === 'both'
+        ? accounts.some((a) => a.provider === 'claude') &&
+          accounts.some((a) => a.provider === 'gpt')
+        : accounts.some((a) => a.provider === mode);
+    if (!available) setMode('auto');
+  }, [accounts, accountsReady, mode]);
   const loadUsage = useCallback(async () => {
     const saved = await call<AccountUsage[]>('get_usage');
     setUsage((old) => mergeUsage(old, saved));
     await Promise.all(
       accounts
         .filter((a) => ['gpt', 'antigravity'].includes(a.provider))
-        .filter((a) => {
-          // Antigravity's quota query is a full CLI run, and an expired sign-in makes it open
-          // the browser. Ask it rarely, and not again after a failure until Lumen restarts.
-          if (a.provider !== 'antigravity') return true;
-          const last = usageAttempts.current.get(a.id);
-          return last !== -1 && (last === undefined || Date.now() - last > 15 * 60_000);
-        })
         .map((a) => {
           const pending = usageRequests.current.get(a.id);
           if (pending) return pending;
           const request = (async () => {
-            usageAttempts.current.set(a.id, Date.now());
             try {
               const row = await call<AccountUsage>('refresh_usage', { id: a.id });
               setUsage((old) => mergeUsage(old, [row]));
-              setUsageErrors((old) => ({ ...old, [a.id]: '' }));
-            } catch (error) {
-              usageAttempts.current.set(a.id, -1);
-              setUsageErrors((old) => ({ ...old, [a.id]: errorText(error) }));
+            } catch {
+              // Keep the last snapshot; reopening Usage retries the query.
             }
           })().finally(() => usageRequests.current.delete(a.id));
           usageRequests.current.set(a.id, request);
@@ -394,24 +384,15 @@ export default function App() {
     );
   }, [accounts]);
   useEffect(() => {
-    const refreshUsage = () => void loadUsage().catch(() => {});
-    refreshUsage();
-    return visibleInterval(refreshUsage, 30_000);
+    void loadUsage().catch(() => {});
   }, [loadUsage]);
+  useEffect(() => {
+    if (usageOpen) void loadUsage().catch(() => {});
+  }, [usageOpen, loadUsage]);
   useEffect(() => {
     void refresh().catch((e) => setError(errorText(e)));
   }, [refresh]);
-  useEffect(() => {
-    const load = () =>
-      void call<Health[]>('provider_health')
-        .then(setHealth)
-        .catch(() => {});
-    load();
-    return visibleInterval(() => {
-      load();
-      setTick((n) => n + 1);
-    }, 15_000);
-  }, [accounts, sessions]);
+  useEffect(() => visibleInterval(() => setTick((n) => n + 1), 15_000), []);
   useEffect(() => {
     void loadAccounts().catch((e) => setError(errorText(e)));
   }, [loadAccounts]);
@@ -745,34 +726,7 @@ export default function App() {
       return next;
     });
   }
-  async function refreshExecution() {
-    if (!selected || refreshingExecution) return;
-    const id = selected;
-    const revision = streamRevision.current;
-    const refreshAtStart = refreshRef.current;
-    setRefreshingExecution(true);
-    try {
-      const [snapshot, approvals, list] = await Promise.all([
-        call<Message[]>('get_messages', { id }),
-        approvalSnapshot(id),
-        call<Session[]>('list_sessions', { search, offset: 0 }),
-      ]);
-      // A slow read must not overwrite newer streamed text, telemetry or another chat.
-      if (selectedRef.current === id && streamRevision.current === revision) {
-        setMessages(snapshot);
-        setApprovals(approvals);
-        if (refreshRef.current === refreshAtStart) {
-          setSessions(list);
-          setOffset(0);
-          setHasMore(list.length === 100);
-        }
-      }
-    } catch (e) {
-      composer.fail(draftKey(id), errorText(e));
-    } finally {
-      setRefreshingExecution(false);
-    }
-  }
+
   async function checkSubmission(id: string, submission: Submission, failure = submission.failure) {
     if (!submission.sessionId) return;
     try {
@@ -1095,14 +1049,14 @@ export default function App() {
     }
   }
   const historyTokens = useMemo(() => messages.reduce((n, m) => n + tokens(m.text), 0), [messages]);
-  const measurement = useMemo(() => lastMeasurement(messages), [messages]);
   const attachedTokens = 0; // Arbitrary external files are not read merely to estimate context.
   const draftTokens =
     (draftEstimate?.text === draft ? draftEstimate.tokens : tokens(draft)) + attachedTokens;
+  const measurement = useMemo(() => lastMeasurement(messages), [messages]);
   const contextProvider =
     mode !== 'auto' && mode !== 'both'
       ? mode
-      : (accounts.find((a) => a.id === accountId)?.provider ??
+      : (measurement?.provider ??
         plan?.provider ??
         // Only certain when every connected account belongs to the same provider.
         (accounts.length > 0 && accounts.every((a) => a.provider === accounts[0].provider)
@@ -1111,14 +1065,16 @@ export default function App() {
   const promptTokens =
     promptEstimate && promptEstimate.id === session?.id ? promptEstimate.tokens : historyTokens;
   // Only Claude reports its window and CLI overhead; other providers stay a local estimate.
-  const contextUse = contextProvider
-    ? measureContext(
-        promptTokens,
-        draftTokens,
-        contextWindow(contextProvider, model || plan?.model || ''),
-        ['claude', 'gpt'].includes(contextProvider) ? measurement : null,
-      )
-    : null;
+  const contextUse =
+    contextProvider &&
+    !['opencode', 'cursor', 'openaiapi', 'anthropicapi', 'googleapi'].includes(contextProvider)
+      ? measureContext(
+          promptTokens,
+          draftTokens,
+          contextWindow(contextProvider, mode === contextProvider ? model : plan?.model || ''),
+          measurement?.provider === contextProvider ? measurement : null,
+        )
+      : null;
   const blob = /[A-Za-z0-9+/=]{4000,}/.test(draft);
   const impact =
     draftTokens + historyTokens > 60_000 ? 'High' : draftTokens > 8000 ? 'Medium' : 'Low';
@@ -1140,7 +1096,6 @@ export default function App() {
   const onApplyLane = useLatestCallback((m: Message) => void resolveLanes(m, true));
   const onDiscardLane = useLatestCallback((m: Message) => void resolveLanes(m, false));
   const onOrchestra = useLatestCallback(orchestra);
-  const onRefreshExecution = useLatestCallback(() => void refreshExecution());
   const onMerged = useLatestCallback(async () => {
     if (!session) return;
     const id = session.id;
@@ -1222,31 +1177,6 @@ export default function App() {
   useEffect(() => {
     commandsRef.current = commands;
   });
-
-  const providerPills: HealthPill[] = (['claude', 'gpt'] as const)
-    .filter((p) => accounts.some((a) => a.provider === p))
-    .map((p) => {
-      const rows = health.filter((h) =>
-        accounts.some((a) => a.id === h.accountId && a.provider === p),
-      );
-      const best =
-        rows.find((h) => h.state === 'active') || rows.find((h) => h.state === 'near') || rows[0];
-      const state = best?.state || 'active';
-      return {
-        key: p,
-        state,
-        label:
-          state === 'cooldown' && best?.until
-            ? `${nameOf(p)} · ${formatResetCountdown(best.until)}`
-            : nameOf(p),
-        title:
-          state === 'cooldown'
-            ? `${nameOf(p)} is cooling down after a rate limit`
-            : state === 'near'
-              ? `${nameOf(p)} is close to its usage limit`
-              : `${nameOf(p)} is ready · ${best?.turns || 0} turns in the last 5 hours`,
-      };
-    });
 
   return (
     <div className={`app-shell ${sidebar ? 'sidebar-open' : ''}`}>
@@ -1348,6 +1278,31 @@ export default function App() {
         <ProjectList
           workspaces={workspaces}
           filter={projectFilter}
+          onRename={async (id, name) => {
+            try {
+              await call('rename_workspace', { id, name });
+              setWorkspaces(await call<Workspace[]>('list_workspaces'));
+            } catch (e) {
+              setError(errorText(e));
+              throw e;
+            }
+          }}
+          onDelete={async (id) => {
+            try {
+              await call('delete_workspace', { id });
+              if (currentWorkspaceId === id) {
+                setSelected(null);
+                setWorkspaceId('');
+                localStorage.removeItem('lumen-workspace-id');
+              }
+              setProjectFilter('*');
+              setWorkspaces(await call<Workspace[]>('list_workspaces'));
+              await refresh();
+            } catch (e) {
+              setError(errorText(e));
+              throw e;
+            }
+          }}
           onFilter={(id) => {
             setProjectFilter(id);
             if (id !== '*') {
@@ -1374,7 +1329,6 @@ export default function App() {
           empty={sessions.length === 0}
           searching={!!search}
           selected={selected}
-          menuOpenFor={context?.session.id}
           hasMore={hasMore}
           onSelect={(id) => {
             setSelected(id);
@@ -1424,10 +1378,8 @@ export default function App() {
         <UsagePopover
           accounts={accounts}
           usage={usage}
-          errors={usageErrors}
           now={usageClock}
           position={usagePos}
-          onRefresh={() => void loadUsage()}
           onClose={() => setUsageOpen(false)}
         />
       )}
@@ -1475,18 +1427,18 @@ export default function App() {
                   {workspaces.length > 0 && (
                     <label className="menu-select">
                       Move to
-                      <select
+                      <Select
                         aria-label="Move conversation to project"
                         value={context.session.workspaceId || ''}
                         onChange={(e) => void moveSession(context.session, e.target.value)}
                       >
-                        <option value="">Unsorted</option>
+                        <option value="">No project</option>
                         {workspaces.map((w) => (
                           <option key={w.id} value={w.id}>
                             {w.name}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                   )}
                   {item(remove)}
@@ -1614,7 +1566,7 @@ export default function App() {
           }
           workspaceTitle={currentWorkspace || undefined}
           conversationTitle={session?.title || t('New conversation')}
-          pills={providerPills}
+
           onChooseFolder={!session ? () => void chooseFolder() : undefined}
           folderBusy={folderBusy || running}
           onOpenSettings={() => openSettings()}
@@ -1709,16 +1661,7 @@ export default function App() {
         </div>
 
         <div className="composer-region">
-          <ExecutionSummary
-            messages={visibleMessages}
-            session={session}
-            submission={currentSubmissions[0]?.[1].message}
-            approvalPending={approvals.requests.some(
-              (r) => r.status === 'pending' || r.delivery === 'uncertain',
-            )}
-            refreshing={refreshingExecution}
-            onRefresh={onRefreshExecution}
-          />
+          <ExecutionSummary messages={visibleMessages} session={session} />
           {(composer.error || error) && (
             <ErrorBanner
               text={composer.error || error}
@@ -1742,12 +1685,7 @@ export default function App() {
               Long conversation · Draft a handoff and continue in a fresh session
             </button>
           )}
-          {session && !running && !sheet && (
-            <button className="compact-chip" onClick={() => void openCommit()}>
-              <Sparkles size={13} />
-              Draft a commit message for uncommitted changes
-            </button>
-          )}
+
           {session &&
             approvals.requests.some(
               (r) => r.status === 'pending' || r.delivery === 'uncertain',
@@ -1787,7 +1725,6 @@ export default function App() {
               }
             />
           )}
-          {plan && <PlanLine plan={plan} />}
           <div className="composer">
             {showSlash && (
               <div
@@ -1867,6 +1804,7 @@ export default function App() {
             {mode !== 'auto' && mode !== 'both' && (
               <ProviderOptions
                 provider={mode}
+                workspace={currentWorkspace}
                 visible={advanced}
                 accounts={accounts}
                 accountId={accountId}
@@ -1884,7 +1822,11 @@ export default function App() {
             )}
             <ComposerToolbar
               mode={mode}
-              bothAvailable={accessMode === 'read-only'}
+              bothAvailable={
+                accessMode === 'read-only' &&
+                accounts.some((a) => a.provider === 'claude') &&
+                accounts.some((a) => a.provider === 'gpt')
+              }
               providers={[...new Set(accounts.map((a) => a.provider))]}
               onMode={(next) => {
                 setMode(next);

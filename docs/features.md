@@ -1,12 +1,12 @@
-# Features and working modes — 0.8
+# Features and working modes
 
 This guide describes the current product. Historical changes belong in the [release notes](release-notes/README.md).
 
 ## Direct native sessions
 
-Select a connected provider and an available model. Direct mode is the default and preserves the explicit provider/model choice; classification does not silently switch a manually selected architecture or security request to another provider. Expand the composer controls for account, model and supported reasoning levels.
+Select a connected provider and an available model. Auto is the initial mode; choosing a provider preserves the explicit provider/model choice; classification does not silently switch a manually selected architecture or security request to another provider. Expand the composer controls for account, model and supported reasoning levels.
 
-Claude uses a bidirectional native control stream; Codex uses app-server in normal and Orchestra turns. They support native continuation, exposed reasoning/activity, structured questions and native child-agent output. Questions can offer choices, multiple selections, free text or secret input. A question is not a permission grant. Google providers use their official print runners; Ollama uses its official loopback API. These transports do not have identical interactive capabilities.
+Claude uses a bidirectional native control stream; Codex uses app-server in normal and Orchestra turns. They support native continuation, exposed reasoning/activity, structured questions and native child-agent output. Questions can offer choices, multiple selections, free text or secret input. A question is not a permission grant. Google providers use their official print runners; Ollama uses its official loopback API. These transports do not have identical interactive capabilities. OpenCode uses official ACP and a verified native session-policy API, with native continuation, one-shot approvals and shared Lumen tools. Cursor keeps explicit Autopilot selection and native headless continuation. The [three official API adapters](api-access.md) use OS-keychain keys, common tools, all four permission profiles and reserved cost budgets; their JSON responses are buffered.
 
 ## Auto
 
@@ -57,4 +57,4 @@ Rewind snapshots tracked working-tree state through a private Git index, preview
 
 The optional Ollama helper generates titles, editable commit-message drafts and handoff summaries. It never commits or sends work to a remote inference provider. A helper failure preserves manual editing. Its opt-in settings are separate from the selected Ollama conversation model.
 
-Simple settings expose the Orchestra switch; Advanced reveals the other sections and controls. Restore defaults preserves accounts, conversations and project folders. Appearance supports English/Italian, light/dark/system themes and a larger-text preference. See [Security](../SECURITY.md) for full-access and storage boundaries.
+Simple settings expose the Orchestra switch; Advanced reveals the other sections and controls. Restore defaults preserves accounts, conversations and project folders. Appearance supports English/Italian, light/dark/system themes and system display scaling. See [Security](../SECURITY.md) for full-access and storage boundaries.

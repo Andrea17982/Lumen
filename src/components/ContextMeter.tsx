@@ -29,7 +29,7 @@ export default function ContextMeter({
   onCompact: () => void;
 }) {
   const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
-  const percent = use ? Math.round(use.percent) : 0;
+  const percent = use ? Math.round(use.percent * 10) / 10 : 0;
   const summary = use
     ? `Context ${percent}%: ${tokens(use.used)} of ${tokens(use.window)} tokens`
     : 'Context size unavailable: the model for this chat is not known yet.';
@@ -53,7 +53,7 @@ export default function ContextMeter({
         }}
       >
         <Circle size={8} fill="currentColor" className="context-dot" />
-        Context {use ? `${percent}%` : 'n/a'}
+        Context {use ? `${use.source === 'estimated' ? '~' : ''}${percent}%` : 'n/a'}
       </button>
       {position &&
         // Outside the sidebar, whose transform would clip a fixed popover.
@@ -65,7 +65,7 @@ export default function ContextMeter({
               onClick={() => setPosition(null)}
             />
             <section
-              className="usage-popover popup context-popover"
+              className="usage-popover context-popover"
               role="dialog"
               aria-label="Context window"
               style={position}
@@ -109,8 +109,8 @@ export default function ContextMeter({
                   />
                   <p>
                     {use.source === 'measured'
-                      ? 'Window and CLI overhead reported by the CLI on its last reply; chat and draft text are counted locally. Attached files and images are excluded.'
-                      : 'Local context estimate. The window uses a CLI report when available, otherwise the published model size. Native compaction and resume can differ from this estimate. Attached files and images are excluded.'}{' '}
+                      ? 'CLI window reported on the last reply; usage includes the larger of that input and the locally counted next prompt, plus the draft. Attached files and images are excluded.'
+                      : 'Estimate using the larger of the local prompt size and last reported CLI input, plus the draft. The window uses a CLI report when available, otherwise the published model size. Native compaction and resume can differ from this estimate. Attached files and images are excluded.'}{' '}
                     Compact when the dot turns orange or red.
                   </p>
                   {use.lastReported !== undefined && (

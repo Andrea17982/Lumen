@@ -64,14 +64,6 @@ impl Catalog {
             if name.starts_with("lumen_") || name.starts_with("imported_") {
                 continue;
             }
-            let gemini_sse = path.file_name().is_some_and(|name| name == "settings.json")
-                && path
-                    .parent()
-                    .and_then(Path::file_name)
-                    .is_some_and(|name| name == ".gemini")
-                && raw["url"].is_string()
-                && raw["httpUrl"].is_null()
-                && raw["type"].is_null();
             let mut server = raw.clone();
             let Some(fields) = server.as_object_mut() else {
                 continue;
@@ -103,7 +95,6 @@ impl Catalog {
                 },
             );
             let unsupported = unsupported
-                || gemini_sse
                 || !matches!(transport, "stdio" | "http")
                 || (fields.get("command").and_then(Value::as_str).is_none()
                     && fields.get("url").and_then(Value::as_str).is_none())
@@ -314,7 +305,6 @@ impl Catalog {
             "config.toml",
             ".claude.json",
             "settings.json",
-            ".gemini/settings.json",
             ".gemini/config/mcp_config.json",
             ".gemini/antigravity/mcp_config.json",
         ] {
@@ -389,7 +379,6 @@ pub fn discover_at(data: &Path, workspace: Option<&Path>, home: Option<&Path>) -
         out.config(&home.join(".claude.json"), "Claude", None);
         out.skills(&home.join(".agents/skills"), "Agent skills", 0);
         for file in [
-            ".gemini/settings.json",
             ".gemini/config/mcp_config.json",
             ".gemini/antigravity/mcp_config.json",
         ] {
@@ -430,12 +419,7 @@ pub fn discover_at(data: &Path, workspace: Option<&Path>, home: Option<&Path>) -
         }
     }
     if let Some(workspace) = workspace {
-        for file in [
-            ".mcp.json",
-            ".codex/config.toml",
-            ".gemini/settings.json",
-            ".agents/mcp_config.json",
-        ] {
+        for file in [".mcp.json", ".codex/config.toml", ".agents/mcp_config.json"] {
             out.config(&workspace.join(file), "Current project", None);
         }
         for folder in [
@@ -665,7 +649,8 @@ mod tests {
             assert!(args.join(" ").contains("read-only"));
             assert!(!args.join(" ").contains("unfiltered"));
             assert!(!names.iter().any(|name| name == "manual"));
-            for provider in [Provider::Gemini, Provider::Antigravity] {
+            {
+                let provider = Provider::Antigravity;
                 let config = f.directory(provider.binary());
                 crate::graph_mcp::configure_google_for(
                     &config,
@@ -676,11 +661,7 @@ mod tests {
                     access,
                 )
                 .unwrap();
-                let file = config.join(if provider == Provider::Gemini {
-                    ".gemini/settings.json"
-                } else {
-                    ".gemini/config/mcp_config.json"
-                });
+                let file = config.join(".gemini/config/mcp_config.json");
                 let value: Value =
                     serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
                 assert_eq!(value["mcpServers"].as_object().unwrap().len(), 2);
@@ -937,10 +918,8 @@ mod tests {
         assert_eq!(names.len(), 1);
         assert!(args.iter().any(|a| a.contains("--lumen-shared-stdio")));
         assert!(!args.join(" ").contains("secret-value"));
-        for provider in [
-            crate::models::Provider::Gemini,
-            crate::models::Provider::Antigravity,
-        ] {
+        {
+            let provider = crate::models::Provider::Antigravity;
             let config = f.directory(provider.binary());
             crate::graph_mcp::configure_google_for(
                 &config,
@@ -951,11 +930,7 @@ mod tests {
                 crate::models::AccessMode::Autopilot,
             )
             .unwrap();
-            let relative = if provider == crate::models::Provider::Gemini {
-                ".gemini/settings.json"
-            } else {
-                ".gemini/config/mcp_config.json"
-            };
+            let relative = ".gemini/config/mcp_config.json";
             let file = config.join(relative);
             let first = std::fs::read(&file).unwrap();
             let value: Value = serde_json::from_slice(&first).unwrap();

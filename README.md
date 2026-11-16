@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="public/lumen.svg" width="76" height="76" alt="Lumen">
+  <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
   <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
-  <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
+  <p>Claude Code · Codex · Antigravity · Ollama</p>
   <p>
     <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.8.0</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
@@ -26,23 +26,27 @@ Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian int
 
 ## 0.8 — Continuity, shared tools and Liquid Glass
 
-Safer continuation across accounts, clearer progress and connector consent, stronger Auto/Orchestra recovery, and targeted context/graph improvements. The glass sidebar opens from the logo; permissions are explained and a short first-use tour introduces the workspace. Shared MCP/skill discovery, the owning Codex gateway and local stdio/Streamable HTTP execution extend supported integrations. **Universal connector/plugin portability is not delivered:** proprietary cloud connectors, native hooks/mods and unsupported formats remain on the next roadmap. [0.8 changelog and limits](docs/release-notes/0.8.0.md).
+Safer continuation across accounts, clearer progress and connector consent, stronger Auto/Orchestra recovery, and targeted context/graph improvements. The glass sidebar opens from the logo; permissions are explained and a short first-use tour introduces the workspace. Shared MCP/skill discovery, the owning Codex gateway and local stdio/Streamable HTTP execution extend supported integrations. **Universal connector/plugin portability is not delivered:** proprietary cloud connectors, native hooks/mods and unsupported formats remain on the [1.0 roadmap](docs/roadmap-1.0.md). [0.8 changelog and limits](docs/release-notes/0.8.0.md).
+
+## Toward 1.0
+
+The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. These are roadmap commitments, not claims about the published 0.8 release.
 
 ## Native workspace features
 
 | Native work, with less friction | Tools that stay close to your project |
 | --- | --- |
-| Direct sessions are the default; your provider/model choice is preserved. | Moli is bundled and automatically connected, including Orchestra workers. |
+| Auto starts ready; explicit provider/model choices are preserved. | Moli is bundled and automatically connected, including Orchestra workers. |
 | Native questions, choices, child-agent output and real-time activity. | Project inspector, image zoom/grid, JSON/SQLite inspection and layout canvas. |
 | Autopilot proceeds without repeated Lumen planning approvals. | Manual Both merges and side-by-side static worktree previews. |
 | Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
 | Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
 
-Read the [0.8 changelog](docs/release-notes/0.8.0.md), [feature guide](docs/features.md) and [release evidence](docs/release-readiness-0.8.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
+Read the [0.8 changelog](docs/release-notes/0.8.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
 
 ## Choose how to work
 
-**Direct session** — select Claude, GPT/Codex, Gemini CLI, Antigravity or Ollama. Pick an account, an available model and its supported reasoning level. Claude uses its bidirectional native stream; Codex uses app-server. Google providers retain their official print runners. Ollama uses its official local API.
+**Direct session** — select Claude, GPT/Codex, Antigravity, OpenCode, Cursor, Ollama or an official API adapter. Pick an account, an available model and its supported reasoning level. Claude uses its bidirectional native stream; Codex uses app-server. Google providers retain their official print runners. Ollama uses its official local API.
 
 **Auto** — ask Lumen to choose a provider/model from the connected catalogs, with Budget, Default or Quality preferences and optional independent review. Additional stages consume provider quota.
 
@@ -55,6 +59,8 @@ Read the [0.8 changelog](docs/release-notes/0.8.0.md), [feature guide](docs/feat
 *Demonstration task graph in the actual interface. Native child-agent sessions and Orchestra workers are distinct capabilities.*
 
 ## One browser across providers
+
+The local 0.9 release adds shared Moli tools to OpenCode through ACP and to the three official API adapters. Cursor retains its own native tools without this bridge. [Support matrix](docs/integrations.md).
 
 Moli starts only when a browser tool is needed. It provides Markdown retrieval, search, persistent navigation, DOM interaction and screenshots through Lumen's shared browser service. Conversation/worker contexts are isolated; native authentication remains with each provider.
 
@@ -80,8 +86,8 @@ Get **[Lumen 0.8.0 from Releases](https://github.com/Andrea17982/Lumen/releases/
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| Windows x64 | `Lumen_0.8.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.8.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. |
+| Windows x64 | `Lumen_0.9.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
+| Windows x64 portable | `Lumen_0.9.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. |
 | macOS | Universal `.dmg` | Intel and Apple silicon. |
 | Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 
@@ -112,7 +118,7 @@ The build prepares the pinned, checksum-verified Moli binary and license notices
 
 The 0.8 candidate passed **203 Rust Windows tests, 72 frontend unit tests, 40 browser tests and 56 native Windows scenarios**, plus formatting/Clippy and version/documentation checks. The native scenarios use isolated offline provider/API fixtures. Installed-CLI MCP metadata interoperability is checked separately without inference. CI and package helper checks cover Windows, macOS and Linux.
 
-The live ledger remains 13 historical slots, with no additional inference or login for this release closure. Real non-Windows desktop/accessibility checks, the broader account/version matrix and proprietary connector portability remain explicit limits. Fixtures and builds are distinct from those checks. See [0.8 release scope and evidence](docs/release-readiness-0.8.md), [integration support](docs/shared-capabilities-0.8.md) and the [next roadmap](docs/roadmap-next.md).
+The live ledger remains 13 historical slots, with no additional inference or login for this release closure. Real non-Windows desktop/accessibility checks, the broader account/version matrix and proprietary connector portability remain explicit limits. Fixtures and builds are distinct from those checks. See [validation and known limits](docs/validation.md), [integration support](docs/integrations.md) and the [1.0 roadmap](docs/roadmap-1.0.md).
 
 Autopilot has broad access. Lumen does not add a common OS jail or encrypt its database; use OS permissions and disk encryption. Native CLIs retain their own policies. Moli routing disables supported built-in alternatives, but unrestricted shells/external tools are not an OS network sandbox. [Security and privacy](SECURITY.md).
 
@@ -123,6 +129,8 @@ Autopilot has broad access. Lumen does not add a common OS jail or encrypt its d
 - [Moli](docs/moli.md) — browser integration, Ollama architecture and compatibility.
 - [Projects, models and permissions](docs/workspace-models-permissions.md) — workspace changes and native controls.
 - [Task quality](docs/task-quality.md) — durable context, diagnostics and impact-aware validation.
+- [Shared integrations](docs/integrations.md) — MCP, skills and plugins across providers, with current limits.
+- [Validation](docs/validation.md) · [Roadmap 1.0](docs/roadmap-1.0.md) — what is verified and what comes next.
 - [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Release history](docs/release-notes/README.md).
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -135,3 +143,5 @@ Lumen's application code, interface, tests and documentation are **completely AI
 Lumen is free to download, use and modify under the MIT license. Feedback through [Issues](https://github.com/Andrea17982/Lumen/issues) is already a contribution. Optional [PayPal support](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) goes to **andreanastrobusiness1999@gmail.com** and unlocks no features.
 
 MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the other named providers.
+
+Local Windows release (16 November): [0.9.0 — official API access and adapter compatibility](docs/release-notes/0.9.0.md), with keychain-backed API accounts/budgets and OpenCode ACP/shared tools. Cursor retains explicit Autopilot selection. GitHub packages use portable CPU targets.

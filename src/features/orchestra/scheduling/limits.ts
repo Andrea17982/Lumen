@@ -22,7 +22,7 @@ export const NO_LIMITS: OrchestraLimits = {
   quotaThresholds: {},
 };
 
-const PROVIDERS: Provider[] = ['claude', 'gpt', 'gemini', 'antigravity'];
+const PROVIDERS: Provider[] = ['claude', 'gpt', 'antigravity'];
 
 function count(v: unknown, max: number): number | null {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;

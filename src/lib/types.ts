@@ -1,6 +1,15 @@
 import type { OrchestraLimits } from '../features/orchestra/scheduling/limits';
 import type { LocalAssistantConfig } from '../features/local-assistant/types';
-export type Provider = 'claude' | 'gpt' | 'gemini' | 'antigravity' | 'ollama';
+export type Provider =
+  | 'claude'
+  | 'gpt'
+  | 'antigravity'
+  | 'ollama'
+  | 'opencode'
+  | 'cursor'
+  | 'openaiapi'
+  | 'anthropicapi'
+  | 'googleapi';
 export type Mode = Provider | 'auto' | 'both';
 export type Status = 'idle' | 'waiting' | 'running' | 'completed' | 'interrupted' | 'error';
 export interface Session {
@@ -140,7 +149,6 @@ export interface RunEvent {
 export interface Diagnostics {
   claude: boolean;
   gpt: boolean;
-  gemini: boolean;
   antigravity: boolean;
   ollama?: boolean;
   dataDir: string;

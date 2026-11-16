@@ -2,7 +2,7 @@
 use crate::{models::*, providers};
 use serde_json::{json, Value};
 use std::path::Path;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 pub fn parse_models(provider: &Provider, rows: &Value) -> Vec<ModelInfo> {
     rows.as_array()
@@ -12,13 +12,14 @@ pub fn parse_models(provider: &Provider, rows: &Value) -> Vec<ModelInfo> {
             if v["hidden"] == true {
                 return None;
             }
-            let id = if *provider == Provider::Gpt
-                || matches!(provider, Provider::Gemini | Provider::Antigravity)
-            {
+            let id = if *provider == Provider::Gpt || matches!(provider, Provider::Antigravity) {
                 v["model"].as_str().or_else(|| v["id"].as_str())
             } else {
                 v["value"].as_str()
             }?;
+            if *provider == Provider::Antigravity && !id.to_lowercase().starts_with("gemini-") {
+                return None;
+            }
             let efforts = if *provider == Provider::Gpt {
                 v["supportedReasoningEfforts"]
                     .as_array()
@@ -46,6 +47,47 @@ pub fn parse_models(provider: &Provider, rows: &Value) -> Vec<ModelInfo> {
         .collect()
 }
 
+/// Bounded, owned CLI metadata discovery; no model turn or credential reading.
+pub(crate) async fn headless_models_output(
+    provider: &Provider,
+    args: &[&str],
+) -> Result<String, String> {
+    let mut c = providers::command(provider)?;
+    providers::isolate(&mut c, provider, Path::new(""));
+    c.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    cli_output(c, None).await
+}
+pub(crate) async fn cli_output(
+    c: tokio::process::Command,
+    mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
+) -> Result<String, String> {
+    let mut child = crate::proc::ServiceChild::spawn(c)
+        .map_err(|_| "Cannot start official CLI metadata request")?;
+    let mut bytes = vec![];
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or("Missing CLI metadata output")?
+        .take(2_000_001);
+    let stopped = async {
+        if let Some(rx) = &mut cancel {
+            if !*rx.borrow() {
+                let _ = rx.changed().await;
+            }
+        } else {
+            std::future::pending::<()>().await
+        }
+    };
+    let result = tokio::select! {biased;_=stopped=>Err("Cancelled".into()),r=tokio::time::timeout(std::time::Duration::from_secs(30),stdout.read_to_end(&mut bytes))=>{
+        if matches!(r,Ok(Ok(_)))&&bytes.len()<=2_000_000&&matches!(tokio::time::timeout(std::time::Duration::from_secs(2),child.wait()).await,Ok(Ok(s)) if s.success()){Ok(String::from_utf8_lossy(&bytes).into_owned())}else{Err("Official CLI metadata request failed or exceeded its limit".into())}
+    }};
+    child.finish(result.is_ok()).await?;
+    result
+}
+
 pub async fn discover(
     account: &Account,
     dir: &Path,
@@ -61,15 +103,20 @@ pub(crate) async fn discover_observed(
     mut observe: impl FnMut(&'static str),
 ) -> Result<Vec<ModelInfo>, String> {
     observe("catalog-start");
-    if matches!(account.provider, Provider::Gemini | Provider::Antigravity) {
+    if account.provider.is_api() {
+        return crate::api::models(account, dir).await;
+    }
+    if account.provider == Provider::Cursor {
+        return crate::cursor::models().await;
+    }
+    if account.provider == Provider::Opencode {
+        return crate::opencode::models(None, None).await;
+    }
+    if matches!(account.provider, Provider::Antigravity) {
         let mut c = providers::command(&account.provider)?;
         providers::isolate(&mut c, &account.provider, dir);
         c.env("NO_BROWSER", "true");
-        let args: &[&str] = if account.provider == Provider::Antigravity {
-            &["models"]
-        } else {
-            &["--list-models"]
-        };
+        let args: &[&str] = &["models"];
         let output =
             tokio::time::timeout(std::time::Duration::from_secs(30), c.args(args).output())
                 .await
@@ -114,6 +161,8 @@ pub(crate) async fn discover_observed(
                 })
                 .collect();
         }
+        models.retain(|m| m.id.to_lowercase().starts_with("gemini-"));
+        models.retain(|m| m.id.to_lowercase().starts_with("gemini-"));
         if models.is_empty() {
             return Err(
                 "Google CLI returned no selectable models. Update the CLI or complete sign-in."
@@ -305,6 +354,14 @@ pub fn validate(models: &[ModelInfo], model: Option<&str>, effort: &str) -> Resu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn antigravity_catalog_only_exposes_google_models() {
+        let rows = serde_json::json!([{"id":"claude-opus"},{"id":"gpt-sol"},{"id":"gemini-3.8-flash-high"}]);
+        let models = super::parse_models(&crate::models::Provider::Antigravity, &rows);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "gemini-3.8-flash-high");
+    }
+
     use super::*;
     #[test]
     fn official_efforts_are_preserved() {

@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.8.0"
+version = "0.9.0"
 description = "Native AI sessions, optional orchestration and Moli browsing"
 authors = ["Andrea17982"]
 edition = "2021"
@@ -35,7 +35,8 @@ xcap = "0.8"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+keyring = { version = "=3.6.3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 reqwest_mcp = { package = "reqwest", version = "0.13.2", default-features = false, features = ["json", "stream", "rustls"] }
 rmcp = { version = "=3.9.0", default-features = false, features = ["client", "elicitation", "transport-streamable-http-client-reqwest", "reqwest"] }
 tokio-tungstenite = "0.28"
@@ -55,4 +56,4 @@ windows = { version = "0.62.2", features = ["Win32_System_Threading"] }
 lto = true
 codegen-units = 1
 strip = true
-opt-level = "s"
+opt-level = 3

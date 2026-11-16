@@ -79,6 +79,30 @@ if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a tea
     } else { Emit @{type='result';is_error=$false;result=$(if ($promptText.Contains('APPROVED_SCOPE_MARKER')) { 'WORKER_SCOPE_PRESENT' } else { 'WORKER_SCOPE_MISSING' })} }
     exit 0
 }
+$resetMarker = if ($Provider -eq 'claude' -and $env:LUMEN_FIXTURE_SESSION) { Join-Path $env:CLAUDE_CONFIG_DIR ('quota-reset-' + $env:LUMEN_FIXTURE_SESSION + '.mode') } else { $null }
+if ($Provider -eq 'claude' -and ($promptText.Contains('QUOTA_RESET_FIXTURE') -or ($resetMarker -and (Test-Path -LiteralPath $resetMarker)))) {
+    Add-Content -LiteralPath 'quota-reset-attempts.txt' -Value $(if($env:LUMEN_FIXTURE_RESUME -eq 'true') {'resume'} else {'initial'})
+    if ($env:LUMEN_FIXTURE_RESUME -eq 'true') {
+        if ((Get-Content -LiteralPath $resetMarker -Raw).Contains('missing')) { Emit @{type='result';is_error=$true;result='session not found'} }
+        else { Emit @{type='result';is_error=$false;result='RESUME_AFTER_QUOTA_OK'} }
+    } else {
+        Set-Content -LiteralPath $resetMarker -Value $(if($promptText.Contains('QUOTA_RESET_MISSING')){'missing'}else{'normal'})
+        Add-Content -LiteralPath 'quota-reset-effect.txt' -Value 'once'
+        Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='quota-once';name='Write';input=@{file_path='quota-reset-effect.txt'}})}}
+        Emit @{type='result';is_error=$true;result=$(if($promptText.Contains('QUOTA_RESET_CANCEL')){"You've hit your usage limit. Resets in 5 seconds."}else{"You've hit your 5-hour usage limit. Resets in 1 second."})}
+    }
+    exit 0
+}
+if ($promptText.Contains('QUOTA_CHAIN')) {
+    Add-Content -LiteralPath 'quota-chain.txt' -Value $Provider
+    $errorText = 'Your workspace is out of credits. Ask your workspace owner to refill in order to continue.'
+    if ($Provider -eq 'claude') { Emit @{type='result';is_error=$true;result=$errorText} }
+    else {
+        Emit @{method='error';params=@{error=@{message=$errorText}}}
+        Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='failed';error=@{message=$errorText}}}}
+    }
+    exit 0
+}
 if ($promptText.Contains('QUOTA_GUARD_')) {
     $case = if ($promptText.Contains('QUOTA_GUARD_NESTED')) { 'nested' } elseif ($promptText.Contains('QUOTA_GUARD_TOOL')) { 'tool' } elseif ($promptText.Contains('QUOTA_GUARD_PARTIAL')) { 'partial' } else { 'safe' }
     Add-Content -LiteralPath (Join-Path (Get-Location).Path "quota-attempt-$case.txt") -Value $Provider

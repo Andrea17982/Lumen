@@ -45,8 +45,11 @@ pub fn answer_context(activity: &[Activity]) -> Vec<String> {
             .filter(|a| a.kind == "interaction")
             .filter_map(|a| serde_json::from_str::<serde_json::Value>(&a.text).ok())
             .find(|v| v["id"] == result["id"]);
-        if result["kind"] == "connector"
-            || request.as_ref().is_some_and(|r| r["kind"] == "connector")
+        if result["kind"] == "permission"
+            || result["kind"] == "connector"
+            || request
+                .as_ref()
+                .is_some_and(|r| r["kind"] == "connector" || r["kind"] == "permission")
         {
             continue;
         }
@@ -75,6 +78,7 @@ pub fn answer_context(activity: &[Activity]) -> Vec<String> {
 }
 struct Pending {
     connector: Option<crate::connectors::Request>,
+    permission: bool,
     owner: String,
     wire: String,
     questions: Vec<Question>,
@@ -104,6 +108,25 @@ impl Connection {
         wire: String,
     ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
         self.ask_inner(questions, wire, None)
+    }
+    pub fn ask_permission(
+        &self,
+        questions: Vec<Question>,
+        wire: String,
+    ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
+        let (mut activity, receive) = self.ask(questions, wire)?;
+        let mut value: serde_json::Value =
+            serde_json::from_str(&activity.text).map_err(|_| "Invalid permission request")?;
+        if let Some(request) = pending()
+            .lock()
+            .map_err(|_| "Question lock failed")?
+            .get_mut(value["id"].as_str().ok_or("Invalid permission request")?)
+        {
+            request.permission = true;
+        }
+        value["kind"] = "permission".into();
+        activity.text = value.to_string();
+        Ok((activity, receive))
     }
     pub fn ask_connector(
         &self,
@@ -153,6 +176,7 @@ impl Connection {
             .insert(
                 id,
                 Pending {
+                    permission: false,
                     connector,
                     owner: self.owner.clone(),
                     wire,
@@ -246,7 +270,7 @@ pub fn answer_question(id: String, answers: Answers) -> Result<(), String> {
     if let Ok(mut completed) = request.completed.lock() {
         completed.push(Activity {
             kind: "interaction-result".into(),
-            text: serde_json::json!({"id":id,"answers":public,"kind":if request.connector.is_some(){"connector"}else{"question"}}).to_string(),
+            text: serde_json::json!({"id":id,"answers":public,"kind":if request.permission {"permission"} else if request.connector.is_some(){"connector"}else{"question"}}).to_string(),
         });
     }
     Ok(())
@@ -344,5 +368,40 @@ mod tests {
         let (_, rx) = c.ask(qs, "third".into()).unwrap();
         drop(c);
         assert!(rx.await.is_err());
+    }
+    #[tokio::test]
+    async fn one_shot_permission_answers_never_become_task_requirements() {
+        let c = Connection::default();
+        let (request, rx) = c
+            .ask_permission(
+                vec![Question {
+                    id: "action".into(),
+                    header: "Action".into(),
+                    question: "Write file?".into(),
+                    options: vec![],
+                    multi_select: false,
+                    secret: false,
+                    optional: false,
+                }],
+                "permission".into(),
+            )
+            .unwrap();
+        let id = serde_json::from_str::<serde_json::Value>(&request.text).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        answer_question(
+            id,
+            HashMap::from([("action".into(), vec!["Allow once".into()])]),
+        )
+        .unwrap();
+        rx.await.unwrap();
+        let mut activity = vec![request];
+        c.drain(&mut |a| activity.push(a));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&activity[1].text).unwrap()["kind"],
+            "permission"
+        );
+        assert!(answer_context(&activity).is_empty());
     }
 }

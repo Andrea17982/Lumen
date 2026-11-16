@@ -144,9 +144,14 @@ pub fn display(p: &Provider) -> &'static str {
     match p {
         Provider::Claude => "Claude",
         Provider::Gpt => "ChatGPT",
-        Provider::Gemini => "Gemini CLI",
+
         Provider::Antigravity => "Antigravity",
         Provider::Ollama => "Ollama",
+        Provider::Opencode => "OpenCode",
+        Provider::Cursor => "Cursor",
+        Provider::Openaiapi => "OpenAI API",
+        Provider::Anthropicapi => "Anthropic API",
+        Provider::Googleapi => "Google API",
     }
 }
 
@@ -320,7 +325,11 @@ async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), 
         .store
         .accounts()?
         .into_iter()
-        .filter(|a| !core.limits.cooling(&a.id, now()))
+        .filter(|a| {
+            !a.provider.is_api()
+                && !matches!(a.provider, Provider::Opencode | Provider::Cursor)
+                && !core.limits.cooling(&a.id, now())
+        })
         .collect();
     if accounts.is_empty() {
         return Err("Every account is cooling down after a rate limit. Try again later.".into());
@@ -853,6 +862,7 @@ async fn attempt(
     let browser_artifacts = PathBuf::from(core.store.session(&job.session)?.workspace);
     let r = providers::execute(
         providers::Invocation {
+            automatic: false,
             browser: None,
             browser_scope: Some(&job.id),
             browser_artifacts: Some(&browser_artifacts),

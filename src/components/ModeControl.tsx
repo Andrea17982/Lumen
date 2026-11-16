@@ -19,12 +19,7 @@ export default function ModeControl({
   onChange,
 }: ModeControlProps) {
   const { t } = useI18n();
-  const options: Mode[] = [
-    'auto',
-    'claude',
-    'gpt',
-    ...providers.filter((p) => p !== 'claude' && p !== 'gpt'),
-  ];
+  const options: Mode[] = ['auto', ...providers];
   if (bothAvailable) options.push('both');
   return (
     <div className="mode-control" role="group" aria-label={t('AI provider')}>

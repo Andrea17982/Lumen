@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import Select from '../components/Select';
+import { useState } from 'react';
 import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { call } from '../lib/bridge';
 import { useSettingsEditor } from '../lib/busy';
@@ -11,60 +12,28 @@ export default function GeneralSettings({
   theme,
   setTheme,
   onError,
-  setAutoPolicy,
-  setBalanceUsage,
-  onTour,
 }: {
   theme: string;
   setTheme: (t: string) => void;
   onError: (s: string) => void;
-  setAutoPolicy: (value: string) => void;
-  setBalanceUsage: (value: boolean) => void;
-  onTour: () => void;
 }) {
   const { language, setLanguage, t } = useI18n();
-  const { s, busy, run, save } = useSettingsEditor(onError);
-  const [confirmReset, setConfirmReset] = useState(false);
-  const [largerText, setLargerText] = useState(
-    () => localStorage.getItem('lumen-larger-text') === 'true',
-  );
-  useEffect(() => {
-    document.documentElement.dataset.textSize = largerText ? 'large' : 'default';
-  }, [largerText]);
-  const reset = () =>
-    run(async () => {
-      await call<AppSettings>('reset_settings');
-      localStorage.setItem('lumen-theme', 'system');
-      localStorage.setItem('lumen-larger-text', 'false');
-      localStorage.setItem('lumen-auto-policy', 'default');
-      localStorage.setItem('lumen-balance-usage', 'false');
-      setTheme('system');
-      setLanguage('en');
-      setAutoPolicy('default');
-      setBalanceUsage(false);
-      setLargerText(false);
-      setConfirmReset(false);
-    });
+  const { s, busy, save } = useSettingsEditor(onError);
+
   return (
     <>
       <section className="settings-section">
         <h3>{t('Interface')}</h3>
-        <div className="tutorial-setting">
-          <span>{t('Learn your way around Lumen')}</span>
-          <button type="button" className="text-button" onClick={onTour}>
-            {t('Take a quick tour')}
-          </button>
-        </div>
         <label className="language-control">
           <span>{t('Language')}</span>
-          <select
+          <Select
             aria-label={t('Language')}
             value={language}
             onChange={(event) => setLanguage(event.target.value as 'en' | 'it')}
           >
             <option value="en">English</option>
             <option value="it">Italiano</option>
-          </select>
+          </Select>
         </label>
         <div className="theme-switch" role="group" aria-label={t('Theme')}>
           {[
@@ -83,15 +52,6 @@ export default function GeneralSettings({
             </button>
           ))}
         </div>
-        <Switch
-          label={t('Larger text')}
-          hint={t('Increase interface text size while keeping the current layout style.')}
-          checked={largerText}
-          onChange={(value) => {
-            setLargerText(value);
-            localStorage.setItem('lumen-larger-text', String(value));
-          }}
-        />
       </section>
       {s && (
         <section className="settings-section">
@@ -125,6 +85,46 @@ export default function GeneralSettings({
           />
         </section>
       )}
+    </>
+  );
+}
+
+export function GeneralFooter({
+  onTour,
+  onError,
+  setTheme,
+  setAutoPolicy,
+  setBalanceUsage,
+}: {
+  onTour: () => void;
+  onError: (s: string) => void;
+  setTheme: (s: string) => void;
+  setAutoPolicy: (s: string) => void;
+  setBalanceUsage: (s: boolean) => void;
+}) {
+  const { t, setLanguage } = useI18n();
+  const { busy, run } = useSettingsEditor(onError);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const reset = () =>
+    run(async () => {
+      await call<AppSettings>('reset_settings');
+      localStorage.setItem('lumen-theme', 'system');
+      localStorage.setItem('lumen-auto-policy', 'default');
+      localStorage.setItem('lumen-balance-usage', 'false');
+      setTheme('system');
+      setLanguage('en');
+      setAutoPolicy('default');
+      setBalanceUsage(false);
+      setConfirmReset(false);
+    });
+  return (
+    <>
+      <div className="tutorial-setting">
+        <span>{t('Learn your way around Lumen')}</span>
+        <button className="text-button" onClick={onTour}>
+          {t('Take a quick tour')}
+        </button>
+      </div>
       <section className="settings-section settings-reset">
         <h3>{t('Restore defaults')}</h3>
         <p>

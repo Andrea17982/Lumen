@@ -1,10 +1,18 @@
 mod activity;
+mod adapter_contract;
+mod api;
+mod api_tools;
+mod api_wire;
 mod approvals;
 mod approvals_codex;
 mod assets;
 mod browser;
 mod capability_catalog;
 mod catalog;
+mod cursor;
+mod opencode;
+mod opencode_acp;
+mod quota_resume;
 pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<(), String> {
     capability_catalog::serve_stdio(data, workspace, id).await
 }
@@ -93,6 +101,27 @@ pub struct Core {
     orchestra_raises: Mutex<HashMap<String, usize>>,
 }
 impl Core {
+    fn new(
+        store: store::Store,
+        root: PathBuf,
+        prefs: settings::AppSettings,
+        approvals: Option<lumen_gatekeeper::Gatekeeper>,
+    ) -> Self {
+        Self {
+            store,
+            root,
+            approvals,
+            jobs: Mutex::new(HashMap::new()),
+            slots: Arc::new(Semaphore::new(4)),
+            inference: Arc::new(Semaphore::new(8)),
+            workspace_locks: Mutex::new(HashMap::new()),
+            catalogs: Mutex::new(HashMap::new()),
+            usage_lock: Mutex::new(()),
+            orchestra_raises: Mutex::new(HashMap::new()),
+            limits: Default::default(),
+            settings: Mutex::new(prefs),
+        }
+    }
     /// Signal every running job to stop; true when some were running.
     pub(crate) fn cancel_all(&self) -> bool {
         self.jobs
@@ -143,14 +172,35 @@ async fn models_for(
         .insert(a.id.clone(), (std::time::Instant::now(), models.clone()));
     Ok(models)
 }
+async fn models_in(
+    core: &Core,
+    a: &Account,
+    refresh: bool,
+    cancel: Option<watch::Receiver<bool>>,
+    workspace: &str,
+) -> Result<Vec<ModelInfo>, String> {
+    // OpenCode project configuration can add or disable models independently of the native profile.
+    if a.provider == Provider::Opencode && !workspace.is_empty() {
+        return opencode::models(Some(std::path::Path::new(workspace)), cancel).await;
+    }
+    models_for(core, a, refresh, cancel).await
+}
 #[tauri::command]
 async fn list_models(
     core: tauri::State<'_, Arc<Core>>,
     id: String,
     refresh: Option<bool>,
+    workspace: Option<String>,
 ) -> Result<Vec<ModelInfo>, String> {
     let a = account(&core, &id)?;
-    models_for(&core, &a, refresh.unwrap_or(false), None).await
+    models_in(
+        &core,
+        &a,
+        refresh.unwrap_or(false),
+        None,
+        workspace.as_deref().unwrap_or(""),
+    )
+    .await
 }
 #[tauri::command]
 fn list_workspaces(core: tauri::State<Arc<Core>>) -> Result<Vec<Workspace>, String> {
@@ -167,6 +217,26 @@ fn add_workspace(
         return Err("Choose a workspace name of 1–100 characters".into());
     }
     core.store.add_workspace(name.into(), folder)
+}
+#[tauri::command]
+fn rename_workspace(core: tauri::State<Arc<Core>>, id: String, name: String) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err("Choose a project name of 1–100 characters".into());
+    }
+    core.store.rename_workspace(&id, name)
+}
+#[tauri::command]
+fn delete_workspace(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String> {
+    let jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+    let sessions = core.store.workspace_sessions(&id)?;
+    if sessions.iter().any(|id| jobs.contains_key(id)) {
+        return Err("Stop the running conversations in this project before deleting it".into());
+    }
+    for session in &sessions {
+        workstate::remove_snapshot(&core, session)?;
+    }
+    core.store.delete_workspace(&id)
 }
 #[tauri::command]
 fn set_session_workspace(
@@ -299,6 +369,18 @@ fn add_account(
     if name.trim().is_empty() || name.len() > 80 {
         return Err("Use an account name of 1–80 characters".into());
     }
+    if matches!(provider, Provider::Opencode | Provider::Cursor)
+        && core
+            .store
+            .accounts()?
+            .iter()
+            .any(|a| a.provider == provider)
+    {
+        return Err(
+            "This adapter uses one existing native profile; it cannot create isolated identities yet."
+                .into(),
+        );
+    }
     let a = core.store.add_account(name.trim().into(), provider)?;
     let dir = config_dir(&core, &a);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -319,6 +401,9 @@ fn remove_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), Strin
     }
     let a = account(&core, &id)?;
     let dir = config_dir(&core, &a);
+    if a.provider.is_api() {
+        crate::api::forget_key(&a.id)?;
+    }
     // Only UUID-owned directories under the application data root can be removed.
     uuid::Uuid::parse_str(&a.id).map_err(|_| "Invalid account ID")?;
     if dir.exists() {
@@ -331,7 +416,6 @@ fn remove_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), Strin
 struct Diagnostics {
     claude: bool,
     gpt: bool,
-    gemini: bool,
     antigravity: bool,
     ollama: bool,
     data_dir: String,
@@ -341,7 +425,6 @@ fn diagnostics(core: tauri::State<Arc<Core>>) -> Diagnostics {
     Diagnostics {
         claude: providers::executable(&Provider::Claude).is_ok(),
         gpt: providers::executable(&Provider::Gpt).is_ok(),
-        gemini: providers::executable(&Provider::Gemini).is_ok(),
         antigravity: providers::executable(&Provider::Antigravity).is_ok(),
         ollama: providers::executable(&Provider::Ollama).is_ok(),
         data_dir: core.root.to_string_lossy().into(),
@@ -351,8 +434,17 @@ fn diagnostics(core: tauri::State<Arc<Core>>) -> Diagnostics {
 #[tauri::command]
 async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result<bool, String> {
     let a = account(&core, &id)?;
+    if a.provider.is_api() {
+        return crate::api::has_key(&a.id);
+    }
     if a.provider == Provider::Ollama {
         return Ok(ollama::list().await.map(|m| !m.is_empty()).unwrap_or(false));
+    }
+    if a.provider == Provider::Cursor {
+        return Ok(!crate::cursor::models().await?.is_empty());
+    }
+    if a.provider == Provider::Opencode {
+        return Ok(!crate::opencode::models(None, None).await?.is_empty());
     }
     let mut c = providers::command(&a.provider)?;
     providers::isolate(&mut c, &a.provider, &config_dir(&core, &a));
@@ -364,13 +456,16 @@ async fn account_status(core: tauri::State<'_, Arc<Core>>, id: String) -> Result
         Provider::Gpt => {
             c.args(["login", "status"]);
         }
-        Provider::Gemini => {
-            c.args(["--list-models"]);
-        }
+
         Provider::Antigravity => {
             c.args(["models"]);
         }
-        Provider::Ollama => unreachable!(),
+        Provider::Ollama
+        | Provider::Opencode
+        | Provider::Cursor
+        | Provider::Openaiapi
+        | Provider::Anthropicapi
+        | Provider::Googleapi => unreachable!(),
     }
     let out = tokio::time::timeout(std::time::Duration::from_secs(15), c.output())
         .await
@@ -398,7 +493,12 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
         let action = match a.provider {
             Provider::Claude => "auth login",
             Provider::Gpt => "login",
-            Provider::Gemini | Provider::Antigravity | Provider::Ollama => "",
+            Provider::Antigravity | Provider::Ollama => "",
+            Provider::Opencode => "auth login",
+            Provider::Cursor => "login",
+            Provider::Openaiapi | Provider::Anthropicapi | Provider::Googleapi => {
+                return Err("Use API settings to save a key in the OS keychain".into())
+            }
         };
         let user_profile = if a.provider == Provider::Antigravity {
             format!("$env:USERPROFILE = {}\n", quote(&dir.to_string_lossy()))
@@ -407,7 +507,11 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
         };
         let script = format!(
             "$env:{} = {}\n{}{}\n& {} {}\nWrite-Host 'Return to Lumen and check connection.'\n",
-            a.provider.env(),
+            if matches!(a.provider, Provider::Opencode | Provider::Cursor) {
+                "LUMEN_NATIVE_PROFILE"
+            } else {
+                a.provider.env()
+            },
             quote(&dir.to_string_lossy()),
             user_profile,
             [
@@ -418,7 +522,8 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
                 "CODEX_API_KEY",
                 "CODEX_ACCESS_TOKEN",
                 "GOOGLE_API_KEY",
-                "GEMINI_API_KEY"
+                "GEMINI_API_KEY",
+                "CURSOR_API_KEY"
             ]
             .iter()
             .map(|k| format!("Remove-Item Env:{k} -ErrorAction SilentlyContinue"))
@@ -452,6 +557,11 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
         let action = match a.provider {
             Provider::Claude => "auth login",
             Provider::Gpt => "login",
+            Provider::Opencode => "auth login",
+            Provider::Cursor => "login",
+            Provider::Openaiapi | Provider::Anthropicapi | Provider::Googleapi => {
+                return Err("Use API settings to save a key in the OS keychain".into())
+            }
             _ => "",
         };
         let home = if a.provider == Provider::Antigravity {
@@ -460,8 +570,8 @@ fn login_account(core: tauri::State<Arc<Core>>, id: String) -> Result<(), String
             String::new()
         };
         let script = format!(
-            "#!/bin/sh\nexport {}={}\n{home}unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN GOOGLE_API_KEY GEMINI_API_KEY\n{} {action}\necho 'Return to Lumen and check connection.'\n",
-            a.provider.env(),
+            "#!/bin/sh\nexport {}={}\n{home}unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN GOOGLE_API_KEY GEMINI_API_KEY CURSOR_API_KEY\n{} {action}\necho 'Return to Lumen and check connection.'\n",
+            if matches!(a.provider, Provider::Opencode | Provider::Cursor) { "LUMEN_NATIVE_PROFILE" } else { a.provider.env() },
             quote(&dir.to_string_lossy()),
             quote(&exe.to_string_lossy()),
         );
@@ -744,20 +854,7 @@ pub fn run() {
                 std::time::Duration::from_secs(300),
             )
             .ok();
-            let core = Arc::new(Core {
-                store: db,
-                root,
-                jobs: Mutex::new(HashMap::new()),
-                slots: Arc::new(Semaphore::new(4)),
-                inference: Arc::new(Semaphore::new(8)),
-                workspace_locks: Mutex::new(HashMap::new()),
-                catalogs: Mutex::new(HashMap::new()),
-                usage_lock: Mutex::new(()),
-                orchestra_raises: Mutex::new(HashMap::new()),
-                limits: Default::default(),
-                settings: Mutex::new(prefs.clone()),
-                approvals: journal,
-            });
+            let core = Arc::new(Core::new(db, root, prefs.clone(), journal));
             app.manage(core.clone());
             if let Ok(resources) = app.path().resource_dir() {
                 browser::resources(resources);
@@ -804,6 +901,11 @@ pub fn run() {
             delete_session,
             get_messages,
             list_accounts,
+            adapter_contract::adapter_capabilities,
+            api::get_api_settings,
+            api::save_api_settings,
+            api::save_api_key,
+            quota_resume::resume_at_reset,
             add_account,
             remove_account,
             diagnostics,
@@ -866,6 +968,8 @@ pub fn run() {
             rename_account,
             list_workspaces,
             add_workspace,
+            rename_workspace,
+            delete_workspace,
             set_session_workspace,
             get_usage,
             refresh_usage,
@@ -1070,16 +1174,18 @@ async fn balance(
             })
             .collect();
         if let Some(scores) = scores {
-            let has_claude = primary.iter().any(|a| a.provider == Provider::Claude);
-            let has_gpt = primary.iter().any(|a| a.provider == Provider::Gpt);
-            if has_claude
-                && has_gpt
-                && !scores.is_empty()
-                && scores.iter().all(|(_, score)| *score >= 1000.0)
-            {
+            if !scores.is_empty() && scores.iter().all(|(_, score)| *score >= 1000.0) {
                 if let Some(google) = accounts
                     .iter()
-                    .filter(|a| a.provider.fallback_rank() > 0)
+                    .filter(|a| {
+                        a.provider.fallback_rank() > 0
+                            && !core.limits.cooling(&a.id, now())
+                            && !usage
+                                .iter()
+                                .find(|u| u.account_id == a.id)
+                                .and_then(|u| router::usage_pressure(u, now()))
+                                .is_some_and(|p| p >= 1000.0)
+                    })
                     .min_by_key(|a| a.provider.fallback_rank())
                 {
                     plan.provider = google.provider.clone();
@@ -1092,7 +1198,7 @@ async fn balance(
                         google.provider.binary()
                     );
                 } else {
-                    return Err("Claude and GPT quotas are exhausted. Add an Antigravity, Gemini CLI or Ollama account for emergency fallback.".into());
+                    return Err("Claude and GPT quotas are exhausted. Add an Antigravity or Ollama account for emergency fallback.".into());
                 }
             } else if options.balance_usage {
                 if let Some((a, _)) = scores

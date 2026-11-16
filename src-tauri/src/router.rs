@@ -172,6 +172,31 @@ fn requested_effort(task: TaskProfile, policy: &AutoPolicy) -> &'static str {
     ["low", "medium", "high"][(task.effort + adjustment).clamp(0, 2) as usize]
 }
 
+/// Only an explicit instruction at the start pins Auto; mentioning a provider is not a choice.
+pub fn requested_provider(prompt: &str) -> Option<&'static str> {
+    let text = prompt.trim_start().to_lowercase();
+    for (name, provider) in [
+        ("antigravity", "antigravity"),
+        ("claude", "claude"),
+        ("gpt", "gpt"),
+        ("codex", "gpt"),
+        ("ollama", "ollama"),
+        ("opencode", "opencode"),
+        ("cursor", "cursor"),
+    ] {
+        for verb in ["usa ", "use ", "utilizza ", "utilize "] {
+            if let Some(rest) = text.strip_prefix(&format!("{verb}{name}")) {
+                if rest.is_empty()
+                    || rest.starts_with(|c: char| c.is_whitespace() || c == ':' || c == ',')
+                {
+                    return Some(provider);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Keyword routing, for callers without a classifier verdict.
 #[cfg(test)]
 pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result<Plan, String> {
@@ -188,9 +213,13 @@ pub fn route_with(
         "auto",
         "claude",
         "gpt",
-        "gemini",
         "antigravity",
         "ollama",
+        "opencode",
+        "cursor",
+        "openaiapi",
+        "anthropicapi",
+        "googleapi",
         "both",
     ]
     .contains(&options.mode.as_str())
@@ -212,9 +241,13 @@ pub fn route_with(
     let preferred = match options.mode.as_str() {
         "claude" | "both" => Provider::Claude,
         "gpt" => Provider::Gpt,
-        "gemini" => Provider::Gemini,
         "antigravity" => Provider::Antigravity,
         "ollama" => Provider::Ollama,
+        "opencode" => Provider::Opencode,
+        "cursor" => Provider::Cursor,
+        "openaiapi" => Provider::Openaiapi,
+        "anthropicapi" => Provider::Anthropicapi,
+        "googleapi" => Provider::Googleapi,
         _ if task.tier == 2 => Provider::Claude,
         _ => Provider::Gpt,
     };
@@ -245,6 +278,7 @@ pub fn route_with(
                     .iter()
                     .find(|a| matches!(a.provider, Provider::Claude | Provider::Gpt))
             })
+            .or_else(|| accounts.first())
     };
     let a = selected.ok_or(
         "Add an account for this provider in Settings, then complete the official CLI login.",
@@ -341,7 +375,7 @@ pub fn review_partner<'a>(accounts: &'a [Account], writer: &Account) -> Option<&
 /// Model class: 0 Haiku/Luna, 1 Sonnet/Terra (and unknown), 2 Opus/Sol.
 pub fn model_tier(m: &ModelInfo) -> i32 {
     let name = format!("{} {}", m.id, m.name).to_lowercase();
-    if ["luna", "mini", "nano", "haiku"]
+    if ["luna", "mini", "nano", "haiku", "flash"]
         .iter()
         .any(|k| name.contains(k))
     {
@@ -452,7 +486,12 @@ pub fn usage_pressure(usage: &AccountUsage, at: i64) -> Option<f64> {
         .windows
         .iter()
         .filter(|w| {
-            w.resets_at > at
+            (usage.source != "antigravity-cli"
+                || w.group.as_deref().is_some_and(|g| {
+                    let g = g.to_lowercase();
+                    g.contains("gemini") || g.contains("google")
+                }))
+                && w.resets_at > at
                 && w.window_minutes > 0
                 && w.used_percent.is_finite()
                 && (0.0..=100.0).contains(&w.used_percent)
@@ -470,6 +509,46 @@ pub fn usage_pressure(usage: &AccountUsage, at: i64) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retired_antigravity_quotas_do_not_exhaust_google() {
+        let usage = crate::models::AccountUsage {
+            account_id: "a".into(),
+            source: "antigravity-cli".into(),
+            updated_at: 0,
+            windows: vec![
+                crate::models::UsageWindow {
+                    group: Some("Claude and GPT models".into()),
+                    used_percent: 100.0,
+                    resets_at: 100000,
+                    window_minutes: 300,
+                },
+                crate::models::UsageWindow {
+                    group: Some("Gemini Models".into()),
+                    used_percent: 1.0,
+                    resets_at: 100000,
+                    window_minutes: 300,
+                },
+            ],
+        };
+        assert!(super::usage_pressure(&usage, 0).unwrap() < 1000.0);
+    }
+
+    #[test]
+    fn explicit_provider_instruction_pins_auto_without_matching_mentions() {
+        assert_eq!(
+            super::requested_provider(
+                "Usa antigravity per questo prompt: che falle di vulnerabilita ha Lumen?"
+            ),
+            Some("antigravity")
+        );
+        assert_eq!(
+            super::requested_provider("Use GPT: review this"),
+            Some("gpt")
+        );
+        assert_eq!(super::requested_provider("What is Antigravity?"), None);
+        assert_eq!(super::requested_provider("Use ClaudeCodeExploit"), None);
+    }
+
     use super::*;
     fn opts() -> RunOptions {
         RunOptions {
@@ -484,6 +563,7 @@ mod tests {
             auto_review: false,
             attachments: vec![],
             audit_of: None,
+            resume_only: false,
         }
     }
     fn accounts() -> Vec<Account> {
@@ -614,7 +694,6 @@ mod tests {
     #[test]
     fn every_explicit_provider_preserves_the_selected_model() {
         for (mode, provider) in [
-            ("gemini", Provider::Gemini),
             ("antigravity", Provider::Antigravity),
             ("ollama", Provider::Ollama),
         ] {

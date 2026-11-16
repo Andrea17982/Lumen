@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="public/lumen.svg" width="76" height="76" alt="Lumen">
+  <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
   <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
-  <p>Claude Code · Codex · Gemini CLI · Antigravity · Ollama</p>
+  <p>Claude Code · Codex · Antigravity · Ollama</p>
   <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.8.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
 </div>
 
@@ -16,7 +16,11 @@ Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi 
 
 ## 0.8 — Continuità, strumenti condivisi e Liquid Glass
 
-Continuità più sicura fra account, avanzamento e consenso dei connettori più chiari, recupero Auto/Orchestra e miglioramenti mirati a contesto e grafo. Il logo apre la sidebar di vetro; permessi spiegati e un breve tutorial introducono l'app. Catalogo MCP/skill, gateway Codex del proprietario ed esecuzione locale stdio/Streamable HTTP estendono le integrazioni supportate. **La portabilità universale non è consegnata:** connettori cloud proprietari, hook/mods nativi e formati non supportati restano nella roadmap successiva. [Novità e limiti della 0.8](docs/release-notes/0.8.0.md).
+Continuità più sicura fra account, avanzamento e consenso dei connettori più chiari, recupero Auto/Orchestra e miglioramenti mirati a contesto e grafo. Il logo apre la sidebar di vetro; permessi spiegati e un breve tutorial introducono l'app. Catalogo MCP/skill, gateway Codex del proprietario ed esecuzione locale stdio/Streamable HTTP estendono le integrazioni supportate. **La portabilità universale non è consegnata:** connettori cloud proprietari, hook/mods nativi e formati non supportati restano nella [roadmap 1.0](docs/roadmap-1.0.md). [Novità e limiti della 0.8](docs/release-notes/0.8.0.md).
+
+## Verso la 1.0
+
+La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia collaborazione affidabile fra Claude Code, Codex, Antigravity e OpenCode, con API ufficiali Anthropic/OpenAI/Google. Auto può usare credito API solo dopo abilitazione esplicita e con budget obbligatorio. Il percorso comprende daemon locale, memoria di progetto automatica e globale confermata, handoff verificabili e autonomia recuperabile. Il remoto 1.0 offre chat, nuovi task, Stop/Resume e approvazioni in LAN/VPN; workspace mobile completo e relay E2EE arrivano dopo la 1.0. Sono impegni di roadmap, non funzionalità dichiarate della release pubblica 0.8.
 
 ## Funzioni dell'applicazione
 
@@ -28,11 +32,11 @@ Continuità più sicura fra account, avanzamento e consenso dei connettori più 
 | Resume nativo Claude/Codex, memoria del lavoro e cambio esplicito della cartella. | Diagnostica, controlli sui progetti interessati e integrazione Godot opzionali. |
 | Continuità tramite area di notifica. | Pacchetti Windows, macOS universale e Linux. |
 
-[Changelog 0.8](docs/release-notes/0.8.0.md) · [Guida alle funzioni](docs/features.md) · [Evidenze della release](docs/release-readiness-0.8.md). Le misure prestazionali e le versioni precedenti restano nella [cronologia](docs/release-notes/README.md).
+[Changelog 0.8](docs/release-notes/0.8.0.md) · [Guida alle funzioni](docs/features.md) · [Validazione](docs/validation.md). Le misure prestazionali e le versioni precedenti restano nella [cronologia](docs/release-notes/README.md).
 
 ## Scegli come lavorare
 
-**Sessione diretta.** Seleziona Claude, GPT/Codex, Gemini CLI, Antigravity oppure Ollama. Account, modello e ragionamento provengono dai cataloghi disponibili. Claude usa lo stream nativo bidirezionale e Codex app-server; i provider Google mantengono le CLI ufficiali. Ollama usa l'API ufficiale sul computer.
+**Sessione diretta.** Seleziona Claude, GPT/Codex, Antigravity, OpenCode, Cursor, Ollama oppure una delle API ufficiali. Account, modello e ragionamento provengono dai cataloghi disponibili. Claude usa lo stream nativo bidirezionale e Codex app-server; i provider Google mantengono le CLI ufficiali. Ollama usa l'API ufficiale sul computer.
 
 **Auto.** Affida a Lumen la selezione da catalogo con preferenze Budget, Default o Quality ed eventuale revisione indipendente. I passaggi aggiuntivi consumano quota.
 
@@ -43,6 +47,8 @@ Continuità più sicura fra account, avanzamento e consenso dei connettori più 
 ![Piano e assegnazioni Orchestra](docs/images/orchestra-plan.png)
 
 ## Navigazione con Moli
+
+La build locale 0.9 aggiunge Moli condiviso a OpenCode tramite ACP e alle tre API ufficiali. Cursor conserva il proprio runtime nativo senza questa integrazione. [Matrice di supporto](docs/integrations.md).
 
 Moli si avvia quando viene chiamato uno strumento del browser. Offre lettura Markdown, ricerca, navigazione persistente, interazioni DOM e screenshot. I contesti sono separati per conversazione e worker.
 
@@ -66,7 +72,7 @@ Il registro persistente del lavoro conserva requisiti e decisioni attraverso tro
 
 I pacchetti sono in **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
-- **Windows x64:** `Lumen_0.8.0_x64-setup.exe`, oppure `Lumen_0.8.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources` accanto a `Lumen.exe`.
+- **Windows x64:** `Lumen_0.9.0_x64-setup.exe`, oppure `Lumen_0.9.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources` accanto a `Lumen.exe`.
 - **macOS:** DMG universale per Intel e Apple silicon.
 - **Linux x64:** DEB e AppImage, compilati su Ubuntu 24.04.
 
@@ -96,7 +102,7 @@ La build prepara automaticamente Moli con versione e checksum fissati. `npm run 
 
 Il candidato 0.8 ha superato **203 test Rust Windows, 72 unitari frontend, 40 browser e 56 scenari nativi Windows**, oltre a formattazione/Clippy e controlli di versioni/documentazione. Gli scenari nativi usano dati isolati e fixture provider/API offline. Un probe separato verifica i metadati MCP con la CLI installata, senza inferenza. CI e controlli degli helper nei pacchetti coprono Windows, macOS e Linux.
 
-Il registro live resta a 13 slot storici, senza nuove inferenze o login per questa chiusura. Restano limiti espliciti sulle prove desktop/accessibilità non Windows, sulla matrice account/versioni e sulla portabilità dei connettori proprietari. Fixture e build non sostituiscono tali verifiche. [Perimetro ed evidenze 0.8](docs/release-readiness-0.8.md) · [Supporto integrazioni](docs/shared-capabilities-0.8.md) · [Roadmap successiva](docs/roadmap-next.md).
+Il registro live resta a 13 slot storici, senza nuove inferenze o login per questa chiusura. Restano limiti espliciti sulle prove desktop/accessibilità non Windows, sulla matrice account/versioni e sulla portabilità dei connettori proprietari. Fixture e build non sostituiscono tali verifiche. [Validazione e limiti noti](docs/validation.md) · [Supporto integrazioni](docs/integrations.md) · [Roadmap 1.0](docs/roadmap-1.0.md).
 
 Autopilot concede accesso ampio. Lumen non aggiunge una gabbia OS comune e non cifra internamente il database; usa permessi del sistema e cifratura del disco. Non sostituisce le politiche dei provider. [Sicurezza](SECURITY.md).
 
@@ -108,4 +114,6 @@ Codice, interfaccia, test e documentazione sono **completamente AI Written**, ge
 
 Licenza MIT. Per il feedback usa le [Issues](https://github.com/Andrea17982/Lumen/issues). Il [sostegno PayPal facoltativo](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) va a **andreanastrobusiness1999@gmail.com** e non sblocca funzioni.
 
-[Documentazione](docs/README.md) · [Architettura](docs/architecture.md) · [Contribuire](CONTRIBUTING.md) · [Licenze terze parti](THIRD_PARTY_NOTICES.md)
+[Documentazione](docs/README.md) · [Roadmap 1.0](docs/roadmap-1.0.md) · [Architettura](docs/architecture.md) · [Contribuire](CONTRIBUTING.md) · [Licenze terze parti](THIRD_PARTY_NOTICES.md)
+
+Release locale Windows del 16 novembre: [0.9.0 — API ufficiali e compatibilità degli adapter](docs/release-notes/0.9.0.md), con keychain/budget API e OpenCode ACP/strumenti condivisi. Cursor mantiene Autopilot esplicito. I pacchetti GitHub usano target CPU portabili.

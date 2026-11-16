@@ -1,6 +1,6 @@
-# Task continuity and code quality — 0.7
+# Task continuity and code quality
 
-These backend features preserve the native execution workflow and add no repeated approval round. Ollama browsing uses the agreed official local API exception; subscription providers retain native CLI authentication.
+These backend features preserve native execution and add no repeated planning approval. Subscription providers retain native CLI authentication; local Ollama and the three official APIs use their declared tool loops. Action approvals still follow the selected profile, and paid API calls reserve budget before sending.
 
 ## Durable task state
 
@@ -13,9 +13,9 @@ These backend features preserve the native execution workflow and add no repeate
 - Checks carry their workspace; another project's results are not evidence for the current project. Fresh results replace older results of the same check.
 - `session_work_state` returns the full structured state for inspection.
 
-## 0.8 working-tree continuity and Auto calibration
+## Continuity and Auto calibration
 
-The 0.8 candidate adds a fingerprint for project notes and workspace-scoped backend checks to native-session metadata. A native continuation receives changed notes and the latest result per check label, with source message IDs and bounded details/diagnostics; unchanged context is omitted. At most eight recent labels are projected, with omitted coverage explicit. Removing context invalidates the old evidence rather than implying success. A switch to another account uses the full bounded handoff and this chat's check evidence; it never reuses another account's native session ID. This is per-chat continuity, not shared project-wide conversation history.
+Lumen adds a fingerprint for project notes and workspace-scoped backend checks to native-session metadata. A native continuation receives changed notes and the latest result per check label, with source message IDs and bounded details/diagnostics; unchanged context is omitted. At most eight recent labels are projected, with omitted coverage explicit. Removing context invalidates the old evidence rather than implying success. A switch to another account uses the full bounded handoff and this chat's check evidence; it never reuses another account's native session ID. This is per-chat continuity, not shared project-wide conversation history.
 
 Auto reuses a previous verdict only for recognized short continuations such as “procedi”, not every short new task. A newer unrated manual request stops lookup of older verdicts. Fresh quota balancing takes precedence over native-account affinity; absent usable quota data retains the existing affinity behavior. Manual provider/model/effort choices remain authoritative.
 
@@ -23,7 +23,7 @@ Budget can request an independent audit for risky work or explicit user requests
 
 Reviewer-only calls do not replace the visible writer's resumable native metadata. If the writer falls back to another account, review selects an independent available account and chooses a proportional model from that account's actual catalog rather than reusing the old partner's model ID or an unrelated default. The native fixture checks actual writer identity and reviewer selection after fallback.
 
-Difficulty alone no longer selects the Orchestra task-graph path: the fallback looks for implementation spanning distinct areas or a concrete request for parallel deliverables. Orchestra remains an explicit setting. These are bounded classifier/routing rules, not proof of smarter models or a new general delegation engine. The [experiment protocol and results](quality-experiments-0.8.md) distinguish deterministic tests from live task quality.
+Difficulty alone no longer selects the Orchestra task-graph path: the fallback looks for implementation spanning distinct areas or a concrete request for parallel deliverables. Orchestra remains an explicit setting. These are bounded classifier/routing rules, not proof of smarter models or a new general delegation engine.
 
 ## Diagnostics and corrections
 
@@ -113,4 +113,4 @@ Structured impact includes targets, direct/transitive dependents, test candidate
 
 Automated tests cover persistence/reopen/Compact seeding/Rewind, decisions beyond the transcript cutoff, permissions, workspace-scoped evidence, LSP push/pull and stale versions, read-only callbacks, absent servers/timeouts, actual failing/passing shell checks, cancellation, nested checks, checkpoint detection and pre/post-edit impact in worker handoffs.
 
-Controlled tests use isolated projects and protocol peers. Real installed Rust/TypeScript/C#/Godot language servers, native Windows UI, Codex/Antigravity browser turns and the local Ollama loop have also been exercised. Claude/Gemini account-dependent and broader non-Windows desktop acceptance remain distinct. See [Validation](validation.md) for observed scope, platform builds and remaining limits.
+Controlled tests use isolated projects and protocol peers. Real installed Rust/TypeScript/C#/Godot language servers, native Windows UI, Codex/Antigravity browser turns and the local Ollama loop have also been exercised. Claude account-dependent and broader non-Windows desktop acceptance remain distinct. See [Validation](validation.md) for observed scope, platform builds and remaining limits.

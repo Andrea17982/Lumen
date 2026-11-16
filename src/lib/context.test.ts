@@ -43,9 +43,32 @@ describe('context indicator', () => {
     expect(lastMeasurement([reply('c', [{ kind: 'usage', text: 'bad' }])])).toBeNull();
   });
 
+  it('includes tool context reported by the provider even without overhead telemetry', () => {
+    expect(
+      contextUse(8664, 100, 1_000_000, { latest: 120000, overhead: null, window: null }),
+    ).toMatchObject({ used: 120100, source: 'estimated' });
+  });
+  it('does not reuse another provider measurement when changing models in one chat', () => {
+    const messages = [
+      {
+        id: 'a',
+        role: 'assistant' as const,
+        text: '',
+        activity: [
+          {
+            kind: 'usage',
+            text: '{"latest":30000,"overhead":20000,"window":200000,"provider":"claude"}',
+          },
+        ],
+      },
+    ];
+    expect(lastMeasurement(messages, 'antigravity')).toBeNull();
+    expect(lastMeasurement(messages, 'claude')?.window).toBe(200000);
+  });
   it('adds the measured CLI overhead and uses the reported window', () => {
     const use = contextUse(5000, 1000, 200_000, { latest: 30000, overhead: 24000, window: 60_000 });
-    expect(use).toMatchObject({ used: 30000, window: 60_000, percent: 50, tone: 'medium' });
+    expect(use).toMatchObject({ used: 31000, window: 60_000, tone: 'medium' });
+    expect(use.percent).toBeCloseTo(51.67, 2);
     expect(use.source).toBe('measured');
     const estimate = contextUse(5000, 1000, 200_000, null);
     expect(estimate).toMatchObject({ used: 6000, window: 200_000, overhead: null });

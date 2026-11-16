@@ -1,3 +1,4 @@
+import Select from './Select';
 import { useEffect, useRef, useState } from 'react';
 import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
@@ -80,7 +81,7 @@ export default function VariantComparison({ session }: { session: string }) {
         {selected.map((id, i) => (
           <label key={i}>
             {t(i ? 'Second version' : 'First version')}
-            <select
+            <Select
               value={id}
               onChange={(e) =>
                 setSelected((values) => values.map((v, j) => (j === i ? e.target.value : v)))
@@ -92,7 +93,7 @@ export default function VariantComparison({ session }: { session: string }) {
                   {v.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         ))}
       </div>

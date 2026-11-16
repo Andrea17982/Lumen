@@ -322,6 +322,7 @@ mod tests {
             Duration::from_secs(180),
             execute(
                 Invocation {
+                    automatic: false,
                     account: &account,
                     config: &config,
                     workspace: &workspace,
@@ -409,6 +410,7 @@ mod tests {
         let mut events = Vec::new();
         let answer = execute_at(
             Invocation {
+                automatic: false,
                 account: &account,
                 config: &config,
                 workspace: &workspace,

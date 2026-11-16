@@ -8,7 +8,7 @@ pub async fn read(a: &Account, dir: &Path) -> Result<AccountUsage, String> {
         return read_antigravity(a, dir).await;
     }
     if a.provider != Provider::Gpt {
-        return Err("Claude CLI does not expose a supported quota query. Enter the values from /usage manually.".into());
+        return Err("This adapter does not expose a supported subscription-quota query. Enter known quota values manually; API cost budgets are configured separately in Accounts.".into());
     }
     let mut c = providers::command(&a.provider)?;
     providers::isolate(&mut c, &a.provider, dir);
@@ -110,7 +110,15 @@ async fn read_antigravity(a: &Account, dir: &Path) -> Result<AccountUsage, Strin
         if !status.success() {
             return Err("Antigravity quota query failed. Check login and CLI version.".to_string());
         }
-        let windows = parse_antigravity(&output)?;
+        let windows = parse_antigravity(&output)?
+            .into_iter()
+            .filter(|w| {
+                w.group.as_deref().is_some_and(|g| {
+                    let g = g.to_lowercase();
+                    g.contains("gemini") || g.contains("google")
+                })
+            })
+            .collect::<Vec<_>>();
         if windows.is_empty() {
             return Err("Antigravity returned no recognized quota windows".into());
         }

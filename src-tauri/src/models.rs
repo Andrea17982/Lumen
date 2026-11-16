@@ -5,27 +5,44 @@ use serde::{Deserialize, Serialize};
 pub enum Provider {
     Claude,
     Gpt,
-    Gemini,
     Antigravity,
     Ollama,
+    Opencode,
+    Cursor,
+    Openaiapi,
+    Anthropicapi,
+    Googleapi,
 }
 impl Provider {
+    pub fn is_api(&self) -> bool {
+        matches!(self, Self::Openaiapi | Self::Anthropicapi | Self::Googleapi)
+    }
     pub fn binary(&self) -> &str {
         match self {
             Self::Claude => "claude",
             Self::Gpt => "codex",
-            Self::Gemini => "gemini",
+
             Self::Antigravity => "agy",
             Self::Ollama => "ollama",
+            Self::Opencode => "opencode",
+            Self::Cursor => "cursor-agent",
+            Self::Openaiapi => "openai-api",
+            Self::Anthropicapi => "anthropic-api",
+            Self::Googleapi => "google-api",
         }
     }
     pub fn env(&self) -> &str {
         match self {
             Self::Claude => "CLAUDE_CONFIG_DIR",
             Self::Gpt => "CODEX_HOME",
-            Self::Gemini => "GEMINI_CLI_HOME",
+
             Self::Antigravity => "HOME",
             Self::Ollama => "",
+            Self::Opencode
+            | Self::Cursor
+            | Self::Openaiapi
+            | Self::Anthropicapi
+            | Self::Googleapi => "",
         }
     }
     /// Order for rate-limit and quota fallback: subscriptions first, local last.
@@ -33,8 +50,13 @@ impl Provider {
         match self {
             Self::Claude | Self::Gpt => 0,
             Self::Antigravity => 1,
-            Self::Gemini => 2,
+
             Self::Ollama => 3,
+            Self::Opencode
+            | Self::Cursor
+            | Self::Openaiapi
+            | Self::Anthropicapi
+            | Self::Googleapi => 2,
         }
     }
 }
@@ -122,6 +144,8 @@ pub struct RunOptions {
     /// Assistant message being audited; its turn's diff is attached.
     #[serde(default)]
     pub audit_of: Option<String>,
+    #[serde(default)]
+    pub resume_only: bool,
 }
 impl RunOptions {
     pub fn access(&self) -> AccessMode {

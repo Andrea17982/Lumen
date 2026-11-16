@@ -7,7 +7,7 @@ const SKILL_DIRS: &[(&str, &str)] = &[
     (".claude/skills", "claude"),
     (".agents/skills", "gpt"),
     (".codex/skills", "gpt"),
-    (".gemini/skills", "gemini"),
+    (".gemini/skills", "antigravity"),
 ];
 const SOURCE_EXTENSIONS: &[&str] = &[
     "cs", "gd", "ts", "tsx", "js", "rs", "py", "sql", "tscn", "tres", "go", "godot", "gdshader",
@@ -181,8 +181,8 @@ pub fn discover_tools(root: &Path) -> Vec<ToolEntry> {
     mcp_from_json(root, &root.join(".mcp.json"), "claude", &mut out);
     mcp_from_json(
         root,
-        &root.join(".gemini/settings.json"),
-        "gemini",
+        &root.join(".gemini/config/mcp_config.json"),
+        "antigravity",
         &mut out,
     );
     mcp_from_toml(root, &root.join(".codex/config.toml"), &mut out);
@@ -900,7 +900,7 @@ mod tests {
         let root = fixture("same executable");
         let same = r#"{"mcpServers":{"db":{"command":"node","args":["a.js","--token","S1"]}}}"#;
         write(&root, ".mcp.json", same);
-        write(&root, ".gemini/settings.json", same);
+        write(&root, ".gemini/config/mcp_config.json", same);
         let tools = discover_tools(&root);
         assert!(tools.iter().all(|t| t.name != "db" || !t.conflict));
         // Same executable, different script: the declarations disagree.

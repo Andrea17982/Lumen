@@ -8,20 +8,26 @@ export const nameOf = (p: Provider) =>
   ({
     claude: 'Claude',
     gpt: 'GPT',
-    gemini: 'Gemini CLI',
     antigravity: 'Antigravity',
     ollama: 'Ollama',
+    opencode: 'OpenCode',
+    cursor: 'Cursor',
+    openaiapi: 'OpenAI API',
+    anthropicapi: 'Anthropic API',
+    googleapi: 'Google API',
   })[p];
 export function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
 export function Mark({ small = false }: { small?: boolean }) {
   return (
-    <span className={`lumen-mark ${small ? 'small' : ''}`} aria-hidden="true">
-      <span />
-      <span />
-      <span />
-    </span>
+    <svg
+      className={`lumen-mark ${small ? 'small' : ''}`}
+      viewBox="224 65 1333 766"
+      aria-hidden="true"
+    >
+      <image href="/lumen.png" width="1774" height="887" />
+    </svg>
   );
 }
 

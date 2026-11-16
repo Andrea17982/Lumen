@@ -52,11 +52,38 @@ try {
 // A portable executable needs its pinned browser and notices alongside it. The ZIP is
 // the distributable; the loose copy is convenient when running directly from builds/latest.
 const moli = path.join(root, 'src-tauri/resources/moli', `${process.platform}-${process.arch}`);
-await cp(moli, path.join(destination, 'resources/moli', `${process.platform}-${process.arch}`), { recursive: true });
+await cp(moli, path.join(destination, 'resources/moli', `${process.platform}-${process.arch}`), {
+  recursive: true,
+  // An unchanged pinned browser can be in use by the currently running portable app.
+  filter: async (source, target) => {
+    if ((await stat(source)).isDirectory()) return true;
+    try {
+      return !(await readFile(source)).equals(await readFile(target));
+    } catch (error) {
+      if (error.code === 'ENOENT') return true;
+      throw error;
+    }
+  },
+});
+await cp(path.join(root, 'src-tauri/resources/legal'), path.join(destination, 'resources/legal'), {
+  recursive: true,
+});
 const zipName = copiedPortableName.replace(/\.exe$/i, '.zip');
-execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(root, 'scripts/package-portable.ps1'),
-  '-Executable', path.join(portable, 'lumen.exe'), '-Moli', moli,
-  '-Destination', path.join(destination, zipName)], { windowsHide: true, stdio: 'pipe' });
+execFileSync(
+  'powershell.exe',
+  [
+    '-NoProfile',
+    '-File',
+    path.join(root, 'scripts/package-portable.ps1'),
+    '-Executable',
+    path.join(portable, 'lumen.exe'),
+    '-Moli',
+    moli,
+    '-Destination',
+    path.join(destination, zipName),
+  ],
+  { windowsHide: true, stdio: 'pipe' },
+);
 // The manifest belongs to this build, including the renamed copy when the old EXE is running.
 const checksums = await Promise.all(
   [newest, copiedPortableName, zipName].map(async (name) => {

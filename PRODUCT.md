@@ -1,52 +1,56 @@
 # Lumen
 
-0.8 delivers continuity, shared tools and Liquid Glass refinements within the scope explicitly approved on 13 November 2026. Universal integration support is retained for subsequent work, not claimed complete. [Release scope and evidence](docs/release-readiness-0.8.md) · [Changelog](docs/release-notes/0.8.0.md) · [Next roadmap](docs/roadmap-next.md).
+A local Tauri 2 desktop workspace for native AI conversations, with optional Auto routing and explicit Orchestra coordination. Windows x64 is the primary acceptance target; macOS and Linux have automated builds with manual validation limits recorded separately.
 
 <!-- impeccable:product-schema 1 -->
 
 ## Platform
 web
 
-Local Tauri desktop application. Windows x64 is the primary native acceptance target; universal macOS and Linux DEB/AppImage receive automated builds/tests, with further desktop/device testers tracked in validation.
-
 ## Stack
-Tauri 2, Rust, React, TypeScript, Tailwind CSS and Framer Motion. SQLite persistence; official subscription CLIs; official loopback Ollama API; pinned bundled Moli browser.
+Tauri 2, Rust, React, TypeScript, Tailwind CSS and Framer Motion; SQLite persistence, official provider CLIs, loopback Ollama and pinned bundled Moli browsing.
 
 ## Users
-People working with concurrent Claude Code, Codex, Gemini CLI, Antigravity and local Ollama sessions in their own project folders.
+People developing with Claude Code, Codex, Antigravity, local Ollama, OpenCode, Cursor and the official API adapters in their own project folders. React/TypeScript/JavaScript and Godot are priority workflows; multiple subscriptions may share one Lumen conversation.
 
 ## Product Purpose
-A quiet workspace where direct native sessions preserve the user's model and permissions, with optional coordinated work and automatically available browser tools.
+Preserve the user's model, identity, permissions and task context while keeping conversation quiet. Auto selects from available catalogs and can offer another account when quota is exhausted. Each runtime fallback asks before sending, warns about a weaker model and stops if work has already happened. Explicit provider instructions take precedence over Auto's preference. Google uses only Antigravity and available Google models; Gemini CLI is retired.
 
 ## Capabilities and Constraints
-Persistent searchable conversations, independent project/folder association, native continuation/questions/child output where supported, explicit Auto/Orchestra, durable task state, bounded diagnostics/checks, Moli browsing, images/inspector/layout and manual variant merge. Native authentication stays with the provider. No credential extraction, custom provider OAuth or general inference proxy is implemented.
+Searchable persistent conversations, project folders, native continuation/questions where supported, shared tools and browser access, bounded checks, images and project inspection. Orchestra is an explicit option for coordinated tasks, not the default route. Provider authentication stays in the official CLI; Lumen does not extract credentials or implement provider OAuth. Ollama stays local and rejects cloud models.
 
-Read only is the initial permission profile; Autopilot has full available access under the OS account. Isolation beyond the providers' own controls is optional/not a universal jail. Ollama stays local and rejects cloud models. Browser capability does not guarantee identical CLI interaction features or better model intelligence.
+OpenCode uses one native profile, official ACP, verified session permissions and shared Moli/graph/MCP; Cursor retains explicit Autopilot-only native tools. Both remain explicitly selected. The three official API adapters use separate OS-keychain credentials, confirmed model pricing and durable budget reservations. Paid Auto access requires its own opt-in; budgeted API collaboration belongs to the later collaboration milestone.
+
+Read only is the initial permission profile. Autopilot has the available OS-user access, not administrator privileges or a universal sandbox. Provider capabilities differ. Retry after quota or a missing session is permitted only before observed model work; partial output and file effects must never be duplicated.
+
+Project folders organize conversations independently of filesystem workspaces. Project deletion removes contained conversations after confirmation and preserves actual project files. Shared integration discovery/execution covers a documented subset, not universal compatibility with every proprietary extension.
 
 ## Brand Commitments
-Lumen, with the established restrained Liquid Glass identity, system typography and light/dark themes. English and Italian UI. Public GitHub repository under Andrea17982. Completely AI Written disclosure, thanks to testers and optional PayPal support remain in documentation/About.
-
-## Evidence on Hand
-0.8: 203 Rust Windows tests, 72 frontend unit tests, 40 browser tests and 56 isolated native Windows scenarios; cross-platform CI and package helper checks. Installed-CLI metadata interoperability is separate from model inference. The live ledger remains 13 historical slots with no new inference/login during release closure. [Exact evidence and limits](docs/release-readiness-0.8.md). Earlier live/model checkpoints remain historical evidence in [Validation](docs/validation.md). No general performance or accessibility-certification claim.
+Lumen uses the approved satin-glass lm logo, restrained Liquid Glass, system typography and English/Italian UI. The approved refinement keeps the floating composer and minimizes permanent diagnostic text. Authorship, tester thanks, MIT/open-source disclosure and optional PayPal support stay in About and repository materials. [Design system](DESIGN.md).
 
 ## Product Principles
 
-Owner requirement, 12 November: previously configured connectors, plugins, skills, MCP servers and mods should work across providers/accounts while preserving identity and consent. The owner approved a 0.8 release with explicit limits on 13 November. Portable discovery, the Codex owning-account gateway, shared stdio/Streamable HTTP execution, MCP resources/prompts, dynamic tools and scoped plugin components cover the implemented subset. Proprietary cloud/runtime extensions, legacy transports and real-account acceptance remain on the [next roadmap](docs/roadmap-next.md). This is not universal compatibility already delivered. [Support matrix](docs/shared-capabilities-0.8.md).
-
-- Preserve explicit provider/model/workspace choices and useful task decisions.
+- Preserve explicit provider/model, identity, folder and permission choices.
+- Complete already authorized work without repeated approvals; provider changes still require the user's decision.
 - Keep direct work direct; use Orchestra only when selected.
-- Do not ask again for an already approved execution plan.
-- Keep real permission decisions scoped and distinct from model questions.
-- Show concrete results, errors and incomplete coverage honestly.
-- Continue in the tray; recover after crashes only on explicit Resume.
+- Distinguish actual results from estimates, recorded observations and unverified claims.
+- Continue in the tray (in 1.0: the local daemon); recover an interrupted task only on explicit Resume.
+- Prefer measured improvements and existing components to speculative infrastructure.
 
-## Release scope
-0.7 delivered the areas recorded in validation, but did not complete every original roadmap item. Signing, Telegram, internal encryption, a separate daemon and an additional common OS jail were removed by the owner. Full virtualization, Rust Markdown/ANSI rendering, warm CLI pools and compact Lumen-owned metadata are not shipped; incomplete evaluation does not prove they are unnecessary. The [0.8 roadmap](docs/roadmap-0.8.md) covers measurement-led experiments and targeted gaps, using Lumen and a tiny dedicated C#/GDScript Godot project rather than a Rodent Heroes copy. Live comparisons are limited to three A/B pairs per task and available provider for promising candidates after local measurements. The owner interview concluded on 11 November; composer, execution observability and targeted continuity/Auto corrections are integrated locally. A bounded GPT comparison supports the changed-check-evidence fix. Separate Windows release measurements accept transcript/composer isolation and literal-paragraph rendering for typing and opening; the windowed prototype fails historical content-access gates and is excluded. Claude authentication, broader model quality/delegation, stable absolute baselines and compatible virtualization remain open. Preserve native formats unless evidence supports an explicitly scoped alternative for Lumen-owned data.
+## Direction to 1.0
 
-## Approved 0.8 direction
+Revised with the owner's decisions on 16 November 2026: [roadmap 1.0](docs/roadmap-1.0.md). Reliability and intelligent collaboration take priority over breadth. Complexity belongs in the architecture, not in the interface.
 
-The release includes an explained permission picker and an optional first-use guided tour, replayable in General settings/commands. The tour uses actual controls, preserves draft/access and never initiates login or inference. Fresh-process Windows release regression gates and historical-content checks pass at their documented scope; repeated-open baseline instability remains unresolved. Remaining speculative optimizations are classified rather than claimed delivered. [Final performance acceptance](docs/final-acceptance-0.8.md) · [Distribution and approved scope](docs/release-readiness-0.8.md).
+- Guaranteed fundamental flows for Claude Code, Codex, Antigravity and OpenCode. Cursor/Ollama keep declared support and limits; no universal native-parity claim.
+- All three official API integrations (Anthropic/OpenAI/Google), delivered in 0.9 with OS-keychain storage and retained as a 1.0 requirement. Auto requires explicit API enablement and a mandatory budget.
+- A local daemon owns sessions; automatic project memory and user-confirmed global memory, with inspection, correction, deletion and sources; verifiable handoffs between providers.
+- Auto may launch review/collaboration within configured limits. High autonomy includes audit log and recovery, with explicit boundaries for irreversible/external actions.
+- Essential remote control as responsive web/PWA over LAN/VPN: chat, new tasks, Stop/Resume and approvals. A dedicated remote security gate remains mandatory. Full mobile workspace, native apps and E2EE relay move after 1.0.
+- Preconfigured profiles, custom installation and in-app updates. Fixtures and native harnesses instead of live benchmarks. No inference proxy or credential harvesting.
+- Free open-source core; future paid perks cannot lock fundamental features, including remote access.
 
-Coding React/TypeScript/JavaScript and Godot is the main use. The priority account mix is two Claude subscriptions and one ChatGPT subscription, sharing context within one chat; graph and repocontext provide targeted project knowledge. Execution without unnecessary stops comes first, then reasoning/code quality, then context continuity. Auto exposes Balance quota usage and Budget/Default/Quality; a responsible agent may request bounded help or cross-audit when useful. Orchestra remains explicit for broader coordinated parallel work and necessary discovery. These are acceptance targets, not proof that every algorithm is calibrated or every provider has equivalent delegation.
+## Release scope and evidence
 
-The approved visual direction keeps a floating glass composer and a quiet conversation. The 0.8 branch implements the top-left logo as the glass project-sidebar disclosure, with a brief glint and transition, both themes and reduced motion. Desktop starts with projects visible and offers the quiet composition from the logo; narrow layouts start closed. Broader visual refinement remains open. The current working tree now includes a compact expandable execution summary with observed phases, timing, explicit agent states and available structured checks. Provider return, pending input, silence and failure remain distinct; silent periods never trigger a new model request. These observations do not establish the cause of historical live interruptions or better model quality. Technical work proceeds through verification without mandatory code approval; subjective visual results are reviewed concretely before the authorized integration. Implementation progress and remaining experiments stay in the roadmap.
+The published 0.8 scope and its accepted limits are in the [changelog](docs/release-notes/0.8.0.md); current evidence and known limits are in [validation](docs/validation.md) and the [integration support matrix](docs/integrations.md). Historical 0.7–0.8 reports remain in the `v0.8.0` tag, not in the working documentation.
+
+The 13 November follow-up removes Gemini CLI, simplifies conversation/settings UI, consolidates dropdowns, replaces the logo, adds project lifecycle actions and fixes quota fallback and Antigravity stream lifetime. Live paid inference and user-observed terminal focus behavior require separate validation; local fixtures do not establish them.

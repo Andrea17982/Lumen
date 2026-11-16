@@ -1,3 +1,4 @@
+import Select from './Select';
 import { Camera, ImagePlus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { call } from '../lib/bridge';
@@ -144,14 +145,14 @@ export default function VisualReview({
       {targets.length > 0 && (
         <label className="native-custom">
           Capture target
-          <select value={windowId} onChange={(e) => setWindowId(e.target.value)}>
+          <Select value={windowId} onChange={(e) => setWindowId(e.target.value)}>
             <option value="">Current screen</option>
             {targets.map((target) => (
               <option key={target.id} value={target.id}>
                 {target.title} · {target.app}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
       {shots.length === 0 && (

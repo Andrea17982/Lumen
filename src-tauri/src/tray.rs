@@ -68,6 +68,10 @@ pub fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
 
 /// Register or remove the login item to match the setting.
 pub fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    // Isolated debug fixtures must never change the installed app's login item.
+    if cfg!(debug_assertions) && std::env::var_os("LUMEN_TEST_DATA_DIR").is_some() {
+        return Ok(());
+    }
     let launcher = app.autolaunch();
     let current = launcher.is_enabled().unwrap_or(false);
     match (enabled, current) {
