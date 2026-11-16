@@ -4,7 +4,6 @@ import type { ClipboardEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Check, Folder, Plus, Search, X, Circle, Shrink, ArrowRight } from 'lucide-react';
 import ProviderOptions from './components/ProviderOptions';
-import QuitConfirm from './components/QuitConfirm';
 import { saveSettings, useAppSettings } from './lib/settings';
 import type { SettingsTab } from './settings/SettingsPanel';
 import { visibleInterval } from './lib/visible';
@@ -1904,7 +1903,6 @@ export default function App() {
           <TokenCaption tokens={draft.trim() ? draftTokens : 0} impact={impact} heavy={blob} />
         </div>
       </main>
-      <QuitConfirm />
       {settingsUsed && (
         <Suspense fallback={null}>
           <SettingsPanel

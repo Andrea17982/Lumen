@@ -3446,34 +3446,6 @@ footer.about .version {
   border: 0;
 }
 
-.quit-confirm {
-  position: fixed;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 14px 12px 18px;
-  background: var(--panel);
-  backdrop-filter: blur(30px);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 8px 25px -8px #0003;
-  font-size: calc(12px * var(--text-scale, 1));
-  max-width: calc(100vw - 32px);
-}
-.quit-confirm > div {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.quit-confirm .primary-button {
-  margin: 0;
-  padding: 6px 14px;
-}
-
 .ollama-model {
   flex-basis: 100%;
   display: flex;
