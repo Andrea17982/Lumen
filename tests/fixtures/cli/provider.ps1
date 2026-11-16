@@ -20,6 +20,16 @@ if (!$PromptText) {
 if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
 }
+if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_TURN_FIXTURE')) {
+    Add-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-effect.txt') -Value 'once'
+    Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='daemon-write';name='Write';input=@{file_path='daemon-effect.txt'}})}}
+    Emit @{type='stream_event';event=@{delta=@{text='DAEMON_PARTIAL'}}}
+    $ownedChild = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -WindowStyle Hidden -PassThru
+    Set-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-owned-pids.json') -Value (ConvertTo-Json -Compress @($PID, $ownedChild.Id))
+    Start-Sleep -Seconds 12
+    Emit @{type='result';is_error=$false;result='DAEMON_PARTIAL completed'}
+    exit 0
+}
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
 if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ACCOUNT_GATEWAY_FIXTURE')) {
     $gateway = Get-Content -LiteralPath (Join-Path (Get-Location).Path 'native-owner.json') -Raw | ConvertFrom-Json
@@ -177,6 +187,7 @@ if ($promptText.Contains('Ask only for missing information that materially chang
     $reply = 'APPROVED'
 }
 if ($promptText -match 'Your subtask \((s\d+)\)') {
+    if ($promptText.Contains('DAEMON_ORCHESTRA_FIXTURE')) { Start-Sleep -Seconds 8 }
     $name = "orchestra-$($Matches[1]).txt"
     Set-Content -LiteralPath (Join-Path (Get-Location).Path $name) -Value "by $Provider" -Encoding utf8
     $reply = "Wrote $name"

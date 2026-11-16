@@ -478,7 +478,9 @@ test('settings sections and Simple/Advanced mode hide expert options', async ({ 
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('switch', { name: /^Keep Lumen/ })).toBeChecked();
-  await expect(page.getByText('Starts quietly in the notification area.')).toBeVisible();
+  await expect(
+    page.getByText('Starts the local service quietly. Open Lumen when you need the window.'),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Show', exact: true }).click();
   await page.getByRole('tab', { name: 'Teamwork' }).click();
   await expect(page.getByRole('switch', { name: /Self-healing/ })).not.toBeChecked();

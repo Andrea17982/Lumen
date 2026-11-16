@@ -67,18 +67,16 @@ export default function GeneralSettings({
           />
           <Switch
             label={t('Keep Lumen in the notification area when closed')}
-            hint={t('Closing the window keeps running responses going. Quit from the tray icon.')}
+            hint={t(
+              'Tasks continue when the window closes. Use Stop Lumen and quit to stop all work.',
+            )}
             checked={s.closeToTray}
             disabled={busy}
             onChange={(v) => save({ ...s, closeToTray: v })}
           />
           <Switch
             label={t('Open Lumen at login')}
-            hint={
-              s.closeToTray
-                ? t('Starts quietly in the notification area.')
-                : t('Opens the window when you sign in.')
-            }
+            hint={t('Starts the local service quietly. Open Lumen when you need the window.')}
             checked={s.openAtLogin}
             disabled={busy}
             onChange={(v) => save({ ...s, openAtLogin: v })}

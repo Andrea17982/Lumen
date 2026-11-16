@@ -4,7 +4,8 @@
 
 Historical release notes describe their own versions, not the current capability/status matrix. The 0.8 scope and remaining integration limits are recorded in its release notes; current limits are in [Validation](../validation.md) and planned work in the [1.0 roadmap](../roadmap-1.0.md).
 
-- [0.9.0](0.9.0.md) — official API access, reserved budgets and OpenCode ACP compatibility (local Windows release)
+- [0.10.0](0.10.0.md) — core separation, authenticated local daemon and durable recovery (local Windows build)
+- [0.9.0](0.9.0.md) — official API access, reserved budgets and OpenCode ACP compatibility (published on GitHub)
 - [0.8.1](0.8.1.md) — local Windows checkpoint: continuation, quota reset and initial OpenCode/Cursor adapters (not remotely published)
 - [0.8.0](0.8.0.md) — continuity, shared tools, Liquid Glass and explicit integration limits
 - [0.7.1](0.7.1.md) — Performance Update: long chats, supervised metadata shutdown and execution reliability

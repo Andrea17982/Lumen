@@ -258,6 +258,10 @@ const it: Record<string, string> = {
   'Closing the window keeps running responses going. Quit from the tray icon.':
     "Chiudendo la finestra le risposte in corso continuano. Esci dall'icona nell'area di notifica.",
   'Open Lumen at login': "Apri Lumen all'accesso",
+  'Starts the local service quietly. Open Lumen when you need the window.':
+    'Avvia silenziosamente il servizio locale. Apri Lumen quando ti serve la finestra.',
+  'Tasks continue when the window closes. Use Stop Lumen and quit to stop all work.':
+    'I task continuano quando chiudi la finestra. Usa Stop Lumen and quit per interrompere tutto.',
   'Starts quietly in the notification area.': "Si avvia in background nell'area di notifica.",
   'Opens the window when you sign in.': 'Apre la finestra quando accedi.',
   Settings: 'Impostazioni',

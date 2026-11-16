@@ -21,8 +21,23 @@ const newest = await files.reduce(async (bestPromise, file) => {
 const portableName = newest.replace(/-setup\.exe$/i, '-portable.exe');
 if (portableName === newest)
   throw new Error(`Installer name does not identify its portable counterpart: ${newest}`);
+// Preserve the preceding complete package before replacing any build files.
+const previous = (await readdir(destination)).filter(
+  (name) => /\.(exe|zip)$/i.test(name) || name === 'SHA256SUMS.txt',
+);
+if (previous.length) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const archive = path.join(root, 'builds/archive', stamp);
+  if (!archive.startsWith(path.join(root, 'builds') + path.sep))
+    throw new Error('Archive escaped builds');
+  await mkdir(archive, { recursive: true });
+  for (const name of previous)
+    await copyFile(path.join(destination, name), path.join(archive, name));
+}
+// An executing daemon is a hard failure: do not overwrite the rest of a mixed build.
+await copyFile(path.join(portable, 'lumen-daemon.exe'), path.join(destination, 'lumen-daemon.exe'));
 for (const file of await readdir(destination)) {
-  if (!file.toLowerCase().endsWith('.exe')) continue;
+  if (!file.toLowerCase().endsWith('.exe') || file === 'lumen-daemon.exe') continue;
   try {
     await rm(path.join(destination, file), { force: true });
   } catch (error) {
@@ -86,12 +101,16 @@ execFileSync(
 );
 // The manifest belongs to this build, including the renamed copy when the old EXE is running.
 const checksums = await Promise.all(
-  [newest, copiedPortableName, zipName].map(async (name) => {
+  [newest, copiedPortableName, 'lumen-daemon.exe', zipName].map(async (name) => {
     const hash = createHash('sha256')
       .update(await readFile(path.join(destination, name)))
       .digest('hex');
     return `${hash}  ${name}`;
   }),
 );
+for (const name of previous.filter(
+  (name) => name.toLowerCase().endsWith('.zip') && name !== zipName,
+))
+  await rm(path.join(destination, name));
 await writeFile(path.join(destination, 'SHA256SUMS.txt'), checksums.join('\n') + '\n');
 console.log(`Installer and portable build copied to ${path.relative(root, destination)}`);

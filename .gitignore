@@ -4,6 +4,7 @@ src-tauri/resources/moli/
 dist/
 notes/
 src-tauri/target/
+src-tauri/binaries/
 src-tauri/gen/
 .env
 .env.*

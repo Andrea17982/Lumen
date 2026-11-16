@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyEvent } from './bridge';
+import { applyEvent, mergeMessages } from './bridge';
 import type { Message, RunEvent } from './types';
 const e = (kind: string, text: string): RunEvent => ({
   sessionId: 's',
@@ -43,5 +43,24 @@ describe('stream reconciliation', () => {
     ]);
     expect(m[0].live).toEqual({ s1: 'Hello' });
     expect(m[0].text).toBe('');
+  });
+});
+
+describe('service snapshot ordering', () => {
+  it('deduplicates events covered by a snapshot and preserves events received while it loads', () => {
+    const snapshot: Message[] = [
+      { id: 'm', role: 'assistant', text: 'Hello', activity: [], eventSeq: 10, snapshotSeq: 10 },
+    ];
+    expect(applyEvent(snapshot, { ...e('delta', 'Hello'), seq: 10 })).toBe(snapshot);
+    const current = applyEvent(snapshot, { ...e('delta', ' world'), seq: 11 });
+    expect(mergeMessages(snapshot, current)[0].text).toBe('Hello world');
+    expect(applyEvent(current, { ...e('delta', ' world'), seq: 11 })).toBe(current);
+  });
+  it('does not restore discarded messages already covered by the snapshot watermark', () => {
+    const snapshot: Message[] = [
+      { id: 'user', role: 'user', text: 'Kept', activity: [], snapshotSeq: 50 },
+    ];
+    const previous = applyEvent([], { ...e('delta', 'Discarded'), seq: 20 });
+    expect(mergeMessages(snapshot, previous)).toEqual(snapshot);
   });
 });

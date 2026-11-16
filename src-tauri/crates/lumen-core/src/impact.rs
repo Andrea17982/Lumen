@@ -1,0 +1,220 @@
+//! Impact snapshots survive edits/deletions and accompany worker handoffs and checks.
+use crate::{
+    codegraph::{Graph, Impact},
+    models::AccessMode,
+    Core,
+};
+use std::{path::Path, sync::Arc};
+
+pub async fn snapshot(
+    core: &Core,
+    root: &Path,
+    access: AccessMode,
+) -> Result<Option<Arc<Graph>>, String> {
+    if access == AccessMode::ReadOnly
+        || !core
+            .settings
+            .lock()
+            .map(|s| s.repo_context)
+            .unwrap_or(false)
+    {
+        return Ok(None);
+    }
+    let (data, root) = (core.root.clone(), root.to_path_buf());
+    tokio::task::spawn_blocking(move || Some(crate::codegraph::graph(&data, &root)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn merge(mut current: Impact, before: Option<Impact>) -> Impact {
+    if let Some(before) = before {
+        current.truncated |= before.truncated;
+        current
+            .unknown
+            .retain(|target| before.unknown.contains(target));
+        for file in before.files {
+            if let Some(existing) = current.files.iter_mut().find(|f| f.path == file.path) {
+                existing.distance = existing.distance.min(file.distance);
+            } else {
+                current.files.push(file);
+            }
+        }
+        for contract in before.contracts {
+            if !current.contracts.contains(&contract) {
+                current.contracts.push(contract);
+            }
+        }
+    }
+    current.files.sort_by(|a, b| {
+        a.distance
+            .cmp(&b.distance)
+            .then(b.test.cmp(&a.test))
+            .then(a.path.cmp(&b.path))
+    });
+    if current.files.len() > 120 {
+        current.truncated = true;
+        current.files.truncate(120);
+    }
+    if current.contracts.len() > 24 {
+        current.truncated = true;
+        current.contracts.truncate(24);
+    }
+    current
+}
+
+pub async fn analyse(
+    core: &Core,
+    root: &Path,
+    targets: &[String],
+    before: Option<Arc<Graph>>,
+) -> Result<Option<Impact>, String> {
+    if !core
+        .settings
+        .lock()
+        .map(|s| s.repo_context)
+        .unwrap_or(false)
+        || targets.is_empty()
+    {
+        return Ok(None);
+    }
+    let (data, root, targets) = (core.root.clone(), root.to_path_buf(), targets.to_vec());
+    tokio::task::spawn_blocking(move || {
+        let current = crate::codegraph::graph(&data, &root).impact_details(&targets, 3);
+        Some(merge(
+            current,
+            before.map(|g| g.impact_details(&targets, 3)),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+pub fn handoff(root: &Path, report: &Impact) -> String {
+    let paths: Vec<_> = report.files.iter().map(|f| f.path.clone()).collect();
+    let checks = crate::validation::checks(root, &paths);
+    format!("<lumen-impact>\n{}\nRelevant headless checks (run in their listed project directory):\n{}\nInspect affected contracts and tests as part of implementation. Respect assigned file ownership; report necessary changes in another agent's files to the orchestrator. This is execution context, not a request for another planning phase.\n</lumen-impact>\n",report.text(),checks.iter().map(|c|format!("- {}: {}",c.cwd,c.command)).collect::<Vec<_>>().join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn typed_and_godot_deleted_imports_keep_callers_in_the_handoff() {
+        let fixture = crate::test_support::Fixture::new();
+        let root = fixture.directory("project");
+        for (path, text) in [
+            ("package.json", "{\"scripts\":{\"test\":\"vitest run\"}}"),
+            ("web/state.mts", "export const count = 1;\n"),
+            (
+                "tests/use.test.mts",
+                "import {count as x} from '../web/state.mjs';\nexport const value = x;\n",
+            ),
+            ("game/project.godot", "config_version=5\n"),
+            ("game/base.gd", "extends Node\n"),
+            ("game/scripts/derived.gd", "extends '../base.gd'\n"),
+        ] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        let before = super::snapshot(&fixture.core, &root, crate::models::AccessMode::Autopilot)
+            .await
+            .unwrap();
+        assert!(before.is_some());
+        std::fs::remove_file(root.join("web/state.mts")).unwrap();
+        std::fs::remove_file(root.join("game/base.gd")).unwrap();
+        let result = super::analyse(
+            &fixture.core,
+            &root,
+            &["web/state.mts".into(), "game/base.gd".into()],
+            before,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(result.unknown.is_empty());
+        assert!(result
+            .files
+            .iter()
+            .any(|f| f.path == "tests/use.test.mts" && f.test && f.distance == 1));
+        assert!(result
+            .files
+            .iter()
+            .any(|f| f.path == "game/scripts/derived.gd" && f.distance == 1));
+        let handoff = super::handoff(&root, &result);
+        assert!(
+            handoff.contains("tests/use.test.mts") && handoff.contains("game/scripts/derived.gd")
+        );
+    }
+    use super::*;
+    use crate::test_support::Fixture;
+
+    #[tokio::test]
+    async fn deleted_shared_code_keeps_its_callers_and_tests_in_the_handoff() {
+        let fixture = Fixture::new();
+        let root = fixture.directory("project");
+        std::fs::create_dir_all(root.join("tests")).unwrap();
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"scripts":{"test":"vitest run","build":"tsc"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("shared.ts"),
+            "export function SharedValue(n: number): string { return `${n}`; }\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("consumer.ts"),"import { SharedValue } from './shared';\nexport function ConsumerValue() { return SharedValue(1); }\n").unwrap();
+        std::fs::write(root.join("tests/consumer.test.ts"),"import { ConsumerValue } from '../consumer';\nexport function ContractTest() { return ConsumerValue(); }\n").unwrap();
+        let before = snapshot(&fixture.core, &root, AccessMode::Autopilot)
+            .await
+            .unwrap();
+        assert!(before.is_some());
+        std::fs::write(
+            root.join("shared.ts"),
+            "export function SharedValue(n: number): number { return n; }\n",
+        )
+        .unwrap();
+        let edited = analyse(&fixture.core, &root, &["shared.ts".into()], before.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(edited.contracts.iter().any(|c| c.contains("): string")));
+        assert!(edited.contracts.iter().any(|c| c.contains("): number")));
+        std::fs::remove_file(root.join("shared.ts")).unwrap();
+        let report = analyse(
+            &fixture.core,
+            &root,
+            &["shared.ts".into(), "unknown.generated".into()],
+            before,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(report
+            .files
+            .iter()
+            .any(|f| f.path == "consumer.ts" && f.distance == 1));
+        assert!(report
+            .files
+            .iter()
+            .any(|f| f.path == "tests/consumer.test.ts" && f.test));
+        assert_eq!(report.unknown, vec!["unknown.generated"]);
+        assert!(report.contracts.iter().any(|c| c.contains("SharedValue")));
+        let prompt = handoff(&root, &report);
+        assert!(prompt.contains("npm run test") && prompt.contains("consumer.test.ts"));
+        assert!(prompt.contains("not a request for another planning phase"));
+        let task = crate::orchestra::Subtask {
+            writes: true,
+            files: vec!["shared.ts".into()],
+            impact: prompt,
+            ..Default::default()
+        };
+        let worker =
+            crate::orchestra::subtask_prompt(&crate::orchestra::State::default(), &task, "", false);
+        assert!(
+            worker.contains("consumer.test.ts")
+                && worker.contains("SharedValue")
+                && worker.contains("npm run test")
+        );
+    }
+}

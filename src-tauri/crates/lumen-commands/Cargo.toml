@@ -1,0 +1,12 @@
+[package]
+name = "lumen-commands"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version = "2.0.119", features = ["full"]}
+quote = "1.0.47"

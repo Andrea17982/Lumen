@@ -35,7 +35,7 @@ for (const suite of suites) {
   });
   results.push({ suite, exitCode: code, durationMs: Date.now() - start, output });
   await writeFile(
-    '.codex/verification/09-adapter-corpus.json',
+    '.codex/verification/010-adapter-corpus.json',
     JSON.stringify(
       {
         passed: results.length === suites.length && results.every((x) => x.exitCode === 0),

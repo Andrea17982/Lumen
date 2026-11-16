@@ -46,7 +46,7 @@ Request web research or page interaction normally: Moli is automatically connect
 
 ## Background work and recovery
 
-By default X hides Lumen to the notification area and work continues. Use the tray menu to reopen or Quit. After a crash or computer restart, unfinished work is marked interrupted and resumes only when requested. Latest partial text may not have reached its next persistence checkpoint.
+By default X hides the interface in the notification area. With that preference off, X closes the interface; accepted work still continues in the local service. Reopening reconnects to that work. **Stop Lumen and quit** cancels work and stops the service. After a service crash or computer restart, unfinished execution requires explicit Resume; journalled partial output remains available. Explicitly scheduled quota intentions are revalidated on service restart. [Service and update procedure](local-service.md).
 
 ## Troubleshooting
 

@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lumen",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "identifier": "io.github.andrea17982.lumen",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/prepare-daemon.mjs --debug && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/prepare-daemon.mjs && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -39,6 +39,9 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png"
+    ],
+    "externalBin": [
+      "binaries/lumen-daemon"
     ]
   }
 }

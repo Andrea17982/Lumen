@@ -4,7 +4,7 @@ Moli is Lumen's bundled browser engine for Claude Code, Codex, Antigravity, Open
 
 ## Native integration contract
 
-Lumen uses a browser service in its existing GUI/tray process, exposed to official CLIs through a **single shared MCP adapter** (`lumen_browser`). The same dispatcher serves local Ollama and the three official API tool loops. No separate daemon, remote browser service, API key or manual per-provider browser setup is needed.
+Lumen uses a browser service in its local daemon, exposed to official CLIs through a **single shared MCP adapter** (`lumen_browser`). The same dispatcher serves local Ollama and the three official API tool loops. The local daemon starts automatically; no remote browser service, API key or manual per-provider browser setup is needed.
 
 Moli is not a search index. Its supplied search skill visits external search engines through `fetch`. Forcing those routes to replace native search can introduce CAPTCHA, consent pages and variable result quality/latency. Test search discovery and page navigation separately: replacing the browser process alone does not prove better research.
 
@@ -14,7 +14,7 @@ The diagram below describes the implemented architecture. Supported Claude/Codex
 flowchart LR
     CLI["Claude / Codex / Antigravity CLI"] --> MCP["Shared MCP adapter"]
     O["Official local Ollama API"] --> T["Local tool loop"]
-    MCP --> L["Browser service in Lumen Core / tray"]
+    MCP --> L["Browser service in Lumen Core / local daemon"]
     T --> L
     L --> M["Moli CLI / CDP"]
     M --> W["Web pages"]
@@ -23,7 +23,7 @@ flowchart LR
 
 1. `scripts/prepare-moli.mjs` downloads pinned v1.1.23 archives, verifies their published SHA-256 digests, and bundles the executable with upstream licenses. Repeated builds verify/reuse the local copy. Windows/macOS/Linux packages include resources; universal macOS includes both architectures. Windows portable distribution is now a ZIP containing the executable and its browser resources.
 2. Claude/Codex receive invocation-local MCP configuration. Antigravity receives a stable entry in its isolated native account settings, preserving unrelated settings. The endpoint and random capability travel through the invocation's environment, never through prompts, project files or persisted native settings. Codex explicitly forwards the two environment variables to its MCP process. No model-name allowlist restricts browser availability.
-3. Eight shared tools provide Markdown fetch, search, persistent navigation/extraction, selector click/fill, JavaScript evaluation and PNG screenshot capture. Search visits DuckDuckGo HTML and, when needed, Brave through Moli; it reports blocked/missing result lists. One-shot reads avoid layout/images/fonts. Interactive contexts use CDP, remain separate per conversation/worker/workspace, and survive ordinary native resume or provider switches. Idle contexts are evicted on subsequent registrations, with a bounded idle cache. Quit kills retained browser processes; tray close preserves active work. Context state after a process crash is not a guarantee of restored tabs.
+3. Eight shared tools provide Markdown fetch, search, persistent navigation/extraction, selector click/fill, JavaScript evaluation and PNG screenshot capture. Search visits DuckDuckGo HTML and, when needed, Brave through Moli; it reports blocked/missing result lists. One-shot reads avoid layout/images/fonts. Interactive contexts use CDP, remain separate per conversation/worker/workspace, and survive ordinary native resume or provider switches. Idle contexts are evicted on subsequent registrations, with a bounded idle cache. Stopping the service kills retained browser processes; closing the GUI preserves active work. Context state after a process crash is not a guarantee of restored tabs.
 4. Adapters disable Claude WebFetch/WebSearch, and Codex built-in search. Antigravity receives its documented `read_url(*)`/`execute_url(*)` deny rules, preserving other permission settings. Every invocation also receives the Moli routing instruction. Full-access shell commands and independently installed external MCP servers remain available under Autopilot: this integration routes the supported browser path; it is not an OS network jail or a guarantee that an arbitrary model will obey every instruction.
 5. The broker enforces access even if a CLI auto-approves MCP discovery/calls: Read only and File edits deny click/fill/evaluate, Autopilot runs directly, and Ask first requires a one-action answer for mutations. Responses, concurrency, URLs, screenshots and deadlines are bounded. Scope termination and MCP cancellation invalidate pending requests; cancelled scripts drop their browser connection instead of reusing stale CDP replies.
 6. Browser activity and screenshot previews appear in the transcript, including Orchestra workers. Screenshots are saved in the conversation's project rather than a disposable worktree. Unsupported pages and blocked searches return tool errors; no Chromium/native-search fallback is silently substituted. Page content remains untrusted data.

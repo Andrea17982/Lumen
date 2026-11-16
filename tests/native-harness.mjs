@@ -8,11 +8,14 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import assert from 'node:assert/strict';
 
-export async function nativeHarness(name, { executable, offline = true, appEnv = {} } = {}) {
+export async function nativeHarness(
+  name,
+  { executable, offline = true, appEnv = {}, dataDirectory } = {},
+) {
   const root = process.cwd();
-  const data = await mkdtemp(path.join(tmpdir(), `lumen-${name}-`));
+  const data = dataDirectory || (await mkdtemp(path.join(tmpdir(), `lumen-${name}-`)));
   const workspace = path.join(data, 'workspace');
-  await mkdir(workspace);
+  await mkdir(workspace, { recursive: true });
   const server = createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
@@ -22,7 +25,21 @@ export async function nativeHarness(name, { executable, offline = true, appEnv =
   let browser;
   let app;
   let page;
-  const close = async () => {
+  const close = async ({ keepDaemon = false } = {}) => {
+    // The service intentionally survives GUI exit; fixtures must stop their own isolated service.
+    const daemon = path.join(
+      path.dirname(executable || path.join(root, 'src-tauri/target/debug/lumen.exe')),
+      'lumen-daemon.exe',
+    );
+    if (!keepDaemon)
+      await new Promise((resolve) => {
+        const stop = spawn(daemon, ['--data-dir', data, '--shutdown'], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+        stop.once('error', resolve);
+        stop.once('exit', resolve);
+      });
     await browser?.close().catch(() => {});
     for (const child of [app, vite]) {
       if (child?.exitCode === null && child.signalCode === null) {
@@ -101,7 +118,11 @@ export async function nativeHarness(name, { executable, offline = true, appEnv =
       .pages()
       .find((p) => !p.url().startsWith('devtools:'));
     assert(page);
-    await page.locator('h1').waitFor();
+    page.on('pageerror', (error) => console.error('Native page error:', error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') console.error('Native console:', message.text());
+    });
+    await page.locator('main.workspace').waitFor({ timeout: 60000 });
     const invoke = (command, args = {}) =>
       page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), {
         command,

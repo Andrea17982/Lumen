@@ -2908,17 +2908,43 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lumen"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
+ "lumen-ipc",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tokio",
+]
+
+[[package]]
+name = "lumen-commands"
+version = "0.10.0"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "lumen-core"
+version = "0.10.0"
+dependencies = [
+ "auto-launch",
  "axum",
  "base64 0.22.1",
  "chrono",
+ "dirs 6.0.0",
  "dunce",
  "futures-util",
  "ignore",
  "image",
  "keyring",
  "libc",
+ "lumen-commands",
  "lumen-gatekeeper",
  "process-wrap",
  "regex",
@@ -2928,13 +2954,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
  "tiktoken-rs",
  "tokio",
  "tokio-tungstenite",
@@ -2943,6 +2962,20 @@ dependencies = [
  "which",
  "windows",
  "xcap",
+]
+
+[[package]]
+name = "lumen-daemon"
+version = "0.10.0"
+dependencies = [
+ "auto-launch",
+ "dirs 6.0.0",
+ "lumen-core",
+ "lumen-gatekeeper",
+ "lumen-ipc",
+ "serde_json",
+ "tokio",
+ "windows",
 ]
 
 [[package]]
@@ -2957,6 +2990,19 @@ dependencies = [
  "tokio",
  "uuid",
  "xcap",
+]
+
+[[package]]
+name = "lumen-ipc"
+version = "0.10.0"
+dependencies = [
+ "dunce",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "windows",
 ]
 
 [[package]]
@@ -5443,20 +5489,6 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
-]
-
-[[package]]
-name = "tauri-plugin-autostart"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bce56ceb0a99b8ab5eebc977ba9ffc62391b862648cb9ab76fc8bc7231b8f7e2"
-dependencies = [
- "auto-launch",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -46,6 +46,8 @@ export interface Activity {
   text: string;
 }
 export interface Message {
+  eventSeq?: number;
+  snapshotSeq?: number;
   id: string;
   role: 'user' | 'assistant';
   text: string;
@@ -141,6 +143,7 @@ export interface AccountUsage {
   source: string;
 }
 export interface RunEvent {
+  seq?: number;
   sessionId: string;
   messageId: string;
   kind: string;

@@ -11,6 +11,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Shared integrations](integrations.md) | MCP, skills and plugin components across providers, consent and current limits |
 | [Moli browser](moli.md) | Automatic browsing, local Ollama tool calling, screenshots and compatibility |
 | [Task quality](task-quality.md) | Durable decisions, diagnostics, checks and graph impact |
+| [Local service and recovery](local-service.md) | Window/service lifetimes, local authentication, migration and stop-before-update |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, native harnesses and release procedure |
 | [Validation and known limits](validation.md) | What has been verified for the current source and what remains open |

@@ -23,7 +23,7 @@ Enable Orchestra explicitly. It can coordinate complex Auto requests and approve
 
 Workers receive the team manifest, relevant prior decisions, impact/contracts and the real execution folder. Writing work requires Git. Read-only investigations remain read-only. Supported native approval/question connections reach workers instead of being replaced by extra planning steps.
 
-Closing to the tray keeps work running. After a crash/restart, unfinished work is interrupted and requires explicit Resume; a turn is not silently replayed. [Recovery and limitations](validation.md).
+Closing the GUI keeps work running in the local service, including native questions and Orchestra. After a service crash/restart, unfinished execution requires explicit Resume; a turn is not silently replayed. Explicitly scheduled quota intentions persist and are revalidated separately. [Service lifecycle](local-service.md). [Recovery and limitations](validation.md).
 
 ## Both and manual merge
 

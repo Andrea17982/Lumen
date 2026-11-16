@@ -11,12 +11,14 @@ import { visibleInterval } from './lib/visible';
 import { useCaptureHotkey } from './lib/useCaptureHotkey';
 import {
   applyEvent,
+  mergeMessages,
   approvalSnapshot,
   call,
   decideApproval,
   desktop,
   onApprovalChange,
   onUsage,
+  onServiceChange,
   subscribe,
   type ApprovalSnapshot,
 } from './lib/bridge';
@@ -392,6 +394,35 @@ export default function App() {
   useEffect(() => {
     void refresh().catch((e) => setError(errorText(e)));
   }, [refresh]);
+  useEffect(() => {
+    let gone = false;
+    let dispose = () => {};
+    void onServiceChange((state, message) => {
+      if (state !== 'resync') {
+        setError(
+          message ||
+            'Connection to the local service was lost. Reopen Lumen to reconnect; interrupted work requires Resume.',
+        );
+        return;
+      }
+      void refreshRef.current().catch((e) => setError(errorText(e)));
+      const id = selectedRef.current;
+      if (id)
+        void call<Message[]>('get_messages', { id })
+          .then((snapshot) => {
+            if (selectedRef.current === id)
+              setMessages((current) => mergeMessages(snapshot, current));
+          })
+          .catch((e) => setError(errorText(e)));
+    }).then((off) => {
+      if (gone) off();
+      else dispose = off;
+    });
+    return () => {
+      gone = true;
+      dispose();
+    };
+  }, []);
   useEffect(() => visibleInterval(() => setTick((n) => n + 1), 15_000), []);
   useEffect(() => {
     void loadAccounts().catch((e) => setError(errorText(e)));
@@ -404,7 +435,7 @@ export default function App() {
     if (selected)
       void call<Message[]>('get_messages', { id: selected })
         .then((m) => {
-          if (!gone) setMessages(m);
+          if (!gone) setMessages((current) => mergeMessages(m, current));
         })
         .catch((e) => {
           if (!gone) setError(errorText(e));
@@ -465,7 +496,8 @@ export default function App() {
         if (event.sessionId === selectedRef.current)
           void call<Message[]>('get_messages', { id: event.sessionId })
             .then((m) => {
-              if (event.sessionId === selectedRef.current) setMessages(m);
+              if (event.sessionId === selectedRef.current)
+                setMessages((current) => mergeMessages(m, current));
             })
             .catch((e) => setError(errorText(e)));
         void refreshRef.current().catch((e) => setError(errorText(e)));

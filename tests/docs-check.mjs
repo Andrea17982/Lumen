@@ -74,6 +74,12 @@ for (const [name, version] of Object.entries({
   cargoLock,
 }))
   if (version !== pkg.version) problems.push(`${name}: ${version} differs from ${pkg.version}`);
+for (const name of ['lumen-core', 'lumen-daemon', 'lumen-ipc', 'lumen-commands']) {
+  const manifest = readFileSync(`src-tauri/crates/${name}/Cargo.toml`, 'utf8').match(
+    /^version = "([^"]+)"/m,
+  )?.[1];
+  if (manifest !== pkg.version) problems.push(`${name}: ${manifest} differs from ${pkg.version}`);
+}
 if (!existsSync(`docs/release-notes/${pkg.version}.md`))
   problems.push('Current release notes missing');
 assert.deepEqual(problems, [], 'Documentation/version consistency failed');

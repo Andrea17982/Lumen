@@ -1,6 +1,6 @@
 # Architecture
 
-Tauri owns the native window and IPC boundary. Rust owns storage, account configuration, process/API execution, permissions, routing and cancellation. React renders normalized events. The webview does not read provider credentials or contact inference services directly.
+Tauri owns the native window and desktop actions. A separate local daemon owns storage, account configuration, process/API execution, permissions, routing and cancellation through `lumen-core`. The GUI is a client of authenticated local IPC. React renders normalized events. The webview does not read provider credentials or contact inference services directly.
 
 OpenCode and Cursor use one existing native profile each and remain explicitly selected. `opencode.rs` discovers project-scoped models; `opencode_acp.rs` creates or verifies native session policies before prompting, bridges official ACP approvals/events, and injects scoped Moli/graph/MCP servers. `cursor.rs` retains the headless runner and successful-terminal-result requirement; Cursor is Autopilot only and has no shared-tool bridge. Owned process trees are cancelled without touching unrelated CLIs.
 
@@ -10,7 +10,7 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 
 | Module | Responsibility |
 | --- | --- |
-| `lib.rs`, `main.rs` | Native commands/setup, application state and early MCP helper entry points |
+| `lumen-core/lib.rs`, `lumen-daemon/main.rs` | Domain commands/state and headless service/MCP helper entry points |
 | `turns.rs`, `router.rs`, `classify.rs` | Direct/Auto/review/Both lifecycle, routing and bounded classification |
 | `native_claude.rs` | Bidirectional native Claude initialize/control/input/output stream |
 | `approvals_codex.rs` | Codex app-server, thread start/resume, questions and native events |
@@ -27,10 +27,10 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |
 | `gitops.rs`, `merge.rs`, `workspace.rs` | Private-index checkpoints, immutable manual merges and explicit cwd changes |
 | `inspector.rs`, `media.rs`, `review.rs`, `layout.rs`, `variant_preview.rs` | Local preview, images/data, source diffs, layout constraints and static variants |
-| `godot.rs`, `screens.rs`, `hotkeys.rs` | Opt-in editor controls, capture/import and capture shortcut |
-| `settings.rs`, `tray.rs`, `usage.rs`, `limits.rs` | Preferences, background continuity and observed provider availability |
+| `godot.rs`, `screens.rs` | Validated editor targets and capture/import; desktop launch/hiding/shortcut remain in the GUI |
+| `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal/login startup and observed provider availability |
 
-Rust modules are under `src-tauri/src/`. Frontend components live under `src/components/`, settings under `src/settings/`, shared types/IPC under `src/lib/`. The native Gatekeeper crate and React review surface live in `src/features/gatekeeper/`; local-helper code is in `src/features/local-assistant/`.
+Domain modules are under `src-tauri/crates/lumen-core/src/`; `lumen-daemon` is the service entry point, `lumen-ipc` owns local transport/authentication and `lumen-commands` generates typed JSON boundaries. Only desktop setup, tray, hotkeys and launch actions remain under `src-tauri/src/`. Frontend components live under `src/components/`, settings under `src/settings/`, shared types/IPC under `src/lib/`. The native Gatekeeper crate and React review surface live in `src/features/gatekeeper/`; local-helper code is in `src/features/local-assistant/`.
 
 ## Turn lifecycle
 
@@ -51,7 +51,7 @@ Quota fallback shares the missing-session activity guard. It still cools the lim
 
 ## Browser boundary
 
-`browser.rs` binds an invocation-local authenticated loopback endpoint. The same executable's `--lumen-browser-mcp` mode proxies stdio MCP before GUI startup. Capabilities pass through environment variables, not persisted project settings or prompts. Google account MCP entries are stable; actual invocation context remains per process.
+`browser.rs` binds an invocation-local authenticated loopback endpoint. The same executable's `--lumen-browser-mcp` mode proxies stdio MCP before service startup. Capabilities pass through environment variables, not persisted project settings or prompts. Google account MCP entries are stable; actual invocation context remains per process.
 
 One-shot Moli fetches avoid layout/images/fonts. Interactive CDP engines are retained per conversation/worker/workspace and start lazily. Inputs, output, concurrency and deadlines are bounded. Permission enforcement is inside the broker. Original screenshots are saved in the conversation project and delivered to the UI; Antigravity's observed inline-image issue uses its native file/image path instead.
 
@@ -84,3 +84,7 @@ Lumen isolates the full transcript in memoized `Transcript`, reuses unchanged me
 The inspector's static preview server owns only explicit built outputs and does not execute project commands. JSON/SQLite exploration is read-only. The layout canvas writes the project constraint spec. No general OpenAI-compatible inference server is implemented in this release.
 
 [Security](../SECURITY.md) · [Validation](validation.md) · [Development](development.md)
+
+## Local service boundary
+
+[Service operations](local-service.md) describes protocol/build checks, OS peer authentication, exclusive ownership, schema-4 event/checkpoint recovery, durable quota intentions, process containment and the verified stop-before-update procedure. The GUI never opens the domain database or owns model processes; editor/login/link opening stays outside the service process tree. No remote listener is added.

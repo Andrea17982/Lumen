@@ -19,6 +19,30 @@ export function onUsage(handler: (usage: AccountUsage) => void) {
 }
 
 export const desktop = isTauri();
+const recentEvents: RunEvent[] = [];
+function remember(event: RunEvent) {
+  if (!event.seq) return;
+  recentEvents.push(event);
+  if (recentEvents.length > 10000) recentEvents.splice(0, recentEvents.length - 10000);
+}
+/** A snapshot can finish before an already received event reaches React's state queue. */
+export function mergeMessages(snapshot: Message[], current: Message[]): Message[] {
+  const watermark = snapshot[0]?.snapshotSeq ?? 0;
+  const replayed = recentEvents
+    .filter(
+      (e) =>
+        (e.seq || 0) > watermark && [...snapshot, ...current].some((m) => m.id === e.messageId),
+    )
+    .reduce(applyEvent, snapshot);
+  const next = replayed.map((m) => {
+    const newer = current.find((c) => c.id === m.id && (c.eventSeq || 0) > (m.eventSeq || 0));
+    return newer || m;
+  });
+  const seq = Math.max(0, ...snapshot.map((m) => m.snapshotSeq || m.eventSeq || 0));
+  for (const m of current)
+    if ((m.eventSeq || 0) > seq && !next.some((n) => n.id === m.id)) next.push(m);
+  return next;
+}
 const key = 'lumen-preview-v1';
 function read(): {
   sessions: Session[];
@@ -58,7 +82,16 @@ function previewSettings(): AppSettings {
 }
 /** Browser preview never launches a CLI or pretends to generate an AI response. */
 export async function call<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (desktop) return invoke<T>(command, args);
+  if (desktop) {
+    const value = await invoke<T>(command, args);
+    if (command === 'get_messages') {
+      const watermark = (value as Message[])[0]?.snapshotSeq ?? Number.POSITIVE_INFINITY;
+      return recentEvents
+        .filter((e) => e.sessionId === args.id && (e.seq || 0) > watermark)
+        .reduce(applyEvent, value as Message[]) as T;
+    }
+    return value;
+  }
   const data = read();
   let result: unknown;
   switch (command) {
@@ -194,10 +227,31 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
 }
 export function subscribe(handler: (event: RunEvent) => void) {
   return desktop
-    ? listen<RunEvent>('lumen:run', (e) => handler(e.payload))
+    ? listen<RunEvent>('lumen:run', (e) => {
+        remember(e.payload);
+        handler(e.payload);
+      })
     : Promise.resolve(() => {});
 }
+export async function onServiceChange(
+  handler: (state: 'resync' | 'disconnected' | 'error', message?: string) => void,
+) {
+  if (!desktop) return () => {};
+  const off = await Promise.all([
+    listen('lumen:resync', () => handler('resync')),
+    listen('lumen:daemon-disconnected', () => handler('disconnected')),
+    listen<string>('lumen:daemon-error', (event) => handler('error', event.payload)),
+  ]);
+  return () => off.forEach((fn) => fn());
+}
 export function applyEvent(messages: Message[], event: RunEvent): Message[] {
+  const current = messages.find((m) => m.id === event.messageId);
+  if (event.seq && (current?.eventSeq || 0) >= event.seq) return messages;
+  return applyEventContent(messages, event).map((m) =>
+    m.id === event.messageId && event.seq ? { ...m, eventSeq: event.seq } : m,
+  );
+}
+function applyEventContent(messages: Message[], event: RunEvent): Message[] {
   const found = messages.some((m) => m.id === event.messageId);
   const next = found
     ? messages

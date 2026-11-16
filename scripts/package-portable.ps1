@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('lumen-portable-' + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path (Join-Path $stage 'resources/moli') -Force | Out-Null
 Copy-Item -LiteralPath $Executable -Destination (Join-Path $stage 'Lumen.exe')
+Copy-Item -LiteralPath (Join-Path (Split-Path $Executable) 'lumen-daemon.exe') -Destination (Join-Path $stage 'lumen-daemon.exe')
 Copy-Item -LiteralPath $Moli -Destination (Join-Path $stage 'resources/moli') -Recurse
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../src-tauri/resources/legal') -Destination (Join-Path $stage 'resources') -Recurse
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $Destination -Force

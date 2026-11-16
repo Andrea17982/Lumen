@@ -2,86 +2,23 @@
 fn main() {
     if std::env::args_os()
         .nth(1)
-        .is_some_and(|a| a == "--lumen-native-account-mcp")
+        .is_some_and(|a| a.to_string_lossy().starts_with("--lumen-"))
     {
-        let args: Vec<_> = std::env::args_os().collect();
-        let result = if args.len() == 5 {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map(|rt| {
-                    rt.block_on(lumen_lib::serve_native_account(
-                        args[2].clone().into(),
-                        args[3].clone().into(),
-                        args[4] != "full",
-                    ))
-                })
+        let exe = std::env::current_exe().expect("Executable location");
+        let daemon = exe.parent().unwrap().join(if cfg!(windows) {
+            "lumen-daemon.exe"
         } else {
-            std::process::exit(1)
-        };
-        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
-    }
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|a| a == "--lumen-shared-stdio")
-    {
-        let args: Vec<_> = std::env::args_os().collect();
-        let result = if args.len() == 5 {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map(|rt| {
-                    rt.block_on(lumen_lib::serve_shared_stdio(
-                        args[2].clone().into(),
-                        args[3].clone().into(),
-                        &args[4].to_string_lossy(),
-                    ))
-                })
-        } else {
-            std::process::exit(1)
-        };
-        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
-    }
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|a| a == "--lumen-browser-mcp")
-    {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map(|rt| rt.block_on(lumen_lib::serve_browser()));
-        std::process::exit(if matches!(result, Ok(Ok(()))) { 0 } else { 1 });
-    }
-    // Claude starts this same executable as its permission-prompt MCP bridge (see approvals.rs).
-    // It must print protocol frames only, so it returns before the window or any logging starts.
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|a| a == "--lumen-gatekeeper-mcp")
-    {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build();
-        let ok = runtime.map(|rt| rt.block_on(lumen_gatekeeper::mcp::proxy_stdio()));
-        std::process::exit(match ok {
-            Ok(Ok(())) => 0,
-            _ => 1,
+            "lumen-daemon"
         });
-    }
-    // Claude Code and Codex start it as the code-graph MCP server (see graph_mcp.rs).
-    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    if args
-        .get(1)
-        .is_some_and(|a| a == "--lumen-graph-mcp-context")
-    {
-        let result = args
-            .get(2)
-            .zip(std::env::var_os("LUMEN_WORKSPACE_ROOT"))
-            .map(|(data, root)| lumen_lib::serve_graph(data.into(), root.into()));
-        std::process::exit(if matches!(result, Some(Ok(()))) { 0 } else { 1 });
-    }
-    if args.get(1).is_some_and(|a| a == "--lumen-graph-mcp") && args.len() >= 4 {
-        let ok = lumen_lib::serve_graph(args[2].clone().into(), args[3].clone().into());
-        std::process::exit(if ok.is_ok() { 0 } else { 1 });
+        let mut c = std::process::Command::new(daemon);
+        c.args(std::env::args_os().skip(1));
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x08000000);
+        }
+        let code = c.status().ok().and_then(|s| s.code()).unwrap_or(1);
+        std::process::exit(code);
     }
     lumen_lib::run();
 }

@@ -31,7 +31,9 @@ npm run format:check
 npx playwright install chromium
 npx playwright test --workers 2
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo test --manifest-path src-tauri/Cargo.toml --locked
+node scripts/prepare-daemon.mjs --debug
+node tests/daemon-smoke.mjs
+cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 node tests/docs-check.mjs
 ```
@@ -40,7 +42,7 @@ The docs check validates local Markdown links/images, the current release notes 
 
 ## Native Windows and screenshots
 
-Keep Vite running, build `cargo build --manifest-path src-tauri/Cargo.toml`, then run `npm run test:native`. The harness uses fresh temporary app data, controlled CLI fixtures, a local Ollama API simulator and loopback WebView2 debugging. It does not authenticate or call remote inference. `LUMEN_TEST_DATA_DIR` is debug-only; release uses normal app data.
+Keep Vite running, build `node scripts/prepare-daemon.mjs --debug` and `cargo build --manifest-path src-tauri/Cargo.toml --workspace`, then run `npm run test:native`. The harness uses fresh temporary app data, controlled CLI fixtures, a local Ollama API simulator and loopback WebView2 debugging. It does not authenticate or call remote inference. `LUMEN_TEST_DATA_DIR` is debug-only; release uses normal app data.
 
 `node tests/capture-release.mjs` captures the 0.7 gallery from the native Windows application with isolated demonstration data. It never opens real account directories. Screenshots are actual UI captures; captions must disclose fixture data and distinguish them from live acceptance evidence. Close the owned app/server when finished. Do not expose test/debugging ports to the network.
 
@@ -94,3 +96,7 @@ Protocol changes need metadata from the installed official binary, initialize/sc
 [Release history](release-notes/README.md) · [Architecture](architecture.md) · [Security](../SECURITY.md)
 
 Local Windows `npm run build:release` uses release optimization level 3, LTO, one codegen unit, stripping and `target-cpu=native` (including AVX2 when supported). Its binaries require a CPU compatible with the build machine. CI continues to build portable target baselines with `npm run tauri build`; it does not inherit local CPU flags.
+
+## 0.10 service checks
+
+`prepare-daemon.mjs` builds the headless service before Tauri dev/build and prepares the target-suffixed sidecar, including both architectures for a universal macOS build. Frontend-only builds remain independent of Rust. `daemon-smoke.mjs` exercises authenticated headless startup, exclusivity, framing/version checks, concurrent commands, update refusal/drain, restart and owned process cleanup. `native-daemon.mjs` exercises complete GUI restarts during a turn, native question and Orchestra, persistent quota cancellation, and a hard service crash beside an unrelated process. These use isolated directories and offline fixture protocols. Native harness cleanup stops its own daemon explicitly; closing a fixture GUI alone intentionally leaves it running. See [service operations](local-service.md).

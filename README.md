@@ -30,7 +30,7 @@ OpenAI, Anthropic and Google API accounts use the OS keychain, common tools and 
 
 ## Toward 1.0
 
-The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. The API/OpenCode compatibility milestone is delivered in 0.9; daemon, memory, expanded collaboration and remote control remain roadmap work.
+The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. The API/OpenCode compatibility milestone is delivered in 0.9. The current 0.10 source separates the local daemon; memory, expanded collaboration and remote control remain roadmap work.
 
 ## Native workspace features
 
@@ -87,7 +87,7 @@ Get **[Lumen 0.8.0 from Releases](https://github.com/Andrea17982/Lumen/releases/
 | Platform | Package | Notes |
 | --- | --- | --- |
 | Windows x64 | `Lumen_0.9.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.9.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. |
+| Windows x64 portable | `Lumen_0.9.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. The next 0.10 package also requires `lumen-daemon.exe`. |
 | macOS | Universal `.dmg` | Intel and Apple silicon. |
 | Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 
@@ -145,3 +145,5 @@ Lumen is free to download, use and modify under the MIT license. Feedback throug
 MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the other named providers.
 
 Local Windows release (16 November): [0.9.0 — official API access and adapter compatibility](docs/release-notes/0.9.0.md), with keychain-backed API accounts/budgets and OpenCode ACP/shared tools. Cursor retains explicit Autopilot selection. GitHub packages use portable CPU targets.
+
+The next local milestone is [0.10.0 — Core and local daemon](docs/release-notes/0.10.0.md). The public download above remains 0.9.0 until 0.10 is separately published. See [local service and update instructions](docs/local-service.md).

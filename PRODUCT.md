@@ -34,7 +34,7 @@ Lumen uses the approved satin-glass lm logo, restrained Liquid Glass, system typ
 - Complete already authorized work without repeated approvals; provider changes still require the user's decision.
 - Keep direct work direct; use Orchestra only when selected.
 - Distinguish actual results from estimates, recorded observations and unverified claims.
-- Continue in the tray (in 1.0: the local daemon); recover an interrupted task only on explicit Resume.
+- Continue in the local daemon when the GUI closes; recover uncertain interrupted execution only on explicit Resume. Explicitly scheduled quota intentions persist across service restarts.
 - Prefer measured improvements and existing components to speculative infrastructure.
 
 ## Direction to 1.0

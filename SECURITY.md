@@ -41,3 +41,7 @@ Use [private vulnerability reporting](https://github.com/Andrea17982/Lumen/secur
 [Permission guide](docs/workspace-models-permissions.md) · [Validation](docs/validation.md)
 
 Official API keys are separate OS-keychain entries, never environment variables or SQLite values. API requests use fixed HTTPS origins without redirects/proxies. Durable request reservations, output caps and explicit Auto opt-in bound estimated token spend; incorrect user rates, price changes and external tool fees remain outside that estimate. Uncertain requests retain reservations. [API security/budget boundaries](docs/api-access.md).
+
+## Local service
+
+The GUI/service transport authenticates OS peer identity and checks protocol/service-build compatibility. Windows rejects remote pipe clients; Unix uses private sockets and peer UIDs. No new TCP listener is exposed. A same-user malicious process is not a separate security principal. Keep the transcript/event-journal data directory private. Only the daemon opens the domain database; service-owned process containment excludes GUI-launched desktop programs. [Authentication, crash and update boundary](docs/local-service.md).
