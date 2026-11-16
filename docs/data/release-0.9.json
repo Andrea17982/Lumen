@@ -1,0 +1,47 @@
+{
+  "tag": "v0.9.0",
+  "publishedAt": "2026-11-16T14:35:11Z",
+  "release": "https://github.com/Andrea17982/Lumen/releases/tag/v0.9.0",
+  "sourceCommit": "2dd719033292d5bfe565c3c1fa8d02ba620b8547",
+  "releaseWorkflow": "https://github.com/Andrea17982/Lumen/actions/runs/43880513549",
+  "ci": "https://github.com/Andrea17982/Lumen/actions/runs/43880513548",
+  "checks": [
+    "All 6 GitHub asset digests",
+    "All 5 manifest entries",
+    "ZIP CRC and safe extraction",
+    "DEB/ELF/DMG container identity",
+    "CI installed/extracted graph/browser/Moli/legal helper probes on all 3 platforms"
+  ],
+  "assets": [
+    {
+      "name": "Lumen_0.9.0_amd64.AppImage",
+      "bytes": 135461368,
+      "sha256": "54182bd4fabe323e529a59e3b1da23500a800ce5f6a77ea19a2045e54fe35573"
+    },
+    {
+      "name": "Lumen_0.9.0_amd64.deb",
+      "bytes": 63193114,
+      "sha256": "c1dbae6d3a4bd2d7c4fc8b02e611ded7d87ef61ccba5df19b2dee1de7167f853"
+    },
+    {
+      "name": "Lumen_0.9.0_universal.dmg",
+      "bytes": 115890345,
+      "sha256": "89f4050d32f9cb5829c20c28e49b2b5c8a83125fffc236752929d31017533538"
+    },
+    {
+      "name": "Lumen_0.9.0_x64-portable.zip",
+      "bytes": 62472216,
+      "sha256": "b2e82c9aa74c05cbdc130430c4dfe74fbe1fc92a429499bee4e7f386411c4f16"
+    },
+    {
+      "name": "Lumen_0.9.0_x64-setup.exe",
+      "bytes": 41656743,
+      "sha256": "2eaf25e6cc241fef5037f7db7f0aeb27df919912a478090e955024c8db398df6"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 460,
+      "sha256": "17a1d86e9228597f3fc3096d518d2b49eb73a9f80c37b4d298bbf2069e3c7ec2"
+    }
+  ]
+}

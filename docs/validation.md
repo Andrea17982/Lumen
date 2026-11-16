@@ -62,3 +62,7 @@ See [Development](development.md) for the build, test and native-harness command
 ## 0.9 package weight
 
 With the same local release optimization/CPU flags as 0.8.1: portable executable **36.33 MiB** (+3.24%), installer **39.75 MiB** (+0.68%) and portable ZIP **57.94 MiB** (+1.24%). These are artifact sizes, not a new startup/runtime performance benchmark. Exact bytes and hashes are in the [acceptance summary](data/compatibility-0.9.json).
+
+## Published 0.9.0
+
+[v0.9.0](https://github.com/Andrea17982/Lumen/releases/tag/v0.9.0), source `2dd7190`, published 16 November 2026. CI passed on Windows/macOS/Linux, including installed Windows, universal mounted DMG and extracted Linux package graph/browser/Moli/legal helpers. All five downloaded distribution packages and their SHA-256 manifest match GitHub asset digests; Windows ZIP CRC, safe extraction, version and release helpers were also verified locally. These portable CPU distribution builds are separate from `builds/latest` CPU-native artifacts. No additional live model inference or interactive macOS/Linux desktop acceptance is claimed. [Publication receipt](data/release-0.9.json).
