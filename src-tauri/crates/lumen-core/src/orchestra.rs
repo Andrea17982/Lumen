@@ -2157,15 +2157,7 @@ mod tests {
     }
 
     #[test]
-    fn ps_elapsed_times_parse() {
-        assert_eq!(parse_etime("05:07"), Some(307));
-        assert_eq!(parse_etime("01:00:00"), Some(3600));
-        assert_eq!(parse_etime("2-00:00:01"), Some(172_801));
-        assert_eq!(parse_etime("garbage"), None);
-    }
-
-    #[tokio::test]
-    async fn orphans_are_checked_only_for_started_interrupted_work() {
+    fn orphans_are_checked_only_for_started_interrupted_work() {
         let mut st = State {
             subtasks: vec![
                 Subtask {
@@ -2183,25 +2175,27 @@ mod tests {
             ..Default::default()
         };
         // A finished task and one that never started a CLI need no check.
-        assert!(stop_orphans(&st).await.is_ok());
-        // A recorded PID that belongs to a process started much earlier is a reused PID.
+        assert!(verify_stopped(&st).is_ok());
+        // The current daemon cannot be an old native child, even when its PID was reused.
         st.subtasks[1].pid = std::process::id();
         st.subtasks[1].started_at = now() + 3_600_000;
-        assert!(stop_orphans(&st).await.is_ok());
+        assert!(verify_stopped(&st).is_ok());
     }
 
     #[tokio::test]
-    async fn an_orphaned_cli_is_stopped_before_resuming() {
+    async fn a_live_legacy_pid_is_never_terminated_by_a_time_heuristic() {
         let started = now();
         #[cfg(windows)]
         let mut child = tokio::process::Command::new("ping")
             .args(["-n", "60", "127.0.0.1"])
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::null())
             .spawn()
             .unwrap();
         #[cfg(unix)]
         let mut child = tokio::process::Command::new("sleep")
             .arg("60")
+            .kill_on_drop(true)
             .process_group(0)
             .spawn()
             .unwrap();
@@ -2228,9 +2222,14 @@ mod tests {
             }],
             ..Default::default()
         };
-        assert!(stop_orphans(&st).await.is_ok());
-        let exited = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
-        assert!(exited.is_ok(), "the orphan should have been stopped");
+        assert!(verify_stopped(&st).is_err());
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "Uncertain process must remain untouched"
+        );
+        child.kill().await.unwrap();
+        child.wait().await.unwrap();
+        assert!(verify_stopped(&st).is_ok());
     }
 
     #[test]
@@ -2309,117 +2308,55 @@ pub fn recover(core: &Core) {
     }
 }
 
-/// Start time (ms) of a live process, `None` when it no longer runs.
-/// `Err` when the system cannot tell.
-async fn process_start(pid: u32) -> Result<Option<i64>, String> {
+/// Query a process without treating its persisted PID as ownership evidence.
+fn process_running(pid: u32) -> Result<bool, String> {
     #[cfg(windows)]
-    {
-        let script = format!(
-            "$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; if ($p) {{ [DateTimeOffset]::new($p.StartTime).ToUnixTimeMilliseconds() }} else {{ 'none' }}"
-        );
-        let mut c = crate::proc::command("powershell.exe");
-        c.args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .kill_on_drop(true);
-        let o = c.output().await.map_err(|e| e.to_string())?;
-        let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if !o.status.success() {
-            return Err("cannot inspect processes".into());
-        }
-        if text == "none" {
-            return Ok(None);
-        }
-        text.parse()
-            .map(Some)
-            .map_err(|_| "cannot inspect processes".into())
-    }
-    #[cfg(unix)]
-    {
-        let o = tokio::process::Command::new("ps")
-            .args(["-o", "stat=,etime=", "-p", &pid.to_string()])
-            .kill_on_drop(true)
-            .output()
-            .await
-            .map_err(|e| e.to_string())?;
-        let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if text.is_empty() {
-            return Ok(None);
-        }
-        let (status, elapsed) = text
-            .split_once(char::is_whitespace)
-            .ok_or("cannot inspect processes")?;
-        if status.starts_with('Z') {
-            return Ok(None);
-        }
-        let secs = parse_etime(elapsed.trim()).ok_or("cannot inspect processes")?;
-        Ok(Some(now() - secs * 1000))
-    }
-}
-
-/// `ps` elapsed time: `[[dd-]hh:]mm:ss`.
-#[cfg_attr(windows, allow(dead_code))]
-fn parse_etime(text: &str) -> Option<i64> {
-    let (days, rest) = match text.split_once('-') {
-        Some((d, r)) => (d.parse::<i64>().ok()?, r),
-        None => (0, text),
-    };
-    let parts: Vec<i64> = rest
-        .split(':')
-        .map(|p| p.parse().ok())
-        .collect::<Option<_>>()?;
-    let (h, m, s) = match parts[..] {
-        [m, s] => (0, m, s),
-        [h, m, s] => (h, m, s),
-        _ => return None,
-    };
-    Some(((days * 24 + h) * 60 + m) * 60 + s)
-}
-
-async fn kill_tree(pid: u32) {
-    #[cfg(windows)]
-    crate::proc::taskkill(pid).await;
-    #[cfg(unix)]
     unsafe {
-        // The PID has just been verified against the recorded start time.
-        // Kill its process group when it leads one; otherwise kill the process
-        // itself (the test and some wrappers may not create a new group).
-        let group = libc::getpgid(pid as i32);
-        if group == pid as i32 {
-            libc::kill(-(pid as i32), libc::SIGKILL);
+        use windows::Win32::{
+            Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, STILL_ACTIVE},
+            System::Threading::{
+                GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+            },
+        };
+        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            Ok(handle) => handle,
+            Err(e) if e.code() == windows::core::HRESULT::from_win32(ERROR_INVALID_PARAMETER.0) => {
+                return Ok(false)
+            }
+            Err(_) => return Err("cannot inspect processes".into()),
+        };
+        let mut code = 0;
+        let result = GetExitCodeProcess(handle, &mut code);
+        let _ = CloseHandle(handle);
+        result.map_err(|_| "cannot inspect processes".to_string())?;
+        Ok(code == STILL_ACTIVE.0 as u32)
+    }
+    #[cfg(unix)]
+    {
+        let pid = i32::try_from(pid).map_err(|_| "invalid process identity")?;
+        if unsafe { libc::kill(pid, 0) } == 0 {
+            return Ok(true);
+        }
+        if std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+            Ok(false)
         } else {
-            libc::kill(pid as i32, libc::SIGKILL);
+            Err("cannot inspect processes".into())
         }
     }
 }
 
-/// Stop the CLIs an interrupted run left behind. A process is ours only if it
-/// started within seconds of the recorded attempt; a reused PID is left alone.
-/// Errors name the subtasks whose process could not be verified.
-async fn stop_orphans(st: &State) -> Result<(), String> {
+/// Kernel ownership stops daemon children. A persisted PID is not authority to kill a process.
+/// A legacy live process is ambiguous and requires explicit manual review.
+fn verify_stopped(st: &State) -> Result<(), String> {
     let mut unknown = vec![];
     for t in st.subtasks.iter().filter(|t| t.status == "interrupted") {
-        if t.pid == 0 {
-            // Still waiting for a slot or a model list: no CLI was started.
+        if t.pid == 0 || t.pid == std::process::id() {
+            // No recorded process, or the PID now belongs to this daemon.
             continue;
         }
-        match process_start(t.pid).await {
-            Ok(None) => {}
-            Ok(Some(at)) if (at - t.started_at).abs() <= 15_000 => {
-                kill_tree(t.pid).await;
-                // A killed process can take a moment to disappear.
-                let mut gone = false;
-                for _ in 0..20 {
-                    if matches!(process_start(t.pid).await, Ok(None)) {
-                        gone = true;
-                        break;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
-                if !gone {
-                    unknown.push(t.title.clone());
-                }
-            }
-            Ok(Some(_)) => {}
-            Err(_) => unknown.push(t.title.clone()),
+        match process_running(t.pid) {
+            Ok(false) => {}
+            Ok(true) | Err(_) => unknown.push(t.title.clone()),
         }
     }
     if unknown.is_empty() {
@@ -2703,7 +2640,7 @@ pub async fn orchestra_resume(
         .options
         .clone()
         .ok_or("The run options were not saved.")?;
-    if let Err(e) = stop_orphans(&st).await {
+    if let Err(e) = verify_stopped(&st) {
         if !force {
             st.notice = e.clone();
             save_state(&app, &core, &id, &mut m, &st)?;
@@ -2767,8 +2704,8 @@ pub async fn orchestra_lanes(
         return Err("Nothing to keep or discard.".into());
     }
     if interrupted {
-        // Discarding an interrupted run stops what it left running first.
-        let _ = stop_orphans(&st).await;
+        // Do not remove lanes until any interrupted process is confirmed stopped.
+        verify_stopped(&st)?;
         st.resumable = false;
         st.notice.clear();
     }

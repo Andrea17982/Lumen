@@ -30,11 +30,11 @@ npm run check
 npm run format:check
 npx playwright install chromium
 npx playwright test --workers 2
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 node scripts/prepare-daemon.mjs --debug
 node tests/daemon-smoke.mjs
 cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
 node tests/docs-check.mjs
 ```
 
@@ -57,7 +57,7 @@ These harnesses produce local evidence for performance or correctness changes. T
 - **Long chats and typing:** `node tests/performance-prepare.mjs` prepares a benchmark profile; build with `npx tauri build --no-bundle --config .impeccable/performance/config.json` and freeze baseline/candidate executables together with their matching `lumen-daemon.exe` and resources. Do not use the ordinary release GUI for an isolated benchmark: build with the prepared performance identifier. `node tests/performance-native.mjs baseline|candidate|confirmation` collects 20 repetitions per 100/1,000/5,000-message workload with no accounts or inference; `performance-scroll.mjs` and `performance-acceptance.mjs` cover scrolling and content/action checks on the exact candidate hash.
 - **Initial chat opening:** `tests/initial-open-native.mjs` and `initial-open-stock.mjs`, isolated with `LUMEN_PERF_ROOT`. The excluded virtual-window prototype compiles only with `VITE_TRANSCRIPT_EXPERIMENT=1`; unset it before normal builds.
 - **Graph correctness:** the import corpus runs in normal Rust tests. `node tests/graph-import-oracles.mjs` checks TypeScript/Node resolution and a tiny Godot GDScript fixture in TEMP (override Godot with `LUMEN_GODOT_EXE`); after a debug build, `node tests/native-graph.mjs` exercises the real graph MCP across edits, rename, restart and deletion.
-- **CLI metadata and turn waiting:** `cargo test --manifest-path src-tauri/Cargo.toml --lib metadata_windows` runs real Windows Job Object shutdown fixtures. `latency_probe::installed_cli_metadata_latency` is an ignored test selected individually with `LUMEN_CLI_LATENCY_OUTPUT`; it launches installed CLI version/initialize/model-metadata commands only, without login or model turns. Never run all ignored tests to select it. `tests/native-turn-latency.mjs` collects turn-phase attribution with offline CLI fixtures (`LUMEN_LATENCY_EXE` selects a frozen release).
+- **CLI metadata and turn waiting:** `cargo test --manifest-path src-tauri/Cargo.toml -p lumen-core --lib metadata_windows` runs real Windows Job Object shutdown fixtures. `latency_probe::installed_cli_metadata_latency` is an ignored test selected individually with `LUMEN_CLI_LATENCY_OUTPUT`; it launches installed CLI version/initialize/model-metadata commands only, without login or model turns. Never run all ignored tests to select it. `tests/native-turn-latency.mjs` collects turn-phase attribution with offline CLI fixtures (`LUMEN_LATENCY_EXE` selects a frozen release).
 
 Compare against the same hardware and a frozen baseline; historical 0.7–0.8 protocols and results are in the `v0.8.0` tag.
 
@@ -100,3 +100,5 @@ Local Windows `npm run build:release` uses release optimization level 3, LTO, on
 ## 0.10 service checks
 
 `prepare-daemon.mjs` builds the headless service before Tauri dev/build and prepares the target-suffixed sidecar, including both architectures for a universal macOS build. Frontend-only builds remain independent of Rust. `daemon-smoke.mjs` exercises authenticated headless startup, exclusivity, framing/version checks, concurrent commands, update refusal/drain, restart and owned process cleanup. `native-daemon.mjs` exercises complete GUI restarts during a turn, native question and Orchestra, persistent quota cancellation, and a hard service crash beside an unrelated process. These use isolated directories and offline fixture protocols. Native harness cleanup stops its own daemon explicitly; closing a fixture GUI alone intentionally leaves it running. See [service operations](local-service.md).
+
+Cargo defaults to the GUI package so Tauri does not rebuild a second, differently unified daemon after sidecar preparation. Backend checks use `--workspace` (or `-p lumen-core` for one domain probe). The sidecar is built explicitly before the GUI.

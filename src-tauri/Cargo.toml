@@ -33,4 +33,4 @@ opt-level = 3
 [workspace]
 members = ["crates/lumen-core", "crates/lumen-commands", "crates/lumen-ipc", "crates/lumen-daemon"]
 resolver = "2"
-default-members = [".", "crates/lumen-core", "crates/lumen-ipc", "crates/lumen-daemon", "crates/lumen-commands"]
+default-members = ["."]

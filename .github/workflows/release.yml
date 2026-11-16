@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --bundles nsis
       - name: Clean Windows installer smoke test
         shell: pwsh
@@ -68,7 +68,7 @@ jobs:
       - run: npm ci
       - run: node scripts/prepare-moli.mjs
       - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --target universal-apple-darwin --bundles dmg
       - name: Mounted universal DMG helper smoke
         shell: bash
@@ -107,7 +107,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --bundles deb,appimage
       - name: Extracted Linux package helper smoke
         shell: bash
