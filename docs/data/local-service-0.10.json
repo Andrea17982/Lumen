@@ -1,0 +1,156 @@
+{
+  "version": "0.10.0",
+  "verifiedAt": "2026-11-16T19:44:22.969840+00:00",
+  "sourceCommit": "8413b38f85a53bc3eb9b710697771938c42922d9",
+  "compiledSource": {
+    "files": 428,
+    "aggregateSha256": "c904deaa99230e54daab7e582cfaf904dd24570be2affd781d746a6f2083c64c"
+  },
+  "functional": {
+    "rustPassed": 227,
+    "optInIgnored": 14,
+    "frontendPassed": 76,
+    "browserPassed": 44,
+    "adapterSuites": 12,
+    "lifecycle": [
+      "GUI exit/reopen preserves service PID, partial output and exactly one owned turn effect",
+      "Pending native question survives full GUI restart and answers the same CLI once",
+      "Quota intention survives orderly service restart without inference and remains cancellable",
+      "Orchestra workers, dependencies and integration survive GUI restart without duplicate lanes",
+      "Hard service crash kills owned descendants, preserves partial output, leaves unrelated process alive and never replays work"
+    ],
+    "settings": [
+      "shutdown is accessible without a tray",
+      "light/dark at 480/1240px",
+      "button stays in viewport with a 24px target",
+      "settings action stops both GUI and daemon"
+    ],
+    "orchestraContinuityChecks": 4,
+    "installedOpenCode": {
+      "version": "2.2.7",
+      "checks": 5,
+      "provider": "deterministic loopback fixture",
+      "paidInferenceCalls": 0
+    }
+  },
+  "ci": {
+    "run": 43935572675,
+    "sourceCommit": "8413b38f85a53bc3eb9b710697771938c42922d9",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "rust",
+        "conclusion": "success"
+      },
+      {
+        "name": "unix (ubuntu-24.04)",
+        "conclusion": "success"
+      },
+      {
+        "name": "frontend",
+        "conclusion": "success"
+      },
+      {
+        "name": "unix (macos-latest)",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "crossPlatformPackages": {
+    "run": 43935572844,
+    "sourceCommit": "8413b38f85a53bc3eb9b710697771938c42922d9",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "linux",
+        "conclusion": "success"
+      },
+      {
+        "name": "windows",
+        "conclusion": "success"
+      },
+      {
+        "name": "macos",
+        "conclusion": "success"
+      },
+      {
+        "name": "publish",
+        "conclusion": "skipped"
+      }
+    ],
+    "publication": "Branch-only workflow; publish job skipped, public latest remains v0.9.0"
+  },
+  "windowsLocalPackage": {
+    "passed": true,
+    "version": "0.10.0",
+    "files": [
+      {
+        "name": "Lumen_0.10.0_x64-setup.exe",
+        "bytes": 42932425,
+        "sha256": "5379b7af7d1a159c94cc3d9f3d1eab2992705be074529af806ce04c05006869d"
+      },
+      {
+        "name": "Lumen_0.10.0_x64-portable.exe",
+        "bytes": 10880512,
+        "sha256": "d3122c4454da258632bd650068530b9d5f0e4662fc7f84f0dfc075be4ee1bd46"
+      },
+      {
+        "name": "lumen-daemon.exe",
+        "bytes": 33158656,
+        "sha256": "b2ad0605c1119570d2b922899584b0c10360a66f721320e6a71334b843d6d7ee"
+      },
+      {
+        "name": "Lumen_0.10.0_x64-portable.zip",
+        "bytes": 62841520,
+        "sha256": "327ec759ebf45667b08bc1e8287d57ab8fa26a722efffe05893de545b7850ac4"
+      }
+    ],
+    "resources": 167,
+    "versions": {
+      "file": "0.10.0",
+      "product": "0.10.0"
+    },
+    "checks": [
+      "four SHA-256 entries",
+      "ZIP CRC and safe paths",
+      "built/loose/ZIP GUI and daemon identity",
+      "installer source identity",
+      "all platform browser/legal resources",
+      "unchanged compiled source freeze",
+      "loose and extracted release graph/browser/Moli/legal helpers",
+      "Windows file/product version"
+    ]
+  },
+  "releaseDaemonSample": {
+    "passed": true,
+    "scope": "Exact builds/latest release daemon, isolated data, no GUI or inference; warm local RPC and ten-second process-only idle sample, not a GUI/provider benchmark.",
+    "startupMs": 1562.6851000000001,
+    "rpc": {
+      "count": 100,
+      "p50Ms": 0.1434999999999036,
+      "p95Ms": 0.3180999999999585,
+      "maxMs": 0.39780000000018845
+    },
+    "idle": {
+      "elapsedMs": 10240.8262,
+      "cpuMs": 0,
+      "oneCorePercent": 0,
+      "privateBytes": 5259264,
+      "workingSetBytes": 30507008
+    },
+    "checks": [
+      "release version",
+      "local authenticated CRUD",
+      "idle process sample",
+      "update drain",
+      "persistent restart"
+    ]
+  },
+  "limits": [
+    "No new paid inference or natural real-account quota reset was tested.",
+    "macOS/Linux CI and package helpers do not establish interactive desktop or real-device acceptance. OS sign-out/login and reboot were not physically exercised.",
+    "Manual service startup outside the normal GUI/login flow requires the correct --resources directory.",
+    "Legacy live PIDs are not automatically terminated; uncertain recovery requires explicit review.",
+    "Remote LAN/VPN control, pairing and a full updater remain later milestones."
+  ]
+}

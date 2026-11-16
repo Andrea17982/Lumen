@@ -146,4 +146,4 @@ MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the oth
 
 Local Windows release (16 November): [0.9.0 — official API access and adapter compatibility](docs/release-notes/0.9.0.md), with keychain-backed API accounts/budgets and OpenCode ACP/shared tools. Cursor retains explicit Autopilot selection. GitHub packages use portable CPU targets.
 
-The next local milestone is [0.10.0 — Core and local daemon](docs/release-notes/0.10.0.md). The public download above remains 0.9.0 until 0.10 is separately published. See [local service and update instructions](docs/local-service.md).
+The completed local milestone is [0.10.0 — Core and local daemon](docs/release-notes/0.10.0.md). The public download above remains 0.9.0 until 0.10 is separately published. See [local service and update instructions](docs/local-service.md).

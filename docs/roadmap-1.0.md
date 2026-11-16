@@ -61,6 +61,8 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 
 ### 0.10 — Core e daemon locale
 
+**Completata il 16 novembre:** core separato, daemon locale autenticato, recupero e pacchetti verificati. [Changelog](release-notes/0.10.0.md) - [Prove](data/local-service-0.10.json) - [Avvio, arresto e aggiornamento](local-service.md).
+
 Separare `lumen-core` dalla GUI: storage, account, esecuzione, routing, permessi e Moli. `lumen-daemon` possiede processi, sessioni e coda; Tauri diventa un client locale autenticato. Il daemon sostituisce la continuità affidata alla tray, si avvia con l'utente e prepara il remoto senza esporre ancora la rete.
 
 Recupero dopo crash con identità dei processi verificata, stato persistito e Resume esplicito quando non è sicuro continuare. Le attese di quota non consumano uno slot di inferenza; la politica di ripresa resta visibile e cancellabile.
