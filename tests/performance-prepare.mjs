@@ -70,5 +70,5 @@ if (!/^io\.github\.andrea17982\.lumen\.perf[a-f0-9]{8}$/.test(config.identifier)
   throw Error('Not a performance-only identifier');
 console.log(`Build with: npx tauri build --no-bundle --config "${configPath}"`);
 console.log(
-  'Freeze target/release/lumen.exe under baseline/ before candidate edits; candidate/ after. No inference is needed.',
+  'Freeze target/release/lumen.exe, lumen-daemon.exe and resources together under baseline/ before candidate edits; candidate/ after. Use the isolated configuration above. No inference is needed.',
 );

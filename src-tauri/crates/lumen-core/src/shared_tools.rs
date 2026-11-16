@@ -983,7 +983,8 @@ pub(crate) mod tests {
         let status = crate::proc::command(which::which("node").unwrap())
             .args([
                 "-e",
-                &format!("try{{process.kill({pid},0);process.exit(1)}}catch{{process.exit(0)}}"),
+                // Drop kills immediately; Tokio reaps the exited child asynchronously.
+                &format!("(async()=>{{const until=Date.now()+2000;while(Date.now()<until){{try{{process.kill({pid},0)}}catch{{process.exit(0)}}await new Promise(r=>setTimeout(r,20));}}process.exit(1);}})()"),
             ])
             .status()
             .await

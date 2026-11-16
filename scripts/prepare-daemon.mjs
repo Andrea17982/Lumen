@@ -41,7 +41,6 @@ for (const arch of targets) {
     path.join(root, 'src-tauri/binaries', `lumen-daemon-${arch}${extension}`),
   );
 }
-mkdirSync(path.join(root, 'src-tauri/binaries'), { recursive: true });
 const output = path.join(root, 'src-tauri/binaries', `lumen-daemon-${target}${extension}`);
 if (binaries.length === 2)
   execFileSync('lipo', ['-create', ...binaries, '-output', output], { stdio: 'inherit' });

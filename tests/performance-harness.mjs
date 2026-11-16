@@ -9,6 +9,10 @@ export async function performanceHarness(executable) {
   const root = process.cwd();
   const artifacts = path.resolve(process.env.LUMEN_PERF_ROOT || '.impeccable/performance');
   const config = JSON.parse(await readFile(path.join(artifacts, 'config.json'), 'utf8'));
+  assert(
+    /^io\.github\.andrea17982\.lumen\.perf[a-f0-9]{8}$/.test(config.identifier),
+    'Use a prepared, isolated performance identifier',
+  );
   const data = path.join(process.env.APPDATA, config.identifier);
   const workspace = path.join(artifacts, 'workspace');
   await mkdir(workspace, { recursive: true });
@@ -28,6 +32,8 @@ export async function performanceHarness(executable) {
   app.stdout.resume();
   app.stderr.resume();
   let browser;
+  let invoke;
+  let verified = false;
   try {
     for (let i = 0; i < 150; i++) {
       try {
@@ -42,15 +48,16 @@ export async function performanceHarness(executable) {
       .contexts()[0]
       .pages()
       .find((p) => !p.url().startsWith('devtools:'));
-    await page.locator('h1').waitFor();
+    await page.locator('main.workspace').waitFor();
     const startupMs = performance.now() - start;
-    const invoke = (command, args = {}) =>
+    invoke = (command, args = {}) =>
       page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), {
         command,
         args,
       });
     assert.equal((await invoke('diagnostics')).dataDir.toLowerCase(), data.toLowerCase());
     assert.equal((await invoke('list_accounts')).length, 0);
+    verified = true;
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const cdp = await browser.newBrowserCDPSession();
     const renderer = await page.context().newCDPSession(page);
@@ -67,6 +74,8 @@ export async function performanceHarness(executable) {
       pid: app.pid,
       startupMs,
       async close() {
+        // Closing a 0.10 GUI alone leaves the benchmark service alive.
+        await invoke('quit_app').catch(() => {});
         await browser.close().catch(() => {});
         if (app.exitCode === null) app.kill();
         app.stdin.destroy();
@@ -76,6 +85,7 @@ export async function performanceHarness(executable) {
       },
     };
   } catch (error) {
+    if (verified) await invoke('quit_app').catch(() => {});
     if (app.exitCode === null) app.kill();
     await browser?.close().catch(() => {});
     throw error;
