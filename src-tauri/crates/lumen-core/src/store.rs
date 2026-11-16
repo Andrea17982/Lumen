@@ -254,9 +254,13 @@ impl Store {
             };
             c.execute_batch("SAVEPOINT message_checkpoint")?;
             let result=(|| {
+                let live=checkpoint_live(c,s,&m.id,&activities)?;
                 c.execute(sql,params![m.id,s,m.role,m.text,activity,now()])?;
                 c.execute("INSERT INTO message_sequences(message,seq) VALUES(?1,coalesce((SELECT max(seq) FROM host_events WHERE session=?2 AND message=?1),0)) ON CONFLICT(message) DO UPDATE SET seq=max(seq,excluded.seq)",params![m.id,s])?;
                 c.execute("DELETE FROM host_events WHERE session=?1 AND message=?2 AND seq<=(SELECT seq FROM message_sequences WHERE message=?2)",params![s,m.id])?;
+                for payload in live {
+                    c.execute("INSERT INTO host_events(session,message,payload) VALUES(?1,?2,?3)",params![s,m.id,payload.to_string()])?;
+                }
                 Ok(())
             })();
             match result {Ok(())=>c.execute_batch("RELEASE message_checkpoint"),Err(e)=>{let _=c.execute_batch("ROLLBACK TO message_checkpoint; RELEASE message_checkpoint");Err(e)}}
@@ -290,22 +294,44 @@ impl Store {
     }
     /// Every message that carries Orchestra state, with its session id.
     pub fn orchestra_messages(&self) -> Result<Vec<(String, Message)>, String> {
-        self.with(|c| {
-            let mut q = c.prepare(r#"SELECT session_id,id,role,text,activity FROM messages WHERE activity LIKE '%"kind":"orchestra"%'"#)?;
-            let rows = q.query_map([], |r| {
-                let a: String = r.get(4)?;
-                Ok((
-                    r.get(0)?,
-                    Message {
-                        id: r.get(1)?,
-                        role: r.get(2)?,
-                        text: r.get(3)?,
-                        activity: serde_json::from_str(&a).unwrap_or_default(),
-                    },
-                ))
-            })?;
-            rows.collect()
-        })
+        let sessions:Vec<String>=self.with(|c|{
+            let mut q=c.prepare(r#"SELECT DISTINCT session_id FROM messages WHERE activity LIKE '%"kind":"orchestra"%'"#)?;
+            let rows=q.query_map([],|r|r.get(0))?;rows.collect()
+        })?;
+        let mut out = vec![];
+        for session in sessions {
+            for mut snapshot in self.message_snapshots(&session)? {
+                let live = snapshot["live"].clone();
+                let Some(activities) = snapshot["activity"].as_array_mut() else {
+                    continue;
+                };
+                let Some(activity) = activities.iter_mut().find(|a| a["kind"] == "orchestra")
+                else {
+                    continue;
+                };
+                if let Ok(mut state) = serde_json::from_str::<serde_json::Value>(
+                    activity["text"].as_str().unwrap_or(""),
+                ) {
+                    if let Some(tasks) = state["subtasks"].as_array_mut() {
+                        for task in tasks {
+                            if let Some(text) = task["id"]
+                                .as_str()
+                                .and_then(|id| live[id].as_str())
+                                .filter(|s| !s.is_empty())
+                            {
+                                task["output"] = serde_json::json!(text);
+                            }
+                        }
+                    }
+                    activity["text"] = serde_json::json!(state.to_string());
+                }
+                out.push((
+                    session.clone(),
+                    serde_json::from_value(snapshot).map_err(|e| e.to_string())?,
+                ));
+            }
+        }
+        Ok(out)
     }
     /// Removes a message and everything after it (Rewind).
     pub fn truncate_from(&self, session: &str, message: &str) -> Result<(), String> {
@@ -507,6 +533,44 @@ impl Store {
         })?;
         Ok(())
     }
+}
+
+/// Compact running-worker text separately from the orchestrator's own message checkpoint.
+fn checkpoint_live(
+    c: &Connection,
+    session: &str,
+    message: &str,
+    activities: &[Activity],
+) -> rusqlite::Result<Vec<serde_json::Value>> {
+    use serde_json::{json, Value};
+    let state = activities
+        .iter()
+        .find(|a| a.kind == "orchestra")
+        .and_then(|a| serde_json::from_str::<Value>(&a.text).ok());
+    let running: Vec<String> = state
+        .as_ref()
+        .and_then(|s| s["subtasks"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|task| task["status"] == "running")
+        .filter_map(|task| task["id"].as_str().map(str::to_owned))
+        .collect();
+    if running.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut live = json!({});
+    let mut q=c.prepare("SELECT payload FROM host_events WHERE session=?1 AND message=?2 AND json_extract(payload,'$.kind')='orchestra-delta' ORDER BY seq")?;
+    let rows = q.query_map(params![session, message], |r| r.get::<_, String>(0))?;
+    for row in rows {
+        if let Ok(event) = serde_json::from_str::<Value>(&row?) {
+            replay_event(
+                &mut live,
+                "orchestra-delta",
+                event["text"].as_str().unwrap_or(""),
+            );
+        }
+    }
+    Ok(running.into_iter().filter_map(|id|live["live"][&id].as_str().map(|text|json!({"sessionId":session,"messageId":message,"kind":"orchestra-delta","text":json!({"id":id,"kind":"replace","text":text}).to_string()}))).collect())
 }
 
 fn replay_event(message: &mut serde_json::Value, kind: &str, text: &str) {
@@ -740,6 +804,64 @@ mod service_tests {
         assert_eq!(
             reopen.messages(&session.id).unwrap()[0].text,
             "saved partial again"
+        );
+    }
+    #[tokio::test]
+    async fn worker_output_survives_other_worker_checkpoints_and_crash_recovery() {
+        let f = crate::test_support::Fixture::new();
+        let session = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let state = serde_json::json!({"stage":"running","workspace":session.workspace,"subtasks":[{"id":"first","status":"running"},{"id":"second","status":"running"}]});
+        let mut m = Message {
+            id: id(),
+            role: "assistant".into(),
+            text: "".into(),
+            activity: vec![Activity {
+                kind: "orchestra".into(),
+                text: state.to_string(),
+            }],
+        };
+        f.core.store.save_message(&session.id, &m).unwrap();
+        let mut event = serde_json::json!({"sessionId":session.id,"messageId":m.id,"kind":"orchestra-delta","text":serde_json::json!({"id":"second","kind":"delta","text":"partial worker result"}).to_string()});
+        f.core.store.append_event(&mut event).unwrap();
+        let mut state = state;
+        state["subtasks"][0]["status"] = serde_json::json!("done");
+        m.activity[0].text = state.to_string();
+        f.core.store.save_message(&session.id, &m).unwrap();
+        f.core.store.save_message(&session.id, &m).unwrap();
+        let rows = f.core.store.message_snapshots(&session.id).unwrap();
+        assert_eq!(rows[0]["live"]["second"], "partial worker result");
+        assert_eq!(
+            f.core
+                .store
+                .with(
+                    |c| c.query_row("SELECT count(*) FROM host_events", [], |r| r
+                        .get::<_, i64>(0))
+                )
+                .unwrap(),
+            1
+        );
+        crate::orchestra::recover(&f.core);
+        let recovered = f.core.store.messages(&session.id).unwrap();
+        let state: serde_json::Value =
+            serde_json::from_str(&recovered[0].activity[0].text).unwrap();
+        assert_eq!(state["subtasks"][1]["status"], "interrupted");
+        assert!(state["subtasks"][1]["output"]
+            .as_str()
+            .unwrap()
+            .contains("partial worker result"));
+        assert_eq!(
+            f.core
+                .store
+                .with(
+                    |c| c.query_row("SELECT count(*) FROM host_events", [], |r| r
+                        .get::<_, i64>(0))
+                )
+                .unwrap(),
+            0
         );
     }
     #[tokio::test]

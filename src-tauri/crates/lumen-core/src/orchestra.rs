@@ -2278,7 +2278,11 @@ pub fn recover(core: &Core) {
             match t.status.as_str() {
                 "running" => {
                     t.status = "interrupted".into();
-                    t.output = "Interrupted: Lumen was closed.".into();
+                    t.output = if t.output.is_empty() {
+                        "Interrupted: local service stopped.".into()
+                    } else {
+                        format!("{}\n\nInterrupted: local service stopped.", t.output)
+                    };
                 }
                 "queued" => t.status = "pending".into(),
                 _ => {}

@@ -14,7 +14,7 @@ The application identifier and data directory remain `io.github.andrea17982.lume
 
 Schema 4 adds an ordered event journal, message checkpoint sequences and durable quota intentions to the existing SQLite database. Migration and message/checkpoint writes are transactional. Older 0.8/0.9 schemas upgrade in place; a newer schema is refused. Back up the complete data directory with Lumen stopped before upgrading. Returning to 0.9 requires restoring that backup; do not open a schema-4 database with an older binary.
 
-Run events reach SQLite before they reach the interface. A message snapshot includes uncheckpointed text/activity and sequence numbers. The interface deduplicates streamed events against snapshots and preserves events received during a snapshot request. Checkpointed event rows are pruned; deleting or rewinding a message removes its remaining event rows and associated quota intention.
+Run events reach SQLite before they reach the interface. A message snapshot includes uncheckpointed text/activity and sequence numbers. The interface deduplicates streamed events against snapshots and preserves events received during a snapshot request. Running-worker text is compacted into bounded replacement events independently of orchestrator checkpoints, and is copied into interrupted worker state during crash recovery. Other checkpointed event rows are pruned; deleting or rewinding a message removes its remaining event rows and associated quota intention.
 
 ## Crash and quota recovery
 

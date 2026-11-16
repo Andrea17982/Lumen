@@ -187,7 +187,7 @@ if ($promptText.Contains('Ask only for missing information that materially chang
     $reply = 'APPROVED'
 }
 if ($promptText -match 'Your subtask \((s\d+)\)') {
-    if ($promptText.Contains('DAEMON_ORCHESTRA_FIXTURE')) { Start-Sleep -Seconds 8 }
+    if ($promptText.Contains('DAEMON_ORCHESTRA_FIXTURE')) { Emit @{type='stream_event';event=@{delta=@{text='ORCHESTRA_WORKER_PARTIAL'}}}; Start-Sleep -Seconds 8 }
     $name = "orchestra-$($Matches[1]).txt"
     Set-Content -LiteralPath (Join-Path (Get-Location).Path $name) -Value "by $Provider" -Encoding utf8
     $reply = "Wrote $name"

@@ -206,9 +206,19 @@ try {
     const [, s] = await card();
     return s.subtasks.some((t) => t.status === 'running');
   }, 'Orchestra worker');
+  await until(async () => {
+    const [m] = await card();
+    return Object.values(m.live || {}).some((text) => text.includes('ORCHESTRA_WORKER_PARTIAL'));
+  }, 'live worker output');
   const orchestraPid = (await client.call('__status')).pid;
   await reopen();
   assert.equal((await client.call('__status')).pid, orchestraPid);
+  assert(
+    Object.values((await card())[0].live || {}).some((text) =>
+      text.includes('ORCHESTRA_WORKER_PARTIAL'),
+    ),
+    'worker partial output survives GUI reopen',
+  );
   await until(
     async () => (await status(orchestra.id)) === 'completed',
     'Orchestra after GUI restart',
