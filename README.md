@@ -2,9 +2,9 @@
   <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
   <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
-  <p>Claude Code · Codex · Antigravity · Ollama</p>
+  <p>Claude Code · Codex · Antigravity · OpenCode · Cursor · Ollama · Official APIs</p>
   <p>
-    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.8.0</a> ·
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.9.0</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
     <a href="docs/README.md">Documentation</a> ·
     <a href="README.it.md">Italiano</a>
@@ -20,17 +20,17 @@
 
 *A capture of the Windows application with demonstration data. Screenshots show the implemented interface; they are not claims of live model performance.*
 
-Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across every provider.
+Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across supported integrations.
 
-Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.8 remains an alpha release; supported integrations and platform checks have explicit limits.
+Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.9 remains an alpha release; supported integrations and platform checks have explicit limits.
 
-## 0.8 — Continuity, shared tools and Liquid Glass
+## 0.9 — Official APIs and adapter compatibility
 
-Safer continuation across accounts, clearer progress and connector consent, stronger Auto/Orchestra recovery, and targeted context/graph improvements. The glass sidebar opens from the logo; permissions are explained and a short first-use tour introduces the workspace. Shared MCP/skill discovery, the owning Codex gateway and local stdio/Streamable HTTP execution extend supported integrations. **Universal connector/plugin portability is not delivered:** proprietary cloud connectors, native hooks/mods and unsupported formats remain on the [1.0 roadmap](docs/roadmap-1.0.md). [0.8 changelog and limits](docs/release-notes/0.8.0.md).
+OpenAI, Anthropic and Google API accounts use the OS keychain, common tools and durable estimated-cost budgets; paid Auto use requires explicit opt-in. OpenCode now uses official ACP with session-scoped permissions, shared Moli/graph/MCP and native continuation. Task difficulty survives “Prosegui.”, quota recovery preserves partial work, and the capability matrix states each adapter’s limits. Cursor remains explicitly selected in Autopilot. [0.9 changelog and limits](docs/release-notes/0.9.0.md).
 
 ## Toward 1.0
 
-The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. These are roadmap commitments, not claims about the published 0.8 release.
+The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. The API/OpenCode compatibility milestone is delivered in 0.9; daemon, memory, expanded collaboration and remote control remain roadmap work.
 
 ## Native workspace features
 
@@ -42,7 +42,7 @@ The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliab
 | Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
 | Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
 
-Read the [0.8 changelog](docs/release-notes/0.8.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
+Read the [0.9 changelog](docs/release-notes/0.9.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
 
 ## Choose how to work
 

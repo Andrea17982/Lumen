@@ -2,25 +2,25 @@
   <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
   <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
-  <p>Claude Code · Codex · Antigravity · Ollama</p>
-  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.8.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
+  <p>Claude Code · Codex · Antigravity · OpenCode · Cursor · Ollama · API ufficiali</p>
+  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.9.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
 </div>
 
 ![Lumen 0.7 su Windows](docs/images/desktop.png)
 
 *Schermata dell'app Windows con dati dimostrativi. Le immagini rappresentano l'interfaccia implementata, non un benchmark dei modelli.*
 
-Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, continua la sessione nativa e lavora nella cartella corretta. Attiva **Orchestra** quando serve una squadra coordinata. **Moli** gestisce navigazione e ricerca web con ogni provider.
+Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, continua la sessione nativa e lavora nella cartella corretta. Attiva **Orchestra** quando serve una squadra coordinata. **Moli** gestisce navigazione e ricerca web nelle integrazioni supportate.
 
-Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.8 resta una versione alpha di un progetto indipendente, con limiti espliciti sulle integrazioni e sulle piattaforme verificate.
+Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.9 resta una versione alpha di un progetto indipendente, con limiti espliciti sulle integrazioni e sulle piattaforme verificate.
 
-## 0.8 — Continuità, strumenti condivisi e Liquid Glass
+## 0.9 — API ufficiali e compatibilità degli agenti
 
-Continuità più sicura fra account, avanzamento e consenso dei connettori più chiari, recupero Auto/Orchestra e miglioramenti mirati a contesto e grafo. Il logo apre la sidebar di vetro; permessi spiegati e un breve tutorial introducono l'app. Catalogo MCP/skill, gateway Codex del proprietario ed esecuzione locale stdio/Streamable HTTP estendono le integrazioni supportate. **La portabilità universale non è consegnata:** connettori cloud proprietari, hook/mods nativi e formati non supportati restano nella [roadmap 1.0](docs/roadmap-1.0.md). [Novità e limiti della 0.8](docs/release-notes/0.8.0.md).
+Gli account API OpenAI, Anthropic e Google usano keychain OS, strumenti comuni e budget persistenti basati sulle stime di costo; l’uso a pagamento in Auto richiede un’abilitazione esplicita. OpenCode usa ACP ufficiale, permessi per sessione, Moli/grafo/MCP condivisi e continuazione nativa. “Prosegui.” conserva la difficoltà del task; il recupero da quota mantiene il lavoro parziale. La matrice dichiara i limiti di ogni adapter. Cursor resta una scelta esplicita in Autopilot. [Novità e limiti della 0.9](docs/release-notes/0.9.0.md).
 
 ## Verso la 1.0
 
-La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia collaborazione affidabile fra Claude Code, Codex, Antigravity e OpenCode, con API ufficiali Anthropic/OpenAI/Google. Auto può usare credito API solo dopo abilitazione esplicita e con budget obbligatorio. Il percorso comprende daemon locale, memoria di progetto automatica e globale confermata, handoff verificabili e autonomia recuperabile. Il remoto 1.0 offre chat, nuovi task, Stop/Resume e approvazioni in LAN/VPN; workspace mobile completo e relay E2EE arrivano dopo la 1.0. Sono impegni di roadmap, non funzionalità dichiarate della release pubblica 0.8.
+La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia collaborazione affidabile fra Claude Code, Codex, Antigravity e OpenCode, con API ufficiali Anthropic/OpenAI/Google. Auto può usare credito API solo dopo abilitazione esplicita e con budget obbligatorio. Il percorso comprende daemon locale, memoria di progetto automatica e globale confermata, handoff verificabili e autonomia recuperabile. Il remoto 1.0 offre chat, nuovi task, Stop/Resume e approvazioni in LAN/VPN; workspace mobile completo e relay E2EE arrivano dopo la 1.0. La compatibilità API/OpenCode è consegnata nella 0.9; daemon, memoria, collaborazione estesa e remoto restano lavori di roadmap.
 
 ## Funzioni dell'applicazione
 
