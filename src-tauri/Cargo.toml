@@ -22,7 +22,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2.3.2"
 serde_json = "1"
-tokio = {version="1",features=["process","sync","time","rt-multi-thread","macros"]}
+tokio = {version="1",features= ["process", "sync", "time", "rt-multi-thread", "macros"] }
 
 [profile.release]
 lto = true
@@ -33,4 +33,4 @@ opt-level = 3
 [workspace]
 members = ["crates/lumen-core", "crates/lumen-commands", "crates/lumen-ipc", "crates/lumen-daemon"]
 resolver = "2"
-default-members = [".","crates/lumen-core","crates/lumen-ipc","crates/lumen-daemon","crates/lumen-commands"]
+default-members = [".", "crates/lumen-core", "crates/lumen-ipc", "crates/lumen-daemon", "crates/lumen-commands"]

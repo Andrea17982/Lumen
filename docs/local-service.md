@@ -4,7 +4,7 @@ The 0.10 desktop consists of `lumen.exe` (the Tauri interface) and `lumen-daemon
 
 ## Closing, stopping and login
 
-Closing the window leaves accepted work, native questions, permission requests, Orchestra workers and scheduled quota continuations in the service. With the notification-area preference enabled, the interface stays available in the tray. Otherwise the interface exits; opening it again connects to the same service. **Stop Lumen and quit** in the tray, or the existing explicit Quit action, cancels active work, waits for cleanup and stops the service.
+Closing the window leaves accepted work, native questions, permission requests, Orchestra workers and scheduled quota continuations in the service. With the notification-area preference enabled, the interface stays available in the tray. Otherwise the interface exits; opening it again connects to the same service. **Stop Lumen and quit** in the tray or Settings > General cancels active work, waits for cleanup and stops the service.
 
 The existing **Open Lumen at login** preference remains opt-in. It starts the service quietly, without a window. Existing enabled login entries are rewritten to the service on first launch. Isolated test roots never change the installed application's login item.
 

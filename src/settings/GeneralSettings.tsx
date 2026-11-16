@@ -1,7 +1,7 @@
 import Select from '../components/Select';
 import { useState } from 'react';
 import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
-import { call } from '../lib/bridge';
+import { call, desktop } from '../lib/bridge';
 import { useSettingsEditor } from '../lib/busy';
 import type { AppSettings } from '../lib/types';
 import { Switch } from './controls';
@@ -81,6 +81,13 @@ export default function GeneralSettings({
             disabled={busy}
             onChange={(v) => save({ ...s, openAtLogin: v })}
           />
+          <button
+            className="text-button"
+            disabled={!desktop || busy}
+            onClick={() => void call('quit_app').catch((error) => onError(String(error)))}
+          >
+            {t('Stop Lumen and quit')}
+          </button>
         </section>
       )}
     </>
