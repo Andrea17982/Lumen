@@ -18,7 +18,11 @@ These backend features preserve native execution and add no repeated planning ap
 
 Every assistant can save a durable project fact (a decision, convention or preference) by writing `<lumen-remember>fact</lumen-remember>` in its final reply. After a successful turn Lumen removes the tag from the reply, adds the fact with its date under `## Lumen memory` in the project's `LUMEN.md` and shows "Remembered in LUMEN.md" under the message. Because `LUMEN.md` is already shared with every assistant, the next turn, a different agent or an API account sees the same fact.
 
-Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Memory is project-only: nothing is written to global memory, and other projects never see it. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
+Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Project facts stay in that project; other projects never see them. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
+
+### Global memory
+
+For a personal preference that applies everywhere, an assistant writes `<lumen-remember scope="global">fact</lumen-remember>`. Lumen removes the tag and stores nothing: the message shows "Remember for all projects?" with a Save button. Only after Save is the fact added, dated, to `shared/MEMORY.md` in Lumen's data folder, which every assistant in every project then receives; project notes win on conflict. Lumen saves only facts an assistant actually proposed in that reply, with the same size and credential filters. Edit or delete `MEMORY.md` freely.
 
 ## Recipes
 

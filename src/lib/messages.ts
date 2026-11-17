@@ -21,6 +21,8 @@ export const HIDDEN = [
   'orchestra-nogit',
   'memory-saved',
   'recipe-saved',
+  'memory-proposed',
+  'memory-global',
   'routine-created',
   'usage',
   'api-cost',

@@ -374,6 +374,16 @@ pub(crate) async fn submit(
                 );
                 note(&app, &id, &mut output, "error", friendly(e));
             } else {
+                let proposed = context::propose_global(&mut output.text);
+                if !proposed.is_empty() {
+                    note(
+                        &app,
+                        &id,
+                        &mut output,
+                        "memory-proposed",
+                        proposed.join("\n"),
+                    );
+                }
                 let saved = context::capture_memory(
                     Path::new(&session.workspace),
                     &mut output.text,

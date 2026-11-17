@@ -105,7 +105,7 @@ if ($Provider -eq 'claude' -and ($promptText.Contains('QUOTA_RESET_FIXTURE') -or
 }
 if ($promptText.Contains('FEATURE_TAGS')) {
     if (!$promptText.Contains('<lumen-remember>') -or !$promptText.Contains('<lumen-routine')) { Emit @{type='result';is_error=$false;result='HINTS_MISSING'}; exit 0 }
-    Emit @{type='result';is_error=$false;result="Dependencies checked.`n<lumen-remember>Use pnpm for installs</lumen-remember>`n<lumen-routine every=`"30m`" until=`"2027-08-30`">Update this project's dependencies</lumen-routine>"}
+    Emit @{type='result';is_error=$false;result="Dependencies checked.`n<lumen-remember>Use pnpm for installs</lumen-remember>`n<lumen-remember scope=`"global`">Reply in Italian</lumen-remember>`n<lumen-routine every=`"30m`" until=`"2027-08-30`">Update this project's dependencies</lumen-routine>"}
     exit 0
 }
 if ($promptText.Contains('QUOTA_CHAIN')) {

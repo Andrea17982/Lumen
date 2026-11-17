@@ -945,6 +945,33 @@ fn save_recipe(core: crate::CoreRef<'_>, id: String, message: String) -> Result<
     Ok(name)
 }
 #[crate::command]
+fn remember_global(
+    core: crate::CoreRef<'_>,
+    id: String,
+    message: String,
+    fact: String,
+) -> Result<(), String> {
+    let mut reply = core
+        .store
+        .messages(&id)?
+        .into_iter()
+        .find(|m| m.id == message)
+        .ok_or("Reply not found")?;
+    let proposed = reply
+        .activity
+        .iter()
+        .any(|a| a.kind == "memory-proposed" && a.text.lines().any(|l| l == fact));
+    if !proposed {
+        return Err("Only a fact an assistant proposed can be saved".into());
+    }
+    integrations::remember_global(&core.root, &fact, crate::models::now() / 1000)?;
+    reply.activity.push(crate::models::Activity {
+        kind: "memory-global".into(),
+        text: fact,
+    });
+    core.store.save_message(&id, &reply)
+}
+#[crate::command]
 fn install_skill(core: crate::CoreRef<'_>, path: String) -> Result<(), String> {
     integrations::install_skill(&core.root, &PathBuf::from(path))
 }
@@ -1179,6 +1206,7 @@ pub async fn dispatch(
         "refresh_usage" => __ipc_refresh_usage(app, core, args).await,
         "integration_status" => __ipc_integration_status(app, core, args).await,
         "save_recipe" => __ipc_save_recipe(app, core, args).await,
+        "remember_global" => __ipc_remember_global(app, core, args).await,
         "install_skill" => __ipc_install_skill(app, core, args).await,
         "save_mcp" => __ipc_save_mcp(app, core, args).await,
         _ => Err("Unknown core command".into()),

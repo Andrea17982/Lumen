@@ -55,6 +55,21 @@ try {
   assert(/Remembered in LUMEN.md|Ricordato in LUMEN.md/.test(body), body.slice(0, 2000));
   assert(/Recurring task scheduled|Attività ricorrente programmata/.test(body));
   assert(/(Every|Ogni) 30m/.test(body));
+  // Global memory is only proposed; it is stored after the user clicks Save.
+  assert(!notes.includes('Reply in Italian'));
+  const globalFile = path.join(h.data, 'shared', 'MEMORY.md');
+  await assert.rejects(readFile(globalFile, 'utf8'));
+  await h.page
+    .getByText(/(Remember for all projects\?|Ricordare per tutti i progetti\?): Reply in Italian/)
+    .waitFor();
+  await h.page.getByRole('button', { name: /^(Save|Salva)$/ }).click();
+  await h.page
+    .getByText(/(Saved for all projects|Salvato per tutti i progetti): Reply in Italian/)
+    .waitFor();
+  assert.match(await readFile(globalFile, 'utf8'), /- Reply in Italian _\(\d{4}-\d{2}-\d{2}\)_/);
+  await assert.rejects(
+    h.invoke('remember_global', { id: chat.id, message: reply.id, fact: 'Invented fact' }),
+  );
   assert(
     body.includes(
       new Date(Date.UTC(2027, 7, 30)).toLocaleDateString(undefined, { timeZone: 'UTC' }),

@@ -405,7 +405,6 @@ const it: Record<string, string> = {
   'Import skill': 'Importa competenza',
   'Edit as JSON': 'Modifica come JSON',
   'Shared MCP configuration': 'Configurazione MCP condivisa',
-  Save: 'Salva',
   Error: 'Errore',
   'Sending…': 'Invio in corso…',
   'Delivery not confirmed': 'Invio non confermato',
@@ -415,6 +414,8 @@ const it: Record<string, string> = {
   until: 'fino al',
   'every day at': 'ogni giorno alle',
   'Saved as recipe': 'Salvato come ricetta',
+  'Saved for all projects': 'Salvato per tutti i progetti',
+  'Remember for all projects?': 'Ricordare per tutti i progetti?',
   'Ask any assistant to repeat it.': 'Chiedi a qualsiasi assistente di ripeterla.',
   'Recurring task scheduled. Stop it above the message box.':
     'Attività ricorrente programmata. Puoi fermarla sopra il campo messaggio.',

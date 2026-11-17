@@ -177,12 +177,53 @@ pub fn enabled_skills(data: &Path) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// Personal preferences the user confirmed for every project.
+pub fn global_memory(data: &Path) -> std::path::PathBuf {
+    root(data).join("MEMORY.md")
+}
+
+/// Appends a confirmed global fact (deduplicated, secret-filtered, dated).
+pub fn remember_global(data: &Path, fact: &str, now_secs: i64) -> Result<(), String> {
+    let fact = fact.split_whitespace().collect::<Vec<_>>().join(" ");
+    if fact.is_empty() || fact.chars().count() > 300 || crate::context::secret().is_match(&fact) {
+        return Err("This fact cannot be saved".into());
+    }
+    let path = global_memory(data);
+    let mut text = std::fs::read_to_string(&path).unwrap_or_default();
+    if text.contains(&fact) {
+        return Ok(());
+    }
+    if text.trim().is_empty() {
+        text = "# Lumen global memory\n\nConfirmed preferences shared by every assistant in every project. Edit or delete freely.\n\n".into();
+    }
+    let date = chrono::DateTime::from_timestamp(now_secs, 0)
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(&format!("- {fact} _({date})_\n"));
+    std::fs::create_dir_all(root(data)).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
 pub fn instructions(data: &Path) -> Result<String, String> {
+    let memory = std::fs::read_to_string(global_memory(data)).unwrap_or_default();
+    let memory: String = memory.chars().take(20_000).collect();
+    let mut result = if memory.lines().any(|l| l.starts_with("- ")) {
+        format!(
+            "User's global memory ({}, confirmed preferences for every project; project notes win on conflict):\n{}\n",
+            global_memory(data).display(),
+            memory.trim()
+        )
+    } else {
+        String::new()
+    };
     let state = status(data)?;
     if state["skills"].as_array().is_none_or(|a| a.is_empty()) {
-        return Ok(String::new());
+        return Ok(result);
     }
-    let mut result=String::from("Shared skills available in Lumen. When a skill applies, read its SKILL.md before acting and resolve resources relative to its folder:\n");
+    result.push_str("Shared skills available in Lumen. When a skill applies, read its SKILL.md before acting and resolve resources relative to its folder:\n");
     for name in state["skills"]
         .as_array()
         .into_iter()
@@ -480,5 +521,23 @@ mod tests {
         .is_err());
         // Cleanup is confined to this unique test directory under the system temp folder.
         std::fs::remove_dir_all(temp).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod global_memory_tests {
+    #[test]
+    fn confirmed_global_facts_are_stored_once_and_injected() {
+        let f = crate::test_support::Fixture::new();
+        let dir = f.directory("global-memory");
+        assert!(!super::instructions(&dir).unwrap().contains("global memory"));
+        super::remember_global(&dir, "Reply in Italian", 0).unwrap();
+        super::remember_global(&dir, "Reply  in Italian", 0).unwrap();
+        assert!(super::remember_global(&dir, "my password is x", 0).is_err());
+        let text = std::fs::read_to_string(super::global_memory(&dir)).unwrap();
+        assert_eq!(text.matches("Reply in Italian").count(), 1);
+        assert!(super::instructions(&dir)
+            .unwrap()
+            .contains("- Reply in Italian _(1970-01-01)_"));
     }
 }

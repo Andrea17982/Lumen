@@ -11,7 +11,40 @@ const MEMORY_MAX_ITEMS: usize = 5;
 const MEMORY_MAX_CHARS: usize = 300;
 
 /// Instruction appended to every prompt so any agent can save durable project facts.
-pub const MEMORY_HINT: &str = "To remember a durable project fact for future turns and other assistants (a decision, convention or user preference, never secrets), add a line `<lumen-remember>fact</lumen-remember>` to your final reply. Lumen stores it in LUMEN.md, where the user can edit or delete it.";
+pub const MEMORY_HINT: &str = "To remember a durable project fact for future turns and other assistants (a decision, convention or user preference, never secrets), add a line `<lumen-remember>fact</lumen-remember>` to your final reply. Lumen stores it in LUMEN.md, where the user can edit or delete it. For a personal preference that applies to all of the user's projects, use `<lumen-remember scope=\"global\">fact</lumen-remember>` instead; Lumen keeps it only after the user confirms.";
+
+/// Removes `<lumen-remember scope="global">` facts from the reply and returns them as proposals.
+/// Nothing is stored here: the user must confirm each one (see `integrations::remember_global`).
+pub fn propose_global(reply: &mut String) -> Vec<String> {
+    let re =
+        regex::Regex::new(r#"(?s)<lumen-remember\s+scope="global"\s*>(.*?)</lumen-remember>\n?"#)
+            .unwrap();
+    if !re.is_match(reply) {
+        return Vec::new();
+    }
+    let secret_re = secret();
+    let mut facts: Vec<String> = Vec::new();
+    for c in re.captures_iter(reply) {
+        let f = c[1].split_whitespace().collect::<Vec<_>>().join(" ");
+        if !f.is_empty()
+            && f.chars().count() <= MEMORY_MAX_CHARS
+            && !secret_re.is_match(&f)
+            && !facts.contains(&f)
+        {
+            facts.push(f);
+        }
+    }
+    facts.truncate(MEMORY_MAX_ITEMS);
+    *reply = re.replace_all(reply, "").trim_end().to_owned();
+    facts
+}
+
+pub fn secret() -> regex::Regex {
+    regex::Regex::new(
+        r"(?i)sk-[a-z0-9_-]{8,}|password|passwd|api[_ ]?key|token\s*[:=]|[A-Za-z0-9+/_-]{40,}",
+    )
+    .unwrap()
+}
 
 /// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
 /// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
@@ -27,10 +60,7 @@ pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64) -> Vec<Str
         return Vec::new();
     }
     *reply = re.replace_all(reply, "").trim_end().to_owned();
-    let secret_re = regex::Regex::new(
-        r"(?i)sk-[a-z0-9_-]{8,}|password|passwd|api[_ ]?key|token\s*[:=]|[A-Za-z0-9+/_-]{40,}",
-    )
-    .unwrap();
+    let secret_re = secret();
     let mut notes = read_context(workspace);
     let date = chrono::DateTime::from_timestamp(now, 0)
         .map(|d| d.format("%Y-%m-%d").to_string())
@@ -607,5 +637,19 @@ mod tests {
         assert_eq!(shown, shown_text(&log));
         assert!(rel.is_some_and(|r| shown.contains(&r)));
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod global_proposal_tests {
+    #[test]
+    fn global_facts_are_proposed_not_stored() {
+        let f = crate::test_support::Fixture::new();
+        let dir = f.directory("global-memory");
+        let mut reply = "Done.\n<lumen-remember scope=\"global\">Prefer tabs</lumen-remember>\n<lumen-remember>Use pnpm</lumen-remember>".to_owned();
+        assert_eq!(super::propose_global(&mut reply), vec!["Prefer tabs"]);
+        assert_eq!(super::capture_memory(&dir, &mut reply, 0), vec!["Use pnpm"]);
+        assert_eq!(reply, "Done.");
+        assert!(!super::read_context(&dir).contains("Prefer tabs"));
     }
 }

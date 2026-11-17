@@ -70,6 +70,8 @@ export default function MessageView({
           ),
         )
       : { reasoning: '', answer: m.text };
+  const proposed = m.activity.find((a) => a.kind === 'memory-proposed')?.text.split('\n') ?? [];
+  const kept = m.activity.filter((a) => a.kind === 'memory-global').map((a) => a.text);
   const recipe = m.activity.find((a) => a.kind === 'recipe-saved')?.text;
   const remembered = m.activity.find((a) => a.kind === 'memory-saved')?.text.split('\n');
   const reasoning = [
@@ -229,6 +231,21 @@ export default function MessageView({
           {t('Recurring task scheduled. Stop it above the message box.')}
         </p>
       )}
+      {proposed.map((fact) => (
+        <p className="memory-saved" role="status" key={fact}>
+          {kept.includes(fact) ? t('Saved for all projects') : t('Remember for all projects?')}:{' '}
+          {fact}
+          {!kept.includes(fact) && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void onOrchestra('remember_global', { message: m.id, fact })}
+            >
+              {t('Save')}
+            </button>
+          )}
+        </p>
+      ))}
       {recipe && (
         <p className="memory-saved" role="status">
           {t('Saved as recipe')}: {recipe}. {t('Ask any assistant to repeat it.')}
