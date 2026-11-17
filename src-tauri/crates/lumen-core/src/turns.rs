@@ -384,16 +384,26 @@ pub(crate) async fn submit(
                         proposed.join("\n"),
                     );
                 }
-                let saved = context::capture_memory(
+                // Content from pages, services or web commands is data, never instructions:
+                // memory and routines a reply proposes after reading it wait for the user.
+                let (untrusted, saved, held) = crate::autonomy::gate_memory(
+                    &mut output,
                     Path::new(&session.workspace),
-                    &mut output.text,
                     crate::models::now() / 1000,
                     &core.store.session(&id).map(|s| s.title).unwrap_or_default(),
                 );
                 if !saved.is_empty() {
                     note(&app, &id, &mut output, "memory-saved", saved.join("\n"));
                 }
-                match crate::routines::capture(&core, &id, &mut output.text, &options) {
+                if !held.is_empty() {
+                    note(&app, &id, &mut output, "memory-held", held.join("\n"));
+                }
+                let routine = if untrusted && output.text.contains("<lumen-routine") {
+                    Err("this reply read content from outside the project; ask again to schedule it".into())
+                } else {
+                    crate::routines::capture(&core, &id, &mut output.text, &options)
+                };
+                match routine {
                     Ok(Some(r)) => note(
                         &app,
                         &id,
@@ -1668,19 +1678,38 @@ pub(crate) fn conversations_on_workspace(core: &Core, s: &Session) -> Vec<String
         .collect()
 }
 
-fn later_project_conversations(core: &Core, s: &Session, after: i64) -> Vec<String> {
-    let Ok(current) = dunce::canonicalize(&s.workspace) else {
-        return Vec::new();
+/// What a restore rewrites: the whole git checkout when there is one, else the folder.
+async fn rewind_scope(s: &Session) -> std::path::PathBuf {
+    match gitops::toplevel(Path::new(&s.workspace)).await {
+        Some(top) => top,
+        None => dunce::canonicalize(&s.workspace).unwrap_or_else(|_| s.workspace.clone().into()),
+    }
+}
+
+/// Other conversations whose folder overlaps the restored checkout (either contains the
+/// other, after T3 `CheckpointRestoreSafety`): running ones, or with `after`, any that
+/// changed since then. Restoring a checkout restores it for all of them.
+fn checkout_conflicts(core: &Core, s: &Session, scope: &Path, after: Option<i64>) -> Vec<String> {
+    let others: Vec<(String, String, String)> = match after {
+        Some(at) => core.store.sessions_updated_after(at).unwrap_or_default(),
+        None => {
+            let ids = core
+                .jobs
+                .lock()
+                .map(|jobs| jobs.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            ids.into_iter()
+                .filter_map(|id| core.store.session(&id).ok())
+                .map(|o| (o.id, o.title, o.workspace))
+                .collect()
+        }
     };
-    core.store
-        .sessions_updated_after(after)
-        .unwrap_or_default()
+    others
         .into_iter()
-        .filter(|(id, _, _)| id != &s.id)
-        .filter_map(|(_, title, folder)| {
-            let folder = dunce::canonicalize(folder).ok()?;
-            (folder == current).then_some(title)
+        .filter(|(id, _, folder)| {
+            id != &s.id && crate::autonomy::overlaps(scope, Path::new(folder))
         })
+        .map(|(_, title, _)| title)
         .collect()
 }
 
@@ -2404,12 +2433,16 @@ pub async fn rewind_preview(
 ) -> Result<RewindPreview, String> {
     let (s, messages, pos) = rewind_target(&core, &session, &message).await?;
     let message_time = core.store.message_created_at(&session, &message)?;
-    let later = later_project_conversations(&core, &s, message_time);
+    let scope = rewind_scope(&s).await;
+    let later = checkout_conflicts(&core, &s, &scope, Some(message_time));
     if !later.is_empty() {
         return Err(format!(
             "Rewind is blocked because another conversation has changed this project since that message: {}",
             later.join(", ")
         ));
+    }
+    if let Some(reason) = crate::autonomy::rewind_blocker(&scope, &messages[pos..]) {
+        return Err(format!("Rewind is blocked. {reason}"));
     }
     // The earliest checkpoint at or after this message is the state before this turn.
     let tree = messages[pos..]
@@ -2444,7 +2477,8 @@ pub async fn rewind(
         return Err("Stop this conversation before rewinding".into());
     }
     let initial = core.store.session(&session)?;
-    let other_sessions = conversations_on_workspace(&core, &initial);
+    let scope = rewind_scope(&initial).await;
+    let other_sessions = checkout_conflicts(&core, &initial, &scope, None);
     if !other_sessions.is_empty() {
         return Err(format!(
             "Cannot rewind while another conversation is active on the project: {}",
@@ -2453,7 +2487,7 @@ pub async fn rewind(
     }
     let lock = workspace_lock(&core, &initial)?;
     let _guard = lock.lock().await;
-    let other_sessions = conversations_on_workspace(&core, &initial);
+    let other_sessions = checkout_conflicts(&core, &initial, &scope, None);
     if !other_sessions.is_empty() {
         return Err(format!(
             "Cannot rewind while another conversation is active on the project: {}",
@@ -2462,20 +2496,42 @@ pub async fn rewind(
     }
     let (s, messages, pos) = rewind_target(&core, &session, &message).await?;
     let message_time = core.store.message_created_at(&session, &message)?;
-    let later = later_project_conversations(&core, &s, message_time);
+    let later = checkout_conflicts(&core, &s, &scope, Some(message_time));
     if !later.is_empty() {
         return Err(format!(
             "Cannot rewind because another conversation has changed this project since that message: {}",
             later.join(", ")
         ));
     }
+    if let Some(reason) = crate::autonomy::rewind_blocker(&scope, &messages[pos..]) {
+        return Err(format!("Cannot rewind. {reason}"));
+    }
     let tree = messages[pos..]
         .iter()
         .filter(|m| m.role == "user")
         .find_map(checkpoint_of);
-    if let (Some(t), Some(top)) = (tree, gitops::toplevel(Path::new(&s.workspace)).await) {
-        gitops::restore(&top, &t).await?;
+    let mut restored = 0;
+    if let (Some(t), Some(top)) = (&tree, gitops::toplevel(Path::new(&s.workspace)).await) {
+        restored = gitops::restore(&top, t).await?;
     }
+    crate::autonomy::append_log(
+        &core.root,
+        &session,
+        &crate::autonomy::decision(
+            crate::autonomy::Class::Reversible,
+            "rollback",
+            &match tree {
+                Some(t) => format!(
+                    "Restored {restored} files to checkpoint {t}; removed {} messages",
+                    messages.len() - pos
+                ),
+                None => format!(
+                    "No checkpoint: removed {} messages, files unchanged",
+                    messages.len() - pos
+                ),
+            },
+        ),
+    );
     for m in &messages[pos..] {
         if let Some(l) = lane_of(m) {
             gitops::remove_lane(Path::new(&l.top), Path::new(&l.path), &l.branch).await;

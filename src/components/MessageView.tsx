@@ -73,7 +73,12 @@ export default function MessageView({
   const proposed = m.activity.find((a) => a.kind === 'memory-proposed')?.text.split('\n') ?? [];
   const kept = m.activity.filter((a) => a.kind === 'memory-global').map((a) => a.text);
   const recipe = m.activity.find((a) => a.kind === 'recipe-saved')?.text;
-  const remembered = m.activity.find((a) => a.kind === 'memory-saved')?.text.split('\n');
+  const rememberedAll = m.activity
+    .filter((a) => a.kind === 'memory-saved')
+    .flatMap((a) => a.text.split('\n'))
+    .filter(Boolean);
+  const remembered = rememberedAll.length ? rememberedAll : undefined;
+  const held = m.activity.find((a) => a.kind === 'memory-held')?.text.split('\n') ?? [];
   const reasoning = [
     ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
     inline.reasoning,
@@ -246,6 +251,21 @@ export default function MessageView({
           )}
         </p>
       ))}
+      {held
+        .filter((fact) => !rememberedAll.includes(fact))
+        .map((fact) => (
+          <p className="memory-saved" role="status" key={`held-${fact}`}>
+            {t('Not saved automatically: this reply read content from outside the project')}.{' '}
+            {t('Save to LUMEN.md?')}: {fact}
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void onOrchestra('remember_project', { message: m.id, fact })}
+            >
+              {t('Save')}
+            </button>
+          </p>
+        ))}
       {recipe && (
         <p className="memory-saved" role="status">
           {t('Saved as recipe')}: {recipe}. {t('Ask any assistant to repeat it.')}

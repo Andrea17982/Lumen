@@ -25,6 +25,7 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 | `store.rs`, `migrations.rs`, `workstate.rs` | SQLite persistence, atomic schema upgrades and durable decisions |
 | `context.rs`, `codegraph.rs`, `graph_mcp.rs`, `impact.rs` | Context, pattern-based graph tools and pre/post-edit impact |
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |
+| `autonomy.rs` | Action classes, audit log, restore safety and untrusted-content gating |
 | `gitops.rs`, `merge.rs`, `workspace.rs` | Private-index checkpoints, immutable manual merges and explicit cwd changes |
 | `inspector.rs`, `media.rs`, `review.rs`, `layout.rs`, `variant_preview.rs` | Local preview, images/data, source diffs, layout constraints and static variants |
 | `godot.rs`, `screens.rs` | Validated editor targets and capture/import; desktop launch/hiding/shortcut remain in the GUI |

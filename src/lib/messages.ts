@@ -22,6 +22,8 @@ export const HIDDEN = [
   'memory-saved',
   'recipe-saved',
   'memory-proposed',
+  'memory-held',
+  'audit',
   'memory-global',
   'routine-created',
   'usage',

@@ -190,11 +190,31 @@ pub async fn call(
         {
             return Err("Shell commands require Autopilot or per-action approval".into());
         }
-        if input.access == AccessMode::Ask
-            && name != "lumen_ask_user"
-            && !permission(name, &args.to_string(), emit).await?
-        {
-            return Err("Action denied".into());
+        use crate::autonomy::{decision, Class};
+        let class = crate::autonomy::tool(name, args);
+        // Autopilot runs reversible work freely; an action a checkpoint cannot undo
+        // always waits for one explicit answer, whatever the profile.
+        let confirm =
+            (input.access == AccessMode::Ask && name != "lumen_ask_user") || class == Class::Risky;
+        if confirm {
+            let title = match class {
+                Class::Risky => "Irreversible action",
+                Class::External => "External action (not undone by rollback)",
+                Class::Reversible => name,
+            };
+            let allowed = permission(title, &args.to_string(), emit).await?;
+            if class != Class::Reversible {
+                emit(decision(
+                    class,
+                    if allowed { "confirmed" } else { "denied" },
+                    &args.to_string(),
+                ));
+            }
+            if !allowed {
+                return Err("Action denied".into());
+            }
+        } else if class == Class::External {
+            emit(decision(class, "ran", &args.to_string()));
         }
         let path = || {
             scoped(
@@ -307,5 +327,85 @@ mod tests {
         assert!(!definitions(AccessMode::ReadOnly)
             .iter()
             .any(|t| t["name"] == "lumen_write_file"));
+    }
+
+    /// Autopilot still stops at an irreversible command: denying it runs nothing and the
+    /// decision lands in the audit log; confirming it runs it once.
+    #[tokio::test]
+    async fn autopilot_confirms_destructive_commands() {
+        let f = crate::test_support::Fixture::new();
+        let workspace = f.directory("project");
+        let config = f.directory("accounts/test");
+        std::fs::create_dir_all(workspace.join("build")).unwrap();
+        std::fs::write(workspace.join("build/out.txt"), "x").unwrap();
+        let account = Account {
+            id: "test".into(),
+            name: "fixture".into(),
+            provider: Provider::Ollama,
+        };
+        let input = Invocation {
+            automatic: false,
+            account: &account,
+            config: &config,
+            workspace: &workspace,
+            prompt: "",
+            model: None,
+            effort: "",
+            access: AccessMode::Autopilot,
+            approvals: None,
+            resume: None,
+            browser_scope: None,
+            browser_artifacts: None,
+            browser: None,
+        };
+        let remove = if cfg!(windows) {
+            "rmdir /s /q build"
+        } else {
+            "rm -rf build"
+        };
+        for (choice, ran) in [("Deny", false), ("Allow once", true)] {
+            let mut events = vec![];
+            let mut asked = 0;
+            let out = call(
+                &input,
+                "lumen_run_command",
+                &json!({"command": remove}),
+                &mut |a| {
+                    if a.kind == "interaction" && a.text.contains("\"permission\"") {
+                        asked += 1;
+                        let v: Value = serde_json::from_str(&a.text).unwrap();
+                        let answers = [("action".to_string(), vec![choice.to_string()])].into();
+                        crate::interactions::answer_question(
+                            v["id"].as_str().unwrap().into(),
+                            answers,
+                        )
+                        .unwrap();
+                    }
+                    events.push(a);
+                },
+            )
+            .await;
+            assert_eq!(asked, 1, "{choice}");
+            assert_eq!(out["isError"] == true, !ran, "{choice}: {out}");
+            assert_eq!(workspace.join("build").exists(), !ran, "{choice}");
+            let log = crate::autonomy::audit(&[Message {
+                id: "m".into(),
+                role: "assistant".into(),
+                text: String::new(),
+                activity: events,
+            }]);
+            assert_eq!(log.len(), 1);
+            assert_eq!(log[0].class, crate::autonomy::Class::Risky);
+            assert_eq!(log[0].action, if ran { "confirmed" } else { "denied" });
+        }
+        // Reversible work in Autopilot never asks.
+        let out = call(
+            &input,
+            "lumen_list_files",
+            &json!({"path": "."}),
+            &mut |a| assert!(!a.text.contains("\"permission\"")),
+        )
+        .await;
+        assert!(out["isError"] != true);
     }
 }
