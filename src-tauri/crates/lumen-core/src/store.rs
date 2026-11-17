@@ -46,8 +46,8 @@ impl Store {
     pub fn save_routine(&self, r: &crate::routines::Routine, options: &str) -> Result<(), String> {
         self.with(|c| {
             c.execute(
-                "INSERT INTO routines(id,session,text,options,every_ms,next_at,until_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-                params![r.id, r.session, r.text, options, r.every_ms, r.next_at, r.until_at],
+                "INSERT INTO routines(id,session,text,options,every_ms,next_at,until_at,anchor) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![r.id, r.session, r.text, options, r.every_ms, r.next_at, r.until_at, r.anchor],
             )
         })
         .map(|_| ())
@@ -68,7 +68,7 @@ impl Store {
     pub fn routines(&self) -> Result<Vec<(crate::routines::Routine, String)>, String> {
         self.with(|c| {
             let mut q = c.prepare(
-                "SELECT id,session,text,options,every_ms,next_at,until_at FROM routines ORDER BY next_at",
+                "SELECT id,session,text,options,every_ms,next_at,until_at,anchor FROM routines ORDER BY next_at",
             )?;
             let rows = q.query_map([], |r| {
                 Ok((
@@ -79,6 +79,7 @@ impl Store {
                         every_ms: r.get(4)?,
                         next_at: r.get(5)?,
                         until_at: r.get(6)?,
+                        anchor: r.get(7)?,
                     },
                     r.get(3)?,
                 ))

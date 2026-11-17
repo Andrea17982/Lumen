@@ -22,6 +22,8 @@ const cases = [
     true,
   ],
   ['recurring-en', 'Every Monday, summarize the open TODO comments in this repo.', true],
+  ['weekday-it', 'Ogni lunedì alle 9 riassumi i commenti TODO aperti in questo repo.', true],
+  ['daily-time', 'Every day at 18:30, list dependencies with known updates.', true],
   ['one-off', 'Elenca le dipendenze di questo progetto.', false],
   ['memory', "D'ora in poi in questo progetto usiamo pnpm, non npm. Elenca le dipendenze.", false],
 ];

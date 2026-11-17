@@ -9,7 +9,10 @@ export type Routine = {
   everyMs: number;
   nextAt: number;
   untilAt?: number | null;
+  anchor?: string | null;
 };
+
+const DAY = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 const every = (ms: number) =>
   ms % 604_800_000 === 0
@@ -31,6 +34,17 @@ export default function Routines({
   onError: (text: string) => void;
 }) {
   const { t } = useI18n();
+  const when = (r: Routine) => {
+    if (!r.anchor) return `${t('Every')} ${every(r.everyMs)}`;
+    const [d, time] = r.anchor.split('@');
+    if (!d) return `${t('every day at')} ${time}`;
+    // 2024-01-01 was a Monday; only the weekday name is used.
+    const name = new Date(Date.UTC(2024, 0, 1 + DAY.indexOf(d))).toLocaleDateString(undefined, {
+      weekday: 'long',
+      timeZone: 'UTC',
+    });
+    return `${name} ${time}`;
+  };
   const [list, setList] = useState<Routine[]>([]);
   useEffect(() => {
     if (!session) return setList([]);
@@ -45,7 +59,7 @@ export default function Routines({
         <li key={r.id} title={`${t('Next run')}: ${new Date(r.nextAt).toLocaleString()}`}>
           <Repeat size={12} aria-hidden />
           <span>
-            {t('Every')} {every(r.everyMs)}
+            {when(r)}
             {r.untilAt
               ? ` ${t('until')} ${new Date(r.untilAt).toLocaleDateString(undefined, { timeZone: 'UTC' })}`
               : ''}

@@ -70,6 +70,28 @@ try {
   assert.equal((await h.invoke('list_routines', { id: chat.id })).length, 2);
   await h.invoke('delete_routine', { routine: manual.id });
   assert.equal((await h.invoke('list_routines', { id: chat.id })).length, 1);
+  const weekly = await h.invoke('create_routine', {
+    id: chat.id,
+    text: 'summarize open TODOs',
+    every: 'lunedì',
+    at: '9:00',
+    options,
+  });
+  assert.equal(weekly.anchor, 'mon@09:00');
+  const next = new Date(weekly.nextAt);
+  assert.deepEqual([next.getDay(), next.getHours(), next.getMinutes()], [1, 9, 0]);
+  await h.page.reload();
+  await h.page
+    .locator('#conversation-sidebar')
+    .getByText(/FEATURE_TAGS/)
+    .first()
+    .click();
+  const monday = new Date(Date.UTC(2024, 0, 1)).toLocaleDateString(undefined, {
+    weekday: 'long',
+    timeZone: 'UTC',
+  });
+  await h.page.getByText(`${monday} 09:00: summarize open TODOs`).waitFor();
+  await h.invoke('delete_routine', { routine: weekly.id });
   // Recipe from the finished reply.
   const name = await h.invoke('save_recipe', { id: chat.id, message: reply.id });
   const skills = await readdir(path.join(h.data, 'shared', 'skills'));

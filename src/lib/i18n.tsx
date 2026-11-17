@@ -413,6 +413,7 @@ const it: Record<string, string> = {
   'Recurring tasks': 'Attività ricorrenti',
   'Save as recipe': 'Salva come ricetta',
   until: 'fino al',
+  'every day at': 'ogni giorno alle',
   'Recurring task scheduled. Stop it above the message box.':
     'Attività ricorrente programmata. Puoi fermarla sopra il campo messaggio.',
   'Save as recipe: every assistant can repeat this task when you ask':
@@ -423,7 +424,7 @@ const it: Record<string, string> = {
   'Start the conversation first, then add a recurring task to it.':
     'Avvia prima la conversazione, poi aggiungi un’attività ricorrente.',
   'Use /every <interval> <task>, for example /every 1d check for outdated dependencies.':
-    'Usa /every <intervallo> <attività>, per esempio /every 1d controlla le dipendenze obsolete.',
+    'Usa /every <intervallo> <attività>, per esempio /every 1d controlla le dipendenze obsolete o /every lunedì 09:00 riassumi i TODO aperti.',
   'Draft restored in this conversation.': 'Bozza ripristinata in questa conversazione.',
   'Check message delivery': 'Verifica invio del messaggio',
   'Wait for message delivery before deleting this conversation.':

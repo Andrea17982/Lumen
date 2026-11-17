@@ -1,6 +1,6 @@
 //! Transactional, versioned SQLite schema upgrades. A newer database is never downgraded.
 use rusqlite::Connection;
-const CURRENT: u32 = 7;
+const CURRENT: u32 = 8;
 fn column(c: &Connection, table: &str, name: &str) -> rusqlite::Result<bool> {
     let mut q = c.prepare(&format!("PRAGMA table_info({table})"))?;
     let rows = q.query_map([], |r| r.get::<_, String>(1))?;
@@ -48,6 +48,7 @@ pub fn run(c: &mut Connection) -> Result<(), String> {
                 5 => tx.execute_batch("CREATE TABLE command_receipts(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,result TEXT);")?,
                 6 => tx.execute_batch("CREATE TABLE IF NOT EXISTS routines(id TEXT PRIMARY KEY,session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,text TEXT NOT NULL,options TEXT NOT NULL,every_ms INTEGER NOT NULL,next_at INTEGER NOT NULL);")?,
                 7 => if !column(&tx,"routines","until_at")? { tx.execute_batch("ALTER TABLE routines ADD COLUMN until_at INTEGER")?; },
+                8 => if !column(&tx,"routines","anchor")? { tx.execute_batch("ALTER TABLE routines ADD COLUMN anchor TEXT")?; },
                 _ => unreachable!(),
             }
             tx.execute(
@@ -94,7 +95,7 @@ mod tests {
             c.query_row("SELECT count(*) FROM schema_migrations", [], |r| r
                 .get::<_, u32>(0))
                 .unwrap(),
-            7
+            8
         );
         c.pragma_update(None, "user_version", 99).unwrap();
         assert!(run(&mut c).unwrap_err().contains("update Lumen"));

@@ -801,23 +801,28 @@ export default function App() {
         setError(t('Wait for the current response to finish before using this command.'));
       return;
     }
-    const routine = !override && /^\/every(?:\s+(\S+))?(?:\s+([\s\S]+))?$/i.exec(text);
+    const routine =
+      !override &&
+      /^\/every(?:\s+(\S+))?(?:\s+(\d{1,2}:\d{2})(?=\s))?(?:\s+([\s\S]+))?$/i.exec(text);
     if (routine) {
       if (!session) {
         setError(t('Start the conversation first, then add a recurring task to it.'));
         return;
       }
-      if (!routine[1] || !routine[2]) {
+      if (!routine[1] || !routine[3]) {
         setError(
-          t('Use /every <interval> <task>, for example /every 1d check for outdated dependencies.'),
+          t(
+            'Use /every <interval> <task>, for example /every 1d check for outdated dependencies or /every monday 09:00 summarize open TODOs.',
+          ),
         );
         return;
       }
       try {
         await call('create_routine', {
           id: session.id,
-          text: routine[2],
+          text: routine[3],
           every: routine[1],
+          at: routine[2],
           options: { ...runOptions(), mode, attachments: [] },
         });
         composer.clearTextIfUnchanged(composer.key, draft);

@@ -17,6 +17,84 @@ pub struct Routine {
     pub next_at: i64,
     /// Last moment a run may start; `None` repeats until stopped.
     pub until_at: Option<i64>,
+    /// Local wall-clock alignment: `mon@09:00` (weekly) or `@09:00` (daily).
+    pub anchor: Option<String>,
+}
+
+const DAYS: [(&str, &[&str]); 7] = [
+    ("mon", &["mon", "monday", "lun", "lunedi", "lunedì"]),
+    ("tue", &["tue", "tuesday", "mar", "martedi", "martedì"]),
+    (
+        "wed",
+        &["wed", "wednesday", "mer", "mercoledi", "mercoledì"],
+    ),
+    ("thu", &["thu", "thursday", "gio", "giovedi", "giovedì"]),
+    ("fri", &["fri", "friday", "ven", "venerdi", "venerdì"]),
+    ("sat", &["sat", "saturday", "sab", "sabato"]),
+    ("sun", &["sun", "sunday", "dom", "domenica"]),
+];
+
+fn day(s: &str) -> Option<&'static str> {
+    let s = s.trim().to_lowercase();
+    DAYS.iter()
+        .find(|(_, names)| names.contains(&s.as_str()))
+        .map(|(d, _)| *d)
+}
+
+fn time(s: &str) -> Option<chrono::NaiveTime> {
+    chrono::NaiveTime::parse_from_str(s.trim(), "%H:%M").ok()
+}
+
+/// `every` is an interval (`30m`…`30d`), a weekday (`mon`, `lunedì`) or a time (`09:00`);
+/// `at` adds a time to a weekday or to `1d`. Returns the interval and the optional anchor.
+pub fn schedule(every: &str, at: Option<&str>) -> Result<(i64, Option<String>), String> {
+    let at = at.map(str::trim).filter(|s| !s.is_empty());
+    let clock = |s: &str| {
+        time(s)
+            .map(|t| t.format("%H:%M").to_string())
+            .ok_or_else(|| "Use a time like 09:00".to_owned())
+    };
+    if let Some(d) = day(every) {
+        return Ok((
+            7 * 86_400_000,
+            Some(format!("{d}@{}", clock(at.unwrap_or("09:00"))?)),
+        ));
+    }
+    if time(every).is_some() && at.is_none() {
+        return Ok((86_400_000, Some(format!("@{}", clock(every)?))));
+    }
+    let ms = parse_every(every)?;
+    match at {
+        None => Ok((ms, None)),
+        Some(t) if ms == 86_400_000 => Ok((ms, Some(format!("@{}", clock(t)?)))),
+        Some(_) => Err("A time of day needs a daily interval or a weekday".into()),
+    }
+}
+
+/// First local wall-clock occurrence of `anchor` strictly after `after` (ms), DST-safe.
+pub fn next_anchor(anchor: &str, after: i64) -> Option<i64> {
+    use chrono::{Datelike, Local, TimeZone};
+    let (d, t) = anchor.split_once('@')?;
+    let t = time(t)?;
+    let from = Local.timestamp_millis_opt(after).single()?.date_naive();
+    (0..=8).find_map(|i| {
+        let date = from + chrono::Days::new(i);
+        if !d.is_empty() && DAYS[date.weekday().num_days_from_monday() as usize].0 != d {
+            return None;
+        }
+        let at = Local
+            .from_local_datetime(&date.and_time(t))
+            .earliest()?
+            .timestamp_millis();
+        (at > after).then_some(at)
+    })
+}
+
+fn first_run(anchor: Option<&str>, every_ms: i64, start: i64) -> Result<i64, String> {
+    match anchor {
+        Some(a) => next_anchor(a, start).ok_or_else(|| "Invalid schedule".to_owned()),
+        None => Ok(start + every_ms),
+    }
 }
 
 /// `30m`, `2h`, `1d`, `1w` → milliseconds within the supported range.
@@ -46,9 +124,10 @@ pub async fn create_routine(
     id: String,
     text: String,
     every: String,
+    at: Option<String>,
     options: RunOptions,
 ) -> Result<Routine, String> {
-    let every_ms = parse_every(&every)?;
+    let (every_ms, anchor) = schedule(&every, at.as_deref())?;
     if text.trim().is_empty() {
         return Err("Describe the task to repeat".into());
     }
@@ -58,8 +137,9 @@ pub async fn create_routine(
         session: id,
         text: text.trim().into(),
         every_ms,
-        next_at: now() + every_ms,
+        next_at: first_run(anchor.as_deref(), every_ms, now())?,
         until_at: None,
+        anchor,
     };
     let options = serde_json::to_string(&options).map_err(|e| e.to_string())?;
     core.store.save_routine(&r, &options)?;
@@ -91,7 +171,7 @@ pub async fn delete_routine(
 }
 
 /// Instruction appended to every prompt so a plain-language request can schedule a routine.
-pub const HINT: &str = "If the user asks for something to be repeated on a schedule (for example every 30 minutes, daily or weekly, optionally until a date), do the first run now and add `<lumen-routine every=\"30m\" until=\"YYYY-MM-DD\">task to repeat, without the schedule</lumen-routine>` to your final reply; `every` uses m, h, d or w (15m to 30d) and `until` is optional. Lumen then repeats the task in this conversation. Never add it unless the user asked for repetition.";
+pub const HINT: &str = "If the user asks for something to be repeated on a schedule (for example every 30 minutes, every day at 9, every Monday, optionally until a date), do the first run now and add `<lumen-routine every=\"30m\" until=\"YYYY-MM-DD\">task to repeat, without the schedule</lumen-routine>` to your final reply. `every` is an interval with m, h, d or w (15m to 30d), a weekday such as `mon`, or a time such as `09:00` for daily; add `at=\"HH:MM\"` (local time) to a weekday or `1d`. `until` is optional. Lumen then repeats the task in this conversation. Never add it unless the user asked for repetition.";
 
 /// Creates at most one routine from a `<lumen-routine>` tag in a successful reply.
 pub(crate) fn capture(
@@ -100,23 +180,26 @@ pub(crate) fn capture(
     reply: &mut String,
     options: &RunOptions,
 ) -> Result<Option<Routine>, String> {
-    let re = regex::Regex::new(
-        r#"(?s)<lumen-routine\s+every="([^"]+)"(?:\s+until="(\d{4}-\d{2}-\d{2})")?\s*>(.*?)</lumen-routine>
-?"#,
-    )
-    .unwrap();
+    let re = regex::Regex::new(r#"(?s)<lumen-routine\s([^>]*)>(.*?)</lumen-routine>\n?"#).unwrap();
+    let attr = |attrs: &str, name: &str| {
+        regex::Regex::new(&format!(r#"\b{name}="([^"]*)""#))
+            .unwrap()
+            .captures(attrs)
+            .map(|c| c[1].to_owned())
+    };
     let Some(c) = re.captures(reply).map(|c| {
         (
-            c[1].to_owned(),
-            c.get(2).map(|m| m.as_str().to_owned()),
-            c[3].trim().to_owned(),
+            attr(&c[1], "every"),
+            attr(&c[1], "at"),
+            attr(&c[1], "until"),
+            c[2].trim().to_owned(),
         )
     }) else {
         return Ok(None);
     };
     *reply = re.replace_all(reply, "").trim_end().to_owned();
-    let (every, until, text) = c;
-    let every_ms = parse_every(&every)?;
+    let (every, at, until, text) = c;
+    let (every_ms, anchor) = schedule(&every.ok_or("The routine has no schedule")?, at.as_deref())?;
     let until_at = until
         .map(|d| {
             chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d")
@@ -149,8 +232,9 @@ pub(crate) fn capture(
         session: session.into(),
         text,
         every_ms,
-        next_at: start + every_ms,
+        next_at: first_run(anchor.as_deref(), every_ms, start)?,
         until_at,
+        anchor,
     };
     let mut options = options.clone();
     options.attachments.clear();
@@ -171,9 +255,15 @@ pub(crate) fn due(core: &Core, at: i64) -> Vec<(Routine, String)> {
             continue;
         }
         // Skip missed runs (PC asleep) rather than firing a burst.
-        while r.next_at <= at {
-            r.next_at += r.every_ms;
-        }
+        r.next_at = match r.anchor.as_deref().and_then(|a| next_anchor(a, at)) {
+            Some(next) => next,
+            None => {
+                while r.next_at <= at {
+                    r.next_at += r.every_ms;
+                }
+                r.next_at
+            }
+        };
         if r.until_at.is_some_and(|u| at > u) {
             let _ = core.store.delete_routine(&r.id);
             continue;
@@ -217,6 +307,39 @@ pub(crate) fn start(app: crate::host::EventHub, core: &Arc<Core>) {
 mod tests {
     use super::*;
     #[test]
+    fn weekday_and_time_anchors_follow_local_clock() {
+        use chrono::{Datelike, Local, TimeZone, Timelike};
+        assert_eq!(
+            schedule("lunedì", Some("9:30")).unwrap(),
+            (7 * 86_400_000, Some("mon@09:30".into()))
+        );
+        assert_eq!(
+            schedule("08:00", None).unwrap(),
+            (86_400_000, Some("@08:00".into()))
+        );
+        assert_eq!(
+            schedule("1d", Some("07:15")).unwrap().1.as_deref(),
+            Some("@07:15")
+        );
+        assert!(schedule("2h", Some("07:15")).is_err());
+        assert!(schedule("mon", Some("25:00")).is_err());
+        let start = now();
+        let next = Local
+            .timestamp_millis_opt(next_anchor("mon@09:30", start).unwrap())
+            .unwrap();
+        assert_eq!(
+            (next.weekday(), next.hour(), next.minute()),
+            (chrono::Weekday::Mon, 9, 30)
+        );
+        assert!(next.timestamp_millis() > start);
+        assert!(next.timestamp_millis() - start <= 7 * 86_400_000);
+        let d = Local
+            .timestamp_millis_opt(next_anchor("@09:30", next.timestamp_millis()).unwrap())
+            .unwrap();
+        assert_eq!((d.weekday(), d.hour()), (chrono::Weekday::Tue, 9));
+    }
+
+    #[test]
     fn intervals_are_bounded() {
         assert_eq!(parse_every("30m").unwrap(), 30 * 60_000);
         assert_eq!(parse_every("1W").unwrap(), 7 * 86_400_000);
@@ -236,6 +359,7 @@ mod tests {
             every_ms: 1000,
             next_at: 1000,
             until_at: Some(9000),
+            anchor: None,
         };
         f.core.store.save_routine(&r, "{}").unwrap();
         assert!(due(&f.core, 999).is_empty());
@@ -277,6 +401,12 @@ mod tests {
         assert!(capture(&f.core, &s.id, &mut plain, &options)
             .unwrap()
             .is_none());
-        assert_eq!(f.core.store.routines().unwrap().len(), 1);
+        let mut weekly =
+            r#"<lumen-routine every="mon" at="09:00">Summarize TODOs</lumen-routine>"#.to_owned();
+        let w = capture(&f.core, &s.id, &mut weekly, &options)
+            .unwrap()
+            .unwrap();
+        assert_eq!(w.anchor.as_deref(), Some("mon@09:00"));
+        assert_eq!(f.core.store.routines().unwrap().len(), 2);
     }
 }
