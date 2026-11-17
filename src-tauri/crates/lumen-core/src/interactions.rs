@@ -30,6 +30,100 @@ pub struct OptionItem {
     pub description: String,
 }
 pub type Answers = HashMap<String, Vec<String>>;
+
+tokio::task_local! {
+    /// Set for a turn whose run options select Auto: plain clarifying questions are
+    /// answered by Lumen instead of the user. Permission and connector requests never are.
+    pub static AUTO_ANSWER: bool;
+}
+/// Free-text reply Lumen gives in Auto when no option exists.
+pub const ASSUMPTION: &str = "The user is not available (Lumen Auto). Proceed with the most reasonable assumption consistent with LUMEN.md, the code and the task; state the assumption in your answer. Ask the user only before a destructive or external action.";
+fn validate(questions: &[Question]) -> Result<(), String> {
+    if questions.is_empty()
+        || questions.len() > 32
+        || questions
+            .iter()
+            .any(|q| q.id.is_empty() || q.question.is_empty())
+        || questions
+            .iter()
+            .map(|q| &q.id)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != questions.len()
+    {
+        return Err("The CLI sent an invalid question".into());
+    }
+    Ok(())
+}
+fn safe(text: &str) -> bool {
+    crate::autonomy::command(text).0 == crate::autonomy::Class::Reversible
+}
+/// Deterministic Auto answers: the recommended (or first) safe option, or [`ASSUMPTION`].
+/// `None` escalates to the user: secret input, or a question/option whose text names a
+/// risky or external action.
+pub fn auto_answers(questions: &[Question]) -> Option<(Answers, Vec<(String, String)>)> {
+    let mut answers = Answers::new();
+    let mut made = vec![];
+    for q in questions {
+        if q.secret || !safe(&q.question) {
+            return None;
+        }
+        let answer = if q.options.is_empty() {
+            ASSUMPTION.to_string()
+        } else {
+            let options: Vec<_> = q
+                .options
+                .iter()
+                .filter(|o| safe(&format!("{} {}", o.label, o.description)))
+                .collect();
+            options
+                .iter()
+                .find(|o| o.label.to_lowercase().contains("recommended"))
+                .or(options.first())?
+                .label
+                .clone()
+        };
+        made.push((q.question.clone(), answer.clone()));
+        answers.insert(q.id.clone(), vec![answer]);
+    }
+    Some((answers, made))
+}
+/// The "Assumptions Lumen made" section for a finished Auto reply, if any.
+pub fn assumptions_section(activity: &[Activity]) -> Option<String> {
+    let items: Vec<String> = activity
+        .iter()
+        .filter(|a| a.kind == "assumption")
+        .filter_map(|a| serde_json::from_str::<serde_json::Value>(&a.text).ok())
+        .flat_map(|v| v["items"].as_array().cloned().unwrap_or_default())
+        .map(|i| {
+            let answer = i["answer"].as_str().unwrap_or_default();
+            let answer = if answer == ASSUMPTION {
+                "no answer given; the agent chose a reasonable default"
+            } else {
+                answer
+            };
+            format!(
+                "- {} → {}",
+                i["question"].as_str().unwrap_or_default(),
+                answer
+            )
+        })
+        .collect();
+    (!items.is_empty()).then(|| {
+        format!(
+            "
+
+### Assumptions Lumen made
+{}
+
+Reply to correct any of them.",
+            items.join(
+                "
+"
+            )
+        )
+    })
+}
 pub fn answer_context(activity: &[Activity]) -> Vec<String> {
     let mut facts = vec![];
     for result in activity
@@ -92,17 +186,45 @@ fn pending() -> &'static Mutex<HashMap<String, Pending>> {
 pub struct Connection {
     owner: String,
     completed: Arc<Mutex<Vec<Activity>>>,
+    auto: bool,
 }
 impl Default for Connection {
     fn default() -> Self {
         Self {
             owner: uuid::Uuid::new_v4().to_string(),
             completed: Default::default(),
+            auto: AUTO_ANSWER.try_with(|a| *a).unwrap_or(false),
         }
     }
 }
 impl Connection {
     pub fn ask(
+        &self,
+        questions: Vec<Question>,
+        wire: String,
+    ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
+        validate(&questions)?;
+        if self.auto {
+            if let Some((answers, made)) = auto_answers(&questions) {
+                let (reply, receive) = oneshot::channel();
+                let _ = reply.send(answers);
+                let items: Vec<_> = made
+                    .into_iter()
+                    .map(|(question, answer)| serde_json::json!({"question":question,"answer":answer}))
+                    .collect();
+                return Ok((
+                    Activity {
+                        kind: "assumption".into(),
+                        text: serde_json::json!({ "items": items }).to_string(),
+                    },
+                    receive,
+                ));
+            }
+        }
+        self.ask_inner(questions, wire, None)
+    }
+    /// Always waits for the user, even in Auto (consent-style questions).
+    pub fn ask_user(
         &self,
         questions: Vec<Question>,
         wire: String,
@@ -114,7 +236,7 @@ impl Connection {
         questions: Vec<Question>,
         wire: String,
     ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
-        let (mut activity, receive) = self.ask(questions, wire)?;
+        let (mut activity, receive) = self.ask_inner(questions, wire, None)?;
         let mut value: serde_json::Value =
             serde_json::from_str(&activity.text).map_err(|_| "Invalid permission request")?;
         if let Some(request) = pending()
@@ -141,20 +263,7 @@ impl Connection {
         wire: String,
         connector: Option<crate::connectors::Request>,
     ) -> Result<(Activity, oneshot::Receiver<Answers>), String> {
-        if questions.is_empty()
-            || questions.len() > 32
-            || questions
-                .iter()
-                .any(|q| q.id.is_empty() || q.question.is_empty())
-            || questions
-                .iter()
-                .map(|q| &q.id)
-                .collect::<std::collections::HashSet<_>>()
-                .len()
-                != questions.len()
-        {
-            return Err("The CLI sent an invalid question".into());
-        }
+        validate(&questions)?;
         let id = uuid::Uuid::new_v4().to_string();
         let (reply, receive) = oneshot::channel();
         let mut description = serde_json::json!({"id":id,"questions":questions});
@@ -400,5 +509,76 @@ mod tests {
             "permission"
         );
         assert!(answer_context(&activity).is_empty());
+    }
+
+    fn q(id: &str, text: &str, options: &[&str]) -> Question {
+        Question {
+            id: id.into(),
+            header: "H".into(),
+            question: text.into(),
+            options: options
+                .iter()
+                .map(|l| OptionItem {
+                    label: (*l).into(),
+                    description: String::new(),
+                })
+                .collect(),
+            multi_select: false,
+            secret: false,
+            optional: false,
+        }
+    }
+
+    #[test]
+    fn auto_answers_are_deterministic_and_conservative() {
+        let (answers, made) = auto_answers(&[
+            q("a", "Which style?", &["Tabs", "Spaces (Recommended)"]),
+            q("b", "Which runner?", &["Vitest", "Jest"]),
+            q("c", "Anything else?", &[]),
+        ])
+        .unwrap();
+        assert_eq!(answers["a"], ["Spaces (Recommended)"]);
+        assert_eq!(answers["b"], ["Vitest"]);
+        assert_eq!(answers["c"], [ASSUMPTION]);
+        assert_eq!(made.len(), 3);
+        // A risky option is never chosen; a risky question or a secret goes to the user.
+        let (answers, _) =
+            auto_answers(&[q("a", "Clean up?", &["git reset --hard", "Keep changes"])]).unwrap();
+        assert_eq!(answers["a"], ["Keep changes"]);
+        assert!(auto_answers(&[q("a", "Run rm -rf build?", &["Yes", "No"])]).is_none());
+        assert!(auto_answers(&[q("a", "Push?", &["git push --force"])]).is_none());
+        let mut secret = q("a", "Token?", &[]);
+        secret.secret = true;
+        assert!(auto_answers(&[secret]).is_none());
+    }
+
+    #[tokio::test]
+    async fn auto_mode_answers_questions_but_never_permissions() {
+        let questions = vec![q(
+            "switch",
+            "Continue with another model?",
+            &["Continue", "Stop"],
+        )];
+        // Outside Auto the question waits for the user, unchanged.
+        let c = Connection::default();
+        let (a, _rx) = c.ask(questions.clone(), "manual".into()).unwrap();
+        assert_eq!(a.kind, "interaction");
+        AUTO_ANSWER
+            .scope(true, async {
+                let c = Connection::default();
+                let (a, rx) = c.ask(questions.clone(), "auto".into()).unwrap();
+                assert_eq!(a.kind, "assumption");
+                assert_eq!(rx.await.unwrap()["switch"], ["Continue"]);
+                let section = assumptions_section(&[a]).unwrap();
+                assert!(section.contains("Assumptions Lumen made"));
+                assert!(section.contains("Continue with another model? → Continue"));
+                let (a, _rx) = c.ask_permission(questions.clone(), "perm".into()).unwrap();
+                assert_eq!(a.kind, "interaction");
+                assert!(a.text.contains("\"permission\""));
+                let (a, _rx) = c.ask_user(questions.clone(), "consent".into()).unwrap();
+                assert_eq!(a.kind, "interaction");
+                assert!(c.ask(vec![], "bad".into()).is_err());
+            })
+            .await;
     }
 }
