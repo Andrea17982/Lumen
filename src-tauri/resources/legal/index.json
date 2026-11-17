@@ -1,5 +1,22 @@
 {
   "scope": "Dependencies added for Lumen 0.8 MCP HTTP and 0.9 official API/keychain adapters; original upstream notices, not a full-stack license audit.",
+  "adaptations": [
+    {
+      "name": "T3 Code command receipts",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 T3 Tools Inc.",
+      "source": "https://github.com/pingdotgg/t3code",
+      "commit": "375343aaf35133f659435554cd01634bab333a7d",
+      "changes": "t3code/ADAPTATIONS.md",
+      "files": [
+        {
+          "original": "LICENSE",
+          "path": "t3code/LICENSE.txt",
+          "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+        }
+      ]
+    }
+  ],
   "packages": [
     {
       "crate": "aws-lc-rs",
