@@ -35,6 +35,18 @@ try {
         throw new Error(
           JSON.stringify((await h.invoke('get_messages', { id: session.id })).at(-1)),
         );
+      // A manual account choice asks before moving to another provider; the fixture accepts.
+      const pending = await h.invoke('pending_questions');
+      for (const item of (await h.invoke('get_messages', { id: session.id })).at(-1)?.activity ??
+        []) {
+        const question = item.kind === 'interaction' && JSON.parse(item.text);
+        if (
+          question &&
+          pending.includes(question.id) &&
+          question.questions.every((q) => q.id === 'switch')
+        )
+          await h.invoke('answer_question', { id: question.id, answers: { switch: ['Continue'] } });
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error('Offline turn did not finish');
