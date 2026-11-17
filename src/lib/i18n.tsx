@@ -410,6 +410,14 @@ const it: Record<string, string> = {
   'Sending…': 'Invio in corso…',
   'Delivery not confirmed': 'Invio non confermato',
   'Remembered in LUMEN.md': 'Ricordato in LUMEN.md',
+  'Recurring tasks': 'Attività ricorrenti',
+  'Next run': 'Prossima esecuzione',
+  Every: 'Ogni',
+  'Stop recurring task': 'Ferma attività ricorrente',
+  'Start the conversation first, then add a recurring task to it.':
+    'Avvia prima la conversazione, poi aggiungi un’attività ricorrente.',
+  'Use /every <interval> <task>, for example /every 1d check for outdated dependencies.':
+    'Usa /every <intervallo> <attività>, per esempio /every 1d controlla le dipendenze obsolete.',
   'Draft restored in this conversation.': 'Bozza ripristinata in questa conversazione.',
   'Check message delivery': 'Verifica invio del messaggio',
   'Wait for message delivery before deleting this conversation.':

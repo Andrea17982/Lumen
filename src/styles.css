@@ -4171,3 +4171,25 @@ footer.about .version {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.routines {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--muted);
+}
+.routines li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+.routines span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

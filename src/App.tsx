@@ -1,3 +1,4 @@
+import Routines from './components/Routines';
 import Select from './components/Select';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
@@ -77,6 +78,7 @@ interface Submission {
 }
 
 export default function App() {
+  const [routineVersion, setRoutineVersion] = useState(0);
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -797,6 +799,33 @@ export default function App() {
     if (running) {
       if (!override && /^\/(compact|workspace)(?:\s|$)/i.test(text))
         setError(t('Wait for the current response to finish before using this command.'));
+      return;
+    }
+    const routine = !override && /^\/every(?:\s+(\S+))?(?:\s+([\s\S]+))?$/i.exec(text);
+    if (routine) {
+      if (!session) {
+        setError(t('Start the conversation first, then add a recurring task to it.'));
+        return;
+      }
+      if (!routine[1] || !routine[2]) {
+        setError(
+          t('Use /every <interval> <task>, for example /every 1d check for outdated dependencies.'),
+        );
+        return;
+      }
+      try {
+        await call('create_routine', {
+          id: session.id,
+          text: routine[2],
+          every: routine[1],
+          options: { ...runOptions(), mode, attachments: [] },
+        });
+        composer.clearTextIfUnchanged(composer.key, draft);
+        setRoutineVersion((v) => v + 1);
+        setError('');
+      } catch (e) {
+        setError(errorText(e));
+      }
       return;
     }
     if (!override && text.toLowerCase() === '/workspace') {
@@ -1828,6 +1857,7 @@ export default function App() {
               }}
               maxLength={100000}
             />
+            <Routines session={session?.id} version={routineVersion} onError={setError} />
             <AttachmentList
               paths={attached}
               onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}

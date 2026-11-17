@@ -43,6 +43,48 @@ impl Store {
             rows.collect()
         })
     }
+    pub fn save_routine(&self, r: &crate::routines::Routine, options: &str) -> Result<(), String> {
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO routines VALUES(?1,?2,?3,?4,?5,?6)",
+                params![r.id, r.session, r.text, options, r.every_ms, r.next_at],
+            )
+        })
+        .map(|_| ())
+    }
+    pub fn reschedule_routine(&self, id: &str, next_at: i64) -> Result<(), String> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE routines SET next_at=?2 WHERE id=?1",
+                params![id, next_at],
+            )
+        })
+        .map(|_| ())
+    }
+    pub fn delete_routine(&self, id: &str) -> Result<(), String> {
+        self.with(|c| c.execute("DELETE FROM routines WHERE id=?1", [id]))
+            .map(|_| ())
+    }
+    pub fn routines(&self) -> Result<Vec<(crate::routines::Routine, String)>, String> {
+        self.with(|c| {
+            let mut q = c.prepare(
+                "SELECT id,session,text,options,every_ms,next_at FROM routines ORDER BY next_at",
+            )?;
+            let rows = q.query_map([], |r| {
+                Ok((
+                    crate::routines::Routine {
+                        id: r.get(0)?,
+                        session: r.get(1)?,
+                        text: r.get(2)?,
+                        every_ms: r.get(4)?,
+                        next_at: r.get(5)?,
+                    },
+                    r.get(3)?,
+                ))
+            })?;
+            rows.collect()
+        })
+    }
     pub fn open(path: &Path) -> Result<Self, String> {
         let mut c = Connection::open(path).map_err(|e| e.to_string())?;
         c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")

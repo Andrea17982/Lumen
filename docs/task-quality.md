@@ -19,6 +19,12 @@ Every assistant can save a durable project fact (a decision, convention or prefe
 
 Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Memory is project-only: nothing is written to global memory, and other projects never see it. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
 
+## Recurring tasks
+
+Type `/every <interval> <task>` in an existing conversation, for example `/every 1d check for outdated dependencies and open a summary`. Intervals are `m`, `h`, `d` or `w`, between 15 minutes and 30 days. The task is saved with the current assistant, model and effort choices and appears above the composer; × stops it.
+
+The local daemon sends the task to the same conversation when it is due, also while the window is closed, with the conversation's current permission profile. A run is skipped while that conversation is already busy; runs missed while the computer was off are not replayed in a burst, and the next time is saved before the task starts, so a crash cannot submit it twice. Deleting the conversation deletes its routines. Use Read only or Ask first for unattended work you have not reviewed.
+
 ## Continuity and Auto calibration
 
 Lumen adds a fingerprint for project notes and workspace-scoped backend checks to native-session metadata. A native continuation receives changed notes and the latest result per check label, with source message IDs and bounded details/diagnostics; unchanged context is omitted. At most eight recent labels are projected, with omitted coverage explicit. Removing context invalidates the old evidence rather than implying success. A switch to another account uses the full bounded handoff and this chat's check evidence; it never reuses another account's native session ID. This is per-chat continuity, not shared project-wide conversation history.

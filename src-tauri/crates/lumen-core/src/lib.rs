@@ -33,6 +33,7 @@ mod cursor;
 mod opencode;
 mod opencode_acp;
 mod quota_resume;
+pub mod routines;
 pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<(), String> {
     capability_catalog::serve_stdio(data, workspace, id).await
 }
@@ -1083,6 +1084,9 @@ pub async fn dispatch(
         "get_api_settings" => api::__ipc_get_api_settings(app, core, args).await,
         "save_api_settings" => api::__ipc_save_api_settings(app, core, args).await,
         "save_api_key" => api::__ipc_save_api_key(app, core, args).await,
+        "create_routine" => routines::__ipc_create_routine(app, core, args).await,
+        "list_routines" => routines::__ipc_list_routines(app, core, args).await,
+        "delete_routine" => routines::__ipc_delete_routine(app, core, args).await,
         "resume_at_reset" => quota_resume::__ipc_resume_at_reset(app, core, args).await,
         "add_account" => __ipc_add_account(app, core, args).await,
         "remove_account" => __ipc_remove_account(app, core, args).await,
@@ -1186,6 +1190,7 @@ pub fn open(root: PathBuf, resources: PathBuf, app: host::EventHub) -> Result<Ar
         relay_approvals(app.clone(), keeper);
     }
     orchestra::recover(&core);
+    routines::start(app.clone(), &core);
     quota_resume::restore(app, &core);
     Ok(core)
 }
