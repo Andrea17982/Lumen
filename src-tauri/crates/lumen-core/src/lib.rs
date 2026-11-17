@@ -91,6 +91,7 @@ mod turns;
 mod usage;
 mod validation;
 mod variant_preview;
+mod wire;
 mod workspace;
 mod workstate;
 use models::*;
@@ -376,7 +377,20 @@ fn delete_session(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
 }
 #[crate::command]
 fn get_messages(core: crate::CoreRef<'_>, id: String) -> Result<Vec<serde_json::Value>, String> {
-    core.store.message_snapshots(&id)
+    let mut messages = core.store.message_snapshots(&id)?;
+    wire::project_messages(&mut messages);
+    Ok(messages)
+}
+/// Full text of a tool output or diff that `get_messages` or a live event sent bounded.
+#[crate::command]
+fn activity_detail(
+    core: crate::CoreRef<'_>,
+    id: String,
+    message: String,
+    digest: String,
+) -> Result<String, String> {
+    wire::detail(&core.store.message_snapshots(&id)?, &message, &digest)
+        .ok_or("This output is no longer available; reopen the conversation".into())
 }
 #[crate::command]
 fn list_accounts(core: crate::CoreRef<'_>) -> Result<Vec<Account>, String> {
@@ -1126,6 +1140,7 @@ pub async fn dispatch(
         "reorder_session" => __ipc_reorder_session(app, core, args).await,
         "delete_session" => __ipc_delete_session(app, core, args).await,
         "get_messages" => __ipc_get_messages(app, core, args).await,
+        "activity_detail" => __ipc_activity_detail(app, core, args).await,
         "list_accounts" => __ipc_list_accounts(app, core, args).await,
         "adapter_capabilities" => {
             adapter_contract::__ipc_adapter_capabilities(app, core, args).await

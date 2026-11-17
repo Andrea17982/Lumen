@@ -44,6 +44,7 @@ function Transcript({
     <MessageView
       key={m.id}
       {...props}
+      sessionId={sessionId}
       m={m}
       inLane={inLane}
       latest={m.id === messages.at(-1)?.id}
