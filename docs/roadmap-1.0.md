@@ -1,6 +1,6 @@
 # Roadmap 1.0 — All your agents. One seamless workflow.
 
-Revisione del **16 novembre 2026**, basata sulle decisioni del proprietario raccolte in questa sessione e sulla [chat strategica condivisa](https://chatgpt.com/share/e/6af6d485-2b1c-8335-9a07-2fe523f8a7a4), letta dopo il suo login. Sostituisce la precedente revisione del 13 novembre e le roadmap 0.8/successiva alla 0.8. Questa è l'unica roadmap attiva; la storia pubblicata resta nel [tag v0.8.0](https://github.com/Andrea17982/Lumen/tree/v0.8.0/docs) e nel commit `05f4066`.
+Revisione del **17 novembre 2026**, basata sulle decisioni del proprietario e sulla [chat strategica condivisa](https://chatgpt.com/share/e/6af6d485-2b1c-8335-9a07-2fe523f8a7a4). È l'unica roadmap attiva.
 
 Il blueprint condiviso è una proposta, non un elenco di funzionalità già disponibili. Le decisioni esplicite qui sotto prevalgono sui suoi esempi: Gemini CLI resta ritirata, non si introducono benchmark live né promesse di calendario. Lumen è sviluppato principalmente dal proprietario con assistenza AI; ogni milestone si chiude sui criteri di uscita, non su una data.
 
@@ -48,30 +48,14 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 
 ## Milestone e criteri di uscita
 
-### 0.9 — Compatibilità e accessi ufficiali
+### Completate
 
-**Completata il 16 novembre: gate funzionali e pacchetti Windows 0.9.0 verificati.** [Changelog e limiti](release-notes/0.9.0.md) · [Prove](data/compatibility-0.9.json) · [Matrice delle integrazioni](integrations.md).
-
-- Contratto versionato per nove adapter: capacità, eventi normalizzati, permessi, errori, uso/costi e fallback, con motivazioni visibili per ciò che manca.
-- Corpus offline comune passato per Claude Code, Codex, Antigravity e OpenCode: strumenti, permessi, errori/quota, cancellazione e continuità nei rispettivi harness. OpenCode usa ACP ufficiale e policy di sessione verificate prima del prompt; test separati sul runtime installato confermano restrizioni, approvazioni reali, MCP e ripresa senza effetti duplicati.
-- API Anthropic/OpenAI/Google implementate con keychain, strumenti comuni, quattro profili, Stop, uso/stime di costo, opt-in Auto e prenotazioni persistenti/concorrenziali del budget prima di ogni richiesta.
-- Audit di connettori, hook/comandi/mods, trasporti legacy, OAuth/helper e filtri nativi aggiornato. Le capacità proprietarie non portabili restano limiti dichiarati, senza copia di credenziali o falsa equivalenza. Cursor mantiene Autopilot esplicito; le API sono bufferizzate e non worker Orchestra. Questi limiti non sono presentati come parità nativa completata.
-
-**Uscita verificata:** 225 test Rust, 73 frontend, 44 browser e dodici suite native; controllo separato OpenCode 2.2.7 con modello locale deterministico. Le prove API usano keychain/IPC/SQLite reali e fixture HTTP: non certificano chiavi, credito o qualità di account reali. Nessuna inferenza a pagamento o nuovo benchmark live. Packaging e limiti di distribuzione sono registrati nella [validazione](validation.md).
-
-### 0.10 — Core e daemon locale
-
-**Completata il 16 novembre:** core separato, daemon locale autenticato, recupero e pacchetti verificati. [Changelog](release-notes/0.10.0.md) - [Prove](data/local-service-0.10.json) - [Avvio, arresto e aggiornamento](local-service.md).
-
-Separare `lumen-core` dalla GUI: storage, account, esecuzione, routing, permessi e Moli. `lumen-daemon` possiede processi, sessioni e coda; Tauri diventa un client locale autenticato. Il daemon sostituisce la continuità affidata alla tray, si avvia con l'utente e prepara il remoto senza esporre ancora la rete.
-
-Recupero dopo crash con identità dei processi verificata, stato persistito e Resume esplicito quando non è sicuro continuare. Le attese di quota non consumano uno slot di inferenza; la politica di ripresa resta visibile e cancellabile.
-
-**Uscita:** chiudere/riaprire la GUI durante turno, Orchestra o domanda nativa non perde eventi e non duplica lavoro; crash e aggiornamento hanno una procedura verificata; migrazione dei dati 0.8 transazionale; suite precedenti senza regressioni.
+- **0.9 — Compatibilità e accessi ufficiali.** Contratto versionato per nove adapter; corpus offline comune per Claude Code, Codex, Antigravity e OpenCode (ACP ufficiale); API Anthropic/OpenAI/Google con keychain, strumenti comuni, quattro profili e budget prenotati. Limiti dichiarati nella [matrice delle integrazioni](integrations.md).
+- **0.10 — Core e daemon locale.** `lumen-core` separato dalla GUI; `lumen-daemon` autenticato possiede processi, sessioni e coda; recupero dopo crash senza reinvio silenzioso; ricevute dei comandi. Nella stessa versione sono arrivati i primi tasselli della 0.11 (sotto). [Changelog](release-notes/0.10.0.md) · [Servizio locale](local-service.md).
 
 ### 0.11 — Contesto e collaborazione affidabile
 
-**In corso (17 novembre):** primo tassello della memoria di progetto automatica: ogni agente salva fatti durevoli con `<lumen-remember>`, datati in `LUMEN.md` sotto `## Lumen memory`, ispezionabili e cancellabili. La memoria globale (`shared/MEMORY.md`) si scrive solo dopo conferma dell'utente. Ogni fatto riporta data e chat di origine; `LUMEN.md` e `MEMORY.md` sono Markdown leggibili e fungono da esportazione. [Dettagli](task-quality.md#project-memory). Aggiunte anche le attività ricorrenti `/every`, eseguite dal daemon ([dettagli](task-quality.md#recurring-tasks)) e le ricette salvate come skill condivise ([dettagli](task-quality.md#recipes)). L'handoff automatico (Compact) ora riporta obiettivo, vincoli, decisioni, fatto/da fare, controlli, file e stato Git, incertezze, e dichiara che la memoria privata dell'agente precedente non viene trasferita. Auto sceglie già con regole deterministiche fra Single, Review e Orchestra (parallelo); Orchestra ha ora anche un limite di tempo per esecuzione, oltre a concorrenza, totale sotto-compiti, quote e budget API. Il risultato unico termina con un riepilogo scritto da Lumen (sotto-compiti fatti/falliti/non eseguiti, esito dell'audit, controlli non eseguiti).
+**Stato:** consegnati nella 0.10 memoria di progetto automatica in `LUMEN.md` e memoria globale con conferma (`shared/MEMORY.md`), entrambe con data e chat di origine e leggibili come Markdown; handoff verificabile; scelta deterministica fra Single, Review e Orchestra con limiti di tempo, concorrenza, totale sotto-compiti, quote e budget API; risultato unico che termina con il riepilogo scritto da Lumen. In più: attività ricorrenti e ricette ([dettagli](task-quality.md#project-memory)). Restano la modalità Collaborative, il corpus di handoff fra i quattro agenti e le API, e la ricerca sul grafo.
 
 - Context Engine strutturato a tre livelli: sessione, progetto, globale. Decisioni di progetto salvate automaticamente con fonti; passaggio alla memoria globale solo dopo conferma. Ispezione, correzione, cancellazione ed esportazione leggibile, per esempio `LUMEN.md`.
 - Handoff verificabile: obiettivo, vincoli, decisioni, file rilevanti, stato Git, lavoro svolto/mancante e incertezze. Non fingere di trasferire la memoria privata dell'agente precedente.
@@ -113,7 +97,7 @@ Connessione in LAN o tramite VPN dell'utente; pairing con conferma sul desktop. 
 
 Misurare su corpus e harness riproducibili: task completati correttamente senza interventi manuali superflui; decisioni/vincoli conservati nei passaggi di agente; recupero da crash, quota e riconnessione; correttezza di verifiche e artefatti; passaggi manuali dell'onboarding; latenza/risorse nelle conversazioni lunghe sullo stesso hardware.
 
-Le misure storiche della 0.8 sono baseline dei loro carichi, non promesse nuove. Non si fissano percentuali di miglioramento o limiti economici universali prima dei dati e delle impostazioni dell'utente.
+Non si fissano percentuali di miglioramento o limiti economici universali prima dei dati e delle impostazioni dell'utente.
 
 ## Dopo la 1.0 — backlog 1.x
 

@@ -6,7 +6,7 @@ Download from [GitHub Releases](https://github.com/Andrea17982/Lumen/releases/la
 
 Install the official CLI for each subscription provider you want to use, or start Ollama with an installed local model. Restart Lumen after changing PATH. You need your own authorized provider access and a trusted project directory. [Account setup](accounts.md).
 
-The 0.9 implementation adds OpenCode through official ACP with session-scoped permissions, Cursor CLI with explicit Autopilot selection, and the three official API adapters. Native profiles/policies remain in control; [API accounts](api-access.md) require their own key, confirmed model rates and budget. [Current adapter limits](integrations.md).
+Supported agents include OpenCode through official ACP with session-scoped permissions, Cursor CLI with explicit Autopilot selection, and the three official API adapters. Native profiles/policies remain in control; [API accounts](api-access.md) require their own key, confirmed model rates and budget. [Current adapter limits](integrations.md).
 
 ## First conversation
 

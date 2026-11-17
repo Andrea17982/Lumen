@@ -1565,8 +1565,9 @@ fn assemble_prompt(
         format!("{SKILLS_OPEN}{shared}{SKILLS_CLOSE}")
     };
     format!(
-        "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {} {permission}\n\n{context_text}{attached}{audit}",
-        format!("{} {}", context::MEMORY_HINT, crate::routines::HINT)
+        "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {} {} {permission}\n\n{context_text}{attached}{audit}",
+        context::MEMORY_HINT,
+        crate::routines::HINT
     )
 }
 

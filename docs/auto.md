@@ -48,8 +48,8 @@ Project `LUMEN.md`, attachments, durable task state and relevant skills/graph co
 
 [Features](features.md) · [Accounts](accounts.md) · [Task quality](task-quality.md) · [Validation](validation.md)
 
-## Continuation and quota reset (0.8.1)
+## Continuation and quota reset
 
 `Prosegui.` retains the previous task's class, including manual and legacy model choices, instead of being rated as an easy new request. Unrelated new tasks reset that inheritance. Auto requests consent before using an available model below the retained class. OpenCode and Cursor are currently selected explicitly; they are excluded from automatic selection/fallback.
 
-After an eligible quota interruption, choose **Resume at estimated quota reset** on the latest reply. This schedules one native continuation with the same account/model/permissions and preserves already observed effects. It can be cancelled, occupies no inference slot while waiting, and requires Lumen to remain open or in the tray. A missing native session stops without replay. After a restart, schedule again or resume manually. See [release scope and evidence](release-notes/0.8.1.md).
+After an eligible quota interruption, choose **Resume at estimated quota reset** on the latest reply. This schedules one native continuation with the same account/model/permissions and preserves already observed effects. It can be cancelled, occupies no inference slot while waiting and is kept by the local service, so it survives closing the window and service restarts. A missing native session stops without replay.

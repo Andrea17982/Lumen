@@ -46,9 +46,6 @@ pub fn secret() -> regex::Regex {
     .unwrap()
 }
 
-/// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
-/// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
-
 /// `_(2026-11-17, from “chat title”)_`: when and where a memory fact came from.
 pub fn stamp(now_secs: i64, source: &str) -> String {
     let date = chrono::DateTime::from_timestamp(now_secs, 0)
@@ -69,6 +66,8 @@ pub fn stamp(now_secs: i64, source: &str) -> String {
     }
 }
 
+/// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
+/// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
 pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64, source: &str) -> Vec<String> {
     let re = regex::Regex::new(r"(?s)<lumen-remember>(.*?)</lumen-remember>\n?").unwrap();
     let facts: Vec<String> = re

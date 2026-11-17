@@ -39,11 +39,11 @@ Lumen uses the approved satin-glass lm logo, restrained Liquid Glass, system typ
 
 ## Direction to 1.0
 
-Revised with the owner's decisions on 16 November 2026: [roadmap 1.0](docs/roadmap-1.0.md). Reliability and intelligent collaboration take priority over breadth. Complexity belongs in the architecture, not in the interface.
+See the [1.0 roadmap](docs/roadmap-1.0.md). Reliability and intelligent collaboration take priority over breadth. Complexity belongs in the architecture, not in the interface.
 
 - Guaranteed fundamental flows for Claude Code, Codex, Antigravity and OpenCode. Cursor/Ollama keep declared support and limits; no universal native-parity claim.
-- All three official API integrations (Anthropic/OpenAI/Google), delivered in 0.9 with OS-keychain storage and retained as a 1.0 requirement. Auto requires explicit API enablement and a mandatory budget.
-- A local daemon owns sessions; automatic project memory and user-confirmed global memory, with inspection, correction, deletion and sources; verifiable handoffs between providers.
+- All three official API integrations (Anthropic/OpenAI/Google) with OS-keychain storage. Auto requires explicit API enablement and a mandatory budget.
+- A local service owns sessions (delivered in 0.10), with automatic project memory and user-confirmed global memory carrying their sources, and verifiable handoffs between providers.
 - Auto may launch review/collaboration within configured limits. High autonomy includes audit log and recovery, with explicit boundaries for irreversible/external actions.
 - Essential remote control as responsive web/PWA over LAN/VPN: chat, new tasks, Stop/Resume and approvals. A dedicated remote security gate remains mandatory. Full mobile workspace, native apps and E2EE relay move after 1.0.
 - Preconfigured profiles, custom installation and in-app updates. Fixtures and native harnesses instead of live benchmarks. No inference proxy or credential harvesting.
@@ -51,6 +51,4 @@ Revised with the owner's decisions on 16 November 2026: [roadmap 1.0](docs/roadm
 
 ## Release scope and evidence
 
-The published 0.8 scope and its accepted limits are in the [changelog](docs/release-notes/0.8.0.md); current evidence and known limits are in [validation](docs/validation.md) and the [integration support matrix](docs/integrations.md). Historical 0.7–0.8 reports remain in the `v0.8.0` tag, not in the working documentation.
-
-The 13 November follow-up removes Gemini CLI, simplifies conversation/settings UI, consolidates dropdowns, replaces the logo, adds project lifecycle actions and fixes quota fallback and Antigravity stream lifetime. Live paid inference and user-observed terminal focus behavior require separate validation; local fixtures do not establish them.
+The current release scope is in the [0.10.0 changelog](docs/release-notes/0.10.0.md); evidence and known limits are in [validation](docs/validation.md) and the [integration support matrix](docs/integrations.md).

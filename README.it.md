@@ -3,24 +3,24 @@
   <h1>Lumen</h1>
   <p><strong>Il tuo spazio di lavoro AI. Sessioni native. Un browser per gli agenti.</strong></p>
   <p>Claude Code · Codex · Antigravity · OpenCode · Cursor · Ollama · API ufficiali</p>
-  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.9.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
+  <p><a href="https://github.com/Andrea17982/Lumen/releases/latest">Scarica la 0.10.0</a> · <a href="docs/README.md">Documentazione</a> · <a href="README.md">English</a></p>
 </div>
 
-![Lumen 0.7 su Windows](docs/images/desktop.png)
+![Lumen su Windows](docs/images/desktop.png)
 
 *Schermata dell'app Windows con dati dimostrativi. Le immagini rappresentano l'interfaccia implementata, non un benchmark dei modelli.*
 
 Lumen riunisce le conversazioni AI sul tuo computer. Scegli provider e modello, continua la sessione nativa e lavora nella cartella corretta. Attiva **Orchestra** quando serve una squadra coordinata. **Moli** gestisce navigazione e ricerca web nelle integrazioni supportate.
 
-Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.9 resta una versione alpha di un progetto indipendente, con limiti espliciti sulle integrazioni e sulle piattaforme verificate.
+Tauri 2, core Rust, React e TypeScript. Interfaccia in italiano e inglese, temi chiaro/scuro, conversazioni locali e autenticazione ufficiale dei provider. La 0.10 resta una versione alpha di un progetto indipendente, con limiti espliciti sulle integrazioni e sulle piattaforme verificate.
 
-## 0.9 — API ufficiali e compatibilità degli agenti
+## 0.10 — Servizio locale, memoria e attività ricorrenti
 
-Gli account API OpenAI, Anthropic e Google usano keychain OS, strumenti comuni e budget persistenti basati sulle stime di costo; l’uso a pagamento in Auto richiede un’abilitazione esplicita. OpenCode usa ACP ufficiale, permessi per sessione, Moli/grafo/MCP condivisi e continuazione nativa. “Prosegui.” conserva la difficoltà del task; il recupero da quota mantiene il lavoro parziale. La matrice dichiara i limiti di ogni adapter. Cursor resta una scelta esplicita in Autopilot. [Novità e limiti della 0.9](docs/release-notes/0.9.0.md).
+Il lavoro ora gira in un servizio locale in background: chiudere la finestra non ferma più un turno, una domanda o un'esecuzione Orchestra. Gli assistenti salvano le decisioni di progetto in `LUMEN.md`, propongono preferenze valide per tutti i progetti che confermi tu, ripetono attività su richiesta a parole o con `/every` e salvano le risposte riuscite come ricette. Gli handoff riportano obiettivo, vincoli, lavoro fatto e da fare, controlli e incertezze; Orchestra termina con un risultato scritto da Lumen in base a ciò che ha osservato. [Novità e limiti della 0.10](docs/release-notes/0.10.0.md).
 
 ## Verso la 1.0
 
-La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia collaborazione affidabile fra Claude Code, Codex, Antigravity e OpenCode, con API ufficiali Anthropic/OpenAI/Google. Auto può usare credito API solo dopo abilitazione esplicita e con budget obbligatorio. Il percorso comprende daemon locale, memoria di progetto automatica e globale confermata, handoff verificabili e autonomia recuperabile. Il remoto 1.0 offre chat, nuovi task, Stop/Resume e approvazioni in LAN/VPN; workspace mobile completo e relay E2EE arrivano dopo la 1.0. La compatibilità API/OpenCode è consegnata nella 0.9; daemon, memoria, collaborazione estesa e remoto restano lavori di roadmap.
+La [roadmap 1.0](docs/roadmap-1.0.md) privilegia collaborazione affidabile fra Claude Code, Codex, Antigravity e OpenCode, con API ufficiali Anthropic/OpenAI/Google. Auto può usare credito API solo dopo abilitazione esplicita e con budget obbligatorio. Seguono autonomia recuperabile con audit e rollback, poi il controllo remoto essenziale (chat, nuovi task, Stop/Resume e approvazioni in LAN/VPN). Workspace mobile completo e relay E2EE arrivano dopo la 1.0.
 
 ## Funzioni dell'applicazione
 
@@ -30,9 +30,10 @@ La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia colla
 | Domande native con opzioni, attività e output degli agenti figli. | Inspector, zoom/griglia immagini, JSON/SQLite e canvas dei layout. |
 | Autopilot senza ripetere le approvazioni dei piani già autorizzati. | Merge manuale di Both e confronto delle varianti statiche nei worktree. |
 | Resume nativo Claude/Codex, memoria del lavoro e cambio esplicito della cartella. | Diagnostica, controlli sui progetti interessati e integrazione Godot opzionali. |
-| Continuità tramite area di notifica. | Pacchetti Windows, macOS universale e Linux. |
+| Il lavoro continua nel servizio locale anche a finestra chiusa. | Pacchetti Windows, macOS universale e Linux. |
+| Memoria di progetto, memoria globale confermata, ricette e attività ricorrenti. | Handoff verificabili e risultato del team scritto da Lumen per Orchestra. |
 
-[Changelog 0.8](docs/release-notes/0.8.0.md) · [Guida alle funzioni](docs/features.md) · [Validazione](docs/validation.md). Le misure prestazionali e le versioni precedenti restano nella [cronologia](docs/release-notes/README.md).
+[Changelog 0.10](docs/release-notes/0.10.0.md) · [Guida alle funzioni](docs/features.md) · [Validazione](docs/validation.md).
 
 ## Scegli come lavorare
 
@@ -48,7 +49,7 @@ La [roadmap 1.0 aggiornata il 16 novembre](docs/roadmap-1.0.md) privilegia colla
 
 ## Navigazione con Moli
 
-La build locale 0.9 aggiunge Moli condiviso a OpenCode tramite ACP e alle tre API ufficiali. Cursor conserva il proprio runtime nativo senza questa integrazione. [Matrice di supporto](docs/integrations.md).
+Moli condiviso raggiunge anche OpenCode tramite ACP e le tre API ufficiali. Cursor conserva il proprio runtime nativo senza questa integrazione. [Matrice di supporto](docs/integrations.md).
 
 Moli si avvia quando viene chiamato uno strumento del browser. Offre lettura Markdown, ricerca, navigazione persistente, interazioni DOM e screenshot. I contesti sono separati per conversazione e worker.
 
@@ -72,7 +73,7 @@ Il registro persistente del lavoro conserva requisiti e decisioni attraverso tro
 
 I pacchetti sono in **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
-- **Windows x64:** `Lumen_0.9.0_x64-setup.exe`, oppure `Lumen_0.9.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources` accanto a `Lumen.exe`.
+- **Windows x64:** `Lumen_0.10.0_x64-setup.exe`, oppure `Lumen_0.10.0_x64-portable.zip`. Estrai **tutto** lo ZIP e conserva `resources` e `lumen-daemon.exe` accanto a `Lumen.exe`.
 - **macOS:** DMG universale per Intel e Apple silicon.
 - **Linux x64:** DEB e AppImage, compilati su Ubuntu 24.04.
 
@@ -100,9 +101,7 @@ La build prepara automaticamente Moli con versione e checksum fissati. `npm run 
 
 ## Verifiche e confini
 
-Il candidato 0.8 ha superato **203 test Rust Windows, 72 unitari frontend, 40 browser e 56 scenari nativi Windows**, oltre a formattazione/Clippy e controlli di versioni/documentazione. Gli scenari nativi usano dati isolati e fixture provider/API offline. Un probe separato verifica i metadati MCP con la CLI installata, senza inferenza. CI e controlli degli helper nei pacchetti coprono Windows, macOS e Linux.
-
-Il registro live resta a 13 slot storici, senza nuove inferenze o login per questa chiusura. Restano limiti espliciti sulle prove desktop/accessibilità non Windows, sulla matrice account/versioni e sulla portabilità dei connettori proprietari. Fixture e build non sostituiscono tali verifiche. [Validazione e limiti noti](docs/validation.md) · [Supporto integrazioni](docs/integrations.md) · [Roadmap 1.0](docs/roadmap-1.0.md).
+La 0.10.0 ha superato **239 test Rust, 76 frontend e 44 browser**, Clippy, formattazione e controlli di versioni/documentazione, più suite native Windows che usano la GUI e il servizio locale reali con fixture offline dei provider. Un controllo live con Claude Sonnet ha riconosciuto 6/6 richieste di pianificazione/memoria e 3/3 casi di memoria di progetto o globale. La CI copre Windows, macOS e Linux; solo Windows ha un collaudo desktop interattivo. [Validazione e limiti noti](docs/validation.md) · [Supporto integrazioni](docs/integrations.md) · [Roadmap 1.0](docs/roadmap-1.0.md).
 
 Autopilot concede accesso ampio. Lumen non aggiunge una gabbia OS comune e non cifra internamente il database; usa permessi del sistema e cifratura del disco. Non sostituisce le politiche dei provider. [Sicurezza](SECURITY.md).
 
@@ -115,5 +114,3 @@ Codice, interfaccia, test e documentazione sono **completamente AI Written**, ge
 Licenza MIT. Per il feedback usa le [Issues](https://github.com/Andrea17982/Lumen/issues). Il [sostegno PayPal facoltativo](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) va a **andreanastrobusiness1999@gmail.com** e non sblocca funzioni.
 
 [Documentazione](docs/README.md) · [Roadmap 1.0](docs/roadmap-1.0.md) · [Architettura](docs/architecture.md) · [Contribuire](CONTRIBUTING.md) · [Licenze terze parti](THIRD_PARTY_NOTICES.md)
-
-Release locale Windows del 16 novembre: [0.9.0 — API ufficiali e compatibilità degli adapter](docs/release-notes/0.9.0.md), con keychain/budget API e OpenCode ACP/strumenti condivisi. Cursor mantiene Autopilot esplicito. I pacchetti GitHub usano target CPU portabili.

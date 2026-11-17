@@ -415,7 +415,8 @@ const it: Record<string, string> = {
   'every day at': 'ogni giorno alle',
   'Saved as recipe': 'Salvato come ricetta',
   'Time per run': 'Tempo per esecuzione',
-  'After this, no new subtask starts; running ones finish.': 'Dopo questo tempo non parte nessun nuovo sotto-compito; quelli in corso terminano.',
+  'After this, no new subtask starts; running ones finish.':
+    'Dopo questo tempo non parte nessun nuovo sotto-compito; quelli in corso terminano.',
   'Saved for all projects': 'Salvato per tutti i progetti',
   'Remember for all projects?': 'Ricordare per tutti i progetti?',
   'Ask any assistant to repeat it.': 'Chiedi a qualsiasi assistente di ripeterla.',

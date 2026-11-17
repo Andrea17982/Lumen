@@ -4,7 +4,7 @@ Lumen discovers existing MCP servers, skills and plugin components and makes por
 
 ## What is supported
 
-### Provider capabilities — 0.9
+### Provider capabilities
 
 **Settings → Advanced → Tools → Provider capabilities** reads the versioned Rust contract for all nine adapters. Capabilities describe Lumen’s integration, separately from installation, login, entitlement and model quality. The matrix includes session resume, approvals, native skills, shared tools, usage/cost, cancellation, permission profiles, streaming, image input, subagents, extensions, model selection, fallback and normalized events. Unknown events are retained conservatively; missing tokens/prices are never fabricated.
 

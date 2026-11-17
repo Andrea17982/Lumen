@@ -42,4 +42,4 @@ Rust tests exercise the bundled Moli against local JavaScript/form fixtures, inc
 
 Page content is untrusted input. Search can encounter CAPTCHA, consent pages or unavailable results. Moli does not promise pixel parity with Chromium or complete Canvas/WebGL/media compatibility; use the actual target runtime for game/visual acceptance. Browser performance is not a model-reasoning or end-to-end task-quality guarantee. [Upstream architecture and scope](https://github.com/lexmount/moli#architecture).
 
-The earlier feasibility study, synthetic timings, upstream comparisons and 0.7 build receipts are historical, not current measurements. They remain in the [0.8.0 source snapshot](https://github.com/Andrea17982/Lumen/blob/v0.8.0/docs/moli.md).
+

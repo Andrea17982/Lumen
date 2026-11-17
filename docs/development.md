@@ -38,7 +38,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --lo
 node tests/docs-check.mjs
 ```
 
-The docs check validates local Markdown links/images, the current release notes and version consistency across application manifests. Historical notes remain explicitly historical. Rust tests use real subprocesses, disposable Git projects, local protocol peers and the bundled Moli fixture. Opt-in live tests are excluded from ordinary CI; [Validation](validation.md) distinguishes these scopes.
+The docs check validates local Markdown links/images, the current release notes and version consistency across application manifests. Rust tests use real subprocesses, disposable Git projects, local protocol peers and the bundled Moli fixture. Opt-in live tests are excluded from ordinary CI; [Validation](validation.md) distinguishes these scopes.
 
 ## Native Windows and screenshots
 
@@ -59,9 +59,9 @@ These harnesses produce local evidence for performance or correctness changes. T
 - **Graph correctness:** the import corpus runs in normal Rust tests. `node tests/graph-import-oracles.mjs` checks TypeScript/Node resolution and a tiny Godot GDScript fixture in TEMP (override Godot with `LUMEN_GODOT_EXE`); after a debug build, `node tests/native-graph.mjs` exercises the real graph MCP across edits, rename, restart and deletion.
 - **CLI metadata and turn waiting:** `cargo test --manifest-path src-tauri/Cargo.toml -p lumen-core --lib metadata_windows` runs real Windows Job Object shutdown fixtures. `latency_probe::installed_cli_metadata_latency` is an ignored test selected individually with `LUMEN_CLI_LATENCY_OUTPUT`; it launches installed CLI version/initialize/model-metadata commands only, without login or model turns. Never run all ignored tests to select it. `tests/native-turn-latency.mjs` collects turn-phase attribution with offline CLI fixtures (`LUMEN_LATENCY_EXE` selects a frozen release).
 
-Compare against the same hardware and a frozen baseline; historical 0.7–0.8 protocols and results are in the `v0.8.0` tag.
+Compare against the same hardware and a frozen baseline.
 
-## 0.9 adapter corpus
+## Adapter corpus
 
 After `npm run build`, a debug build and a production preview on port 1420, run `node tests/adapter-corpus.mjs`. It serializes the shared semantic corpus across native protocol-specific harnesses: catalogs, terminal results, permissions, tool-result round trips, partial output, quota, cancellation, continuation, identity/workspace scope and selector layout. The receipt is `.codex/verification/09-adapter-corpus.json`. Its API suite uses fake UUID-owned OS-keychain entries and removes them afterward; no real key or paid endpoint is used.
 
@@ -76,7 +76,7 @@ After the debug build, `node tests/native-cursor.mjs` exercises Cursor catalog/s
 
 `node tests/native-quality.mjs` exercises changed-check delivery, Claude/Claude/GPT handoff isolation, quota precedence and same-provider review with offline CLI fixtures and real Windows IPC/storage. `node tests/quality-projects.mjs` checks the dedicated React/TypeScript and Godot C#/GDScript reference projects against independent compile/runtime oracles. `node tests/quality-preflight.mjs` checks existing native authentication/catalog metadata without inference.
 
-The 1.0 roadmap uses no live quality benchmark. `tests/quality-live.mjs` (`LUMEN_LIVE_QUALITY=1`) is the historical paid 0.8 A/B experiment; its ignored slot ledger must not be deleted to retry, and it must not be run without an explicit new budget. `tests/live-routing-acceptance.mjs` (`LUMEN_LIVE_ROUTING=1`, plus `LUMEN_CONTROLLED_QUOTA=1`) and `tests/native-idle-acceptance.mjs` (`LUMEN_LIVE_IDLE=1`) are the owner-authorized smoke and console-observation runners used on 13 November.
+The 1.0 roadmap uses no live quality benchmark. Live runners are opt-in and use real inference: `tests/live-routine-recognition.mjs` (memory and schedule recognition; `CLAUDE_CONFIG_DIR` selects a Lumen account slot, `CASES` limits the cases), `tests/live-routing-acceptance.mjs` (`LUMEN_LIVE_ROUTING=1`, plus `LUMEN_CONTROLLED_QUOTA=1`) and `tests/native-idle-acceptance.mjs` (`LUMEN_LIVE_IDLE=1`). `tests/quality-live.mjs` must not be run without an explicit new budget.
 
 `tests/live-native-smoke.mjs` requires explicit `LUMEN_LIVE_NATIVE=1`. It uses the owner's existing CLI account directories via temporary junctions without reading/copying credentials, disposable projects and bounded prompts. Normal probes cover questions, writes and native continuation. `LUMEN_LIVE_MOLI=1` covers browser calls/capture; Google print runners do not claim Claude/Codex native continuation. A diagnostic no-image control is available through `LUMEN_LIVE_MOLI_NO_IMAGE=1`.
 
@@ -87,7 +87,7 @@ Protocol changes need metadata from the installed official binary, initialize/sc
 ## Release procedure
 
 1. Synchronize `package.json`, root package-lock entries, the Lumen Cargo package/lock entry and `tauri.conf.json`. Keep dependency versions intact.
-2. Update current docs, release notes and the gallery; remove superseded work diaries, preserve historical changelogs and fix local links.
+2. Update current docs, the release notes for this version and the gallery; remove superseded material (earlier changelogs live in GitHub Releases) and fix local links.
 3. Run local checks and branch CI on Windows/macOS/Linux. Inspect the exact tracked diff and keep account data, artifacts, debug folders and purchased addons out of Git.
 4. Fast-forward the default branch after verification. Create the annotated `v<version>` tag and push it.
 5. The tag workflow builds all platforms, tests clean Windows installation and prepares a **draft** release with the matching Markdown changelog and SHA-256 manifest.
@@ -97,8 +97,8 @@ Protocol changes need metadata from the installed official binary, initialize/sc
 
 Local Windows `npm run build:release` uses release optimization level 3, LTO, one codegen unit, stripping and `target-cpu=native` (including AVX2 when supported). Its binaries require a CPU compatible with the build machine. CI continues to build portable target baselines with `npm run tauri build`; it does not inherit local CPU flags.
 
-## 0.10 service checks
+## Service checks
 
-`prepare-daemon.mjs` builds the headless service before Tauri dev/build and prepares the target-suffixed sidecar, including both architectures for a universal macOS build. Frontend-only builds remain independent of Rust. `daemon-smoke.mjs` exercises authenticated headless startup, exclusivity, framing/version checks, concurrent commands, update refusal/drain, restart and owned process cleanup. `native-daemon.mjs` exercises complete GUI restarts during a turn, native question and Orchestra, persistent quota cancellation, and a hard service crash beside an unrelated process. These use isolated directories and offline fixture protocols. Native harness cleanup stops its own daemon explicitly; closing a fixture GUI alone intentionally leaves it running. See [service operations](local-service.md).
+`prepare-daemon.mjs` builds the headless service before Tauri dev/build and prepares the target-suffixed sidecar, including both architectures for a universal macOS build. Frontend-only builds remain independent of Rust. `daemon-smoke.mjs` exercises authenticated headless startup, exclusivity, framing/version checks, concurrent commands, update refusal/drain, restart and owned process cleanup. `native-daemon.mjs` exercises complete GUI restarts during a turn, native question and Orchestra, persistent quota cancellation, and a hard service crash beside an unrelated process. These use isolated directories and offline fixture protocols. Feature suites (`native-memory-routines.mjs`, `native-quality.mjs`, `native-execution.mjs`) drive the real GUI and daemon in the same isolated way. Native harness cleanup stops its own daemon explicitly; closing a fixture GUI alone intentionally leaves it running. See [service operations](local-service.md).
 
 Cargo defaults to the GUI package so Tauri does not rebuild a second, differently unified daemon after sidecar preparation. Backend checks use `--workspace` (or `-p lumen-core` for one domain probe). The sidecar is built explicitly before the GUI.

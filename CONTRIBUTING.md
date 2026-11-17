@@ -10,6 +10,6 @@ Feedback is useful even without code. Open an [issue](https://github.com/Andrea1
 4. Run [development checks](docs/development.md), including documentation/version/link checks for doc or release changes.
 5. Explain resulting behavior, why it changed, evidence and remaining validation limits. Capture the actual interface with synthetic/private-safe data for UI changes.
 
-Historical release notes stay historical. Current feature/setup guides should describe the shipped product rather than append contradictory version-by-version instructions. Keep one canonical validation record; do not turn lack of live credentials into a fabricated pass.
+Keep only the current release notes in `docs/release-notes`; earlier changelogs live in GitHub Releases. Current feature/setup guides should describe the shipped product rather than append contradictory version-by-version instructions. Keep one canonical validation record; do not turn lack of live credentials into a fabricated pass.
 
 Contributions are MIT licensed. AI-assisted contributions are welcome; disclose the tools/review performed. The initial product is completely AI Written under human direction; later human work must be credited accurately.

@@ -10,18 +10,16 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Auto policy](auto.md) | Classification, model selection, review and quota fallback |
 | [Shared integrations](integrations.md) | MCP, skills and plugin components across providers, consent and current limits |
 | [Moli browser](moli.md) | Automatic browsing, local Ollama tool calling, screenshots and compatibility |
-| [Task quality](task-quality.md) | Durable decisions, diagnostics, checks and graph impact |
+| [Task quality](task-quality.md) | Durable decisions, project and global memory, recipes, recurring tasks, checks and graph impact |
 | [Local service and recovery](local-service.md) | Window/service lifetimes, local authentication, migration and stop-before-update |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, native harnesses and release procedure |
 | [Validation and known limits](validation.md) | What has been verified for the current source and what remains open |
-| [Roadmap 1.0](roadmap-1.0.md) | Single canonical roadmap, revised with owner decisions on 16 November (Italian) |
+| [Roadmap 1.0](roadmap-1.0.md) | Single canonical roadmap (Italian) |
 | [Official API access](api-access.md) | Keychain, confirmed pricing, permissions and reserved budgets |
-| [Release history](release-notes/README.md) | Changelogs and local release evidence |
+| [Release history](release-notes/README.md) | Current changelog; earlier versions on GitHub Releases |
 
 [Design system](../DESIGN.md) · [Product brief](../PRODUCT.md) · [Security](../SECURITY.md) · [Third-party notices](../THIRD_PARTY_NOTICES.md) · [Contributing](../CONTRIBUTING.md)
-
-Historical 0.7–0.8 checkpoint reports, measurement protocols and aggregated results were consolidated into [Validation](validation.md); the originals remain available in the [`v0.8.0` tag](https://github.com/Andrea17982/Lumen/tree/v0.8.0/docs). The [13 November follow-up](followup-acceptance.md) preserves the earlier evidence; [0.8.1](release-notes/0.8.1.md) preserves the intermediate checkpoints and [0.9.0](release-notes/0.9.0.md) records the completed compatibility milestone.
 
 ## Gallery
 

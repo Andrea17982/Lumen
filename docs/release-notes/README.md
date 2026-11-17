@@ -1,20 +1,5 @@
 # Release history
 
-[Current product guide](../features.md) · [Validation](../validation.md) · [Documentation](../README.md)
+- [0.10.0](0.10.0.md) — local service, project and global memory, recurring tasks, recipes and verifiable handoffs.
 
-Historical release notes describe their own versions, not the current capability/status matrix. The 0.8 scope and remaining integration limits are recorded in its release notes; current limits are in [Validation](../validation.md) and planned work in the [1.0 roadmap](../roadmap-1.0.md).
-
-- [0.10.0](0.10.0.md) — core separation, authenticated local daemon and durable recovery (local Windows build)
-- [0.9.0](0.9.0.md) — official API access, reserved budgets and OpenCode ACP compatibility (published on GitHub)
-- [0.8.1](0.8.1.md) — local Windows checkpoint: continuation, quota reset and initial OpenCode/Cursor adapters (not remotely published)
-- [0.8.0](0.8.0.md) — continuity, shared tools, Liquid Glass and explicit integration limits
-- [0.7.1](0.7.1.md) — Performance Update: long chats, supervised metadata shutdown and execution reliability
-- [0.7.0](0.7.0.md) — native sessions, Moli, project workspace and cross-platform packaging
-- [0.6.0](0.6.0.md) — historical release
-- [0.5.4](0.5.4.md) — historical release
-- [0.5.3](0.5.3.md) — historical release
-- [0.5.2](0.5.2.md) — historical release
-- [0.5.1](0.5.1.md) — historical release
-- [0.5.0](0.5.0.md) — historical release
-- [0.4.2](0.4.2.md) — historical release
-- [0.4.0](0.4.0.md) — historical release
+Earlier versions (0.4.0–0.9.0) and their changelogs are on [GitHub Releases](https://github.com/Andrea17982/Lumen/releases) and in their Git tags.

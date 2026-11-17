@@ -32,7 +32,10 @@ try {
   assert(reply, 'turn timed out');
   assert.equal(reply.text, 'Dependencies checked.', JSON.stringify(reply));
   const notes = await readFile(path.join(h.workspace, 'LUMEN.md'), 'utf8');
-  assert.match(notes, /## Lumen memory\n- Use pnpm for installs _\(\d{4}-\d{2}-\d{2}, from “FEATURE_?TAGS[^”]*”\)_/);
+  assert.match(
+    notes,
+    /## Lumen memory\n- Use pnpm for installs _\(\d{4}-\d{2}-\d{2}, from “FEATURE_?TAGS[^”]*”\)_/,
+  );
   const [routine] = await h.invoke('list_routines', { id: chat.id });
   assert.equal(routine.text, "Update this project's dependencies");
   assert.equal(routine.everyMs, 30 * 60_000);
@@ -66,7 +69,10 @@ try {
   await h.page
     .getByText(/(Saved for all projects|Salvato per tutti i progetti): Reply in Italian/)
     .waitFor();
-  assert.match(await readFile(globalFile, 'utf8'), /- Reply in Italian _\(\d{4}-\d{2}-\d{2}, from “FEATURE_?TAGS[^”]*”\)_/);
+  assert.match(
+    await readFile(globalFile, 'utf8'),
+    /- Reply in Italian _\(\d{4}-\d{2}-\d{2}, from “FEATURE_?TAGS[^”]*”\)_/,
+  );
   await assert.rejects(
     h.invoke('remember_global', { id: chat.id, message: reply.id, fact: 'Invented fact' }),
   );

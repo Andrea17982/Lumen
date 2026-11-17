@@ -35,6 +35,10 @@ Projects group conversations independently of their working folders. `/workspace
 
 The durable ledger records source-linked requirements, approved scope, actual permissions/workspace, results and verification. Native resume sends the new request plus changed context; full replay is used only where needed. Local token estimates use a tokenizer and remain distinct from provider reports. Large logs can spill to project-local files, and pasted lockfiles are blocked. [Task continuity](task-quality.md).
 
+## Memory, recipes and recurring tasks
+
+Assistants save durable project facts to `LUMEN.md`, dated and with their source chat. Preferences for all your projects are only proposed; click **Save** under the reply to keep them in global memory. The bookmark under a finished reply saves it as a recipe any assistant can repeat. Ask for repeated work in plain language or with `/every` (`/every 1d …`, `/every 08:00 …`, `/every lunedì 09:00 …`); the local service runs it in the same chat until you stop it with × above the composer or its end date passes. [Details](task-quality.md#project-memory).
+
 ## Browser and images
 
 Moli is bundled and automatically wired into every provider and worker invocation. It supports web retrieval/search, persistent navigation, extraction, click/fill/evaluation and screenshots. It starts on demand and isolates conversation/worker contexts. Read only/File edits reject page mutations; Autopilot proceeds; Ask-first browser mutations get a one-action decision.

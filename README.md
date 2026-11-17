@@ -4,7 +4,7 @@
   <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
   <p>Claude Code · Codex · Antigravity · OpenCode · Cursor · Ollama · Official APIs</p>
   <p>
-    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.9.0</a> ·
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.10.0</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
     <a href="docs/README.md">Documentation</a> ·
     <a href="README.it.md">Italiano</a>
@@ -16,21 +16,21 @@
   </p>
 </div>
 
-![Lumen 0.7 conversation workspace](docs/images/desktop.png)
+![Lumen conversation workspace](docs/images/desktop.png)
 
 *A capture of the Windows application with demonstration data. Screenshots show the implemented interface; they are not claims of live model performance.*
 
 Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across supported integrations.
 
-Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.9 remains an alpha release; supported integrations and platform checks have explicit limits.
+Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.10 remains an alpha release; supported integrations and platform checks have explicit limits.
 
-## 0.9 — Official APIs and adapter compatibility
+## 0.10 — Local service, memory and recurring tasks
 
-OpenAI, Anthropic and Google API accounts use the OS keychain, common tools and durable estimated-cost budgets; paid Auto use requires explicit opt-in. OpenCode now uses official ACP with session-scoped permissions, shared Moli/graph/MCP and native continuation. Task difficulty survives “Prosegui.”, quota recovery preserves partial work, and the capability matrix states each adapter’s limits. Cursor remains explicitly selected in Autopilot. [0.9 changelog and limits](docs/release-notes/0.9.0.md).
+Work now runs in a local background service: closing the window no longer stops a turn, a question or an Orchestra run. Assistants save project decisions to `LUMEN.md`, propose cross-project preferences that you confirm, repeat tasks on a schedule from plain language or `/every`, and save finished replies as recipes. Handoffs list goal, constraints, done and open work, checks and uncertainties; Orchestra ends with a result Lumen writes from what it observed. [0.10 changelog and limits](docs/release-notes/0.10.0.md).
 
 ## Toward 1.0
 
-The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. A local daemon, automatic project memory with approved global memory, verifiable handoffs and recoverable autonomy support that workflow. Remote 1.0 means chat, new tasks, Stop/Resume and approvals over LAN/VPN; the full mobile workspace and E2EE relay follow after 1.0. The API/OpenCode compatibility milestone is delivered in 0.9. The current 0.10 source separates the local daemon; memory, expanded collaboration and remote control remain roadmap work.
+The [1.0 roadmap](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. Next come recoverable autonomy with audit and rollback, then essential remote control (chat, new tasks, Stop/Resume and approvals over LAN/VPN). The full mobile workspace and E2EE relay follow after 1.0.
 
 ## Native workspace features
 
@@ -40,9 +40,10 @@ The [1.0 roadmap revised on 16 November](docs/roadmap-1.0.md) prioritizes reliab
 | Native questions, choices, child-agent output and real-time activity. | Project inspector, image zoom/grid, JSON/SQLite inspection and layout canvas. |
 | Autopilot proceeds without repeated Lumen planning approvals. | Manual Both merges and side-by-side static worktree previews. |
 | Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
-| Work continues when you close to the notification area. | Windows, universal macOS and Linux packages. |
+| Work continues in the local service after you close the window. | Windows, universal macOS and Linux packages. |
+| Project memory, confirmed global memory, recipes and recurring tasks. | Verifiable handoffs and a Lumen-written team result for Orchestra. |
 
-Read the [0.9 changelog](docs/release-notes/0.9.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md). The [release history](docs/release-notes/README.md) retains earlier performance and native-session results.
+Read the [0.10 changelog](docs/release-notes/0.10.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md).
 
 ## Choose how to work
 
@@ -60,7 +61,7 @@ Read the [0.9 changelog](docs/release-notes/0.9.0.md), [feature guide](docs/feat
 
 ## One browser across providers
 
-The local 0.9 release adds shared Moli tools to OpenCode through ACP and to the three official API adapters. Cursor retains its own native tools without this bridge. [Support matrix](docs/integrations.md).
+Shared Moli tools also reach OpenCode through ACP and the three official API adapters. Cursor retains its own native tools without this bridge. [Support matrix](docs/integrations.md).
 
 Moli starts only when a browser tool is needed. It provides Markdown retrieval, search, persistent navigation, DOM interaction and screenshots through Lumen's shared browser service. Conversation/worker contexts are isolated; native authentication remains with each provider.
 
@@ -82,12 +83,12 @@ Context estimates use a local tokenizer; provider-reported usage remains distinc
 
 ## Download and start
 
-Get **[Lumen 0.8.0 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
+Get **[Lumen 0.10.0 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| Windows x64 | `Lumen_0.9.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.9.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` beside `Lumen.exe`. The next 0.10 package also requires `lumen-daemon.exe`. |
+| Windows x64 | `Lumen_0.10.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
+| Windows x64 portable | `Lumen_0.10.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` and `lumen-daemon.exe` beside `Lumen.exe`. |
 | macOS | Universal `.dmg` | Intel and Apple silicon. |
 | Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
 
@@ -116,9 +117,7 @@ The build prepares the pinned, checksum-verified Moli binary and license notices
 
 ## What has been checked
 
-The 0.8 candidate passed **203 Rust Windows tests, 72 frontend unit tests, 40 browser tests and 56 native Windows scenarios**, plus formatting/Clippy and version/documentation checks. The native scenarios use isolated offline provider/API fixtures. Installed-CLI MCP metadata interoperability is checked separately without inference. CI and package helper checks cover Windows, macOS and Linux.
-
-The live ledger remains 13 historical slots, with no additional inference or login for this release closure. Real non-Windows desktop/accessibility checks, the broader account/version matrix and proprietary connector portability remain explicit limits. Fixtures and builds are distinct from those checks. See [validation and known limits](docs/validation.md), [integration support](docs/integrations.md) and the [1.0 roadmap](docs/roadmap-1.0.md).
+0.10.0 passed **239 Rust, 76 frontend and 44 browser tests**, Clippy, formatting and documentation/version checks, plus native Windows suites that drive the real GUI and local service with offline provider fixtures. A live check with Claude Sonnet recognized 6/6 schedule/memory requests and 3/3 project-versus-global memory cases. CI covers Windows, macOS and Linux; only Windows has interactive desktop acceptance. See [validation and known limits](docs/validation.md), [integration support](docs/integrations.md) and the [1.0 roadmap](docs/roadmap-1.0.md).
 
 Autopilot has broad access. Lumen does not add a common OS jail or encrypt its database; use OS permissions and disk encryption. Native CLIs retain their own policies. Moli routing disables supported built-in alternatives, but unrestricted shells/external tools are not an OS network sandbox. [Security and privacy](SECURITY.md).
 
@@ -140,14 +139,10 @@ Lumen's original application code, interface, tests and documentation are **comp
 
 ### Credits and upstream adaptations
 
-Thank you to **Theo / pingdotgg, T3 Tools Inc. and the T3 Code contributors**. Lumen's development version adapts [T3 Code's command-receipt design](https://github.com/pingdotgg/t3code/blob/375343aaf35133f659435554cd01634bab333a7d/apps/server/src/persistence/OrchestrationCommandReceipts.ts) to Rust/SQLite: persistent duplicate detection, recovered replies and explicit refusal of uncertain replay. Lumen adds payload binding and integrates a transport-only retry into its local IPC; it does not import T3's backend. [Exact sources and modifications](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [MIT license and notices](THIRD_PARTY_NOTICES.md). These changes are not part of the published 0.9.0 release; no endorsement is implied.
+Thank you to **Theo / pingdotgg, T3 Tools Inc. and the T3 Code contributors**. Lumen adapts [T3 Code's command-receipt design](https://github.com/pingdotgg/t3code/blob/375343aaf35133f659435554cd01634bab333a7d/apps/server/src/persistence/OrchestrationCommandReceipts.ts) to Rust/SQLite: persistent duplicate detection, recovered replies and explicit refusal of uncertain replay. Lumen adds payload binding and integrates a transport-only retry into its local IPC; it does not import T3's backend. [Exact sources and modifications](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [MIT license and notices](THIRD_PARTY_NOTICES.md). No endorsement is implied.
 
 > Thank you to everyone who wants to try Lumen and share how it feels. Feedback, bug reports and ideas are welcome. — Andrea
 
 Lumen is free to download, use and modify under the MIT license. Feedback through [Issues](https://github.com/Andrea17982/Lumen/issues) is already a contribution. Optional [PayPal support](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) goes to **andreanastrobusiness1999@gmail.com** and unlocks no features.
 
 MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the other named providers.
-
-Local Windows release (16 November): [0.9.0 — official API access and adapter compatibility](docs/release-notes/0.9.0.md), with keychain-backed API accounts/budgets and OpenCode ACP/shared tools. Cursor retains explicit Autopilot selection. GitHub packages use portable CPU targets.
-
-The completed local milestone is [0.10.0 — Core and local daemon](docs/release-notes/0.10.0.md). The public download above remains 0.9.0 until 0.10 is separately published. See [local service and update instructions](docs/local-service.md).
