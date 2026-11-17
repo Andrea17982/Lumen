@@ -1,12 +1,11 @@
 <div align="center">
   <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
-  <p><strong>Your AI workspace. Native sessions. A browser built for agents.</strong></p>
-  <p>Claude Code · Codex · Antigravity · OpenCode · Cursor · Ollama · Official APIs</p>
+  <p><strong>Connect your AI accounts once. Write what you want. Auto does the rest.</strong></p>
   <p>
-    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download 0.10.0</a> ·
+    <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download</a> ·
     <a href="docs/getting-started.md">Getting started</a> ·
-    <a href="docs/README.md">Documentation</a> ·
+    <a href="docs/README.md">Docs</a> ·
     <a href="README.it.md">Italiano</a>
   </p>
   <p>
@@ -16,95 +15,68 @@
   </p>
 </div>
 
-![Lumen conversation workspace](docs/images/desktop.png)
+![Lumen on Windows](docs/images/desktop.png)
 
-*A capture of the Windows application with demonstration data. Screenshots show the implemented interface; they are not claims of live model performance.*
+Lumen is a desktop app for coding with AI. You sign in to the subscriptions you already pay for (Claude Code, Codex, Antigravity, OpenCode, Cursor, local Ollama or an API key) and Lumen uses them together, as one team, on your project.
 
-Lumen brings your AI coding sessions into one local desktop workspace. Choose a provider and model, continue its native session, and work in the right project folder. Turn on **Orchestra** when you want a coordinated team. **Moli** handles web research and browser automation across supported integrations.
+It's free, open source (MIT) and still alpha.
 
-Built with **Tauri 2, Rust, React and TypeScript**, with English and Italian interfaces, light/dark themes, local conversation storage and official provider authentication. Lumen is an independent community project. Version 0.10 remains an alpha release; supported integrations and platform checks have explicit limits.
+## Auto
 
-## 0.10 — Local service, memory and recurring tasks
+Auto is the reason Lumen exists. You don't pick a model, split the task or babysit the agents. You write the request and Auto decides:
 
-Work now runs in a local background service: closing the window no longer stops a turn, a question or an Orchestra run. Assistants save project decisions to `LUMEN.md`, propose cross-project preferences that you confirm, repeat tasks on a schedule from plain language or `/every`, and save finished replies as recipes. Handoffs list goal, constraints, done and open work, checks and uncertainties; Orchestra ends with a result Lumen writes from what it observed. [0.10 changelog and limits](docs/release-notes/0.10.0.md).
+- **who works on it** — the best agent you have available right now, and another one when a quota runs out, without repeating what was already done;
+- **how** — one agent, one agent plus an independent reviewer from a different provider, or a full team that splits the work, runs in isolated worktrees and merges it back;
+- **whether to compete** — in the Quality profile, important tasks get two independent solutions from different providers; Lumen runs your project's checks on both and keeps the one that passes (0.11);
+- **what to do when an agent asks something** — Auto answers clarifying questions from the code and project memory and lists its assumptions at the end. It still stops for anything risky, irreversible or external (0.11).
 
-## Toward 1.0
+At the end you get one answer: what was done, what was checked, what failed and what is still open. Lumen writes that part itself, from what it saw, not from what the agents claim.
 
-The [1.0 roadmap](docs/roadmap-1.0.md) prioritizes reliable collaboration across Claude Code, Codex, Antigravity and OpenCode, plus official Anthropic/OpenAI/Google APIs. Auto may use API credit only after explicit enablement with a mandatory budget. Next come recoverable autonomy with audit and rollback, then essential remote control (chat, new tasks, Stop/Resume and approvals over LAN/VPN). The full mobile workspace and E2EE relay follow after 1.0.
+Budget and Default profiles never run competing solutions, so a fresh install won't burn through your quota.
 
-## Native workspace features
+## Why I built it (and what the others do better)
 
-| Native work, with less friction | Tools that stay close to your project |
+I use several AI subscriptions and I was tired of choosing which one to open, copying context between them and checking their work by hand. There are good tools in this space. This is my honest take, based on their docs and my own use, not on a benchmark.
+
+**T3 Code** — Clean, fast, and the best Git/PR flow I've seen, with web and mobile clients. Lumen borrows its command-receipt design (credited below). It's better than Lumen at Git, terminals and remote use. Lumen is better at choosing and combining agents for you, and at memory between sessions.
+
+**Paseo** — The plugin ecosystem is wonderful, it has real mobile apps and an encrypted relay. It's ahead of Lumen on mobile, remote and extensibility. But you still split the work and judge the results yourself, and its plugins run with full access. Lumen's Auto does the splitting and checking, and Lumen's plugins (in progress) declare their permissions before you enable them.
+
+**Hermes Agent** — I love how it learns skills and keeps memory, and that you can talk to it from Telegram or Slack. It's better as a personal agent living on a server. Lumen is a coding workspace on your desktop that uses your subscriptions through their official CLIs and verifies the result against your project's checks.
+
+**Conductor, Claude Squad, Orca and similar** — Great for running many agents in parallel worktrees. With them, you are the orchestrator. With Lumen, Auto is.
+
+**Cursor, the Codex app, Claude Code** — Polished, but each one keeps you inside one vendor. Lumen exists to make them work together.
+
+Where Lumen is behind today: no mobile app yet (remote control over LAN/VPN is planned for 1.0), unsigned packages, and Windows is the only platform with full desktop testing.
+
+## Also inside
+
+- **Memory** — project decisions go into `LUMEN.md`, which every agent reads; cross-project preferences are saved only after you confirm.
+- **Undo** — checkpoints before risky changes, an audit log per task, and rollback that refuses to run when it would be unsafe.
+- **Moli** — a built-in browser that all agents share for research and web tasks.
+- **Recurring tasks and recipes** — "every Monday at 9, summarize the TODOs"; save a good reply as a reusable recipe.
+- **Work survives the window** — a local background service keeps tasks running after you close Lumen.
+
+More in the [feature guide](docs/features.md).
+
+## Download
+
+Get the latest version from **[Releases](https://github.com/Andrea17982/Lumen/releases/latest)**.
+
+| Platform | File |
 | --- | --- |
-| Auto starts ready; explicit provider/model choices are preserved. | Moli is bundled and automatically connected, including Orchestra workers. |
-| Native questions, choices, child-agent output and real-time activity. | Project inspector, image zoom/grid, JSON/SQLite inspection and layout canvas. |
-| Autopilot proceeds without repeated Lumen planning approvals. | Manual Both merges and side-by-side static worktree previews. |
-| Native Claude/Codex continuation, durable task state and explicit folder changes. | Optional diagnostics, affected-project checks and opt-in Godot controls. |
-| Work continues in the local service after you close the window. | Windows, universal macOS and Linux packages. |
-| Project memory, confirmed global memory, recipes and recurring tasks. | Verifiable handoffs and a Lumen-written team result for Orchestra. |
+| Windows | `…_x64-setup.exe`, or the portable `…_x64-portable.zip` (extract the whole ZIP) |
+| macOS | universal `.dmg` |
+| Linux | `.deb` or `.AppImage` |
 
-Read the [0.10 changelog](docs/release-notes/0.10.0.md), [feature guide](docs/features.md) and [validation record](docs/validation.md).
+Packages are unsigned; check them against `SHA256SUMS.txt` in the release.
 
-## Choose how to work
-
-**Direct session** — select Claude, GPT/Codex, Antigravity, OpenCode, Cursor, Ollama or an official API adapter. Pick an account, an available model and its supported reasoning level. Claude uses its bidirectional native stream; Codex uses app-server. Google providers retain their official print runners. Ollama uses its official local API.
-
-**Auto** — ask Lumen to choose a provider/model from the connected catalogs, with Budget, Default or Quality preferences and optional independent review. Additional stages consume provider quota.
-
-**Orchestra** — explicitly enable the orchestrator for larger tasks. Review dependencies and agent assignments, then let workers use isolated Git worktrees. Approved execution and Autopilot do not create another plan-approval loop. Limits, stop, integration and interrupted-run recovery are visible.
-
-**Both** — compare Claude and Codex side by side in read-only mode. Retained worktree results can be inspected and merged through per-file/manual choices where applicable.
-
-![Orchestra task graph and assignments](docs/images/orchestra-plan.png)
-
-*Demonstration task graph in the actual interface. Native child-agent sessions and Orchestra workers are distinct capabilities.*
-
-## One browser across providers
-
-Shared Moli tools also reach OpenCode through ACP and the three official API adapters. Cursor retains its own native tools without this bridge. [Support matrix](docs/integrations.md).
-
-Moli starts only when a browser tool is needed. It provides Markdown retrieval, search, persistent navigation, DOM interaction and screenshots through Lumen's shared browser service. Conversation/worker contexts are isolated; native authentication remains with each provider.
-
-Ollama gets a real tool/result loop through `localhost`, including a JSON-action fallback for conversational models without native function calling. No inference API key or remote Ollama service is required. Antigravity receives saved full-resolution image paths through its native file/image flow to avoid an observed inline-MCP image stall; Lumen still displays the complete PNG.
-
-![Moli page capture in a conversation](docs/images/moli-browser.png)
-
-*Moli browser capture displayed in Lumen. Website compatibility, CAPTCHA and rendering limits still apply. Moli is not a guarantee of better model reasoning or an exponential end-to-end speedup.*
-
-See [browser tools, routing and measured limits](docs/moli.md).
-
-## Inspect, refine and continue
-
-![Project inspector and layout canvas](docs/images/inspector-canvas.png)
-
-The project inspector brings source changes, project checks, visual review, image inspection, local web preview and a layout canvas beside the conversation. Godot controls are optional and verify the connected project before editor actions. Purchased addons are not bundled.
-
-Context estimates use a local tokenizer; provider-reported usage remains distinct. A durable task ledger preserves requirements and decisions across truncation, Compact and Rewind. Native continuation sends the new request rather than replaying the entire conversation unnecessarily.
-
-## Download and start
-
-Get **[Lumen 0.10.0 from Releases](https://github.com/Andrea17982/Lumen/releases/latest)**:
-
-| Platform | Package | Notes |
-| --- | --- | --- |
-| Windows x64 | `Lumen_0.10.0_x64-setup.exe` | Installer; uses Microsoft Edge WebView2. |
-| Windows x64 portable | `Lumen_0.10.0_x64-portable.zip` | Extract the **whole ZIP**. Keep `resources` and `lumen-daemon.exe` beside `Lumen.exe`. |
-| macOS | Universal `.dmg` | Intel and Apple silicon. |
-| Linux x64 | `.deb` / `.AppImage` | Built on Ubuntu 24.04; native display/capture compatibility varies. |
-
-Packages are unsigned. Verify downloads with the release's `SHA256SUMS.txt`. Provider CLIs and local Ollama models are installed separately; Moli is included.
-
-1. Install the official provider CLI you want to use, or start local Ollama with an installed model.
-2. Open **Settings → Accounts**, add an account and complete its official login. Ollama needs no login.
-3. Choose a project folder and a direct provider. Expand provider options to choose the model/reasoning level.
-4. Choose permissions and send your request. **Read only** is the initial permission mode; **Autopilot** authorizes the available tools under your OS account.
-5. Enable Orchestra separately when the task benefits from coordinated workers.
-
-[Setup and troubleshooting](docs/getting-started.md) · [Accounts](docs/accounts.md) · [Permissions and folders](docs/workspace-models-permissions.md)
+1. Install the official CLI of at least one provider (or start Ollama).
+2. In **Settings → Accounts**, add your accounts and log in the official way.
+3. Open a project folder, leave **Auto** selected and write what you need.
 
 ## Build from source
-
-Prerequisites: Node.js 22.12+ (or supported Node 24), stable Rust and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
 git clone https://github.com/Andrea17982/Lumen.git
@@ -113,36 +85,18 @@ npm ci
 npm run tauri dev
 ```
 
-The build prepares the pinned, checksum-verified Moli binary and license notices automatically. `npm run dev` is a UI-only preview: it does not authenticate or generate AI responses. On Windows, `npm run build:release` creates the installer and portable ZIP in `builds/latest/`. See [development and release checks](docs/development.md) for all platforms.
+See [development](docs/development.md) for tests and release builds.
 
-## What has been checked
+## Good to know
 
-0.10.0 passed **239 Rust, 76 frontend and 44 browser tests**, Clippy, formatting and documentation/version checks, plus native Windows suites that drive the real GUI and local service with offline provider fixtures. A live check with Claude Sonnet recognized 6/6 schedule/memory requests and 3/3 project-versus-global memory cases. CI covers Windows, macOS and Linux; only Windows has interactive desktop acceptance. See [validation and known limits](docs/validation.md), [integration support](docs/integrations.md) and the [1.0 roadmap](docs/roadmap-1.0.md).
+Autopilot gives agents broad access to your machine; it is not an OS sandbox. Lumen never copies your provider credentials: each CLI logs in on its own. What has been tested, and what hasn't, is in [validation](docs/validation.md). Where Lumen is going is in the [roadmap](docs/roadmap-1.0.md). Security details are in [SECURITY.md](SECURITY.md).
 
-Autopilot has broad access. Lumen does not add a common OS jail or encrypt its database; use OS permissions and disk encryption. Native CLIs retain their own policies. Moli routing disables supported built-in alternatives, but unrestricted shells/external tools are not an OS network sandbox. [Security and privacy](SECURITY.md).
+## How it's made
 
-## Documentation
+Lumen's code, tests and docs are written by AI (Claude Code and Codex) under my direction. The product decisions are mine. This is a disclosure, not a security audit.
 
-- [Getting started](docs/getting-started.md) — install, first session, shortcuts and recovery.
-- [Features and working modes](docs/features.md) — direct sessions, Auto, Orchestra, Both and project tools.
-- [Moli](docs/moli.md) — browser integration, Ollama architecture and compatibility.
-- [Projects, models and permissions](docs/workspace-models-permissions.md) — workspace changes and native controls.
-- [Task quality](docs/task-quality.md) — durable context, diagnostics and impact-aware validation.
-- [Shared integrations](docs/integrations.md) — MCP, skills and plugins across providers, with current limits.
-- [Validation](docs/validation.md) · [Roadmap 1.0](docs/roadmap-1.0.md) — what is verified and what comes next.
-- [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Release history](docs/release-notes/README.md).
-- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md).
+Thanks to **Theo / pingdotgg, T3 Tools Inc. and the T3 Code contributors**: Lumen adapts parts of T3 Code's design. [Exact sources and changes](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [licenses](THIRD_PARTY_NOTICES.md). No endorsement is implied.
 
-## Completely AI Written
+Feedback and bug reports in [Issues](https://github.com/Andrea17982/Lumen/issues) help a lot. If you want to support the project, there's [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen); it unlocks nothing extra. — Andrea
 
-Lumen's original application code, interface, tests and documentation are **completely AI Written**, generated by AI under Andrea's direction. Product vision and decisions are human. Credited upstream adaptations and dependencies retain their original authorship and licenses. AI authorship is a disclosure, not an independent correctness/security audit.
-
-### Credits and upstream adaptations
-
-Thank you to **Theo / pingdotgg, T3 Tools Inc. and the T3 Code contributors**. Lumen adapts [T3 Code's command-receipt design](https://github.com/pingdotgg/t3code/blob/375343aaf35133f659435554cd01634bab333a7d/apps/server/src/persistence/OrchestrationCommandReceipts.ts) to Rust/SQLite: persistent duplicate detection, recovered replies and explicit refusal of uncertain replay. Lumen adds payload binding and integrates a transport-only retry into its local IPC; it does not import T3's backend. [Exact sources and modifications](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [MIT license and notices](THIRD_PARTY_NOTICES.md). No endorsement is implied.
-
-> Thank you to everyone who wants to try Lumen and share how it feels. Feedback, bug reports and ideas are welcome. — Andrea
-
-Lumen is free to download, use and modify under the MIT license. Feedback through [Issues](https://github.com/Andrea17982/Lumen/issues) is already a contribution. Optional [PayPal support](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen) goes to **andreanastrobusiness1999@gmail.com** and unlocks no features.
-
-MIT © 2026 Andrea17982. No affiliation with Apple, Anthropic, OpenAI or the other named providers.
+MIT © 2026 Andrea17982. Not affiliated with Anthropic, OpenAI, Google or the other named providers.

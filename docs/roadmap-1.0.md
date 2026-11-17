@@ -89,6 +89,7 @@ Connessione in LAN o tramite VPN dell'utente; pairing con conferma sul desktop. 
 - UI minimale e accessibile, stato del lavoro comprensibile, diagnostica progressiva; brand satin-glass approvato. Conservare disclosure AI, ringraziamenti ai tester, MIT/open source e supporto economico facoltativo.
 - Auto-update con firme degli aggiornamenti, rollback/migrazione documentati, packaging e risorse/licenze verificati. Code signing OS resta escluso.
 - Windows x64 target principale; matrice di installazione, flussi fondamentali e limiti di macOS/Linux esplicita. Nessuna compatibilità dedotta dalla sola compilazione.
+- Piccolo sito di presentazione per il lancio della 1.0 (cosa fa Auto, download, confronto onesto con le alternative).
 - Beta su uso quotidiano e corpus riproducibile, accessibilità e procedure di recupero; nessun benchmark live competitivo o fra modelli.
 
 **Uscita:** nessun blocco noto nei flussi fondamentali; requisiti dei quattro agenti, delle tre API, memoria, collaborazione e remoto essenziale soddisfatti e documentati. Pacchetti, aggiornamento, migrazione e recupero verificati sui sistemi dichiarati. Restano separati implementazione, evidenza mancante ed esclusioni concordate.
