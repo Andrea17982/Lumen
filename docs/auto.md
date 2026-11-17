@@ -55,3 +55,16 @@ Project `LUMEN.md`, attachments, durable task state and relevant skills/graph co
 `Prosegui.` retains the previous task's class, including manual and legacy model choices, instead of being rated as an easy new request. Unrelated new tasks reset that inheritance. Auto requests consent before using an available model below the retained class. OpenCode and Cursor are currently selected explicitly; they are excluded from automatic selection/fallback.
 
 After an eligible quota interruption, choose **Resume at estimated quota reset** on the latest reply. This schedules one native continuation with the same account/model/permissions and preserves already observed effects. It can be cancelled, occupies no inference slot while waiting and is kept by the local service, so it survives closing the window and service restarts. A missing native session stops without replay.
+
+## Questions in Auto
+
+When Auto is the selected mode, Lumen answers an agent's clarifying questions itself (Claude `AskUserQuestion`, Codex `requestUserInput`, the API agents' `lumen_ask_user`, and the provider-limit and model-capability `switch` questions). The answer is deterministic: the option marked "Recommended", otherwise the first option; a free-text question gets an instruction to proceed with the most reasonable assumption consistent with `LUMEN.md`, the code and the task. Each answer is recorded and listed at the end of the reply under **Assumptions Lumen made**, so you can correct it in your next message.
+
+Lumen still asks you when:
+
+- the question or every offered option names a risky or external action, as classified in [Recoverable autonomy](autonomy.md#action-classes) (a risky option is never picked automatically);
+- the question asks for secret input;
+- it is a permission, Gatekeeper, browser-action or connector request: those follow the permission profile and are never answered automatically.
+
+Other modes are unchanged: every question waits for you. Orchestra workers started on their own task are not covered yet and still ask you.
+

@@ -408,4 +408,78 @@ mod tests {
         .await;
         assert!(out["isError"] != true);
     }
+
+    /// Auto answers the agent's clarifying question itself and records the assumption,
+    /// while a destructive command in the same loop still waits for the user.
+    #[tokio::test]
+    async fn auto_answers_questions_but_escalates_destructive_commands() {
+        let f = crate::test_support::Fixture::new();
+        let workspace = f.directory("project");
+        let config = f.directory("accounts/test");
+        std::fs::create_dir_all(workspace.join("build")).unwrap();
+        let account = Account {
+            id: "test".into(),
+            name: "fixture".into(),
+            provider: Provider::Ollama,
+        };
+        let input = Invocation {
+            automatic: true,
+            account: &account,
+            config: &config,
+            workspace: &workspace,
+            prompt: "",
+            model: None,
+            effort: "",
+            access: AccessMode::Autopilot,
+            approvals: None,
+            resume: None,
+            browser_scope: None,
+            browser_artifacts: None,
+            browser: None,
+        };
+        crate::interactions::AUTO_ANSWER
+            .scope(true, async {
+                let mut events = vec![];
+                let out = call(
+                    &input,
+                    "lumen_ask_user",
+                    &json!({"question": "Which test runner should I use?"}),
+                    &mut |a| events.push(a),
+                )
+                .await;
+                assert!(out["isError"] != true, "{out}");
+                assert!(out.to_string().contains("Lumen Auto"), "{out}");
+                assert!(events.iter().all(|a| a.kind != "interaction"));
+                let section = crate::interactions::assumptions_section(&events).unwrap();
+                assert!(section.contains("Which test runner should I use?"));
+
+                let remove = if cfg!(windows) {
+                    "rmdir /s /q build"
+                } else {
+                    "rm -rf build"
+                };
+                let mut asked = 0;
+                let out = call(
+                    &input,
+                    "lumen_run_command",
+                    &json!({"command": remove}),
+                    &mut |a| {
+                        if a.kind == "interaction" && a.text.contains("\"permission\"") {
+                            asked += 1;
+                            let v: Value = serde_json::from_str(&a.text).unwrap();
+                            crate::interactions::answer_question(
+                                v["id"].as_str().unwrap().into(),
+                                [("action".to_string(), vec!["Deny".to_string()])].into(),
+                            )
+                            .unwrap();
+                        }
+                    },
+                )
+                .await;
+                assert_eq!(asked, 1);
+                assert!(out["isError"] == true);
+                assert!(workspace.join("build").exists());
+            })
+            .await;
+    }
 }

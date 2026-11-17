@@ -297,7 +297,8 @@ pub(crate) async fn submit(
     }
     let core = core.clone();
     let returned = plan.clone();
-    tokio::spawn(async move {
+    let auto_answer = options.mode == "auto";
+    tokio::spawn(crate::interactions::AUTO_ANSWER.scope(auto_answer, async move {
         let mut cancelled = rx.clone();
         let permit = tokio::select! {biased;_=cancelled.changed()=>None,p=core.slots.clone().acquire_owned()=>p.ok()};
         let last_id;
@@ -421,6 +422,12 @@ pub(crate) async fn submit(
                     ),
                 }
             }
+            // Auto answered the agent's questions itself: show every assumption so the user
+            // can correct it in the next message.
+            if let Some(section) = crate::interactions::assumptions_section(&output.activity) {
+                output.text.push_str(&section);
+                event(&app, &id, &mid, "replace", &output.text);
+            }
             crate::execution::phase(
                 &app,
                 &id,
@@ -453,7 +460,7 @@ pub(crate) async fn submit(
             j.remove(&id);
         }
         event(&app, &id, &last_id, "done", status);
-    });
+    }));
     Ok(returned)
 }
 

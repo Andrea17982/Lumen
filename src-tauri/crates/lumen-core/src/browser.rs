@@ -453,7 +453,7 @@ async fn result(scope: Arc<Scope>, name: &str, args: &Value) -> Value {
                 optional: false,
             };
             let (activity, answer) =
-                connection.ask(vec![question], uuid::Uuid::new_v4().to_string())?;
+                connection.ask_user(vec![question], uuid::Uuid::new_v4().to_string())?;
             let _ = scope.events.send(activity);
             let answer = answer
                 .await
