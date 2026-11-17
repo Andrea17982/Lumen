@@ -10,6 +10,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Auto policy](auto.md) | Classification, model selection, review and quota fallback |
 | [Shared integrations](integrations.md) | MCP, skills and plugin components across providers, consent and current limits |
 | [Moli browser](moli.md) | Automatic browsing, local Ollama tool calling, screenshots and compatibility |
+| [Recoverable autonomy](autonomy.md) | Action classes, audit log, checkpoints/rollback, untrusted content and what rollback cannot undo |
 | [Task quality](task-quality.md) | Durable decisions, project and global memory, recipes, recurring tasks, checks and graph impact |
 | [Local service and recovery](local-service.md) | Window/service lifetimes, local authentication, migration and stop-before-update |
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |

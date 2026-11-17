@@ -419,6 +419,9 @@ const it: Record<string, string> = {
     'Dopo questo tempo non parte nessun nuovo sotto-compito; quelli in corso terminano.',
   'Saved for all projects': 'Salvato per tutti i progetti',
   'Remember for all projects?': 'Ricordare per tutti i progetti?',
+  'Not saved automatically: this reply read content from outside the project':
+    'Non salvato automaticamente: questa risposta ha letto contenuti esterni al progetto',
+  'Save to LUMEN.md?': 'Salvare in LUMEN.md?',
   'Ask any assistant to repeat it.': 'Chiedi a qualsiasi assistente di ripeterla.',
   'Recurring task scheduled. Stop it above the message box.':
     'Attività ricorrente programmata. Puoi fermarla sopra il campo messaggio.',

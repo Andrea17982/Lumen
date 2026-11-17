@@ -55,7 +55,7 @@ Godot discovery and Play/Stop/Reload/viewport capture are opt-in and verify the 
 
 Additional Lumen validation is opt-in for ordinary native sessions. When enabled, affected diagnostics/checks provide concrete failures for bounded corrections; Orchestra retains final validation. Missing coverage is explicit. Independent cross-audit is optional and uses another configured provider.
 
-Rewind snapshots tracked working-tree state through a private Git index, previews restoration and rebuilds retained task state. Ignored files are not restored. File writes into the same canonical folder are serialized across Lumen conversations.
+Rewind snapshots tracked and untracked working-tree state byte for byte through a private Git index, previews restoration and rebuilds retained task state. Ignored files are not restored. Rewind is refused while an overlapping conversation could be affected; see [Recoverable autonomy](autonomy.md) for action classes, the audit log and rollback limits. File writes into the same canonical folder are serialized across Lumen conversations.
 
 ## Local helper and settings
 

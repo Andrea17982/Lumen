@@ -68,7 +68,15 @@ pub fn stamp(now_secs: i64, source: &str) -> String {
 
 /// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
 /// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
+#[cfg(test)]
 pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64, source: &str) -> Vec<String> {
+    let facts = take_memory(reply);
+    save_memory(workspace, facts, now, source)
+}
+
+/// Removes project-memory markers from a reply and returns their facts, unsaved.
+/// Used alone when the turn read untrusted content: the facts then wait for the user.
+pub fn take_memory(reply: &mut String) -> Vec<String> {
     let re = regex::Regex::new(r"(?s)<lumen-remember>(.*?)</lumen-remember>\n?").unwrap();
     let facts: Vec<String> = re
         .captures_iter(reply)
@@ -76,10 +84,17 @@ pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64, source: &s
         .filter(|f| !f.is_empty() && f.chars().count() <= MEMORY_MAX_CHARS)
         .take(MEMORY_MAX_ITEMS)
         .collect();
-    if !re.is_match(reply) {
+    if re.is_match(reply) {
+        *reply = re.replace_all(reply, "").trim_end().to_owned();
+    }
+    facts
+}
+
+/// Appends facts to the LUMEN.md memory section, skipping duplicates and secrets.
+pub fn save_memory(workspace: &Path, facts: Vec<String>, now: i64, source: &str) -> Vec<String> {
+    if facts.is_empty() {
         return Vec::new();
     }
-    *reply = re.replace_all(reply, "").trim_end().to_owned();
     let secret_re = secret();
     let mut notes = read_context(workspace);
     let mut saved = Vec::new();

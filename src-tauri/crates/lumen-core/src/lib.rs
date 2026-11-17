@@ -37,6 +37,7 @@ pub mod routines;
 pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<(), String> {
     capability_catalog::serve_stdio(data, workspace, id).await
 }
+mod autonomy;
 mod classify;
 mod codegraph;
 mod connectors;
@@ -972,6 +973,47 @@ fn remember_global(
     });
     core.store.save_message(&id, &reply)
 }
+/// Saves to LUMEN.md a project fact that was held because its reply read untrusted content.
+#[crate::command]
+fn remember_project(
+    core: crate::CoreRef<'_>,
+    id: String,
+    message: String,
+    fact: String,
+) -> Result<(), String> {
+    let mut reply = core
+        .store
+        .messages(&id)?
+        .into_iter()
+        .find(|m| m.id == message)
+        .ok_or("Reply not found")?;
+    let held = reply
+        .activity
+        .iter()
+        .any(|a| a.kind == "memory-held" && a.text.lines().any(|l| l == fact));
+    if !held {
+        return Err("Only a fact an assistant proposed can be saved".into());
+    }
+    let s = core.store.session(&id)?;
+    let saved = context::save_memory(
+        std::path::Path::new(&s.workspace),
+        vec![fact],
+        crate::models::now() / 1000,
+        &s.title,
+    );
+    reply.activity.push(crate::models::Activity {
+        kind: "memory-saved".into(),
+        text: saved.join("\n"),
+    });
+    core.store.save_message(&id, &reply)
+}
+/// The conversation's audit log: classified actions and Lumen's decisions, rollbacks included.
+#[crate::command]
+fn audit_log(core: crate::CoreRef<'_>, id: String) -> Result<Vec<autonomy::Entry>, String> {
+    let mut log = autonomy::audit(&core.store.messages(&id)?);
+    log.extend(autonomy::logged(&core.root, &id));
+    Ok(log)
+}
 #[crate::command]
 fn install_skill(core: crate::CoreRef<'_>, path: String) -> Result<(), String> {
     integrations::install_skill(&core.root, &PathBuf::from(path))
@@ -1208,6 +1250,8 @@ pub async fn dispatch(
         "integration_status" => __ipc_integration_status(app, core, args).await,
         "save_recipe" => __ipc_save_recipe(app, core, args).await,
         "remember_global" => __ipc_remember_global(app, core, args).await,
+        "remember_project" => __ipc_remember_project(app, core, args).await,
+        "audit_log" => __ipc_audit_log(app, core, args).await,
         "install_skill" => __ipc_install_skill(app, core, args).await,
         "save_mcp" => __ipc_save_mcp(app, core, args).await,
         _ => Err("Unknown core command".into()),
