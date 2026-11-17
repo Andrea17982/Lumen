@@ -12,10 +12,16 @@ describe('normalizeLimits', () => {
         maxSubtasks: 0,
         quotaThresholds: { claude: 79.6, gpt: 100, gemini: -1, nope: 50 },
       }),
-    ).toEqual({ maxConcurrent: 3, maxSubtasks: null, quotaThresholds: { claude: 80 } });
+    ).toEqual({
+      maxConcurrent: 3,
+      maxSubtasks: null,
+      maxMinutes: null,
+      quotaThresholds: { claude: 80 },
+    });
     expect(normalizeLimits(null)).toEqual({
       maxConcurrent: null,
       maxSubtasks: null,
+      maxMinutes: null,
       quotaThresholds: {},
     });
     expect(normalizeLimits({ maxConcurrent: 1e9 }).maxConcurrent).toBe(32);

@@ -70,7 +70,12 @@ function previewSettings(): AppSettings {
     closeToTray: true,
     openAtLogin: false,
     ollamaModel: '',
-    orchestraLimits: { maxConcurrent: null, maxSubtasks: null, quotaThresholds: {} },
+    orchestraLimits: {
+      maxConcurrent: null,
+      maxSubtasks: null,
+      maxMinutes: null,
+      quotaThresholds: {},
+    },
     localAssistant: { enabled: false, model: '', autoTitles: true, timeoutMs: 60_000 },
     repoContext: true,
   };

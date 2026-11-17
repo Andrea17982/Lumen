@@ -9,6 +9,8 @@ export interface OrchestraLimits {
   maxConcurrent: number | null;
   /** Subtasks admitted per run. Finishing one never gives its place back. */
   maxSubtasks: number | null;
+  /** Minutes after which no new subtask starts; `null` means the default (120). */
+  maxMinutes: number | null;
   /** Used percentage of the tightest quota window at which a provider gets no new work. */
   quotaThresholds: Partial<Record<Provider, number>>;
 }
@@ -19,6 +21,7 @@ export const PLAN_MAX_SUBTASKS = 12;
 export const NO_LIMITS: OrchestraLimits = {
   maxConcurrent: null,
   maxSubtasks: null,
+  maxMinutes: null,
   quotaThresholds: {},
 };
 
@@ -46,6 +49,7 @@ export function normalizeLimits(raw: unknown): OrchestraLimits {
   return {
     maxConcurrent: count(r.maxConcurrent, 32),
     maxSubtasks: count(r.maxSubtasks, 999),
+    maxMinutes: count(r.maxMinutes, 1440),
     quotaThresholds,
   };
 }

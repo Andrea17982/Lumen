@@ -8,6 +8,8 @@ use std::{collections::HashMap, path::Path};
 pub struct OrchestraLimits {
     pub max_concurrent: Option<usize>,
     pub max_subtasks: Option<usize>,
+    /// Wall-clock minutes after which no new subtask starts (default 120).
+    pub max_minutes: Option<u64>,
     /// Used percentage per provider id at which it gets no new work.
     pub quota_thresholds: HashMap<String, f64>,
 }

@@ -939,6 +939,11 @@ async fn attempt(
     r
 }
 
+/// Milliseconds a run may keep starting subtasks: the user's cap, otherwise two hours.
+fn time_limit(max_minutes: Option<u64>) -> i64 {
+    max_minutes.unwrap_or(120).clamp(1, 24 * 60) as i64 * 60_000
+}
+
 fn provider_id(p: &Provider) -> String {
     serde_json::to_value(p)
         .ok()
@@ -1248,8 +1253,11 @@ pub async fn execute(
     let (pid_tx, mut pid_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
     let mut notes: HashMap<String, String> = HashMap::new();
     let mut set = tokio::task::JoinSet::new();
+    let deadline = now() + time_limit(limits.max_minutes);
+    let mut timed_out = false;
     loop {
         refresh_quota(core, &mut sched, &accounts);
+        timed_out |= now() >= deadline;
         let extra = core
             .orchestra_raises
             .lock()
@@ -1261,7 +1269,8 @@ pub async fn execute(
             sched.limits.raise_total(admitted, extra);
         }
         // Start whatever the scheduler admits: dependencies done, under the caps and quotas.
-        for start in sched.next(now()) {
+        let admitted = if timed_out { vec![] } else { sched.next(now()) };
+        for start in admitted {
             let Some(i) = st.subtasks.iter().position(|t| t.id == start.id) else {
                 continue;
             };
@@ -1385,6 +1394,10 @@ pub async fn execute(
             if sched.complete() {
                 break;
             }
+            if timed_out {
+                sched.cancel_pending();
+                break;
+            }
             // Suspended. Work held only by the total cap cannot start by itself
             // once nothing runs, so it is skipped; cooldowns and quotas wait.
             let (waits, _) = sched.waiting(now());
@@ -1484,7 +1497,11 @@ pub async fn execute(
             t.output = turns::friendly(e);
         } else {
             t.status = "skipped".into();
-            t.output = "Not run: the subtask limit for this run was reached.".into();
+            t.output = if timed_out {
+                "Not run: the time limit for this run was reached.".into()
+            } else {
+                "Not run: the subtask limit for this run was reached.".into()
+            };
         }
     }
 
@@ -2034,6 +2051,13 @@ mod tests {
             name: id.into(),
             provider: p,
         }
+    }
+
+    #[test]
+    fn run_time_limit_defaults_to_two_hours_and_is_bounded() {
+        assert_eq!(super::time_limit(None), 120 * 60_000);
+        assert_eq!(super::time_limit(Some(0)), 60_000);
+        assert_eq!(super::time_limit(Some(10_000)), 24 * 60 * 60_000);
     }
 
     #[test]

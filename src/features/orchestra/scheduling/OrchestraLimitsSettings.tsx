@@ -96,6 +96,16 @@ export default function OrchestraLimitsSettings({
         disabled={disabled}
         onCommit={(maxSubtasks) => save({ maxSubtasks })}
       />
+      <LimitField
+        label={t('Time per run')}
+        hint={t('After this, no new subtask starts; running ones finish.')}
+        value={value.maxMinutes}
+        placeholder="120"
+        max={1440}
+        suffix="min"
+        disabled={disabled}
+        onCommit={(maxMinutes) => save({ maxMinutes })}
+      />
       {providers.map((p) => (
         <LimitField
           key={p}
