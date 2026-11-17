@@ -409,6 +409,7 @@ const it: Record<string, string> = {
   Error: 'Errore',
   'Sending…': 'Invio in corso…',
   'Delivery not confirmed': 'Invio non confermato',
+  'Remembered in LUMEN.md': 'Ricordato in LUMEN.md',
   'Draft restored in this conversation.': 'Bozza ripristinata in questa conversazione.',
   'Check message delivery': 'Verifica invio del messaggio',
   'Wait for message delivery before deleting this conversation.':

@@ -11,7 +11,7 @@
     "build:release": "node scripts/build-release.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
-    "test": "vitest run src",
+    "test": "vitest run --dir src",
     "test:e2e": "playwright test",
     "test:native": "node tests/native-smoke.mjs",
     "check": "npm run build && npm test && npm run docs:check",

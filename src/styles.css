@@ -3603,7 +3603,8 @@ footer.about .version {
   font-size: calc(11px * var(--text-scale, 1));
   color: var(--muted);
 }
-.orchestra-closed {
+.orchestra-closed,
+.memory-saved {
   display: flex;
   align-items: center;
   gap: 6px;

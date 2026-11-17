@@ -6,6 +6,62 @@ use std::{
 
 pub const CONTEXT_FILE: &str = "LUMEN.md";
 
+pub const MEMORY_HEADING: &str = "## Lumen memory";
+const MEMORY_MAX_ITEMS: usize = 5;
+const MEMORY_MAX_CHARS: usize = 300;
+
+/// Instruction appended to every prompt so any agent can save durable project facts.
+pub const MEMORY_HINT: &str = "To remember a durable project fact for future turns and other assistants (a decision, convention or user preference, never secrets), add a line `<lumen-remember>fact</lumen-remember>` to your final reply. Lumen stores it in LUMEN.md, where the user can edit or delete it.";
+
+/// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
+/// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
+pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64) -> Vec<String> {
+    let re = regex::Regex::new(r"(?s)<lumen-remember>(.*?)</lumen-remember>\n?").unwrap();
+    let facts: Vec<String> = re
+        .captures_iter(reply)
+        .map(|c| c[1].split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|f| !f.is_empty() && f.chars().count() <= MEMORY_MAX_CHARS)
+        .take(MEMORY_MAX_ITEMS)
+        .collect();
+    if !re.is_match(reply) {
+        return Vec::new();
+    }
+    *reply = re.replace_all(reply, "").trim_end().to_owned();
+    let secret_re = regex::Regex::new(
+        r"(?i)sk-[a-z0-9_-]{8,}|password|passwd|api[_ ]?key|token\s*[:=]|[A-Za-z0-9+/_-]{40,}",
+    )
+    .unwrap();
+    let mut notes = read_context(workspace);
+    let date = chrono::DateTime::from_timestamp(now, 0)
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    let mut saved = Vec::new();
+    for fact in facts {
+        if notes.contains(&fact) || secret_re.is_match(&fact) {
+            continue;
+        }
+        if !notes.contains(MEMORY_HEADING) {
+            notes = format!("{}\n\n{MEMORY_HEADING}\n", notes.trim_end())
+                .trim_start()
+                .to_owned();
+        }
+        let at = notes.find(MEMORY_HEADING).unwrap() + MEMORY_HEADING.len();
+        let end = notes[at..].find("\n## ").map_or(notes.len(), |i| at + i);
+        let line = format!("- {fact} _({date})_\n");
+        let insert = if notes[..end].ends_with('\n') {
+            line
+        } else {
+            format!("\n{line}")
+        };
+        notes.insert_str(end, &insert);
+        saved.push(fact);
+    }
+    if !saved.is_empty() && write_context(workspace, &notes).is_err() {
+        return Vec::new();
+    }
+    saved
+}
+
 /// Files that waste context and almost never help a model.
 pub fn is_noise(rel: &str) -> bool {
     let lower = rel.replace('\\', "/").to_lowercase();
@@ -380,6 +436,26 @@ pub fn verify_command(workspace: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn memory_is_captured_deduplicated_and_filtered() {
+        let dir = std::env::temp_dir().join(format!("lumen-mem-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("LUMEN.md"), "verify: npm test\n\n## Other\nkeep").unwrap();
+        let mut reply = "Done.\n<lumen-remember>Use pnpm, not npm</lumen-remember>\n<lumen-remember>api_key=abc</lumen-remember>".to_owned();
+        let saved = super::capture_memory(&dir, &mut reply, 1_795_000_000);
+        assert_eq!(saved, ["Use pnpm, not npm"]);
+        assert_eq!(reply, "Done.");
+        let notes = super::read_context(&dir);
+        assert!(notes.contains("## Lumen memory\n- Use pnpm, not npm _(2026-"));
+        assert!(notes.contains("## Other\nkeep") && !notes.contains("abc"));
+        let mut again = "<lumen-remember>Use pnpm, not npm</lumen-remember>".to_owned();
+        assert!(super::capture_memory(&dir, &mut again, 0).is_empty());
+        assert_eq!(super::read_context(&dir).matches("Use pnpm").count(), 1);
+        let mut plain = "no tags".to_owned();
+        assert!(super::capture_memory(&dir, &mut plain, 0).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn context_budget_deduplicates_files_and_charges_previews() {
         let f = crate::test_support::Fixture::new();

@@ -373,6 +373,15 @@ pub(crate) async fn submit(
                     serde_json::to_string(&failure).unwrap(),
                 );
                 note(&app, &id, &mut output, "error", friendly(e));
+            } else {
+                let saved = context::capture_memory(
+                    Path::new(&session.workspace),
+                    &mut output.text,
+                    crate::models::now() / 1000,
+                );
+                if !saved.is_empty() {
+                    note(&app, &id, &mut output, "memory-saved", saved.join("\n"));
+                }
             }
             crate::execution::phase(
                 &app,
@@ -1528,7 +1537,8 @@ fn assemble_prompt(
         format!("{SKILLS_OPEN}{shared}{SKILLS_CLOSE}")
     };
     format!(
-        "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {permission}\n\n{context_text}{attached}{audit}"
+        "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {} {permission}\n\n{context_text}{attached}{audit}",
+        context::MEMORY_HINT
     )
 }
 

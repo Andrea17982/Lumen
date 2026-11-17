@@ -19,6 +19,7 @@ export const HIDDEN = [
   'attachments',
   'orchestra',
   'orchestra-nogit',
+  'memory-saved',
   'usage',
   'api-cost',
   'references',

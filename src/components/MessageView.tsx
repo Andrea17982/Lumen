@@ -53,7 +53,10 @@ export default function MessageView({
   const [copied, setCopied] = useState(false);
   const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
   const inline =
-    m.role === 'assistant' ? splitReasoning(m.text) : { reasoning: '', answer: m.text };
+    m.role === 'assistant'
+      ? splitReasoning(m.text.replace(/<lumen-remember>[\s\S]*?(<\/lumen-remember>|$)\n?/g, ''))
+      : { reasoning: '', answer: m.text };
+  const remembered = m.activity.find((a) => a.kind === 'memory-saved')?.text.split('\n');
   const reasoning = [
     ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
     inline.reasoning,
@@ -195,6 +198,11 @@ export default function MessageView({
             <MessageBody text={inline.answer} folder={messageFolder} />
           </Suspense>
         </div>
+      )}
+      {remembered && (
+        <p className="memory-saved" role="status">
+          {t('Remembered in LUMEN.md')}: {remembered.join(' · ')}
+        </p>
       )}
       {nogit && !running && (
         <p className="orchestra-closed">

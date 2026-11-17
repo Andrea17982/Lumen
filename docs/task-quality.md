@@ -13,6 +13,12 @@ These backend features preserve native execution and add no repeated planning ap
 - Checks carry their workspace; another project's results are not evidence for the current project. Fresh results replace older results of the same check.
 - `session_work_state` returns the full structured state for inspection.
 
+## Project memory
+
+Every assistant can save a durable project fact (a decision, convention or preference) by writing `<lumen-remember>fact</lumen-remember>` in its final reply. After a successful turn Lumen removes the tag from the reply, adds the fact with its date under `## Lumen memory` in the project's `LUMEN.md` and shows "Remembered in LUMEN.md" under the message. Because `LUMEN.md` is already shared with every assistant, the next turn, a different agent or an API account sees the same fact.
+
+Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Memory is project-only: nothing is written to global memory, and other projects never see it. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
+
 ## Continuity and Auto calibration
 
 Lumen adds a fingerprint for project notes and workspace-scoped backend checks to native-session metadata. A native continuation receives changed notes and the latest result per check label, with source message IDs and bounded details/diagnostics; unchanged context is omitted. At most eight recent labels are projected, with omitted coverage explicit. Removing context invalidates the old evidence rather than implying success. A switch to another account uses the full bounded handoff and this chat's check evidence; it never reuses another account's native session ID. This is per-chat continuity, not shared project-wide conversation history.
