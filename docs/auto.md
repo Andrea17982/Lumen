@@ -28,6 +28,8 @@ Only recognized short continuations reuse the latest request's rating; unrelated
 
 Enabled Orchestra can handle complex Auto or approved multi-part work. Its coordinator uses an appropriate catalog model and preserves an explicit coordinator choice where supplied. A task graph records file ownership, dependencies and assignments; workers receive actual workspace/permissions, prior decisions and relevant graph/check context.
 
+The final reply ends with **Team result by Lumen**, written by Lumen rather than the model: subtasks done out of total, which failed or did not run, whether the independent audit approved, and, when no project check ran on a writing task, that the combined result is not verified.
+
 The scheduler enforces concurrency, admitted-subtask totals, a run time limit (120 minutes by default, configurable up to 24 hours; after it no new subtask starts, running ones finish and the rest are reported as not run) and optional quota thresholds. Finished work frees concurrency, not the total-admission budget. Workers use separate worktrees for writes, and integration/final checks operate on their combined result. A live run can be stopped; crash recovery requires explicit Resume. Autopilot and already approved execution do not ask for the same plan approval again.
 
 Orchestra makes only successful dependencies eligible, fails missing/failed dependency chains, and preserves consumed admission and attempt limits across Resume. Worker errors after observed work do not automatically replay; partial text and the reason remain visible, with quota cooldown preserved. Stop waits for provider process cleanup before removing worktrees. These are bounded offline Windows results, not live model-quality or universal delegation claims.

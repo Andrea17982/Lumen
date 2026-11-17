@@ -1791,7 +1791,7 @@ pub async fn execute(
             publish(app, core, s, out, &st);
         }
     }
-    out.text = draft;
+    out.text = format!("{}\n\n{}", draft.trim_end(), team_summary(&st));
     let verification = turns::self_heal(
         app,
         core,
@@ -1810,9 +1810,53 @@ pub async fn execute(
         publish(app, core, s, out, &st);
         return Err(error);
     }
+    if !st.read_only && !out.activity.iter().any(|a| a.kind == "verify") {
+        out.text
+            .push_str("\n- Project checks: none ran, so the combined result is not verified.");
+        event(app, &s.id, &out.id, "replace", &out.text);
+    }
     st.stage = "done".into();
     publish(app, core, s, out, &st);
     Ok(())
+}
+
+/// Facts Lumen itself observed about the run, independent of the orchestrator's prose.
+fn team_summary(st: &State) -> String {
+    let count = |status: &str| st.subtasks.iter().filter(|t| t.status == status).count();
+    let titles = |status: &str| {
+        st.subtasks
+            .iter()
+            .filter(|t| t.status == status)
+            .map(|t| t.title.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut lines = vec![format!(
+        "**Team result by Lumen**\n- Subtasks: {} of {} done",
+        count("done"),
+        st.subtasks.len()
+    )];
+    for (status, label) in [("failed", "Failed"), ("skipped", "Not run")] {
+        if count(status) > 0 {
+            lines.push(format!("- {label}: {}", titles(status)));
+        }
+    }
+    match st.steps.iter().find(|x| x.name.starts_with("Audit by")) {
+        Some(a) if a.detail.starts_with("Approved") => {
+            lines.push(format!("- {}: {}", a.name, a.detail.to_lowercase()))
+        }
+        Some(a) => lines.push(format!(
+            "- {}: not approved ({}); remaining points are in the audit notes",
+            a.name,
+            if a.detail.is_empty() {
+                "no verdict"
+            } else {
+                a.detail.as_str()
+            }
+        )),
+        None => lines.push("- Independent audit: not run".into()),
+    }
+    lines.join("\n")
 }
 
 async fn cleanup(top: &Option<PathBuf>, lanes: &HashMap<String, Lane>) {
@@ -2058,6 +2102,28 @@ mod tests {
         assert_eq!(super::time_limit(None), 120 * 60_000);
         assert_eq!(super::time_limit(Some(0)), 60_000);
         assert_eq!(super::time_limit(Some(10_000)), 24 * 60 * 60_000);
+    }
+
+    #[test]
+    fn team_summary_reports_what_lumen_observed() {
+        let mut st: State = serde_json::from_value(serde_json::json!({})).unwrap_or_default();
+        for (id, status) in [("a", "done"), ("b", "failed"), ("c", "skipped")] {
+            let mut t: Subtask = serde_json::from_value(serde_json::json!({})).unwrap_or_default();
+            t.id = id.into();
+            t.title = format!("Part {id}");
+            t.status = status.into();
+            st.subtasks.push(t);
+        }
+        let text = team_summary(&st);
+        assert!(text.contains("Subtasks: 1 of 3 done"));
+        assert!(text.contains("Failed: Part b") && text.contains("Not run: Part c"));
+        assert!(text.contains("Independent audit: not run"));
+        st.steps.push(Step {
+            name: "Audit by GPT".into(),
+            status: "done".into(),
+            detail: "Round 2: revising".into(),
+        });
+        assert!(team_summary(&st).contains("Audit by GPT: not approved (Round 2: revising)"));
     }
 
     #[test]
