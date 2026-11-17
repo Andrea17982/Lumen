@@ -103,6 +103,20 @@ try {
   assert.equal(state.checkEvidence.length, 1);
   assert.equal(state.checkEvidence[0].report.status, 'failed');
   assert(state.checkEvidence[0].report.detail.includes('disable Hit at 3'));
+  const [seed] = await h.invoke('get_messages', { id: compacted.id });
+  for (const part of [
+    'Goal',
+    'Constraints',
+    'Decisions',
+    'Done',
+    'Still open',
+    'Checks',
+    'Files and Git state',
+    'Uncertainties',
+    'Next step',
+  ])
+    assert(seed.text.includes(`**${part}**`), `${part} missing:\n${seed.text}`);
+  assert(seed.text.includes('private memory and native session are not carried over'));
   const compactTurn = await turn(compacted, a, 'QUALITY_CONTEXT_FIXTURE');
   assert(compactTurn.messages.at(-1).text.includes('QUALITY_CONTEXT_PRESENT'));
   checks.push(
@@ -194,7 +208,7 @@ try {
           autoPolicy: 'budget',
         },
       }),
-    /Independent review is unavailable/,
+    /Independent review (is unavailable|requires another available)/,
   );
   assert.equal((await h.invoke('get_messages', { id: balanced.id })).length, beforeUnavailable);
   checks.push('A quota-unavailable explicit audit is rejected before writing or claiming a pass');

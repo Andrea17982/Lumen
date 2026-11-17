@@ -8,6 +8,7 @@ These backend features preserve native execution and add no repeated planning ap
 
 - Facts carry source message IDs and preserve the user's text. Assistant prose such as “all tests passed” is not verification evidence.
 - Full prompts and Orchestra worker handoffs receive a budgeted projection of the ledger. Same-account native continuations keep the native transcript and send the new request, current permissions and changed Lumen-owned context rather than replaying the ledger every turn. Full facts remain in SQLite and an app-data `work-state/<session-id>.json` context snapshot that tools can read when excerpts are insufficient. Snapshots are removed when the chat is deleted.
+- The generated handoff lists goal, constraints, decisions, done and open work, checks, changed files with Git diff, uncertainties and the next step. It states that the previous assistant's private memory and native session are not carried over.
 - Compact copies the ledger independently of the handoff prose and retains an edited handoff as the latest user-supplied decision. The target conversation's actual permissions override inherited approvals.
 - Rewind reconstructs state from retained messages. An explicit `Nuovo obiettivo:`, `New task:` or `/task ` request starts a new scope without deleting history.
 - Checks carry their workspace; another project's results are not evidence for the current project. Fresh results replace older results of the same check.

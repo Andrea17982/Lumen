@@ -2517,28 +2517,69 @@ pub async fn compact_session(
         .last()
         .map(|m| clip(&m.text, 2000))
         .unwrap_or_default();
-    let decisions = answers
-        .iter()
-        .rev()
-        .take(3)
-        .rev()
-        .map(|m| format!("- {}", clip(m.text.trim(), 900).replace('\n', "\n  ")))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let diff = match gitops::toplevel(Path::new(&s.workspace)).await {
-        Some(top) => gitops::diff_head(&top, 20_000).await.unwrap_or_default(),
-        None => String::new(),
+    let mut state = crate::workstate::refresh(&core.store, &id, None)?;
+    let list = |facts: &[crate::workstate::Fact], n: usize, none: &str| -> String {
+        if facts.is_empty() {
+            return none.to_owned();
+        }
+        facts[facts.len().saturating_sub(n)..]
+            .iter()
+            .map(|f| format!("- {}", clip(f.text.trim(), 600).replace('\n', "\n  ")))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
-    let diff = if diff.trim().is_empty() {
+    let mut decisions = state.decisions.clone();
+    if decisions.is_empty() {
+        decisions = answers
+            .iter()
+            .map(|m| crate::workstate::Fact {
+                source: m.id.clone(),
+                text: m.text.clone(),
+            })
+            .collect();
+    }
+    let (files, diff) = match gitops::toplevel(Path::new(&s.workspace)).await {
+        Some(top) => (
+            gitops::changed_paths(&top).await.unwrap_or_default(),
+            gitops::diff_head(&top, 20_000).await.unwrap_or_default(),
+        ),
+        None => (vec![], String::new()),
+    };
+    let git = if files.is_empty() {
         "No uncommitted changes.".to_string()
     } else {
-        format!("```diff\n{}\n```", diff.trim())
+        let mut out = files
+            .iter()
+            .take(40)
+            .map(|(st, p)| format!("- `{p}` ({st})"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if files.len() > 40 {
+            out += &format!("\n- …and {} more", files.len() - 40);
+        }
+        if !diff.trim().is_empty() {
+            out += &format!("\n\n```diff\n{}\n```", diff.trim());
+        }
+        out
     };
+    let mut doubts = vec!["The previous assistant's private memory and native session are not carried over: trust only what is written here and re-read files before relying on them."];
+    if state.checks.is_empty() {
+        doubts.push("No checks were recorded, so nothing here is verified.");
+    }
+    if !state.pending.is_empty() {
+        doubts.push("Open items may be partly done: confirm their state first.");
+    }
     let package = match summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
         Some(edited) => format!("**Handoff from “{}”**\n\n{edited}", s.title),
         None => format!(
-            "**Handoff from “{}”**\n\n**Goal**\n\n{goal}\n\n**Recent decisions and results**\n\n{decisions}\n\n**Uncommitted changes**\n\n{diff}\n\n**Next step**\n\nContinue from the latest request: {latest}",
-            s.title
+            "**Handoff from “{}”**\n\n**Goal**\n\n{goal}\n\n**Constraints**\n\n{}\n\n**Decisions**\n\n{}\n\n**Done**\n\n{}\n\n**Still open**\n\n{}\n\n**Checks**\n\n{}\n\n**Files and Git state**\n\n{git}\n\n**Uncertainties**\n\n{}\n\n**Next step**\n\nContinue from the latest request: {latest}",
+            s.title,
+            list(&state.requirements, 8, "None recorded."),
+            list(&decisions, 3, "None recorded."),
+            list(&state.completed, 6, "Nothing recorded as done."),
+            list(&state.pending, 8, "Nothing recorded as open."),
+            list(&state.checks, 6, "None ran."),
+            doubts.iter().map(|d| format!("- {d}")).collect::<Vec<_>>().join("\n"),
         ),
     };
     let mut fresh = core.store.create(s.workspace.clone())?;
@@ -2548,7 +2589,6 @@ pub async fn compact_session(
             .bind_workspace(&fresh.id, Some(w), &s.workspace)?;
     }
     fresh = core.store.set_access_mode(&fresh.id, s.access_mode)?;
-    let mut state = crate::workstate::refresh(&core.store, &id, None)?;
     let handoff_id = crate::models::id();
     if let Some(edited) = summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
         state.decisions.push(crate::workstate::Fact { source: handoff_id.clone(), text: format!("User-supplied handoff; supersedes conflicting earlier task facts, but not live permissions:\n{edited}") });
