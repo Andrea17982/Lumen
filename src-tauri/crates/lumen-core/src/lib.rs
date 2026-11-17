@@ -27,6 +27,8 @@ mod assets;
 mod browser;
 mod capability_catalog;
 mod catalog;
+mod command_receipts;
+pub use command_receipts::dispatch as dispatch_receipted;
 mod cursor;
 mod opencode;
 mod opencode_acp;
@@ -107,6 +109,7 @@ pub struct Core {
     /// At most eight CLI inference processes at once, Orchestra subtasks included.
     inference: Arc<Semaphore>,
     workspace_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    command_locks: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
     catalogs: Mutex<HashMap<String, (std::time::Instant, Vec<ModelInfo>)>>,
     usage_lock: Mutex<()>,
     limits: limits::Limits,
@@ -132,6 +135,7 @@ impl Core {
             slots: Arc::new(Semaphore::new(4)),
             inference: Arc::new(Semaphore::new(8)),
             workspace_locks: Mutex::new(HashMap::new()),
+            command_locks: Mutex::new(HashMap::new()),
             catalogs: Mutex::new(HashMap::new()),
             usage_lock: Mutex::new(()),
             orchestra_raises: Mutex::new(HashMap::new()),

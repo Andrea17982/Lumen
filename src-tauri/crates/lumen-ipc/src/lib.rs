@@ -3,8 +3,26 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 pub const MAX_FRAME: usize = 40 * 1024 * 1024;
+
+/// Only small command replies are persisted; credentials and read-only output are excluded.
+pub fn receipted(command: &str) -> bool {
+    matches!(
+        command,
+        "create_session"
+            | "send_message"
+            | "cancel_run"
+            | "answer_question"
+            | "gatekeeper_decide"
+            | "resume_at_reset"
+            | "orchestra_answer"
+            | "orchestra_approve"
+            | "orchestra_cancel"
+            | "orchestra_resume"
+            | "orchestra_raise"
+    )
+}
 
 pub fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
@@ -74,6 +92,8 @@ pub struct Request {
     pub build: String,
     pub command: String,
     pub args: Value,
+    #[serde(default)]
+    pub command_id: Option<String>,
 }
 #[derive(Serialize, Deserialize)]
 pub struct Reply {
@@ -126,6 +146,14 @@ pub struct Client {
 }
 impl Client {
     pub async fn start(&self, command: &str, args: Value) -> Result<Stream, String> {
+        self.start_request(command, args, None).await
+    }
+    async fn start_request(
+        &self,
+        command: &str,
+        args: Value,
+        command_id: Option<String>,
+    ) -> Result<Stream, String> {
         let mut io = connect(&self.endpoint).await?;
         write(
             &mut io,
@@ -134,14 +162,32 @@ impl Client {
                 build: self.build.clone(),
                 command: command.into(),
                 args,
+                command_id,
             },
         )
         .await?;
         Ok(io)
     }
     pub async fn call(&self, command: &str, args: Value) -> Result<Value, String> {
-        let mut io = self.start(command, args).await?;
-        read::<Reply>(&mut io).await?.result
+        let id = receipted(command).then(|| uuid::Uuid::new_v4().to_string());
+        let mut retried = false;
+        loop {
+            let reply = async {
+                let mut io = self
+                    .start_request(command, args.clone(), id.clone())
+                    .await?;
+                read::<Reply>(&mut io).await
+            }
+            .await;
+            match reply {
+                Ok(reply) => return reply.result,
+                Err(_) if id.is_some() && !retried => retried = true,
+                Err(error) => return Err(match id {
+                    Some(id) => format!("Cannot confirm command {id}: {error}. Review its result before submitting new work."),
+                    None => error,
+                }),
+            }
+        }
     }
 }
 
@@ -229,6 +275,80 @@ pub mod peer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn lost_reply_retries_the_same_id_but_domain_errors_and_reads_do_not_retry() {
+        for (command, attempts) in [("create_session", 2), ("list_sessions", 1)] {
+            #[cfg(windows)]
+            let endpoint = PathBuf::from(format!(
+                r"\\.\pipe\lumen-receipt-test-{}",
+                uuid::Uuid::new_v4()
+            ));
+            #[cfg(unix)]
+            let endpoint =
+                std::env::temp_dir().join(format!("lumen-receipt-{}.sock", uuid::Uuid::new_v4()));
+            #[cfg(windows)]
+            let mut listener = tokio::net::windows::named_pipe::ServerOptions::new()
+                .first_pipe_instance(true)
+                .reject_remote_clients(true)
+                .create(&endpoint)
+                .unwrap();
+            #[cfg(unix)]
+            let listener = tokio::net::UnixListener::bind(&endpoint).unwrap();
+            let client = Client {
+                endpoint: endpoint.clone(),
+                build: "fixture".into(),
+            };
+            let server_endpoint = endpoint.clone();
+            let server = tokio::spawn(async move {
+                let mut previous = None;
+                for attempt in 0..attempts {
+                    #[cfg(windows)]
+                    let mut io = {
+                        listener.connect().await.unwrap();
+                        let connected = listener;
+                        listener = tokio::net::windows::named_pipe::ServerOptions::new()
+                            .reject_remote_clients(true)
+                            .create(&server_endpoint)
+                            .unwrap();
+                        connected
+                    };
+                    #[cfg(unix)]
+                    let (mut io, _) = listener.accept().await.unwrap();
+                    let request: Request = read(&mut io).await.unwrap();
+                    assert_eq!(request.command, command);
+                    assert_eq!(request.args, serde_json::json!({"workspace":"fixture"}));
+                    if attempt == 0 {
+                        assert_eq!(request.command_id.is_some(), receipted(command));
+                        previous = request.command_id;
+                        // Commit succeeded, but the transport closes before delivering its reply.
+                    } else {
+                        assert_eq!(request.command_id, previous);
+                        write(
+                            &mut io,
+                            &Reply {
+                                result: Err("saved domain error".into()),
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    }
+                }
+                #[cfg(unix)]
+                std::fs::remove_file(server_endpoint).unwrap();
+            });
+            let error = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                client.call(command, serde_json::json!({"workspace":"fixture"})),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+            if receipted(command) {
+                assert_eq!(error, "saved domain error");
+            }
+            server.await.unwrap();
+        }
+    }
     #[tokio::test]
     async fn framing_rejects_oversize_before_allocation_and_invalid_json() {
         let (mut a, mut b) = tokio::io::duplex(128);

@@ -1,6 +1,6 @@
 //! Transactional, versioned SQLite schema upgrades. A newer database is never downgraded.
 use rusqlite::Connection;
-const CURRENT: u32 = 4;
+const CURRENT: u32 = 5;
 fn column(c: &Connection, table: &str, name: &str) -> rusqlite::Result<bool> {
     let mut q = c.prepare(&format!("PRAGMA table_info({table})"))?;
     let rows = q.query_map([], |r| r.get::<_, String>(1))?;
@@ -45,6 +45,7 @@ pub fn run(c: &mut Connection) -> Result<(), String> {
                     if !column(&tx,"work_states","seed")? { tx.execute_batch("ALTER TABLE work_states ADD COLUMN seed TEXT")?; }
                 },
                 4 => tx.execute_batch("CREATE TABLE host_events(seq INTEGER PRIMARY KEY AUTOINCREMENT,session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,message TEXT NOT NULL,payload TEXT NOT NULL); CREATE INDEX host_events_message ON host_events(session,message,seq); CREATE TABLE message_sequences(message TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,seq INTEGER NOT NULL); CREATE TABLE quota_schedules(session TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,message TEXT NOT NULL); CREATE TRIGGER message_service_cleanup AFTER DELETE ON messages BEGIN DELETE FROM host_events WHERE message=old.id; DELETE FROM quota_schedules WHERE message=old.id; END;")?,
+                5 => tx.execute_batch("CREATE TABLE command_receipts(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,result TEXT);")?,
                 _ => unreachable!(),
             }
             tx.execute(
@@ -63,6 +64,26 @@ pub fn run(c: &mut Connection) -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
+    fn schema_four_upgrades_without_changing_existing_messages() {
+        let mut c = Connection::open_in_memory().unwrap();
+        run(&mut c).unwrap();
+        c.execute_batch("DROP TABLE command_receipts; DELETE FROM schema_migrations WHERE version=5; PRAGMA user_version=4; INSERT INTO sessions(id,title,status,workspace,updated_at) VALUES('saved','Existing','idle','folder',1); INSERT INTO messages VALUES('message','saved','user','Keep this','[]',1);").unwrap();
+        run(&mut c).unwrap();
+        assert_eq!(
+            c.query_row("SELECT text FROM messages WHERE id='message'", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+            "Keep this"
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM command_receipts", [], |r| r
+                .get::<_, u32>(0))
+                .unwrap(),
+            0
+        );
+    }
+    #[test]
     fn upgrades_are_idempotent_and_newer_versions_are_preserved() {
         let mut c = Connection::open_in_memory().unwrap();
         run(&mut c).unwrap();
@@ -71,7 +92,7 @@ mod tests {
             c.query_row("SELECT count(*) FROM schema_migrations", [], |r| r
                 .get::<_, u32>(0))
                 .unwrap(),
-            4
+            5
         );
         c.pragma_update(None, "user_version", 99).unwrap();
         assert!(run(&mut c).unwrap_err().contains("update Lumen"));

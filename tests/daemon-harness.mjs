@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -48,7 +48,9 @@ export async function daemonClient(
       io.once('connect', resolve);
       io.once('error', reject);
     });
-    const bytes = Buffer.from(JSON.stringify({ protocol: 1, build, command, args, ...override }));
+    const bytes = Buffer.from(
+      JSON.stringify({ protocol: 2, build, command, args, command_id: randomUUID(), ...override }),
+    );
     const header = Buffer.alloc(4);
     header.writeUInt32BE(bytes.length);
     io.write(Buffer.concat([header, bytes]));

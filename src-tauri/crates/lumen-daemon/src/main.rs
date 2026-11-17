@@ -311,9 +311,29 @@ async fn serve_peer(mut io: Peer, service: Arc<Service>) -> Result<(), String> {
             Err("Lumen is stopping; reconnect after it restarts".into())
         } else {
             let mut cancelled = cancel.subscribe();
+            let dispatch = async {
+                if lumen_ipc::receipted(&request.command) {
+                    let id = request.command_id.as_deref().ok_or("Missing command ID")?;
+                    let fingerprint = lumen_ipc::digest(
+                        &serde_json::to_vec(&(&request.command, &request.args))
+                            .map_err(|e| e.to_string())?,
+                    );
+                    lumen_core::dispatch_receipted(
+                        events.clone(),
+                        core,
+                        &request.command,
+                        request.args,
+                        id,
+                        &fingerprint,
+                    )
+                    .await
+                } else {
+                    lumen_core::dispatch(events.clone(), core, &request.command, request.args).await
+                }
+            };
             tokio::select! {biased;
                 _=cancelled.changed()=>Err("Service stopped during the command; review its result before retrying".into()),
-                result=lumen_core::dispatch(events.clone(),core,&request.command,request.args)=>result,
+                result=dispatch=>result,
             }
         }
     };

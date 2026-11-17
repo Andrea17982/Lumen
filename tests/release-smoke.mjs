@@ -64,7 +64,7 @@ assert.match(version.stdout, /moli 1\.1\.23/);
 const legalRoot = path.resolve(path.dirname(moli), '../../legal');
 const notices = JSON.parse(await readFile(path.join(legalRoot, 'index.json'), 'utf8'));
 assert(notices.packages.some((pkg) => pkg.crate === 'rmcp'));
-for (const pkg of notices.packages) {
+for (const pkg of [...notices.packages, ...(notices.adaptations || [])]) {
   for (const file of pkg.files) {
     const target = path.resolve(legalRoot, file.path);
     assert(

@@ -4,6 +4,31 @@ use std::{path::Path, sync::Mutex};
 
 pub struct Store(Mutex<Connection>);
 impl Store {
+    // T3 Code's insert-if-absent receipt pattern; source and MIT notice: command_receipts.rs.
+    pub(crate) fn claim_command(
+        &self,
+        id: &str,
+        fingerprint: &str,
+    ) -> Result<Option<Option<String>>, String> {
+        let (inserted, saved, result) = self.with(|c| {
+            let inserted = c.execute("INSERT INTO command_receipts(id,fingerprint) VALUES(?1,?2) ON CONFLICT(id) DO NOTHING", params![id,fingerprint])?;
+            let (saved, result): (String, Option<String>) = c.query_row("SELECT fingerprint,result FROM command_receipts WHERE id=?1", [id], |r| Ok((r.get(0)?,r.get(1)?)))?;
+            Ok((inserted, saved, result))
+        })?;
+        if saved != fingerprint {
+            return Err("Command ID was already used with different arguments".into());
+        }
+        Ok((inserted == 0).then_some(result))
+    }
+    pub(crate) fn complete_command(&self, id: &str, result: &str) -> Result<(), String> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE command_receipts SET result=?2 WHERE id=?1",
+                params![id, result],
+            )
+        })
+        .map(|_| ())
+    }
     pub fn schedule_quota(&self, session: &str, message: &str) -> Result<(), String> {
         self.with(|c|c.execute("INSERT INTO quota_schedules VALUES(?1,?2) ON CONFLICT(session) DO UPDATE SET message=excluded.message",params![session,message])).map(|_|())
     }

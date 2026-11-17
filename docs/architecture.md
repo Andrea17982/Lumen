@@ -87,4 +87,4 @@ The inspector's static preview server owns only explicit built outputs and does 
 
 ## Local service boundary
 
-[Service operations](local-service.md) describes protocol/build checks, OS peer authentication, exclusive ownership, schema-4 event/checkpoint recovery, durable quota intentions, process containment and the verified stop-before-update procedure. The GUI never opens the domain database or owns model processes; editor/login/link opening stays outside the service process tree. No remote listener is added.
+[Service operations](local-service.md) describes protocol/build checks, OS peer authentication, exclusive ownership, event/checkpoint recovery, durable quota intentions, schema-5 command receipts, process containment and the verified stop-before-update procedure. The GUI never opens the domain database or owns model processes; editor/login/link opening stays outside the service process tree. No remote listener is added.

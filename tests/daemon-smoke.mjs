@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { daemonClient, sleep } from './daemon-harness.mjs';
 
 const data = await mkdtemp(path.join(tmpdir(), 'lumen-daemon-'));
@@ -24,6 +25,35 @@ try {
   await assert.rejects(client.call('list_accounts', {}, { protocol: 999 }), /different build/);
   await assert.rejects(client.call('create_session', {}), /workspace/);
   await assert.rejects(client.call('not_a_command'), /Unknown/);
+  await assert.rejects(
+    client.call('create_session', { workspace }, { command_id: null }),
+    /Missing command ID/,
+  );
+  await assert.rejects(
+    client.call('create_session', { workspace }, { command_id: 'bad' }),
+    /Invalid command ID/,
+  );
+  const command_id = randomUUID();
+  // Lose the reply after transmission, then recover the accepted result using the same ID.
+  const lost = await client.open('create_session', { workspace }, { command_id });
+  for (
+    let n = 0;
+    n < 100 && !(await client.call('list_sessions', { search: '', offset: 0 })).length;
+    n++
+  )
+    await sleep(20);
+  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 1);
+  lost.io.destroy();
+  const replays = await Promise.all(
+    Array.from({ length: 8 }, () => client.call('create_session', { workspace }, { command_id })),
+  );
+  assert.equal(new Set(replays.map((s) => s.id)).size, 1);
+  await assert.rejects(
+    client.call('create_session', { workspace: data }, { command_id }),
+    /different arguments/,
+  );
+  const replayed = replays[0];
+  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 1);
   const duplicate = client.start();
   await new Promise((resolve) => duplicate.once('exit', resolve));
   assert.notEqual(duplicate.exitCode, 0);
@@ -31,7 +61,7 @@ try {
     Array.from({ length: 16 }, () => client.call('create_session', { workspace })),
   );
   assert.equal(new Set(sessions.map((s) => s.id)).size, 16);
-  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 16);
+  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
   stream = await client.open('__events');
   assert.equal((await stream.next()).result.Ok.ready, true);
   await assert.rejects(client.call('__prepare_update'), /Close every/);
@@ -44,7 +74,8 @@ try {
   );
   const restarted = client.start();
   await client.ready();
-  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 16);
+  assert.deepEqual(await client.call('create_session', { workspace }, { command_id }), replayed);
+  assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify({ scripts: { test: 'node owned-child.mjs' } }),
@@ -130,6 +161,8 @@ try {
           'typed argument boundary',
           'single owner',
           'concurrent commands',
+          'lost reply and concurrent duplicate command replay without repeated effects',
+          'command payload binding and receipt persistence across restart',
           'event subscription',
           'connected update refusal',
           'drain and restart preserving data',

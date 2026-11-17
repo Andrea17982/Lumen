@@ -4,6 +4,14 @@ This page records what has actually been verified for the current source and whi
 
 Fixtures, builds, small real-account smoke checks and owner observations are distinct kinds of evidence and are reported separately. Lumen remains an alpha without an independent security audit.
 
+## 17 November - T3 Code command-receipt adaptation
+
+Selected task and approval commands now use persistent, payload-bound UUID receipts. Lost replies and concurrent duplicates return the saved result without repeating dispatch. Pending claims after cancellation/crash are explicitly uncertain and never automatically replayed. This Rust/SQLite adaptation of T3 Code's design preserves [upstream credits, exact sources, changes and MIT text](../src-tauri/resources/legal/t3code/ADAPTATIONS.md).
+
+The full workspace passed 231 Rust tests (14 opt-in ignored) and Clippy with warnings denied. New regressions cover transport-only retry with the same UUID, no retry of domain errors/read commands, concurrent dispatch, argument mismatch, saved errors, invalid/missing IDs, database reopen and preservation of schema-4 messages during migration to schema 5. The native daemon smoke also loses a reply after acceptance, repeats the same command concurrently, restarts the service and checks that only one conversation was created. Documentation checks verify upstream notice hashes; release helper checks include adaptation notices. This proves the covered dispatch behavior, not exactly-once external effects or every adapter/account combination.
+
+The earlier 16 November package receipt below describes the initial schema-4 build, not this follow-up source. Current service migration/recovery requirements are in [local-service.md](local-service.md).
+
 ## 16 November - 0.10 core and local service
 
 - **Implemented:** headless core, authenticated local service, one owner per data directory, transactional event/checkpoint recovery, bounded live-worker compaction, durable quota intentions and explicit process-safe recovery. The GUI closes independently; Stop Lumen and quit is available in the tray and General settings.

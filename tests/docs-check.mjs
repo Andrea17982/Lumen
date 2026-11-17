@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 const root = process.cwd();
 const markdown = new Set(
@@ -37,6 +38,21 @@ function headings(file) {
   return result;
 }
 const problems = [];
+const upstream = JSON.parse(readFileSync('src-tauri/resources/legal/index.json', 'utf8'));
+for (const adaptation of upstream.adaptations || []) {
+  for (const notice of adaptation.files) {
+    const bytes = readFileSync(path.join('src-tauri/resources/legal', notice.path));
+    assert.equal(
+      createHash('sha256').update(bytes).digest('hex'),
+      notice.sha256,
+      `${adaptation.name}: upstream notice changed`,
+    );
+  }
+  assert(
+    existsSync(path.join('src-tauri/resources/legal', adaptation.changes)),
+    `${adaptation.name}: adaptation inventory missing`,
+  );
+}
 let links = 0;
 for (const file of markdown) {
   const body = readFileSync(file, 'utf8').replace(/```[^\n]*\n[\s\S]*?```/g, '');
