@@ -127,7 +127,7 @@ pub async fn execute(
     let mut scope = None;
     let mut session_guard = None;
     if let Some(approvals) = &input.approvals {
-        let owned = approvals.keeper.start_session(&approvals.chat, Engine::Claude, &native_id, &uuid::Uuid::new_v4().to_string(), &cwd, Availability::Available { version:"native stdio".into(), evidence:"Local connection; model execution requires the installed CLI initialization acknowledgement".into() })?;
+        let owned = approvals.keeper.start_worker_session(&approvals.chat, Engine::Claude, &native_id, &uuid::Uuid::new_v4().to_string(), &cwd, Availability::Available { version:"native stdio".into(), evidence:"Local connection; model execution requires the installed CLI initialization acknowledgement".into() }, approvals.worker.clone())?;
         let endpoint =
             lumen_gatekeeper::mcp::ClaudeEndpoint::bind(approvals.keeper.clone(), owned.clone())
                 .await?;
@@ -207,7 +207,7 @@ pub async fn execute(
             }
         }).await.map_err(|_|"Claude did not initialize in time".to_string())??;
         crate::execution::signal(&mut emit, "protocol-ready");
-        tx.send(json!({"type":"user","message":{"role":"user","content":input.prompt}})).await.map_err(|_|"Claude closed its input")?;
+        tx.send(crate::providers::wire_prompt(&crate::models::Provider::Claude, input.prompt)).await.map_err(|_|"Claude closed its input")?;
         crate::execution::signal(&mut emit, "request-enqueued");
         let mut text = String::new();
         loop {

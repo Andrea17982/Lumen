@@ -185,6 +185,30 @@ impl Gatekeeper {
         cwd: &Path,
         availability: Availability,
     ) -> Result<Scope, String> {
+        self.start_worker_session(
+            session_id,
+            provider,
+            provider_session_id,
+            turn_id,
+            cwd,
+            availability,
+            None,
+        )
+    }
+
+    /// Like [`Self::start_session`], for one Orchestra worker. Workers of the same chat run
+    /// side by side, so a new connection replaces only the same worker's previous one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_worker_session(
+        &self,
+        session_id: &str,
+        provider: Provider,
+        provider_session_id: &str,
+        turn_id: &str,
+        cwd: &Path,
+        availability: Availability,
+        worker: Option<Worker>,
+    ) -> Result<Scope, String> {
         if [session_id, provider_session_id, turn_id]
             .iter()
             .any(|s| s.is_empty())
@@ -199,7 +223,11 @@ impl Gatekeeper {
             .lock()?
             .sessions
             .values()
-            .filter(|s| s.scope.session_id == session_id && s.scope.provider == provider)
+            .filter(|s| {
+                s.scope.session_id == session_id
+                    && s.scope.provider == provider
+                    && s.worker.as_ref().map(|w| &w.task_id) == worker.as_ref().map(|w| &w.task_id)
+            })
             .map(|s| s.scope.clone())
             .collect();
         for scope in old {
@@ -216,6 +244,7 @@ impl Gatekeeper {
             scope: scope.clone(),
             cwd: cwd.to_string_lossy().into_owned(),
             availability,
+            worker,
         };
         self.lock()?
             .sessions
@@ -262,7 +291,7 @@ impl Gatekeeper {
 
     fn enqueue(&self, scope: &Scope, draft: Draft) -> Result<PendingReply, String> {
         let mut s = self.lock()?;
-        active(&s, scope)?;
+        let worker = active(&s, scope)?.worker.clone();
         if s.waiting.len() >= MAX_PENDING || draft.input.to_string().len() > MAX_PAYLOAD {
             return Err("Gatekeeper approval capacity exceeded; stop the provider turn".into());
         }
@@ -297,6 +326,7 @@ impl Gatekeeper {
             decision: None,
             decision_source: None,
             note: None,
+            worker,
         };
         persist(&s.db, &request)?;
         let id = request.id.clone();

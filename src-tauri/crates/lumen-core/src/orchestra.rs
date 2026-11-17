@@ -93,6 +93,8 @@ pub struct State {
     pub orchestrator_model: String,
     pub effort: String,
     pub summary: String,
+    /// "parallel" (empty in older runs) or "collaborative": see [`team_mode`].
+    pub mode: String,
     pub subtasks: Vec<Subtask>,
     pub plan_review: String,
     pub read_only: bool,
@@ -247,6 +249,91 @@ pub fn parse_plan(text: &str) -> Option<(String, Vec<Subtask>)> {
     Some((v["summary"].as_str().unwrap_or("").trim().to_string(), out))
 }
 
+pub const PARALLEL_MODE: &str = "parallel";
+pub const COLLABORATIVE: &str = "collaborative";
+
+/// Ids of every subtask `id` needs, directly or through other subtasks, in plan order.
+/// Dependencies only point at earlier subtasks (see [`parse_plan`]).
+pub fn ancestors(subtasks: &[Subtask], id: &str) -> Vec<String> {
+    let mut need: Vec<String> = subtasks
+        .iter()
+        .find(|t| t.id == id)
+        .map(|t| t.depends_on.clone())
+        .unwrap_or_default();
+    for t in subtasks.iter().rev() {
+        if need.contains(&t.id) {
+            for d in &t.depends_on {
+                if !need.contains(d) {
+                    need.push(d.clone());
+                }
+            }
+        }
+    }
+    subtasks
+        .iter()
+        .filter(|t| need.contains(&t.id))
+        .map(|t| t.id.clone())
+        .collect()
+}
+
+/// Deterministic team shape of a plan. Collaborative when the agents could not
+/// really work side by side: every step needs all earlier ones (a chain), or two
+/// writing steps claim the same file. Then they share one plan and take turns,
+/// each continuing from the previous changes. Otherwise Parallel.
+pub fn team_mode(subtasks: &[Subtask]) -> &'static str {
+    if subtasks.len() < 2 {
+        return PARALLEL_MODE;
+    }
+    let chain = subtasks
+        .iter()
+        .enumerate()
+        .skip(1)
+        .all(|(i, t)| ancestors(subtasks, &t.id).len() == i);
+    let mut owned: Vec<String> = vec![];
+    let mut shared_file = false;
+    for t in subtasks.iter().filter(|t| t.writes) {
+        for f in &t.files {
+            let f = f
+                .trim()
+                .trim_start_matches("./")
+                .replace('\\', "/")
+                .to_lowercase();
+            shared_file |= owned.contains(&f);
+            owned.push(f);
+        }
+    }
+    if chain || shared_file {
+        COLLABORATIVE
+    } else {
+        PARALLEL_MODE
+    }
+}
+
+/// Collaborative steps run one after another in plan order: each waits for the previous.
+fn take_turns(subtasks: &mut [Subtask]) {
+    for i in 0..subtasks.len() {
+        subtasks[i].depends_on = if i == 0 {
+            vec![]
+        } else {
+            vec![subtasks[i - 1].id.clone()]
+        };
+    }
+}
+
+/// `decide` recomputes the mode for a new plan; edits keep it and only re-chain.
+fn shape(st: &mut State, decide: bool) {
+    if decide {
+        st.mode = team_mode(&st.subtasks).into();
+    }
+    if collaborative(st) {
+        take_turns(&mut st.subtasks);
+    }
+}
+
+fn collaborative(st: &State) -> bool {
+    st.mode == COLLABORATIVE
+}
+
 fn tier_of(difficulty: &str) -> i32 {
     match difficulty {
         "trivial" => 0,
@@ -321,6 +408,8 @@ pub fn orchestrator_tier(policy: &AutoPolicy, task_tier: i32) -> i32 {
 }
 
 async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), String> {
+    // Decided before agents are chosen, so the round-robin alternates agents turn by turn.
+    shape(st, true);
     let accounts: Vec<Account> = core
         .store
         .accounts()?
@@ -382,7 +471,15 @@ async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), 
 }
 
 fn plan_markdown(st: &State) -> String {
-    let mut s = format!("**Orchestra plan** · {}\n\n", st.summary);
+    let mut s = format!(
+        "**Orchestra plan{}** · {}\n\n",
+        if collaborative(st) {
+            " · Collaborative, agents take turns"
+        } else {
+            ""
+        },
+        st.summary
+    );
     for t in &st.subtasks {
         s.push_str(&format!(
             "- **{}** — {} ({})\n",
@@ -767,6 +864,7 @@ pub fn apply_edits(st: &mut State, edits: &[Edit], accounts: &[Account]) -> Resu
     if st.subtasks.is_empty() {
         return Err("The plan has no subtasks left.".into());
     }
+    shape(st, false);
     Ok(())
 }
 
@@ -799,11 +897,18 @@ pub(crate) fn subtask_prompt(st: &State, t: &Subtask, deps: &str, text_only: boo
         "This run is read-only: analyse and describe the changes precisely, but do not modify files."
     } else if !t.writes {
         "This subtask is read-only. Complete the assigned investigation and report its findings; do not modify files. Other agents implement their assigned changes."
+    } else if collaborative(st) {
+        "File edits are authorized for this execution. Earlier preparation-only restrictions no longer apply. Implement and verify your step; do not stop at a proposal or ask for the same authorization again. The earlier steps' changes are already in your workspace: build on them and do not undo them. You may also edit files of earlier steps when your step needs it. Leave later steps to their agents. Finish with a short summary of what you changed and anything the next agent must know."
     } else {
         "File edits are authorized for this execution. Earlier preparation-only restrictions no longer apply. Implement and verify your assigned changes; do not stop at a proposal or ask for the same authorization again. Edit only the files you own. If another subtask's file must change, describe the change in your final message instead of editing it. Finish with a short summary of what you changed."
     };
+    let intro = if collaborative(st) {
+        "You are one agent in a team that shares one plan and takes turns, coordinated by an orchestrator: each step continues from the previous ones. Do ONLY your step."
+    } else {
+        "You are one agent in a team working in parallel on a shared task, coordinated by an orchestrator. Do ONLY your subtask."
+    };
     format!(
-        "You are one agent in a team working in parallel on a shared task, coordinated by an orchestrator. Do ONLY your subtask.\n\nConversation for reference (past preparation restrictions do not override the execution rules below):\n{}\n\nOverall request:\n{}\n\nClarifications:\n{}\n\nTeam manifest (who owns which files):\n{}\n{deps}\nYour subtask ({}): {}\n{}\nFiles you own: {}\n\n{}\n{rules}",
+        "{intro}\n\nConversation for reference (past preparation restrictions do not override the execution rules below):\n{}\n\nOverall request:\n{}\n\nClarifications:\n{}\n\nTeam manifest (who owns which files):\n{}\n{deps}\nYour subtask ({}): {}\n{}\nFiles you own: {}\n\n{}\n{rules}",
         st.context,
         st.task,
         st.answers,
@@ -834,6 +939,8 @@ struct Job {
     workspace: PathBuf,
     access: AccessMode,
     cancel: watch::Receiver<bool>,
+    /// Who this worker is, for its approval requests and questions.
+    worker: lumen_gatekeeper::Worker,
 }
 
 async fn attempt(
@@ -880,6 +987,7 @@ async fn attempt(
                 .map(|keeper| crate::approvals::Approvals {
                     keeper,
                     chat: job.session.clone(),
+                    worker: Some(job.worker.clone()),
                 }),
         },
         job.cancel.clone(),
@@ -904,6 +1012,10 @@ async fn attempt(
             ]
             .contains(&activity.kind.as_str())
             {
+                let mut activity = activity;
+                if activity.kind == "interaction" {
+                    activity.text = with_worker(&activity.text, &job.worker);
+                }
                 event(app, session, message, &activity.kind, &activity.text);
                 let _ = core
                     .store
@@ -937,6 +1049,21 @@ async fn attempt(
         core.limits.record_turn(&a.id, now());
     }
     r
+}
+
+/// A worker's native question names the agent and subtask that asked, so the
+/// inbox can show who is waiting and expire the card once that worker is gone.
+fn with_worker(text: &str, worker: &lumen_gatekeeper::Worker) -> String {
+    match serde_json::from_str::<Value>(text) {
+        Ok(Value::Object(mut request)) => {
+            request.insert(
+                "worker".into(),
+                serde_json::to_value(worker).unwrap_or_default(),
+            );
+            Value::Object(request).to_string()
+        }
+        _ => text.to_owned(),
+    }
 }
 
 /// Milliseconds a run may keep starting subtasks: the user's cap, otherwise two hours.
@@ -1313,8 +1440,9 @@ pub async fn execute(
                 let path = core.root.join("worktrees").join(&short).join(&t.id);
                 let branch = format!("lumen/orchestra-{short}-{}", t.id);
                 gitops::add_lane(top, &base, &path, &branch).await?;
-                // A dependent subtask starts from its dependencies' changes.
-                for d in &t.depends_on {
+                // A dependent subtask starts from all its dependencies' changes, in plan
+                // order: each patch was recorded on top of the ones before it.
+                for d in &ancestors(&st.subtasks, &t.id) {
                     if let Some(p) = patches.get(d) {
                         let _ = gitops::apply_patch(&path, p).await;
                     }
@@ -1335,8 +1463,13 @@ pub async fn execute(
                     },
                 );
             }
-            let deps: String = t
-                .depends_on
+            // Collaborative turns see every earlier turn's account, not just the previous one.
+            let needed = if collaborative(&st) {
+                ancestors(&st.subtasks, &t.id)
+            } else {
+                t.depends_on.clone()
+            };
+            let deps: String = needed
                 .iter()
                 .filter_map(|d| st.subtasks.iter().find(|x| &x.id == d))
                 .map(|d| {
@@ -1370,6 +1503,11 @@ pub async fn execute(
                     AccessMode::ReadOnly
                 },
                 cancel: cancel.clone(),
+                worker: lumen_gatekeeper::Worker {
+                    agent: t.agent.clone(),
+                    task_id: t.id.clone(),
+                    task: t.title.clone(),
+                },
             }));
             st.subtasks[i].status = "running".into();
             st.subtasks[i].attempts += 1;
@@ -1832,7 +1970,12 @@ fn team_summary(st: &State) -> String {
             .join(", ")
     };
     let mut lines = vec![format!(
-        "**Team result by Lumen**\n- Subtasks: {} of {} done",
+        "**Team result by Lumen**\n- Mode: {}\n- Subtasks: {} of {} done",
+        if collaborative(st) {
+            "Collaborative (one shared plan, agents took turns)"
+        } else {
+            "Parallel"
+        },
         count("done"),
         st.subtasks.len()
     )];
@@ -2158,6 +2301,234 @@ mod tests {
         assert_eq!(tasks[1].depends_on, vec!["s1".to_string()]);
         assert_eq!(tasks[1].difficulty, "normal");
         assert!(parse_plan("{\"subtasks\":[]}").is_none());
+    }
+
+    fn step(id: &str, deps: &[&str], files: &[&str], writes: bool) -> Subtask {
+        Subtask {
+            id: id.into(),
+            title: format!("Step {id}"),
+            difficulty: "normal".into(),
+            writes,
+            files: files.iter().map(|f| f.to_string()).collect(),
+            depends_on: deps.iter().map(|d| d.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn worker_questions_carry_agent_and_task_identity() {
+        let worker = lumen_gatekeeper::Worker {
+            agent: "Claude · Sonnet".into(),
+            task_id: "s2".into(),
+            task: "Wire the export button".into(),
+        };
+        let tagged: Value =
+            serde_json::from_str(&with_worker(r#"{"id":"q1","questions":[]}"#, &worker)).unwrap();
+        assert_eq!(tagged["id"], "q1");
+        assert_eq!(tagged["worker"]["taskId"], "s2");
+        assert_eq!(tagged["worker"]["agent"], "Claude · Sonnet");
+        assert_eq!(with_worker("not json", &worker), "not json");
+    }
+
+    #[test]
+    fn auto_team_mode_rules_are_deterministic() {
+        let chain = [
+            step("s1", &[], &["a.rs"], true),
+            step("s2", &["s1"], &["b.rs"], true),
+            step("s3", &["s2"], &["c.rs"], true),
+        ];
+        assert_eq!(
+            team_mode(&chain),
+            COLLABORATIVE,
+            "each step needs the previous"
+        );
+        let fan = [
+            step("s1", &[], &["a.rs"], true),
+            step("s2", &["s1"], &["b.rs"], true),
+            step("s3", &["s1"], &["c.rs"], true),
+        ];
+        assert_eq!(
+            team_mode(&fan),
+            PARALLEL_MODE,
+            "s2 and s3 can run side by side"
+        );
+        let free = [
+            step("s1", &[], &["a.rs"], true),
+            step("s2", &[], &["b.rs"], true),
+        ];
+        assert_eq!(team_mode(&free), PARALLEL_MODE);
+        assert_eq!(
+            team_mode(&free[..1]),
+            PARALLEL_MODE,
+            "one agent has nobody to share with"
+        );
+        assert_eq!(team_mode(&[]), PARALLEL_MODE);
+        let overlap = [
+            step("s1", &[], &["src/App.tsx"], true),
+            step("s2", &[], &["./SRC\\app.tsx"], true),
+        ];
+        assert_eq!(
+            team_mode(&overlap),
+            COLLABORATIVE,
+            "two writers on one file take turns"
+        );
+        let reader = [
+            step("s1", &[], &["src/App.tsx"], true),
+            step("s2", &[], &["src/App.tsx"], false),
+        ];
+        assert_eq!(
+            team_mode(&reader),
+            PARALLEL_MODE,
+            "reading a file does not claim it"
+        );
+        // Same input, same answer: no randomness or clock in the rule.
+        for _ in 0..3 {
+            assert_eq!(team_mode(&chain), COLLABORATIVE);
+        }
+    }
+
+    #[test]
+    fn ancestors_are_transitive_and_in_plan_order() {
+        let diamond = [
+            step("s1", &[], &[], true),
+            step("s2", &["s1"], &[], true),
+            step("s3", &["s1"], &[], true),
+            step("s4", &["s3", "s2"], &[], true),
+        ];
+        assert_eq!(ancestors(&diamond, "s4"), ["s1", "s2", "s3"]);
+        assert!(ancestors(&diamond, "s1").is_empty());
+        assert!(ancestors(&diamond, "ghost").is_empty());
+    }
+
+    #[test]
+    fn collaborative_turns_are_chained_alternate_agents_and_survive_edits() {
+        let mut st = State {
+            subtasks: vec![
+                step("s1", &[], &["a.rs"], true),
+                step("s2", &[], &["a.rs"], true),
+                step("s3", &[], &["b.rs"], true),
+            ],
+            ..Default::default()
+        };
+        shape(&mut st, true);
+        assert_eq!(st.mode, COLLABORATIVE);
+        let deps: Vec<_> = st.subtasks.iter().map(|t| t.depends_on.clone()).collect();
+        assert_eq!(
+            deps,
+            [vec![], vec!["s1".to_string()], vec!["s2".to_string()]]
+        );
+        let accounts = vec![acc("c", Provider::Claude), acc("g", Provider::Gpt)];
+        choose_accounts(&mut st.subtasks, &accounts, &Provider::Claude);
+        let turns: Vec<_> = st.subtasks.iter().map(|t| t.account_id.as_str()).collect();
+        assert_eq!(
+            turns,
+            ["g", "c", "g"],
+            "agents take turns on the shared plan"
+        );
+        let edit = Edit {
+            id: "s2".into(),
+            account_id: None,
+            remove: true,
+        };
+        apply_edits(&mut st, &[edit], &accounts).unwrap();
+        assert_eq!(st.mode, COLLABORATIVE, "edits keep the approved mode");
+        assert_eq!(
+            st.subtasks[1].depends_on,
+            ["s1"],
+            "the chain closes over the removed step"
+        );
+        assert!(plan_markdown(&st).contains("Collaborative, agents take turns"));
+    }
+
+    #[test]
+    fn collaborative_turns_stay_inside_concurrency_and_total_limits() {
+        let agent = |id: &str, provider: &str| scheduling::SchedAccount {
+            id: id.into(),
+            provider: provider.into(),
+            rank: 0,
+            can_write: true,
+            models: Some(vec![scheduling::Model {
+                id: format!("{id}-model"),
+                tier: 1,
+                is_default: true,
+            }]),
+        };
+        let mut st = State {
+            subtasks: (1..=4)
+                .map(|i| step(&format!("s{i}"), &[], &["same.rs"], true))
+                .collect(),
+            ..Default::default()
+        };
+        shape(&mut st, true);
+        let inputs = st
+            .subtasks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| scheduling::SubtaskInput {
+                id: t.id.clone(),
+                tier: 1,
+                writes: true,
+                depends_on: t.depends_on.clone(),
+                account_id: if i % 2 == 0 { "c" } else { "g" }.into(),
+                model: if i % 2 == 0 { "c-model" } else { "g-model" }.into(),
+                effort: "medium".into(),
+                ..Default::default()
+            })
+            .collect();
+        let mut sched = Scheduler::new(
+            inputs,
+            vec![agent("c", "claude"), agent("g", "gpt")],
+            scheduling::Limits {
+                max_concurrent: Some(3),
+                max_subtasks: Some(3),
+                quota_thresholds: Default::default(),
+            },
+            Default::default(),
+        );
+        let mut order = vec![];
+        let mut t = 1_800_000_000_000;
+        loop {
+            let started = sched.next(t);
+            assert!(started.len() <= 1, "a turn never runs beside another");
+            let Some(s) = started.first() else { break };
+            order.push(s.id.clone());
+            t += 1000;
+            sched.finish(&s.id, Outcome::Done, t);
+        }
+        assert_eq!(
+            order,
+            ["s1", "s2", "s3"],
+            "the total cap still stops new turns"
+        );
+        let (waits, _) = sched.waiting(t);
+        assert_eq!(waits, [("s4".to_string(), Wait::TotalCap)]);
+    }
+
+    #[test]
+    fn collaborative_prompts_share_the_plan_and_the_result_is_lumens() {
+        let mut st = State {
+            task: "Add export".into(),
+            subtasks: vec![
+                step("s1", &[], &["a.rs"], true),
+                step("s2", &["s1"], &["b.rs"], true),
+            ],
+            ..Default::default()
+        };
+        shape(&mut st, true);
+        let prompt = subtask_prompt(&st, &st.subtasks[1], "", false);
+        assert!(
+            prompt.starts_with("You are one agent in a team that shares one plan and takes turns")
+        );
+        assert!(prompt.contains("- s1 · Step s1") && prompt.contains("- s2 · Step s2"));
+        assert!(prompt.contains("earlier steps' changes are already in your workspace"));
+        st.subtasks[0].status = "done".into();
+        st.subtasks[1].status = "failed".into();
+        let summary = team_summary(&st);
+        assert!(summary.starts_with("**Team result by Lumen**\n- Mode: Collaborative"));
+        assert!(summary.contains("Subtasks: 1 of 2 done") && summary.contains("Failed: Step s2"));
+        st.mode = PARALLEL_MODE.into();
+        assert!(subtask_prompt(&st, &st.subtasks[1], "", false).contains("working in parallel"));
+        assert!(team_summary(&st).contains("- Mode: Parallel"));
     }
 
     #[test]

@@ -202,6 +202,9 @@ const it: Record<string, string> = {
   'Your answer': 'La tua risposta',
   'Send answers': 'Invia risposte',
   'Answers sent': 'Risposte inviate',
+  'Asked by': 'Chiesto da',
+  'The worker that asked has stopped, so this question can no longer be answered':
+    "L'agente che l'ha chiesta si è fermato: non è più possibile rispondere",
   'This question is no longer waiting for an answer':
     'Questa domanda non è più in attesa di risposta',
   'Load image': 'Carica immagine',

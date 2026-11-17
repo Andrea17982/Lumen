@@ -32,6 +32,8 @@ The final reply ends with **Team result by Lumen**, written by Lumen rather than
 
 The scheduler enforces concurrency, admitted-subtask totals, a run time limit (120 minutes by default, configurable up to 24 hours; after it no new subtask starts, running ones finish and the rest are reported as not run) and optional quota thresholds. Finished work frees concurrency, not the total-admission budget. Workers use separate worktrees for writes, and integration/final checks operate on their combined result. A live run can be stopped; crash recovery requires explicit Resume. Autopilot and already approved execution do not ask for the same plan approval again.
 
+Auto's choice is deterministic in two steps. The router picks Single or Review (and Both picks broadcast); with Orchestra on, a complex request becomes an Orchestra run, and the approved plan's shape then picks Parallel or Collaborative (a dependency chain, or two writers on one file). Collaborative turns run in plan order, apply every earlier turn's patch and see every earlier result; they never bypass the run's limits. Tests: `auto_team_mode_rules_are_deterministic` and the `collaborative_*` tests in `orchestra.rs`.
+
 Orchestra makes only successful dependencies eligible, fails missing/failed dependency chains, and preserves consumed admission and attempt limits across Resume. Worker errors after observed work do not automatically replay; partial text and the reason remain visible, with quota cooldown preserved. Stop waits for provider process cleanup before removing worktrees. These are bounded offline Windows results, not live model-quality or universal delegation claims.
 
 ## Usage and fallback

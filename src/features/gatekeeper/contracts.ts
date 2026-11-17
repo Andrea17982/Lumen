@@ -9,6 +9,12 @@ export interface Scope {
 export type Availability =
   | { state: 'available'; version: string; evidence: string }
   | { state: 'unavailable'; reason: string };
+/** The Orchestra worker behind a connection; absent for ordinary chat turns. */
+export interface Worker {
+  agent: string;
+  taskId: string;
+  task: string;
+}
 export type RequestStatus =
   'pending' | 'approved' | 'rejected' | 'cancelled' | 'timedOut' | 'stale' | 'resolved';
 export type Action = 'approve' | 'reject' | 'cancel';
@@ -33,6 +39,7 @@ export interface ApprovalRequest {
   decision: Action | null;
   decisionSource: string | null;
   note: string | null;
+  worker?: Worker | null;
 }
 export interface Decision {
   requestId: string;
@@ -44,6 +51,7 @@ export interface SessionView {
   scope: Scope;
   cwd: string;
   availability: Availability;
+  worker?: Worker | null;
 }
 export interface ExactRule {
   id: string;
@@ -84,10 +92,27 @@ export function decisionBlocker(
   sessions: SessionView[],
   now = Date.now(),
 ): string | null {
+  const gone = request.worker
+    ? `The worker on “${request.worker.task}” has stopped, so this request can no longer be answered.`
+    : null;
+  if (request.status === 'stale' && gone) return gone;
   if (request.status !== 'pending') return 'This request is already closed.';
   if (request.expiresAtMs <= now) return 'This request has expired.';
   const live = sessions.find((session) => sameScope(session.scope, request.scope));
   if (!live || live.availability.state !== 'available')
-    return 'The provider connection is unavailable.';
+    return gone ?? 'The provider connection is unavailable.';
   return null;
+}
+
+/** Open requests, plus a stopped worker's requests while its connection is still listed,
+ * so the inbox says which worker went away instead of silently dropping the card. */
+export function inboxShows(request: ApprovalRequest, sessions: SessionView[]): boolean {
+  if (request.status === 'pending' || request.delivery === 'uncertain') return true;
+  return (
+    request.status === 'stale' &&
+    !!request.worker &&
+    sessions.some(
+      (s) => sameScope(s.scope, request.scope) && s.availability.state === 'unavailable',
+    )
+  );
 }

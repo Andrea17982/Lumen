@@ -427,7 +427,7 @@ pub async fn execute(
         let end = client
             .rpc(
                 "session/prompt",
-                json!({"sessionId":id,"prompt":[{"type":"text","text":input.prompt}]}),
+                json!({"sessionId":id,"prompt":crate::providers::wire_prompt(&Provider::Opencode, input.prompt)}),
                 input.access,
                 &mut emit,
                 true,

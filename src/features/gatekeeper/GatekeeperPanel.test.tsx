@@ -39,6 +39,34 @@ const request: ApprovalRequest = {
 };
 
 describe('Gatekeeper review cards', () => {
+  it('shows which worker asked and disables a stopped worker request', () => {
+    const worker = { agent: 'Claude · Sonnet', taskId: 's1', task: 'Add the API' };
+    const live = renderToStaticMarkup(
+      <GatekeeperPanel
+        requests={[{ ...request, worker }]}
+        sessions={[{ ...session, worker }]}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(live).toContain('Worker:');
+    expect(live).toContain('Add the API (s1)');
+    const gone = renderToStaticMarkup(
+      <GatekeeperPanel
+        requests={[{ ...request, worker, status: 'stale' }]}
+        sessions={[
+          {
+            ...session,
+            worker,
+            availability: { state: 'unavailable', reason: 'Claude turn finished' },
+          },
+        ]}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(gone).toContain('has stopped, so this request can no longer be answered');
+    expect(gone).not.toContain('Approve once');
+  });
+
   it('renders exact command, directory, reason and identity without deciding on mount', () => {
     const decide = vi.fn();
     const html = renderToStaticMarkup(

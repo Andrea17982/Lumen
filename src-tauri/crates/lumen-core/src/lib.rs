@@ -69,6 +69,8 @@ pub async fn serve_native_account(
 ) -> Result<(), String> {
     native_mcp::serve(profile, workspace, read_only).await
 }
+#[cfg(test)]
+mod handoff_corpus;
 mod native_claude;
 mod ollama;
 mod ollama_agent;

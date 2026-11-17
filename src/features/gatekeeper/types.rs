@@ -19,6 +19,16 @@ pub struct Scope {
     pub turn_id: String,
 }
 
+/// The Orchestra worker behind a connection: which agent, on which subtask. Shown in the
+/// approval inbox so a decision is made for a known worker, never for "some process".
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Worker {
+    pub agent: String,
+    pub task_id: String,
+    pub task: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum Availability {
@@ -87,6 +97,9 @@ pub struct ApprovalRequest {
     pub decision: Option<Action>,
     pub decision_source: Option<String>,
     pub note: Option<String>,
+    /// Set for Orchestra workers; journals written before 0.11 have none.
+    #[serde(default)]
+    pub worker: Option<Worker>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +125,8 @@ pub struct SessionView {
     pub scope: Scope,
     pub cwd: String,
     pub availability: Availability,
+    #[serde(default)]
+    pub worker: Option<Worker>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

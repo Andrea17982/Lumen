@@ -18,6 +18,8 @@ use tokio::sync::watch;
 pub struct Approvals {
     pub keeper: Gatekeeper,
     pub chat: String,
+    /// The Orchestra worker that owns the turn; `None` for an ordinary chat turn.
+    pub worker: Option<lumen_gatekeeper::Worker>,
 }
 
 #[cfg(test)]
@@ -51,7 +53,7 @@ async fn probe(
 ) -> Result<(), String> {
     let session = uuid::Uuid::new_v4().to_string();
     let turn = uuid::Uuid::new_v4().to_string();
-    let scope = approvals.keeper.start_session(
+    let scope = approvals.keeper.start_worker_session(
         &approvals.chat,
         Engine::Claude,
         &session,
@@ -61,6 +63,7 @@ async fn probe(
             version: version.into(),
             evidence: "Diagnostic bootstrap; no model turn".into(),
         },
+        approvals.worker.clone(),
     )?;
     let endpoint = ClaudeEndpoint::bind(approvals.keeper.clone(), scope.clone()).await?;
     let config = endpoint.config(exe, true)?;
@@ -182,6 +185,7 @@ mod tests {
         let approvals = Approvals {
             keeper: Gatekeeper::in_memory(Duration::from_secs(300)).unwrap(),
             chat: "probe-chat".into(),
+            worker: None,
         };
         let config = std::env::temp_dir().join("lumen-probe-config");
         std::fs::create_dir_all(&config).unwrap();
@@ -208,6 +212,7 @@ mod tests {
         let approvals = Approvals {
             keeper: keeper.clone(),
             chat: "turn-chat".into(),
+            worker: None,
         };
         let workspace = std::env::temp_dir().join("lumen-ask-turn");
         std::fs::create_dir_all(&workspace).unwrap();

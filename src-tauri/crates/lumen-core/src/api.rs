@@ -385,7 +385,7 @@ pub async fn execute(
     let mut hub = crate::shared_tools::Hub::default();
     let run = async {
         hub.connect(&input, browser, &mut emit).await?;
-        let mut history = crate::api_wire::initial(&input.account.provider, input.prompt);
+        let mut history = crate::api_wire::initial(&input.account.provider, input.prompt); // = providers::wire_prompt
         let mut text = String::new();
         let mut call_ids = std::collections::HashSet::new();
         for _ in 0..32 {

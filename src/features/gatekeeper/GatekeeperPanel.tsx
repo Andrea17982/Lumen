@@ -65,6 +65,12 @@ function RequestCard({
         <strong>{visibleText(request.tool)}</strong>
         <span role="status">{labels[request.status]}</span>
       </div>
+      {request.worker && (
+        <p className="gatekeeper-worker">
+          <strong>Worker:</strong> {visibleText(request.worker.agent || request.scope.provider)} ·{' '}
+          {visibleText(request.worker.task)} ({visibleText(request.worker.taskId)})
+        </p>
+      )}
       <p className="gatekeeper-identity">
         {request.scope.provider} · Session {visibleText(request.scope.sessionId)} · Turn{' '}
         {visibleText(request.scope.turnId)}
@@ -97,6 +103,7 @@ function RequestCard({
         </p>
       </details>
       {request.unavailableReason && <p role="status">Unavailable: {request.unavailableReason}</p>}
+      {request.worker && blocker && request.status !== 'pending' && <p role="status">{blocker}</p>}
       {request.delivery === 'uncertain' && (
         <p role="status">
           Response delivery is uncertain. Verify provider state before running this operation again.

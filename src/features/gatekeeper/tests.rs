@@ -908,3 +908,89 @@ async fn concurrent_gui_decisions_cannot_both_settle_one_callback() {
         response["result"]["decision"] == "accept" || response["result"]["decision"] == "decline"
     );
 }
+
+fn worker_scope(k: &Gatekeeper, task_id: &str) -> Scope {
+    k.start_worker_session(
+        "chat-1",
+        Provider::Codex,
+        &format!("thread-{task_id}"),
+        "turn-1",
+        &std::env::current_dir().unwrap(),
+        available(),
+        Some(Worker {
+            agent: format!("ChatGPT on {task_id}"),
+            task_id: task_id.into(),
+            task: format!("Task {task_id}"),
+        }),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn worker_approvals_name_the_worker_and_expire_when_it_is_gone() {
+    let k = keeper();
+    let first = worker_scope(&k, "s1");
+    let second = worker_scope(&k, "s2");
+    // Parallel workers of one chat keep their own connections.
+    let on = |thread: &str| {
+        let mut v = fixture("command");
+        v["params"]["threadId"] = json!(thread);
+        v
+    };
+    let a = k.request_codex(&first, &on("thread-s1")).unwrap();
+    let b = k.request_codex(&second, &on("thread-s2")).unwrap();
+    let find = |id: &str| {
+        k.snapshot()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == id)
+            .unwrap()
+    };
+    let worker = find(&a.request_id).worker.unwrap();
+    assert_eq!(
+        (worker.task_id.as_str(), worker.task.as_str()),
+        ("s1", "Task s1")
+    );
+    assert_eq!(worker.agent, "ChatGPT on s1");
+    assert_eq!(find(&b.request_id).status, RequestStatus::Pending);
+    // The worker's process ends: its request expires, the other worker is untouched.
+    k.disconnect(&first, "Worker s1 finished").unwrap();
+    let expired = find(&a.request_id);
+    assert_eq!(expired.status, RequestStatus::Stale);
+    assert_eq!(expired.note.as_deref(), Some("Worker s1 finished"));
+    assert!(decide(&k, &first, &a.request_id, Action::Approve).is_err());
+    assert_eq!(find(&b.request_id).status, RequestStatus::Pending);
+    // A retry of the same worker replaces only that worker's connection.
+    let retry = worker_scope(&k, "s2");
+    assert_eq!(find(&b.request_id).status, RequestStatus::Stale);
+    assert!(k
+        .sessions()
+        .unwrap()
+        .iter()
+        .any(|s| s.scope == retry && s.worker.as_ref().unwrap().task_id == "s2"));
+    // Ordinary chat turns still replace each other and carry no worker.
+    let chat = scope(&k, Provider::Claude);
+    assert!(k
+        .sessions()
+        .unwrap()
+        .iter()
+        .any(|s| s.scope == chat && s.worker.is_none()));
+}
+
+#[tokio::test]
+async fn journals_written_before_worker_identity_still_load() {
+    let k = keeper();
+    let s = scope(&k, Provider::Codex);
+    let p = k.request_codex(&s, &fixture("command")).unwrap();
+    let mut body = serde_json::to_value(
+        k.snapshot()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == p.request_id)
+            .unwrap(),
+    )
+    .unwrap();
+    body.as_object_mut().unwrap().remove("worker");
+    let old: ApprovalRequest = serde_json::from_value(body).unwrap();
+    assert!(old.worker.is_none());
+}

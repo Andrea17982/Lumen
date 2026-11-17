@@ -878,6 +878,7 @@ async fn stage_observed(
                 .map(|keeper| crate::approvals::Approvals {
                     keeper,
                     chat: s.id.clone(),
+                    worker: None,
                 }),
             resume: resume.map(|r| r.session.as_str()),
         },
@@ -2582,7 +2583,11 @@ pub async fn compact_session(
         doubts.push("Open items may be partly done: confirm their state first.");
     }
     let package = match summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        Some(edited) => format!("**Handoff from “{}”**\n\n{edited}", s.title),
+        // An edited handoff keeps the notice: it never claims to carry private memory.
+        Some(edited) => format!(
+            "**Handoff from “{}”**\n\n{edited}\n\n**Uncertainties**\n\n- {}",
+            s.title, doubts[0]
+        ),
         None => format!(
             "**Handoff from “{}”**\n\n**Goal**\n\n{goal}\n\n**Constraints**\n\n{}\n\n**Decisions**\n\n{}\n\n**Done**\n\n{}\n\n**Still open**\n\n{}\n\n**Checks**\n\n{}\n\n**Files and Git state**\n\n{git}\n\n**Uncertainties**\n\n{}\n\n**Next step**\n\nContinue from the latest request: {latest}",
             s.title,

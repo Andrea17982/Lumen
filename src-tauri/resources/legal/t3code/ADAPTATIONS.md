@@ -4,6 +4,12 @@ Upstream: [T3 Code](https://github.com/pingdotgg/t3code), created by Theo / ping
 
 Source revision: `375343aaf35133f659435554cd01634bab333a7d` (MIT; the unchanged upstream text is in `LICENSE.txt`).
 
+## Worker approval inbox
+
+Source: [ChildThreadApprovals.tsx](https://github.com/pingdotgg/t3code/blob/375343aaf35133f659435554cd01634bab333a7d/apps/web/src/components/chat/ChildThreadApprovals.tsx#L19-L80), the behaviour of naming the child thread, showing the reason and disabling replies once the child process is gone.
+
+Lumen reimplements that behaviour without copying upstream code: a `Worker` identity (agent, subtask id, subtask title) on Gatekeeper sessions and approval requests (`src/features/gatekeeper`), worker-tagged native questions (`orchestra.rs`, `NativeQuestions.tsx`), and an expired card when the worker's connection is disconnected. Lumen-specific changes: the existing Gatekeeper journal, scope checks and one-shot decisions are reused unchanged; parallel workers of one chat keep separate connections; journals written before this change load without a worker.
+
 ## Command receipts
 
 Sources:

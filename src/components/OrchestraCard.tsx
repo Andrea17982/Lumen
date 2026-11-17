@@ -188,6 +188,12 @@ export default function OrchestraCard({
       <section className="orchestra-card" aria-label="Orchestra plan">
         {header}
         {state.summary && <p>{state.summary}</p>}
+        {state.mode === 'collaborative' && (
+          <p className="orchestra-mode">
+            Collaborative: the agents share this plan and take turns, each continuing from the
+            previous step.
+          </p>
+        )}
         <details className="orchestra-spec">
           <summary>Task specification</summary>
           <pre>{state.task}</pre>

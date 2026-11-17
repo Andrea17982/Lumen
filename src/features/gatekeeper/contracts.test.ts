@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { decisionBlocker, sameScope, visibleText, whitelistCommands } from './contracts';
+import {
+  decisionBlocker,
+  inboxShows,
+  sameScope,
+  visibleText,
+  whitelistCommands,
+} from './contracts';
 import type { ApprovalRequest, Scope, SessionView } from './contracts';
 
 export const testScope: Scope = {
@@ -38,6 +44,22 @@ export const testRequest: ApprovalRequest = {
 };
 
 describe('approval review contracts', () => {
+  it('names a stopped worker and keeps its expired request visible while listed', () => {
+    const worker = { agent: 'ChatGPT · Terra', taskId: 's2', task: 'Wire export' };
+    const stale = { ...testRequest, status: 'stale' as const, worker };
+    const gone: SessionView = {
+      ...testSession,
+      availability: { state: 'unavailable', reason: 'Codex turn finished' },
+    };
+    expect(decisionBlocker(stale, [gone], 2000)).toContain('worker on “Wire export” has stopped');
+    expect(decisionBlocker({ ...testRequest, worker }, [gone], 2000)).toContain('has stopped');
+    expect(decisionBlocker({ ...testRequest, worker }, [testSession], 2000)).toBeNull();
+    expect(inboxShows(stale, [gone])).toBe(true);
+    expect(inboxShows(stale, [])).toBe(false);
+    expect(inboxShows({ ...stale, worker: null }, [gone])).toBe(false);
+    expect(inboxShows(testRequest, [])).toBe(true);
+  });
+
   it('enables only a live, matching, unexpired request', () => {
     expect(decisionBlocker(testRequest, [testSession], 2000)).toBeNull();
     expect(decisionBlocker(testRequest, [testSession], 5000)).toContain('expired');

@@ -19,6 +19,8 @@ interface Request {
   kind?: 'connector';
   actionId?: string;
   urlOrigin?: string;
+  /** Set by Orchestra for a worker's question: who is asking, on which subtask. */
+  worker?: { agent: string; taskId: string; task: string };
 }
 function parse<T>(text: string): T | null {
   try {
@@ -158,6 +160,11 @@ function QuestionForm({
           .finally(() => setBusy(false));
       }}
     >
+      {request.worker && (
+        <p className="native-questions-worker">
+          {t('Asked by')} {request.worker.agent} · {request.worker.task}
+        </p>
+      )}
       {request.kind === 'connector' && (
         <p>
           {t(
@@ -273,7 +280,9 @@ function QuestionForm({
                 ? 'Checking question status…'
                 : live && statusFailed
                   ? 'Question status unavailable. Retrying…'
-                  : 'This question is no longer waiting for an answer',
+                  : request.worker
+                    ? 'The worker that asked has stopped, so this question can no longer be answered'
+                    : 'This question is no longer waiting for an answer',
           )}
         </small>
       )}

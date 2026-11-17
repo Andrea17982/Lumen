@@ -588,10 +588,7 @@ async fn execute_inner(
     }
     c.args(args);
     let prompt = if *p == Provider::Antigravity {
-        format!(
-            "{}\n",
-            serde_json::json!({"event": "user", "message": {"content": input.prompt}})
-        )
+        format!("{}\n", wire_prompt(p, input.prompt))
     } else {
         input.prompt.to_owned()
     };
@@ -675,6 +672,22 @@ pub(crate) const DENY: [&str; 9] = [
 ];
 
 /// Permission profiles are mapped to explicit official CLI flags, never inferred from prompt text.
+/// The user turn exactly as each transport frames it; plain CLIs read the text on stdin.
+/// The offline handoff corpus checks decisions and constraints through this framing.
+pub(crate) fn wire_prompt(p: &Provider, prompt: &str) -> Value {
+    match p {
+        Provider::Antigravity => {
+            serde_json::json!({"event": "user", "message": {"content": prompt}})
+        }
+        Provider::Claude => {
+            serde_json::json!({"type": "user", "message": {"role": "user", "content": prompt}})
+        }
+        Provider::Gpt | Provider::Opencode => serde_json::json!([{"type": "text", "text": prompt}]),
+        p if p.is_api() => Value::Array(crate::api_wire::initial(p, prompt)),
+        _ => Value::String(prompt.to_owned()),
+    }
+}
+
 pub fn invocation_args(
     p: &Provider,
     access: AccessMode,

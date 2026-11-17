@@ -442,7 +442,7 @@ async fn run(
     });
     let mut turn = json!({
         "threadId": thread_id,
-        "input": [{"type": "text", "text": input.prompt}],
+        "input": crate::providers::wire_prompt(&Provider::Gpt, input.prompt),
         "approvalPolicy": if matches!(input.access, AccessMode::Ask | AccessMode::Autopilot) { "on-request" } else { "never" },
         "approvalsReviewer": "user",
         "cwd": cwd.to_string_lossy(),
@@ -493,13 +493,14 @@ async fn run(
                     .as_str()
                     .ok_or("Codex did not return a turn id")?;
                 crate::execution::signal(emit, "request-acknowledged");
-                *scope = Some(approvals.keeper.start_session(
+                *scope = Some(approvals.keeper.start_worker_session(
                     &approvals.chat,
                     Engine::Codex,
                     &thread_id,
                     turn_id,
                     cwd,
                     availability.clone(),
+                    approvals.worker.clone(),
                 )?);
                 for m in std::mem::take(&mut held) {
                     if let Some(done) = handle(
@@ -804,6 +805,7 @@ mod tests {
         let approvals = Approvals {
             keeper: keeper.clone(),
             chat: "codex-chat".into(),
+            worker: None,
         };
         let workspace =
             std::env::temp_dir().join(format!("lumen-codex-ask-{}", std::process::id()));

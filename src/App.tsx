@@ -63,6 +63,7 @@ import type {
 import { errorText, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 import { draftKey, useConversationDrafts, type ComposerDraft } from './lib/useConversationDrafts';
+import { inboxShows } from './features/gatekeeper/contracts';
 
 // Loaded on first use, so starting Lumen parses less code.
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
@@ -1751,20 +1752,15 @@ export default function App() {
             </button>
           )}
 
-          {session &&
-            approvals.requests.some(
-              (r) => r.status === 'pending' || r.delivery === 'uncertain',
-            ) && (
-              <Suspense fallback={null}>
-                <GatekeeperPanel
-                  requests={approvals.requests.filter(
-                    (r) => r.status === 'pending' || r.delivery === 'uncertain',
-                  )}
-                  sessions={approvals.sessions}
-                  onDecide={decideApproval}
-                />
-              </Suspense>
-            )}
+          {session && approvals.requests.some((r) => inboxShows(r, approvals.sessions)) && (
+            <Suspense fallback={null}>
+              <GatekeeperPanel
+                requests={approvals.requests.filter((r) => inboxShows(r, approvals.sessions))}
+                sessions={approvals.sessions}
+                onDecide={decideApproval}
+              />
+            </Suspense>
+          )}
           {session && sheet && (
             <DraftSheet
               key={sheet.kind}
