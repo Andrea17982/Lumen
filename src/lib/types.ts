@@ -97,7 +97,7 @@ export interface OrchestraState {
   orchestratorModel: string;
   effort: string;
   summary: string;
-  /** 'collaborative' when agents share one plan and take turns; otherwise parallel. */
+  /** 'collaborative' when agents share one plan and take turns, 'compete' for two independent candidates; otherwise parallel. */
   mode?: string;
   subtasks: OrchestraSubtask[];
   planReview: string;

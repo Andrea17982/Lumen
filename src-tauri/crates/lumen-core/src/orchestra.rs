@@ -111,6 +111,8 @@ pub struct State {
     pub resumable: bool,
     /// Why the last resume was refused, shown on the card.
     pub notice: String,
+    /// Why an important or uncertain task fell back from Compete to Single.
+    pub compete: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -330,6 +332,198 @@ fn shape(st: &mut State, decide: bool) {
     }
 }
 
+/// Compete: two providers implement the same task independently; the best one is applied.
+pub const COMPETE: &str = "compete";
+
+/// Deterministic Compete trigger. `Ok` runs Compete. `Err("")` means the task is
+/// routine, so Single runs silently; any other `Err` is the fallback reason shown
+/// in the team result. Only one-part writing plans that the planner marked
+/// complex (important) or could not pin to files (uncertain) compete.
+pub fn compete_rule(
+    subtasks: &[Subtask],
+    providers: usize,
+    max_subtasks: Option<usize>,
+    policy: &AutoPolicy,
+) -> Result<(), &'static str> {
+    let [t] = subtasks else { return Err("") };
+    if !t.writes || (t.difficulty != "complex" && !t.files.is_empty()) {
+        return Err("");
+    }
+    // Compete uses about twice the quota, so only the Quality profile opts in.
+    if *policy != AutoPolicy::Quality {
+        return Err("Compete runs only in the Quality profile");
+    }
+    if max_subtasks.is_some_and(|n| n < 2) {
+        return Err("the subtask limit allows one implementation");
+    }
+    if providers < 2 {
+        return Err("only one provider is available within quota");
+    }
+    Ok(())
+}
+
+/// One writing account per provider, strongest first: candidates come from different ones.
+fn compete_providers(accounts: &[Account]) -> Vec<&Account> {
+    let rank = |p: &Provider| match p {
+        Provider::Claude => 0,
+        Provider::Gpt => 1,
+        _ => 2,
+    };
+    let mut sorted: Vec<&Account> = accounts
+        .iter()
+        .filter(|a| a.provider != Provider::Ollama)
+        .collect();
+    sorted.sort_by_key(|a| rank(&a.provider));
+    let mut picked: Vec<&Account> = vec![];
+    for a in sorted {
+        if !picked.iter().any(|p| p.provider == a.provider) {
+            picked.push(a);
+        }
+    }
+    picked
+}
+
+/// Turns the single subtask into two pinned candidates on different providers.
+fn make_candidates(st: &mut State, a: &Account, b: &Account) {
+    let t = st.subtasks[0].clone();
+    st.mode = COMPETE.into();
+    st.subtasks = [("a", "A", a), ("b", "B", b)]
+        .into_iter()
+        .map(|(suffix, label, acc)| Subtask {
+            id: format!("{}-{suffix}", t.id),
+            title: format!("Candidate {label} · {}", t.title),
+            account_id: acc.id.clone(),
+            pinned: true,
+            depends_on: vec![],
+            ..t.clone()
+        })
+        .collect();
+}
+
+/// What Lumen measured about one Compete candidate.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Candidate {
+    pub id: String,
+    pub agent: String,
+    /// The worker finished and left changes.
+    pub ran: bool,
+    pub passed: usize,
+    pub failed: usize,
+    /// First failing check, for the team result.
+    pub failure: String,
+    pub preferred: bool,
+    /// Changed lines in the patch.
+    pub diff: usize,
+}
+
+/// Winner: no failing checks, then most checks passed, then the reviewer's
+/// verdict, then the smaller diff, then plan order.
+pub fn pick_winner(c: &[Candidate]) -> Option<usize> {
+    (0..c.len()).filter(|&i| c[i].ran).min_by_key(|&i| {
+        (
+            c[i].failed > 0,
+            std::cmp::Reverse(c[i].passed),
+            !c[i].preferred,
+            c[i].diff,
+        )
+    })
+}
+
+/// One line for the team result: who won, why, and what failed.
+pub fn compete_verdict(c: &[Candidate], winner: Option<usize>) -> String {
+    let Some(w) = winner else {
+        return "no candidate produced changes, so nothing was applied".into();
+    };
+    let checks = |x: &Candidate| {
+        if x.passed + x.failed == 0 {
+            "no project checks ran".to_string()
+        } else {
+            format!("{}/{} checks passed", x.passed, x.passed + x.failed)
+        }
+    };
+    let win = &c[w];
+    let mut why = vec![checks(win)];
+    if win.preferred {
+        why.push("the reviewer preferred it".into());
+    } else if c
+        .iter()
+        .enumerate()
+        .any(|(i, x)| i != w && x.ran && x.failed == win.failed && x.passed == win.passed)
+    {
+        why.push(format!("smaller diff ({} changed lines)", win.diff));
+    }
+    let mut line = format!("{} ({}) won: {}", win.id, win.agent, why.join(", "));
+    for x in c
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != w)
+        .map(|(_, x)| x)
+    {
+        let what = if !x.ran {
+            "did not finish with changes".to_string()
+        } else if x.failed > 0 {
+            let f = if x.failure.is_empty() {
+                checks(x)
+            } else {
+                x.failure.clone()
+            };
+            format!("failed its checks ({f})")
+        } else {
+            format!("lost ({})", checks(x))
+        };
+        line.push_str(&format!("; {} ({}) {what}", x.id, x.agent));
+    }
+    if win.failed > 0 {
+        line.push_str("; no candidate passed every check, so the closest one was applied");
+    }
+    line
+}
+
+/// Files a unified diff touches.
+fn patch_files(p: &str) -> Vec<String> {
+    p.lines()
+        .filter_map(|l| l.strip_prefix("+++ b/"))
+        .map(String::from)
+        .collect()
+}
+
+/// Changed lines of a unified diff, the last tie-breaker.
+pub fn diff_size(p: &str) -> usize {
+    p.lines()
+        .filter(|l| {
+            (l.starts_with('+') && !l.starts_with("+++"))
+                || (l.starts_with('-') && !l.starts_with("---"))
+        })
+        .count()
+}
+
+/// Runs the project's own checks in a candidate's worktree: (passed, failed, first failure).
+pub async fn check_candidate(
+    dir: &Path,
+    patch: &str,
+    cancel: watch::Receiver<bool>,
+) -> Result<(usize, usize, String), String> {
+    let reports = crate::validation::run(dir, &patch_files(patch), cancel).await?;
+    let count = |s: &str| reports.iter().filter(|r| r.status == s).count();
+    let failure = reports
+        .iter()
+        .find(|r| r.status == "failed")
+        .map(|r| r.label.clone())
+        .unwrap_or_default();
+    Ok((count("passed"), count("failed"), failure))
+}
+
+/// Candidate index from a reviewer reply ending in `WINNER: A` or `WINNER: B`.
+pub fn parse_choice(reply: &str) -> Option<usize> {
+    let up = reply.to_uppercase();
+    let at = up.rfind("WINNER:")?;
+    match up[at + 7..].trim_start().chars().next()? {
+        'A' => Some(0),
+        'B' => Some(1),
+        _ => None,
+    }
+}
+
 fn collaborative(st: &State) -> bool {
     st.mode == COLLABORATIVE
 }
@@ -423,6 +617,20 @@ async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), 
     if accounts.is_empty() {
         return Err("Every account is cooling down after a rate limit. Try again later.".into());
     }
+    let max_subtasks = core
+        .settings
+        .lock()
+        .ok()
+        .and_then(|s| s.orchestra_limits.max_subtasks);
+    let providers = compete_providers(&accounts);
+    st.compete = match compete_rule(&st.subtasks, providers.len(), max_subtasks, policy) {
+        Ok(()) => {
+            let (a, b) = (providers[0].clone(), providers[1].clone());
+            make_candidates(st, &a, &b);
+            String::new()
+        }
+        Err(reason) => reason.into(),
+    };
     let orchestrator = account(core, &st.orchestrator)?.provider;
     // Accounts whose catalog cannot load (signed out, CLI missing) are skipped,
     // and their subtasks go to the next agent instead of failing at run time.
@@ -1658,6 +1866,23 @@ pub async fn execute(
     }
     let mut model = Some(st.orchestrator_model.clone()).filter(|m| !m.is_empty());
 
+    if st.mode == COMPETE && !st.read_only {
+        // Boxed: inlining this future overflows the layout depth of the daemon build.
+        Box::pin(judge(
+            app,
+            core,
+            s,
+            out,
+            &mut st,
+            &lanes,
+            &mut patches,
+            &rel,
+            &orch,
+            cancel.clone(),
+        ))
+        .await?;
+    }
+
     // Integration: apply each subtask's patch; the orchestrator resolves conflicts.
     if let Some(top) = top
         .as_ref()
@@ -1958,6 +2183,125 @@ pub async fn execute(
     Ok(())
 }
 
+/// Compete: checks each candidate in its own worktree, asks a reviewer from another
+/// provider to compare the passing ones, and keeps only the winner's patch.
+#[allow(clippy::too_many_arguments)]
+async fn judge(
+    app: &crate::host::EventHub,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+    st: &mut State,
+    lanes: &HashMap<String, Lane>,
+    patches: &mut HashMap<String, String>,
+    rel: &Path,
+    orch: &Account,
+    cancel: watch::Receiver<bool>,
+) -> Result<(), String> {
+    st.steps.push(Step {
+        name: "Compete".into(),
+        status: "running".into(),
+        detail: String::new(),
+    });
+    publish(app, core, s, out, st);
+    let mut cands = vec![];
+    for t in &st.subtasks {
+        let mut c = Candidate {
+            id: t.title.split(" · ").next().unwrap_or(&t.id).to_string(),
+            agent: t.agent.split(" · ").next().unwrap_or_default().to_string(),
+            ..Default::default()
+        };
+        if let (Some(p), Some(l), "done") =
+            (patches.get(&t.id), lanes.get(&t.id), t.status.as_str())
+        {
+            c.ran = true;
+            c.diff = diff_size(p);
+            (c.passed, c.failed, c.failure) =
+                check_candidate(&l.path.join(rel), p, cancel.clone()).await?;
+        }
+        cands.push(c);
+    }
+    let passing: Vec<usize> = (0..cands.len())
+        .filter(|&i| cands[i].ran && cands[i].failed == 0)
+        .collect();
+    if passing.len() >= 2 {
+        let used: Vec<String> = st.subtasks.iter().map(|t| t.account_id.clone()).collect();
+        let used: Vec<Provider> = core
+            .store
+            .accounts()?
+            .into_iter()
+            .filter(|a| used.contains(&a.id))
+            .map(|a| a.provider)
+            .collect();
+        let reviewer = core
+            .store
+            .accounts()?
+            .into_iter()
+            .filter(|b| {
+                matches!(b.provider, Provider::Claude | Provider::Gpt)
+                    && !core.limits.cooling(&b.id, now())
+            })
+            .min_by_key(|b| (used.contains(&b.provider), b.provider == orch.provider));
+        if let Some(r) = reviewer {
+            let shown: String = passing
+                .iter()
+                .map(|&i| {
+                    let id = &st.subtasks[i].id;
+                    format!(
+                        "\n## {} ({})\n{}\n",
+                        cands[i].id,
+                        cands[i].agent,
+                        patches[id].chars().take(30_000).collect::<String>()
+                    )
+                })
+                .collect();
+            let prompt = format!("Conversation for reference:\n{}\n\nTwo independent implementations of the same request both pass the project's checks. Read-only: never edit files. Compare them for correctness, completeness, risk and simplicity. End your reply with exactly one line: WINNER: A or WINNER: B.\n\nRequest:\n{}\n\nClarifications:\n{}\n{shown}", st.context, st.task, st.answers);
+            if let Ok(reply) = hidden(
+                app,
+                core,
+                s,
+                out,
+                &r,
+                &prompt,
+                None,
+                "medium",
+                cancel.clone(),
+            )
+            .await
+            {
+                if let Some(&i) = parse_choice(&reply).and_then(|k| passing.get(k)) {
+                    cands[i].preferred = true;
+                }
+                turns::note(
+                    app,
+                    &s.id,
+                    out,
+                    "review",
+                    format!("Compete review by {}\n\n{reply}", display(&r.provider)),
+                );
+            }
+        }
+    }
+    let winner = pick_winner(&cands);
+    let keep = winner.map(|w| st.subtasks[w].id.clone());
+    patches.retain(|id, _| Some(id) == keep.as_ref());
+    for t in st
+        .subtasks
+        .iter_mut()
+        .filter(|t| Some(&t.id) != keep.as_ref())
+    {
+        t.output = format!(
+            "Not applied: another candidate won the Compete.\n\n{}",
+            t.output
+        );
+    }
+    let last = st.steps.len() - 1;
+    st.steps[last].status = "done".into();
+    st.steps[last].detail = compete_verdict(&cands, winner);
+    publish(app, core, s, out, st);
+    Ok(())
+}
+
 /// Facts Lumen itself observed about the run, independent of the orchestrator's prose.
 fn team_summary(st: &State) -> String {
     let count = |status: &str| st.subtasks.iter().filter(|t| t.status == status).count();
@@ -1973,6 +2317,10 @@ fn team_summary(st: &State) -> String {
         "**Team result by Lumen**\n- Mode: {}\n- Subtasks: {} of {} done",
         if collaborative(st) {
             "Collaborative (one shared plan, agents took turns)"
+        } else if st.mode == COMPETE {
+            "Compete (two providers implemented it independently; Lumen applied the best)"
+        } else if !st.compete.is_empty() {
+            "Single"
         } else {
             "Parallel"
         },
@@ -1983,6 +2331,11 @@ fn team_summary(st: &State) -> String {
         if count(status) > 0 {
             lines.push(format!("- {label}: {}", titles(status)));
         }
+    }
+    if let Some(c) = st.steps.iter().find(|x| x.name == "Compete") {
+        lines.push(format!("- Compete: {}", c.detail));
+    } else if !st.compete.is_empty() {
+        lines.push(format!("- Compete: not run ({})", st.compete));
     }
     match st.steps.iter().find(|x| x.name.starts_with("Audit by")) {
         Some(a) if a.detail.starts_with("Approved") => {
@@ -2267,6 +2620,158 @@ mod tests {
             detail: "Round 2: revising".into(),
         });
         assert!(team_summary(&st).contains("Audit by GPT: not approved (Round 2: revising)"));
+    }
+
+    #[test]
+    fn compete_rules_are_deterministic_and_fall_back() {
+        let one = |difficulty: &str, files: &[&str]| {
+            let mut t = step("s1", &[], files, true);
+            t.difficulty = difficulty.into();
+            vec![t]
+        };
+        let d = AutoPolicy::Quality;
+        assert_eq!(
+            compete_rule(&one("complex", &["a.rs"]), 2, None, &d),
+            Ok(())
+        );
+        // Uncertain: the planner could not name the files.
+        assert_eq!(compete_rule(&one("normal", &[]), 2, Some(5), &d), Ok(()));
+        // Routine, multi-part or read-only work runs Single silently.
+        assert_eq!(
+            compete_rule(&one("normal", &["a.rs"]), 2, None, &d),
+            Err("")
+        );
+        let mut two = one("complex", &["a.rs"]);
+        two.push(step("s2", &[], &["b.rs"], true));
+        assert_eq!(compete_rule(&two, 2, None, &d), Err(""));
+        let mut read = one("complex", &[]);
+        read[0].writes = false;
+        assert_eq!(compete_rule(&read, 2, None, &d), Err(""));
+        // Important but limited: a stated fallback reason.
+        let hard = one("complex", &["a.rs"]);
+        assert!(compete_rule(&hard, 1, None, &d)
+            .unwrap_err()
+            .contains("one provider"));
+        assert!(compete_rule(&hard, 2, Some(1), &d)
+            .unwrap_err()
+            .contains("subtask limit"));
+        // Balanced (Default) and Budget never compete, even for important work.
+        for p in [AutoPolicy::Default, AutoPolicy::Budget] {
+            assert!(compete_rule(&hard, 2, None, &p)
+                .unwrap_err()
+                .contains("Quality"));
+            assert!(compete_rule(&one("normal", &[]), 9, None, &p).is_err());
+        }
+
+        let accounts = [
+            acc("o", Provider::Ollama),
+            acc("g", Provider::Gpt),
+            acc("g2", Provider::Gpt),
+            acc("c", Provider::Claude),
+        ];
+        let picked: Vec<&str> = compete_providers(&accounts)
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect();
+        assert_eq!(picked, ["c", "g"]);
+        let mut st = State {
+            subtasks: hard,
+            ..Default::default()
+        };
+        make_candidates(&mut st, &accounts[3], &accounts[1]);
+        assert_eq!(st.mode, COMPETE);
+        let ids: Vec<(&str, &str, bool)> = st
+            .subtasks
+            .iter()
+            .map(|t| (t.id.as_str(), t.account_id.as_str(), t.pinned))
+            .collect();
+        assert_eq!(ids, [("s1-a", "c", true), ("s1-b", "g", true)]);
+        assert!(st.subtasks.iter().all(|t| t.depends_on.is_empty()));
+    }
+
+    #[test]
+    fn compete_winner_breaks_ties_by_checks_then_reviewer_then_diff() {
+        let c = |id: &str, passed, failed, preferred, diff| Candidate {
+            id: id.into(),
+            agent: "X".into(),
+            ran: true,
+            passed,
+            failed,
+            preferred,
+            diff,
+            failure: if failed > 0 {
+                "Project verify (.)".into()
+            } else {
+                String::new()
+            },
+        };
+        // A failing check loses to a passing one, whatever the diff or verdict.
+        assert_eq!(
+            pick_winner(&[c("A", 3, 1, true, 1), c("B", 1, 0, false, 90)]),
+            Some(1)
+        );
+        assert_eq!(
+            pick_winner(&[c("A", 1, 0, false, 9), c("B", 2, 0, false, 90)]),
+            Some(1)
+        );
+        assert_eq!(
+            pick_winner(&[c("A", 2, 0, false, 9), c("B", 2, 0, true, 90)]),
+            Some(1)
+        );
+        assert_eq!(
+            pick_winner(&[c("A", 2, 0, false, 90), c("B", 2, 0, false, 9)]),
+            Some(1)
+        );
+        assert_eq!(
+            pick_winner(&[c("A", 2, 0, false, 9), c("B", 2, 0, false, 9)]),
+            Some(0)
+        );
+        let mut gone = c("A", 9, 0, true, 1);
+        gone.ran = false;
+        assert_eq!(
+            pick_winner(&[gone.clone(), c("B", 0, 1, false, 5)]),
+            Some(1)
+        );
+        assert_eq!(pick_winner(&[gone]), None);
+
+        let v = compete_verdict(&[c("A", 1, 1, false, 4), c("B", 2, 0, false, 9)], Some(1));
+        assert!(v.starts_with("B (X) won: 2/2 checks passed"), "{v}");
+        assert!(
+            v.contains("A (X) failed its checks (Project verify (.))"),
+            "{v}"
+        );
+        let v = compete_verdict(&[c("A", 1, 0, false, 4), c("B", 1, 0, false, 9)], Some(0));
+        assert!(v.contains("smaller diff (4 changed lines)"), "{v}");
+        assert_eq!(parse_choice("Both fine.\nWINNER: b"), Some(1));
+        assert_eq!(parse_choice("no verdict"), None);
+        assert_eq!(
+            diff_size("--- a/x\n+++ b/x\n@@\n-old\n+new\n+more\n ctx"),
+            3
+        );
+        assert_eq!(patch_files("--- a/x\n+++ b/src/x.rs\n"), ["src/x.rs"]);
+    }
+
+    #[test]
+    fn team_summary_names_the_compete_winner_or_the_fallback() {
+        let mut st = State {
+            mode: COMPETE.into(),
+            ..Default::default()
+        };
+        st.steps.push(Step {
+            name: "Compete".into(),
+            status: "done".into(),
+            detail: "Candidate B (GPT) won: 1/1 checks passed; Candidate A (Claude) failed its checks (Project verify (.))".into(),
+        });
+        let text = team_summary(&st);
+        assert!(text.contains("Mode: Compete"));
+        assert!(text.contains("- Compete: Candidate B (GPT) won"));
+        let st = State {
+            compete: "only one provider is available within quota".into(),
+            ..Default::default()
+        };
+        let text = team_summary(&st);
+        assert!(text.contains("Mode: Single"));
+        assert!(text.contains("Compete: not run (only one provider is available within quota)"));
     }
 
     #[test]

@@ -34,6 +34,26 @@ The scheduler enforces concurrency, admitted-subtask totals, a run time limit (1
 
 Auto's choice is deterministic in two steps. The router picks Single or Review (and Both picks broadcast); with Orchestra on, a complex request becomes an Orchestra run, and the approved plan's shape then picks Parallel or Collaborative (a dependency chain, or two writers on one file). Collaborative turns run in plan order, apply every earlier turn's patch and see every earlier result; they never bypass the run's limits. Tests: `auto_team_mode_rules_are_deterministic` and the `collaborative_*` tests in `orchestra.rs`.
 
+### Compete
+
+Compete is the third shape. It runs only when every rule holds: the plan has a single writing subtask; the planner marked it complex (important) or could not name its files (uncertain); Auto is in its Quality profile (Compete uses about twice the quota, so Default (balanced) and Budget never compete); the subtask limit allows two; and two different providers that can write are available and not cooling down. API accounts are never Orchestra workers, so Compete spends no API budget. Lumen then gives the same task to two pinned candidates on different providers (Claude first, then ChatGPT, then others), each in its own worktree, under the run's normal time, concurrency, subtask and quota limits.
+
+Lumen runs the project's own checks (the same validation as the verify step) in each candidate's worktree. When both pass, a reviewer from a third provider when possible, otherwise one not orchestrating, compares the two diffs read-only and ends with `WINNER: A` or `WINNER: B`. The winner is fixed by rule: no failing check, then most checks passed, then the reviewer's verdict, then the smaller diff, then plan order. Only the winner's patch is integrated; the final check, audit and self-heal run as usual. If no candidate passes, the closest is applied and repaired, and the result says so.
+
+When an important or uncertain task cannot compete, Auto runs Single, with the integration audit when Review is on, and **Team result by Lumen** says `Compete: not run (reason)`. A Compete run's result names the winner, why it won and what the other candidate failed. Tests: `compete_rules_are_deterministic_and_fall_back`, `compete_winner_breaks_ties_by_checks_then_reviewer_then_diff` and `team_summary_names_the_compete_winner_or_the_fallback` in `orchestra.rs`.
+
+**Measured offline.** `compete_corpus.rs` has six small tasks with their own tests. Two scripted candidates stand in for two providers, so this measures Lumen's selection, not model quality. Each candidate runs in a real worktree with real checks, and the applied result is checked again in the project:
+
+| Task | Single (candidate A) | Compete |
+|---|---|---|
+| slugify | pass | pass |
+| parse duration | fail | pass (A failed its check) |
+| clamp | pass | pass (tie, smaller diff) |
+| dedupe keeping order | pass | pass |
+| roman numerals | fail | pass (A failed its check) |
+| leap year | fail | fail (both failed) |
+| **Total** | **3/6** | **5/6**, at twice the worker runs (12 vs 6) |
+
 Orchestra makes only successful dependencies eligible, fails missing/failed dependency chains, and preserves consumed admission and attempt limits across Resume. Worker errors after observed work do not automatically replay; partial text and the reason remain visible, with quota cooldown preserved. Stop waits for provider process cleanup before removing worktrees. These are bounded offline Windows results, not live model-quality or universal delegation claims.
 
 ## Usage and fallback

@@ -71,6 +71,8 @@ pub async fn serve_native_account(
     native_mcp::serve(profile, workspace, read_only).await
 }
 #[cfg(test)]
+mod compete_corpus;
+#[cfg(test)]
 mod handoff_corpus;
 mod native_claude;
 mod ollama;

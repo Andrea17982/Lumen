@@ -194,6 +194,12 @@ export default function OrchestraCard({
             previous step.
           </p>
         )}
+        {state.mode === 'compete' && (
+          <p className="orchestra-mode">
+            Compete: two providers build this independently. Lumen runs the project's checks on
+            both and applies the better one.
+          </p>
+        )}
         <details className="orchestra-spec">
           <summary>Task specification</summary>
           <pre>{state.task}</pre>
