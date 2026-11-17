@@ -196,8 +196,8 @@ export default function OrchestraCard({
         )}
         {state.mode === 'compete' && (
           <p className="orchestra-mode">
-            Compete: two providers build this independently. Lumen runs the project's checks on
-            both and applies the better one.
+            Compete: two providers build this independently. Lumen runs the project's checks on both
+            and applies the better one.
           </p>
         )}
         <details className="orchestra-spec">

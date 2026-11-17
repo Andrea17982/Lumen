@@ -9,6 +9,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Accounts](accounts.md) | Official login, per-account configuration and local Ollama |
 | [Auto policy](auto.md) | Classification, model selection, review and quota fallback |
 | [Shared integrations](integrations.md) | MCP, skills and plugin components across providers, consent and current limits |
+| [Plugins](plugins.md) | Lumen plugins: manifest, permissions, themes, commands, MCP tools and sandboxed panels |
 | [Moli browser](moli.md) | Automatic browsing, local Ollama tool calling, screenshots and compatibility |
 | [Recoverable autonomy](autonomy.md) | Action classes, audit log, checkpoints/rollback, untrusted content and what rollback cannot undo |
 | [Task quality](task-quality.md) | Durable decisions, project and global memory, recipes, recurring tasks, checks and graph impact |

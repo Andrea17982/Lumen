@@ -4,6 +4,10 @@ mod tray;
 use std::sync::Arc;
 use tauri::Manager;
 
+/// Plugin panels: an opaque, sandboxed document that can run its own inline code and post
+/// messages to Lumen, and nothing else (no network, no frames, no Lumen origin, no IPC).
+pub const PANEL_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; sandbox allow-scripts";
+
 pub fn run() {
     let mut context = tauri::generate_context!();
     if cfg!(debug_assertions) {
@@ -55,6 +59,42 @@ pub fn run() {
             .map_err(std::io::Error::other)?;
             tray::show_main(app.handle());
             Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("lumen-plugin", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let parts: Vec<String> = request
+                .uri()
+                .path()
+                .split('/')
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned)
+                .collect();
+            tauri::async_runtime::spawn(async move {
+                let desktop = app.state::<Arc<desktop::Desktop>>().inner().clone();
+                let html = match parts.as_slice() {
+                    [id, panel] => desktop::call(
+                        app,
+                        desktop,
+                        "plugin_panel".into(),
+                        serde_json::json!({"id": id, "panel": panel}),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_owned)),
+                    _ => None,
+                };
+                let response = tauri::http::Response::builder()
+                    .header("Content-Security-Policy", PANEL_CSP)
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("Content-Type", "text/html; charset=utf-8");
+                let response = match html {
+                    Some(html) => response.status(200).body(html.into_bytes()),
+                    None => response
+                        .status(404)
+                        .body(b"Plugin panel unavailable".to_vec()),
+                };
+                responder.respond(response.expect("Panel response"));
+            });
         })
         .invoke_handler(move |invoke| {
             if matches!(

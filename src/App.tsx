@@ -64,6 +64,8 @@ import { errorText, Mark, nameOf } from './lib/util';
 import { useI18n } from './lib/i18n';
 import { draftKey, useConversationDrafts, type ComposerDraft } from './lib/useConversationDrafts';
 import { inboxShows } from './features/gatekeeper/contracts';
+import { INSERT_PROMPT, PLUGINS_CHANGED, THEME_KEY, themeCss } from './lib/plugins';
+import { usePluginContributions } from './lib/usePlugins';
 
 // Loaded on first use, so starting Lumen parses less code.
 const SettingsPanel = lazy(() => import('./settings/SettingsPanel'));
@@ -255,10 +257,18 @@ export default function App() {
     (activeSession.current?.id === selected ? activeSession.current : undefined);
   if (session) activeSession.current = session;
   const running = active(session?.status) || busy;
-  const slashMatch = /^\/([a-z]*)$/i.exec(draft);
-  const slashCommands = [
+  const plugins = usePluginContributions();
+  const [pluginTheme, setPluginTheme] = useState(() => localStorage.getItem(THEME_KEY) || '');
+  useEffect(() => {
+    const sync = () => setPluginTheme(localStorage.getItem(THEME_KEY) || '');
+    window.addEventListener(PLUGINS_CHANGED, sync);
+    return () => window.removeEventListener(PLUGINS_CHANGED, sync);
+  }, []);
+  const slashMatch = /^\/([a-z0-9-]*)$/i.exec(draft);
+  const slashCommands: { name: string; description: string; prompt?: string }[] = [
     { name: 'workspace', description: t('Change the conversation folder') },
     { name: 'compact', description: t('Continue in a fresh session with a summary') },
+    ...plugins.slashCommands,
   ].filter((command) => command.name.startsWith(slashMatch?.[1].toLowerCase() ?? ''));
   const showSlash = !!slashMatch && !slashDismissed && slashCommands.length > 0;
   // The backend sizes the prompt the next turn would send. It refreshes when a run ends, the
@@ -1061,9 +1071,19 @@ export default function App() {
   }
   function selectSlash(name: string) {
     setSlashDismissed(true);
-    setDraft(name === 'workspace' ? '/workspace ' : '/compact');
+    const plugin = plugins.slashCommands.find((command) => command.name === name);
+    // Plugin commands only expand to prompt text, which stays editable before sending.
+    setDraft(plugin ? plugin.prompt : name === 'workspace' ? '/workspace ' : '/compact');
     input.current?.focus();
   }
+  useEffect(() => {
+    const insert = (e: Event) => {
+      setDraft(String((e as CustomEvent).detail));
+      input.current?.focus();
+    };
+    window.addEventListener(INSERT_PROMPT, insert);
+    return () => window.removeEventListener(INSERT_PROMPT, insert);
+  }, [setDraft]);
   // A draft belongs to the chat it was opened in.
   useEffect(() => {
     setSheet(null);
@@ -1786,6 +1806,9 @@ export default function App() {
               }
             />
           )}
+          <style>
+            {themeCss(plugins.themes.find((th) => `${th.plugin}/${th.id}` === pluginTheme))}
+          </style>
           <div className="composer">
             {showSlash && (
               <div

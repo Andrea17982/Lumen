@@ -10,17 +10,20 @@ import AccountSettings from './AccountSettings';
 import { AutoPreferences } from './AutoSettings';
 import GeneralSettings, { GeneralFooter } from './GeneralSettings';
 import IntegrationSettings from './IntegrationSettings';
+import PluginSettings from './PluginSettings';
 import TeamworkSettings from './TeamworkSettings';
 import { useI18n } from '../lib/i18n';
 import { ErrorBanner } from '../components/ComposerParts';
 
-export type SettingsTab = 'general' | 'accounts' | 'auto' | 'teamwork' | 'tools' | 'about';
+export type SettingsTab =
+  'general' | 'accounts' | 'auto' | 'teamwork' | 'tools' | 'plugins' | 'about';
 const TABS: { id: SettingsTab; label: string; advanced?: boolean }[] = [
   { id: 'general', label: 'General' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'auto', label: 'Auto' },
   { id: 'teamwork', label: 'Teamwork' },
   { id: 'tools', label: 'Tools', advanced: true },
+  { id: 'plugins', label: 'Plugins' },
   { id: 'about', label: 'About' },
 ];
 const MODE_KEY = 'lumen-settings-mode';
@@ -191,6 +194,7 @@ export default function SettingsPanel({
               />
             )}
             {current === 'tools' && <IntegrationSettings onError={setError} />}
+            {current === 'plugins' && <PluginSettings onError={setError} />}
             {current === 'about' && (
               <section className="settings-section about">
                 <Mark small />

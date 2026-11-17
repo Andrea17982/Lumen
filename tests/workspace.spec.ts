@@ -462,6 +462,7 @@ test('settings sections and Simple/Advanced mode hide expert options', async ({ 
     'Accounts',
     'Auto',
     'Teamwork',
+    'Plugins',
     'About',
   ]);
   await page.getByRole('tab', { name: 'Teamwork' }).click();

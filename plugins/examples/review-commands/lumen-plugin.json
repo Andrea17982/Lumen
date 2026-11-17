@@ -1,0 +1,28 @@
+{
+  "id": "review-commands",
+  "name": "Review commands",
+  "version": "1.0.0",
+  "description": "Slash commands that expand to review prompts, a shared review skill and a picker panel.",
+  "lumen": ">=0.10.0 <1.0.0",
+  "contributes": {
+    "slashCommands": [
+      {
+        "name": "review",
+        "description": "Review the current changes",
+        "prompt": "Review the uncommitted changes in this project. List real bugs first, with file and line, then risky spots. Do not change any files."
+      },
+      {
+        "name": "explain",
+        "description": "Explain this project to a newcomer",
+        "prompt": "Explain how this project is organised for someone new to it: the main folders, how a request flows through the code, and where to start reading."
+      },
+      {
+        "name": "tests-first",
+        "description": "Write the failing test before the fix",
+        "prompt": "Before fixing anything, write a test that reproduces the problem and show me that it fails. Then make the smallest fix that makes it pass."
+      }
+    ],
+    "skills": ["skills/careful-review"],
+    "panels": [{ "id": "picker", "title": "Review picker", "entry": "picker.html" }]
+  }
+}

@@ -4193,3 +4193,26 @@ footer.about .version {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Settings → Plugins */
+.plugin-row,
+.plugin-review {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.plugin-grants {
+  margin: 0;
+  padding-left: 18px;
+}
+.plugin-error {
+  color: var(--error);
+}
+.plugin-panel {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 8px);
+  background: var(--panel);
+}
