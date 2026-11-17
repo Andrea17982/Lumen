@@ -63,7 +63,12 @@ export default function MessageView({
   const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
   const inline =
     m.role === 'assistant'
-      ? splitReasoning(m.text.replace(/<lumen-remember>[\s\S]*?(<\/lumen-remember>|$)\n?/g, ''))
+      ? splitReasoning(
+          m.text.replace(
+            /<lumen-(remember|routine)[\s\S]*?(<\/lumen-(remember|routine)>|$)\n?/g,
+            '',
+          ),
+        )
       : { reasoning: '', answer: m.text };
   const remembered = m.activity.find((a) => a.kind === 'memory-saved')?.text.split('\n');
   const reasoning = [
@@ -217,6 +222,11 @@ export default function MessageView({
             <MessageBody text={inline.answer} folder={messageFolder} />
           </Suspense>
         </div>
+      )}
+      {m.activity.some((a) => a.kind === 'routine-created') && (
+        <p className="memory-saved" role="status">
+          {t('Recurring task scheduled. Stop it above the message box.')}
+        </p>
       )}
       {remembered && (
         <p className="memory-saved" role="status">

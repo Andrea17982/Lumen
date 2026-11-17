@@ -382,6 +382,23 @@ pub(crate) async fn submit(
                 if !saved.is_empty() {
                     note(&app, &id, &mut output, "memory-saved", saved.join("\n"));
                 }
+                match crate::routines::capture(&core, &id, &mut output.text, &options) {
+                    Ok(Some(r)) => note(
+                        &app,
+                        &id,
+                        &mut output,
+                        "routine-created",
+                        serde_json::to_string(&r).unwrap(),
+                    ),
+                    Ok(None) => {}
+                    Err(e) => note(
+                        &app,
+                        &id,
+                        &mut output,
+                        "error",
+                        format!("Recurring task not scheduled: {e}"),
+                    ),
+                }
             }
             crate::execution::phase(
                 &app,
@@ -1538,7 +1555,7 @@ fn assemble_prompt(
     };
     format!(
         "{shared}{notes}\nYou are working in Lumen. Keep your native tools, agent behavior and project instructions. Complete the user's requested work within the current permission profile; preserve approvals and decisions already given. Use a native structured question only when missing information changes the result. Only claim checks that actually ran. {} {permission}\n\n{context_text}{attached}{audit}",
-        context::MEMORY_HINT
+        format!("{} {}", context::MEMORY_HINT, crate::routines::HINT)
     )
 }
 

@@ -1857,7 +1857,11 @@ export default function App() {
               }}
               maxLength={100000}
             />
-            <Routines session={session?.id} version={routineVersion} onError={setError} />
+            <Routines
+              session={session?.id}
+              version={routineVersion + messages.length}
+              onError={setError}
+            />
             <AttachmentList
               paths={attached}
               onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}

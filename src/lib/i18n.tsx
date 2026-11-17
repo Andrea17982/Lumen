@@ -412,6 +412,9 @@ const it: Record<string, string> = {
   'Remembered in LUMEN.md': 'Ricordato in LUMEN.md',
   'Recurring tasks': 'Attività ricorrenti',
   'Save as recipe': 'Salva come ricetta',
+  until: 'fino al',
+  'Recurring task scheduled. Stop it above the message box.':
+    'Attività ricorrente programmata. Puoi fermarla sopra il campo messaggio.',
   'Save as recipe: every assistant can repeat this task when you ask':
     'Salva come ricetta: ogni assistente potrà ripetere questo task quando lo chiedi',
   'Next run': 'Prossima esecuzione',

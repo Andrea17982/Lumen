@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react';
 import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
 
-export type Routine = { id: string; text: string; everyMs: number; nextAt: number };
+export type Routine = {
+  id: string;
+  text: string;
+  everyMs: number;
+  nextAt: number;
+  untilAt?: number | null;
+};
 
 const every = (ms: number) =>
   ms % 604_800_000 === 0
@@ -39,7 +45,9 @@ export default function Routines({
         <li key={r.id} title={`${t('Next run')}: ${new Date(r.nextAt).toLocaleString()}`}>
           <Repeat size={12} aria-hidden />
           <span>
-            {t('Every')} {every(r.everyMs)}: {r.text}
+            {t('Every')} {every(r.everyMs)}
+            {r.untilAt ? ` ${t('until')} ${new Date(r.untilAt).toLocaleDateString()}` : ''}:{' '}
+            {r.text}
           </span>
           <button
             className="icon-button"
