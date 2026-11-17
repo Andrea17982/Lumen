@@ -935,7 +935,14 @@ fn save_recipe(core: crate::CoreRef<'_>, id: String, message: String) -> Result<
         .rev()
         .find(|m| m.role == "user")
         .ok_or("This reply has no request to save")?;
-    integrations::save_recipe(&core.root, &request.text, &history[at].text)
+    let name = integrations::save_recipe(&core.root, &request.text, &history[at].text)?;
+    let mut reply = history[at].clone();
+    reply.activity.push(crate::models::Activity {
+        kind: "recipe-saved".into(),
+        text: name.clone(),
+    });
+    core.store.save_message(&id, &reply)?;
+    Ok(name)
 }
 #[crate::command]
 fn install_skill(core: crate::CoreRef<'_>, path: String) -> Result<(), String> {

@@ -70,6 +70,7 @@ export default function MessageView({
           ),
         )
       : { reasoning: '', answer: m.text };
+  const recipe = m.activity.find((a) => a.kind === 'recipe-saved')?.text;
   const remembered = m.activity.find((a) => a.kind === 'memory-saved')?.text.split('\n');
   const reasoning = [
     ...m.activity.filter((a) => a.kind === 'thinking').map((a) => a.text),
@@ -124,7 +125,7 @@ export default function MessageView({
               Audit with {nameOf(other)}
             </button>
           )}
-          {m.role === 'assistant' && m.text && !running && from && (
+          {m.role === 'assistant' && m.text && !running && from && !recipe && (
             <button
               className="icon-button"
               aria-label={t('Save as recipe')}
@@ -226,6 +227,11 @@ export default function MessageView({
       {m.activity.some((a) => a.kind === 'routine-created') && (
         <p className="memory-saved" role="status">
           {t('Recurring task scheduled. Stop it above the message box.')}
+        </p>
+      )}
+      {recipe && (
+        <p className="memory-saved" role="status">
+          {t('Saved as recipe')}: {recipe}. {t('Ask any assistant to repeat it.')}
         </p>
       )}
       {remembered && (

@@ -98,6 +98,8 @@ try {
   assert(skills.includes(name), `${name} not in ${skills}`);
   const recipe = await readFile(path.join(h.data, 'shared', 'skills', name, 'SKILL.md'), 'utf8');
   assert(recipe.includes('description: Saved recipe: FEATURE_TAGS controlla ogni 30 minuti'));
+  const saved = (await h.invoke('get_messages', { id: chat.id })).find((m) => m.id === reply.id);
+  assert(saved.activity.some((a) => a.kind === 'recipe-saved' && a.text === name));
   console.log(
     'Passed: memory saved to LUMEN.md, plain-language routine with end date, tags hidden in GUI, /every create/stop, recipe saved as shared skill. No live inference.',
   );

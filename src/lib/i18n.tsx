@@ -414,6 +414,8 @@ const it: Record<string, string> = {
   'Save as recipe': 'Salva come ricetta',
   until: 'fino al',
   'every day at': 'ogni giorno alle',
+  'Saved as recipe': 'Salvato come ricetta',
+  'Ask any assistant to repeat it.': 'Chiedi a qualsiasi assistente di ripeterla.',
   'Recurring task scheduled. Stop it above the message box.':
     'Attività ricorrente programmata. Puoi fermarla sopra il campo messaggio.',
   'Save as recipe: every assistant can repeat this task when you ask':
