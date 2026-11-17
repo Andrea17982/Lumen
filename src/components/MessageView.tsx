@@ -1,6 +1,15 @@
 import ApiCost from './ApiCost';
 import { lazy, Suspense, useState } from 'react';
-import { Check, ChevronDown, Copy, MapPin, Paperclip, Repeat2, RotateCcw } from 'lucide-react';
+import {
+  BookmarkPlus,
+  Check,
+  ChevronDown,
+  Copy,
+  MapPin,
+  Paperclip,
+  Repeat2,
+  RotateCcw,
+} from 'lucide-react';
 import AttachmentPreview from './AttachmentPreview';
 import NativeQuestions from './NativeQuestions';
 import QuotaResume from './QuotaResume';
@@ -108,6 +117,16 @@ export default function MessageView({
             >
               <Repeat2 size={13} />
               Audit with {nameOf(other)}
+            </button>
+          )}
+          {m.role === 'assistant' && m.text && !running && from && (
+            <button
+              className="icon-button"
+              aria-label={t('Save as recipe')}
+              title={t('Save as recipe: every assistant can repeat this task when you ask')}
+              onClick={() => void onOrchestra('save_recipe', { message: m.id })}
+            >
+              <BookmarkPlus size={13} />
             </button>
           )}
           {m.role === 'assistant' && m.text && (

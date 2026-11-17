@@ -924,6 +924,20 @@ async fn ollama_generate(
     ollama::generate(&model, &prompt, timeout_ms).await
 }
 #[crate::command]
+fn save_recipe(core: crate::CoreRef<'_>, id: String, message: String) -> Result<String, String> {
+    let history = core.store.messages(&id)?;
+    let at = history
+        .iter()
+        .position(|m| m.id == message && m.role == "assistant")
+        .ok_or("Reply not found")?;
+    let request = history[..at]
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .ok_or("This reply has no request to save")?;
+    integrations::save_recipe(&core.root, &request.text, &history[at].text)
+}
+#[crate::command]
 fn install_skill(core: crate::CoreRef<'_>, path: String) -> Result<(), String> {
     integrations::install_skill(&core.root, &PathBuf::from(path))
 }
@@ -1157,6 +1171,7 @@ pub async fn dispatch(
         "get_usage" => __ipc_get_usage(app, core, args).await,
         "refresh_usage" => __ipc_refresh_usage(app, core, args).await,
         "integration_status" => __ipc_integration_status(app, core, args).await,
+        "save_recipe" => __ipc_save_recipe(app, core, args).await,
         "install_skill" => __ipc_install_skill(app, core, args).await,
         "save_mcp" => __ipc_save_mcp(app, core, args).await,
         _ => Err("Unknown core command".into()),

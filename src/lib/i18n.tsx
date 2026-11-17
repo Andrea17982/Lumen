@@ -411,6 +411,9 @@ const it: Record<string, string> = {
   'Delivery not confirmed': 'Invio non confermato',
   'Remembered in LUMEN.md': 'Ricordato in LUMEN.md',
   'Recurring tasks': 'Attività ricorrenti',
+  'Save as recipe': 'Salva come ricetta',
+  'Save as recipe: every assistant can repeat this task when you ask':
+    'Salva come ricetta: ogni assistente potrà ripetere questo task quando lo chiedi',
   'Next run': 'Prossima esecuzione',
   Every: 'Ogni',
   'Stop recurring task': 'Ferma attività ricorrente',

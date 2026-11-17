@@ -108,6 +108,60 @@ pub fn save_mcp(data: &Path, text: &str) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())
 }
+/// Turns a request that worked into a shared skill every assistant can reuse.
+/// Returns the folder name; an existing recipe is never overwritten.
+pub fn save_recipe(data: &Path, request: &str, outcome: &str) -> Result<String, String> {
+    let request = request.trim();
+    if request.is_empty() {
+        return Err("This reply has no request to save".into());
+    }
+    let words: Vec<String> = request
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .take(6)
+        .map(str::to_lowercase)
+        .collect();
+    let slug = format!("recipe-{}", words.join("-"))
+        .chars()
+        .take(60)
+        .collect::<String>();
+    let base = root(data).join("skills");
+    let (mut name, mut n) = (slug.clone(), 1);
+    while base.join(&name).exists() {
+        n += 1;
+        name = format!("{slug}-{n}");
+    }
+    let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
+    let description = clip(
+        &request.split_whitespace().collect::<Vec<_>>().join(" "),
+        200,
+    );
+    let body = format!(
+        "---
+name: {name}
+description: Saved recipe: {description}
+---
+
+# Recipe
+
+A task the user saved after it worked. When asked to repeat it, redo it for the current project state instead of copying old results, keep the same scope and checks, and report what differs.
+
+## Request
+
+{}
+
+## Result that was accepted
+
+{}
+",
+        clip(request, 4000),
+        clip(outcome, 4000)
+    );
+    std::fs::create_dir_all(base.join(&name)).map_err(|e| e.to_string())?;
+    std::fs::write(base.join(&name).join("SKILL.md"), body).map_err(|e| e.to_string())?;
+    Ok(name)
+}
+
 /// Folders of the shared skills that are switched on.
 pub fn enabled_skills(data: &Path) -> Vec<std::path::PathBuf> {
     let Ok(state) = status(data) else {
@@ -367,6 +421,19 @@ pub fn args_for(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recipes_become_unique_shared_skills() {
+        let dir = std::env::temp_dir().join(format!("lumen-recipe-{}", crate::models::id()));
+        let a = super::save_recipe(&dir, "Build the release, then run tests!", "Built OK").unwrap();
+        let b = super::save_recipe(&dir, "Build the release, then run tests!", "Again").unwrap();
+        assert_eq!(a, "recipe-build-the-release-then-run-tests");
+        assert_eq!(b, format!("{a}-2"));
+        assert!(super::instructions(&dir)
+            .unwrap()
+            .contains("Saved recipe: Build the release"));
+        assert!(super::save_recipe(&dir, "  ", "x").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     use super::*;
     #[test]
     fn shared_skill_resources_and_mcp_adapters() {

@@ -19,6 +19,10 @@ Every assistant can save a durable project fact (a decision, convention or prefe
 
 Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Memory is project-only: nothing is written to global memory, and other projects never see it. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
 
+## Recipes
+
+The bookmark button under a finished reply saves that request and its accepted result as a shared skill named `recipe-…` in Lumen's shared skills folder. Every assistant receives shared skills, so later you can simply ask "repeat the release recipe" in any project or with another agent; the recipe tells the agent to redo the work for the current state rather than reuse old output. Saving never overwrites an existing recipe. Recipes are listed with the other skills in Settings; to edit or delete one, change or remove its `recipe-…` folder under `shared/skills` in Lumen's data folder. Request and result are stored as written, so do not save replies that contain secrets.
+
 ## Recurring tasks
 
 Type `/every <interval> <task>` in an existing conversation, for example `/every 1d check for outdated dependencies and open a summary`. Intervals are `m`, `h`, `d` or `w`, between 15 minutes and 30 days. The task is saved with the current assistant, model and effort choices and appears above the composer; × stops it.

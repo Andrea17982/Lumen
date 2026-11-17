@@ -71,7 +71,7 @@ Recupero dopo crash con identità dei processi verificata, stato persistito e Re
 
 ### 0.11 — Contesto e collaborazione affidabile
 
-**In corso (17 novembre):** primo tassello della memoria di progetto automatica: ogni agente salva fatti durevoli con `<lumen-remember>`, datati in `LUMEN.md` sotto `## Lumen memory`, ispezionabili e cancellabili, mai globali. Fonti per sessione, memoria globale con conferma ed esportazione restano da fare. [Dettagli](task-quality.md#project-memory). Aggiunte anche le attività ricorrenti `/every`, eseguite dal daemon ([dettagli](task-quality.md#recurring-tasks)).
+**In corso (17 novembre):** primo tassello della memoria di progetto automatica: ogni agente salva fatti durevoli con `<lumen-remember>`, datati in `LUMEN.md` sotto `## Lumen memory`, ispezionabili e cancellabili, mai globali. Fonti per sessione, memoria globale con conferma ed esportazione restano da fare. [Dettagli](task-quality.md#project-memory). Aggiunte anche le attività ricorrenti `/every`, eseguite dal daemon ([dettagli](task-quality.md#recurring-tasks)) e le ricette salvate come skill condivise ([dettagli](task-quality.md#recipes)).
 
 - Context Engine strutturato a tre livelli: sessione, progetto, globale. Decisioni di progetto salvate automaticamente con fonti; passaggio alla memoria globale solo dopo conferma. Ispezione, correzione, cancellazione ed esportazione leggibile, per esempio `LUMEN.md`.
 - Handoff verificabile: obiettivo, vincoli, decisioni, file rilevanti, stato Git, lavoro svolto/mancante e incertezze. Non fingere di trasferire la memoria privata dell'agente precedente.
