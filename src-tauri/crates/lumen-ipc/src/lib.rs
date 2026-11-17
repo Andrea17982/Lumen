@@ -284,8 +284,8 @@ mod tests {
                 uuid::Uuid::new_v4()
             ));
             #[cfg(unix)]
-            let endpoint =
-                std::env::temp_dir().join(format!("lumen-receipt-{}.sock", uuid::Uuid::new_v4()));
+            // Darwin's temporary directory already consumes much of the Unix socket path limit.
+            let endpoint = std::env::temp_dir().join(uuid::Uuid::new_v4().simple().to_string());
             #[cfg(windows)]
             let mut listener = tokio::net::windows::named_pipe::ServerOptions::new()
                 .first_pipe_instance(true)
