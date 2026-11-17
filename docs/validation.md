@@ -10,6 +10,12 @@ Selected task and approval commands now use persistent, payload-bound UUID recei
 
 The full workspace passed 231 Rust tests (14 opt-in ignored) and Clippy with warnings denied. New regressions cover transport-only retry with the same UUID, no retry of domain errors/read commands, concurrent dispatch, argument mismatch, saved errors, invalid/missing IDs, database reopen and preservation of schema-4 messages during migration to schema 5. The native daemon smoke also loses a reply after acceptance, repeats the same command concurrently, restarts the service and checks that only one conversation was created. Documentation checks verify upstream notice hashes; release helper checks include adaptation notices. This proves the covered dispatch behavior, not exactly-once external effects or every adapter/account combination.
 
+A controlled comparison sent eight concurrent create-session requests with the same command ID: the prior frozen release created eight conversations; the updated debug service created one and returned the same result eight times. The exact updated release daemon also created one, replayed the result after restart and rejected a changed payload. The protocol-1 baseline did not support receipts; this compares that dispatch behavior, not throughput or model quality.
+
+The production frontend/native GUI lifecycle scenarios passed in isolated WebView2 processes. The first dev-server run failed before mounting the interface; the production-preview rerun passed. Final-source CI passed Windows, macOS, Linux and frontend/browser checks. The initial Darwin fixture socket path exceeded SUN_LEN; shortening only the cfg(test) filename resolved it.
+
+The refreshed local installer, portable ZIP, GUI and daemon passed SHA-256, ZIP CRC/safe extraction, prepared-sidecar identity, source freeze and resource checks. The unchanged upstream T3 MIT text and adaptation inventory are present in the packaged legal resources. [Follow-up receipt](data/command-receipts-0.10.json).
+
 The earlier 16 November package receipt below describes the initial schema-4 build, not this follow-up source. Current service migration/recovery requirements are in [local-service.md](local-service.md).
 
 ## 16 November - 0.10 core and local service
