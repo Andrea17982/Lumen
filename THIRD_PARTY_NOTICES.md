@@ -4,6 +4,12 @@ Lumen's original code/documentation is MIT licensed. Dependencies retain their o
 
 The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, tiktoken-rs, React, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide, react-markdown, remark-gfm, Vitest and Playwright.
 
+## T3 Code command receipts
+
+The development version of Lumen adapts the durable command-receipt design from [T3 Code](https://github.com/pingdotgg/t3code), created by Theo / pingdotgg and contributors, **Copyright (c) 2026 T3 Tools Inc.**, under the MIT license. The source is pinned to commit `375343aaf35133f659435554cd01634bab333a7d`.
+
+Lumen ports the design to Rust/SQLite, adds payload binding and a restricted command list, and refuses automatic replay of uncertain interrupted claims. This is not an import of T3's TypeScript backend or a promise of exactly-once tool execution. [Source files and changes](src-tauri/resources/legal/t3code/ADAPTATIONS.md) and the [unchanged upstream MIT text](src-tauri/resources/legal/t3code/LICENSE.txt) are also bundled under `resources/legal/t3code/` in installed and portable packages. Credit does not imply endorsement.
+
 ## Windows metadata process supervision
 
 Windows metadata process supervision additionally uses [process-wrap](https://github.com/watchexec/process-wrap) 10.0.1 (Apache-2.0 OR MIT) and the Microsoft `windows` Rust bindings (MIT OR Apache-2.0). Job Objects supervise metadata process lifetime; they do not change provider permissions.
