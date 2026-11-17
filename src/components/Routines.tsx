@@ -46,8 +46,10 @@ export default function Routines({
           <Repeat size={12} aria-hidden />
           <span>
             {t('Every')} {every(r.everyMs)}
-            {r.untilAt ? ` ${t('until')} ${new Date(r.untilAt).toLocaleDateString()}` : ''}:{' '}
-            {r.text}
+            {r.untilAt
+              ? ` ${t('until')} ${new Date(r.untilAt).toLocaleDateString(undefined, { timeZone: 'UTC' })}`
+              : ''}
+            : {r.text}
           </span>
           <button
             className="icon-button"

@@ -27,7 +27,9 @@ The bookmark button under a finished reply saves that request and its accepted r
 
 Type `/every <interval> <task>` in an existing conversation, for example `/every 1d check for outdated dependencies and open a summary`. Intervals are `m`, `h`, `d` or `w`, between 15 minutes and 30 days. The task is saved with the current assistant, model and effort choices and appears above the composer; × stops it.
 
-The local daemon sends the task to the same conversation when it is due, also while the window is closed, with the conversation's current permission profile. A run is skipped while that conversation is already busy; runs missed while the computer was off are not replayed in a burst, and the next time is saved before the task starts, so a crash cannot submit it twice. Deleting the conversation deletes its routines. Use Read only or Ask first for unattended work you have not reviewed.
+The local daemon sends the task to the same conversation when it is due, also while the window is closed, with the conversation's current permission profile. A run is skipped while that conversation is already busy; runs missed while the computer was off are not replayed in a burst, and the next time is saved before the task starts, so a crash cannot submit it twice. Deleting the conversation deletes its routines.
+
+You can also ask in plain words, for example "check every 30 minutes for dependency updates until 30 August 2027". The assistant does the first run and adds a `<lumen-routine every="30m" until="2027-08-30">` tag; Lumen hides the tag, creates one routine (duplicates of the same task are ignored), shows "Recurring task scheduled" under the reply and deletes the routine after the end date (end of that day, UTC). How well a request is recognized depends on the assistant; check the strip above the composer. Use Read only or Ask first for unattended work you have not reviewed.
 
 ## Continuity and Auto calibration
 
