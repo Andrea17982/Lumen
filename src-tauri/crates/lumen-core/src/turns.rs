@@ -388,6 +388,7 @@ pub(crate) async fn submit(
                     Path::new(&session.workspace),
                     &mut output.text,
                     crate::models::now() / 1000,
+                    &core.store.session(&id).map(|s| s.title).unwrap_or_default(),
                 );
                 if !saved.is_empty() {
                     note(&app, &id, &mut output, "memory-saved", saved.join("\n"));

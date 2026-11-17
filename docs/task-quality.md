@@ -16,13 +16,13 @@ These backend features preserve native execution and add no repeated planning ap
 
 ## Project memory
 
-Every assistant can save a durable project fact (a decision, convention or preference) by writing `<lumen-remember>fact</lumen-remember>` in its final reply. After a successful turn Lumen removes the tag from the reply, adds the fact with its date under `## Lumen memory` in the project's `LUMEN.md` and shows "Remembered in LUMEN.md" under the message. Because `LUMEN.md` is already shared with every assistant, the next turn, a different agent or an API account sees the same fact.
+Every assistant can save a durable project fact (a decision, convention or preference) by writing `<lumen-remember>fact</lumen-remember>` in its final reply. After a successful turn Lumen removes the tag from the reply, adds the fact with its date and source chat (for example `_(2026-11-17, from “Release prep”)_`) under `## Lumen memory` in the project's `LUMEN.md` and shows "Remembered in LUMEN.md" under the message. Because `LUMEN.md` is already shared with every assistant, the next turn, a different agent or an API account sees the same fact.
 
 Limits: at most five facts per turn, 300 characters each, exact duplicates skipped, text that looks like a credential rejected. Project facts stay in that project; other projects never see them. Edit or delete entries in `LUMEN.md` like any other note. The fact comes from the model's reply, so content the model read from an untrusted page could reach it; review the section like any other model output.
 
 ### Global memory
 
-For a personal preference that applies everywhere, an assistant writes `<lumen-remember scope="global">fact</lumen-remember>`. Lumen removes the tag and stores nothing: the message shows "Remember for all projects?" with a Save button. Only after Save is the fact added, dated, to `shared/MEMORY.md` in Lumen's data folder, which every assistant in every project then receives; project notes win on conflict. Lumen saves only facts an assistant actually proposed in that reply, with the same size and credential filters. Edit or delete `MEMORY.md` freely.
+For a personal preference that applies everywhere, an assistant writes `<lumen-remember scope="global">fact</lumen-remember>`. Lumen removes the tag and stores nothing: the message shows "Remember for all projects?" with a Save button. Only after Save is the fact added, with date and source chat, to `shared/MEMORY.md` in Lumen's data folder, which every assistant in every project then receives; project notes win on conflict. Lumen saves only facts an assistant actually proposed in that reply, with the same size and credential filters. Edit or delete `MEMORY.md` freely. Both files are plain Markdown, so they are also the readable export: copy them to keep or move your memory.
 
 Live check (17 November 2026, Claude Sonnet through the official CLI, `CASES=memory,global-it,global-en node tests/live-routine-recognition.mjs`): 3/3. "In this project we use pnpm" stayed a project fact; "in all my projects I prefer short replies in Italian" and "across all my projects use 2-space indentation" were proposed with `scope="global"`.
 

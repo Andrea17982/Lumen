@@ -183,7 +183,7 @@ pub fn global_memory(data: &Path) -> std::path::PathBuf {
 }
 
 /// Appends a confirmed global fact (deduplicated, secret-filtered, dated).
-pub fn remember_global(data: &Path, fact: &str, now_secs: i64) -> Result<(), String> {
+pub fn remember_global(data: &Path, fact: &str, now_secs: i64, source: &str) -> Result<(), String> {
     let fact = fact.split_whitespace().collect::<Vec<_>>().join(" ");
     if fact.is_empty() || fact.chars().count() > 300 || crate::context::secret().is_match(&fact) {
         return Err("This fact cannot be saved".into());
@@ -196,13 +196,13 @@ pub fn remember_global(data: &Path, fact: &str, now_secs: i64) -> Result<(), Str
     if text.trim().is_empty() {
         text = "# Lumen global memory\n\nConfirmed preferences shared by every assistant in every project. Edit or delete freely.\n\n".into();
     }
-    let date = chrono::DateTime::from_timestamp(now_secs, 0)
-        .map(|d| d.format("%Y-%m-%d").to_string())
-        .unwrap_or_default();
     if !text.ends_with('\n') {
         text.push('\n');
     }
-    text.push_str(&format!("- {fact} _({date})_\n"));
+    text.push_str(&format!(
+        "- {fact} {}\n",
+        crate::context::stamp(now_secs, source)
+    ));
     std::fs::create_dir_all(root(data)).map_err(|e| e.to_string())?;
     std::fs::write(path, text).map_err(|e| e.to_string())
 }
@@ -531,9 +531,9 @@ mod global_memory_tests {
         let f = crate::test_support::Fixture::new();
         let dir = f.directory("global-memory");
         assert!(!super::instructions(&dir).unwrap().contains("global memory"));
-        super::remember_global(&dir, "Reply in Italian", 0).unwrap();
-        super::remember_global(&dir, "Reply  in Italian", 0).unwrap();
-        assert!(super::remember_global(&dir, "my password is x", 0).is_err());
+        super::remember_global(&dir, "Reply in Italian", 0, "").unwrap();
+        super::remember_global(&dir, "Reply  in Italian", 0, "").unwrap();
+        assert!(super::remember_global(&dir, "my password is x", 0, "").is_err());
         let text = std::fs::read_to_string(super::global_memory(&dir)).unwrap();
         assert_eq!(text.matches("Reply in Italian").count(), 1);
         assert!(super::instructions(&dir)

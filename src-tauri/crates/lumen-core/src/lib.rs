@@ -964,7 +964,8 @@ fn remember_global(
     if !proposed {
         return Err("Only a fact an assistant proposed can be saved".into());
     }
-    integrations::remember_global(&core.root, &fact, crate::models::now() / 1000)?;
+    let title = core.store.session(&id)?.title;
+    integrations::remember_global(&core.root, &fact, crate::models::now() / 1000, &title)?;
     reply.activity.push(crate::models::Activity {
         kind: "memory-global".into(),
         text: fact,

@@ -48,7 +48,28 @@ pub fn secret() -> regex::Regex {
 
 /// Moves `<lumen-remember>` facts from the reply into the project's LUMEN.md memory section.
 /// Project-scoped only; facts are deduplicated, size-capped and dated. Returns saved facts.
-pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64) -> Vec<String> {
+
+/// `_(2026-11-17, from “chat title”)_`: when and where a memory fact came from.
+pub fn stamp(now_secs: i64, source: &str) -> String {
+    let date = chrono::DateTime::from_timestamp(now_secs, 0)
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    let source: String = source
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(['_', '“', '”'], "")
+        .chars()
+        .take(80)
+        .collect();
+    if source.is_empty() {
+        format!("_({date})_")
+    } else {
+        format!("_({date}, from “{source}”)_")
+    }
+}
+
+pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64, source: &str) -> Vec<String> {
     let re = regex::Regex::new(r"(?s)<lumen-remember>(.*?)</lumen-remember>\n?").unwrap();
     let facts: Vec<String> = re
         .captures_iter(reply)
@@ -62,9 +83,6 @@ pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64) -> Vec<Str
     *reply = re.replace_all(reply, "").trim_end().to_owned();
     let secret_re = secret();
     let mut notes = read_context(workspace);
-    let date = chrono::DateTime::from_timestamp(now, 0)
-        .map(|d| d.format("%Y-%m-%d").to_string())
-        .unwrap_or_default();
     let mut saved = Vec::new();
     for fact in facts {
         if notes.contains(&fact) || secret_re.is_match(&fact) {
@@ -77,7 +95,7 @@ pub fn capture_memory(workspace: &Path, reply: &mut String, now: i64) -> Vec<Str
         }
         let at = notes.find(MEMORY_HEADING).unwrap() + MEMORY_HEADING.len();
         let end = notes[at..].find("\n## ").map_or(notes.len(), |i| at + i);
-        let line = format!("- {fact} _({date})_\n");
+        let line = format!("- {fact} {}\n", stamp(now, source));
         let insert = if notes[..end].ends_with('\n') {
             line
         } else {
@@ -472,17 +490,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("LUMEN.md"), "verify: npm test\n\n## Other\nkeep").unwrap();
         let mut reply = "Done.\n<lumen-remember>Use pnpm, not npm</lumen-remember>\n<lumen-remember>api_key=abc</lumen-remember>".to_owned();
-        let saved = super::capture_memory(&dir, &mut reply, 1_795_000_000);
+        let saved = super::capture_memory(&dir, &mut reply, 1_795_000_000, "");
         assert_eq!(saved, ["Use pnpm, not npm"]);
         assert_eq!(reply, "Done.");
         let notes = super::read_context(&dir);
         assert!(notes.contains("## Lumen memory\n- Use pnpm, not npm _(2026-"));
         assert!(notes.contains("## Other\nkeep") && !notes.contains("abc"));
         let mut again = "<lumen-remember>Use pnpm, not npm</lumen-remember>".to_owned();
-        assert!(super::capture_memory(&dir, &mut again, 0).is_empty());
+        assert!(super::capture_memory(&dir, &mut again, 0, "").is_empty());
         assert_eq!(super::read_context(&dir).matches("Use pnpm").count(), 1);
         let mut plain = "no tags".to_owned();
-        assert!(super::capture_memory(&dir, &mut plain, 0).is_empty());
+        assert!(super::capture_memory(&dir, &mut plain, 0, "").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -648,8 +666,12 @@ mod global_proposal_tests {
         let dir = f.directory("global-memory");
         let mut reply = "Done.\n<lumen-remember scope=\"global\">Prefer tabs</lumen-remember>\n<lumen-remember>Use pnpm</lumen-remember>".to_owned();
         assert_eq!(super::propose_global(&mut reply), vec!["Prefer tabs"]);
-        assert_eq!(super::capture_memory(&dir, &mut reply, 0), vec!["Use pnpm"]);
+        assert_eq!(
+            super::capture_memory(&dir, &mut reply, 0, "Setup chat"),
+            vec!["Use pnpm"]
+        );
         assert_eq!(reply, "Done.");
         assert!(!super::read_context(&dir).contains("Prefer tabs"));
+        assert!(super::read_context(&dir).contains("- Use pnpm _(1970-01-01, from “Setup chat”)_"));
     }
 }
