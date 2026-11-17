@@ -41,9 +41,17 @@ export interface Account {
   name: string;
   provider: Provider;
 }
+/** Sent when the daemon bounded oversized tool output or diff text; the store keeps it all. */
+export interface ActivityDetail {
+  digest: string;
+  totalBytes: number;
+  totalLines: number;
+  shownBytes: number;
+}
 export interface Activity {
   kind: string;
   text: string;
+  detail?: ActivityDetail;
 }
 export interface Message {
   eventSeq?: number;
@@ -150,6 +158,7 @@ export interface RunEvent {
   messageId: string;
   kind: string;
   text: string;
+  detail?: ActivityDetail;
 }
 export interface Diagnostics {
   claude: boolean;

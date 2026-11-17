@@ -68,6 +68,7 @@ impl EventHub {
             if let Some(store) = store.as_ref() {
                 store.append_event(&mut payload)?;
             }
+            crate::wire::project_activity(&mut payload);
         }
         let _ = self.events.send(Event {
             event: event.into(),

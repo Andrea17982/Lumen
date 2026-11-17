@@ -181,6 +181,11 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'get_messages':
       result = data.messages?.[String(args.id)] || [];
       break;
+    case 'activity_detail':
+      // Browser preview keeps full text beside a bounded fixture, keyed like the daemon's digest.
+      result = (data as { details?: Record<string, string> }).details?.[String(args.digest)];
+      if (result === undefined) throw new Error('This output is no longer available');
+      break;
     case 'list_accounts':
       result = data.accounts;
       break;
@@ -236,7 +241,13 @@ export function subscribe(handler: (event: RunEvent) => void) {
         remember(e.payload);
         handler(e.payload);
       })
-    : Promise.resolve(() => {});
+    : previewEvents(handler);
+}
+/** Browser preview has no daemon; offline tests stream fixture events through this DOM event. */
+function previewEvents(handler: (event: RunEvent) => void) {
+  const listener = (e: Event) => handler((e as CustomEvent<RunEvent>).detail);
+  window.addEventListener('lumen-preview-run', listener);
+  return Promise.resolve(() => window.removeEventListener('lumen-preview-run', listener));
 }
 export async function onServiceChange(
   handler: (state: 'resync' | 'disconnected' | 'error', message?: string) => void,
@@ -289,7 +300,9 @@ function applyEventContent(messages: Message[], event: RunEvent): Message[] {
         activity: [...m.activity.slice(0, -1), { kind: 'thinking', text: last.text + event.text }],
       };
     }
-    return { ...m, activity: recordActivity(m.activity, { kind: event.kind, text: event.text }) };
+    const incoming = { kind: event.kind, text: event.text, detail: event.detail };
+    if (!incoming.detail) delete incoming.detail;
+    return { ...m, activity: recordActivity(m.activity, incoming) };
   });
 }
 export async function external(url: string) {

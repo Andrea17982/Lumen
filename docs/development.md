@@ -38,6 +38,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --lo
 node tests/docs-check.mjs
 ```
 
+Playwright reuses any server already on its port. When another checkout's dev server holds 1420, set `LUMEN_E2E_PORT` (for example `LUMEN_E2E_PORT=1437 npx playwright test`) so the run serves this checkout. `tests/transcript.spec.ts` covers long transcripts offline with fixture data: order, variable-height rows, streaming without remounting earlier rows, keyboard expand/collapse, bounded output and search. `node tests/transcript-performance.mjs <preview-url> <label>` times opening, streaming and scrolling a 2,000-message fixture against a `vite build` + `vite preview` of each version.
+
 The docs check validates local Markdown links/images, the current release notes and version consistency across application manifests. Rust tests use real subprocesses, disposable Git projects, local protocol peers and the bundled Moli fixture. Opt-in live tests are excluded from ordinary CI; [Validation](validation.md) distinguishes these scopes.
 
 ## Native Windows and screenshots

@@ -1,5 +1,5 @@
 import ApiCost from './ApiCost';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, memo, Suspense, useState } from 'react';
 import {
   BookmarkPlus,
   Check,
@@ -17,15 +17,17 @@ import ChildSessions from './ChildSessions';
 import ResponseImage from './ResponseImage';
 import { HIDDEN, orchestraOf, providerOf } from '../lib/messages';
 import { splitReasoning } from '../lib/reasoning';
-import type { Account, Message } from '../lib/types';
+import type { Account, ActivityDetail, Message } from '../lib/types';
+import { call } from '../lib/bridge';
 import { errorText, Mark, nameOf } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
 const MessageBody = lazy(() => import('./MessageBody'));
 const OrchestraCard = lazy(() => import('./OrchestraCard'));
 
-/** One transcript entry: author, actions, reasoning, activity, body and lane/Orchestra state. */
-export default function MessageView({
+/** One transcript entry: author, actions, reasoning, activity, body and lane/Orchestra state.
+ * Memoized: a streamed token changes only the live message object, so other rows skip render. */
+export default memo(function MessageView({
   m,
   inLane = false,
   latest,
@@ -40,8 +42,10 @@ export default function MessageView({
   onApplyLane,
   onOrchestra,
   onError,
+  sessionId,
 }: {
   m: Message;
+  sessionId?: string;
   inLane?: boolean;
   latest: boolean;
   /** The reply that is streaming right now. */
@@ -197,7 +201,16 @@ export default function MessageView({
                     ? 'File changes'
                     : a.kind.charAt(0).toUpperCase() + a.kind.slice(1)}
                 </summary>
-                <pre>{a.text}</pre>
+                {a.detail && sessionId ? (
+                  <BoundedOutput
+                    session={sessionId}
+                    message={m.id}
+                    text={a.text}
+                    detail={a.detail}
+                  />
+                ) : (
+                  <pre>{a.text}</pre>
+                )}
               </details>
             ))}
           </div>
@@ -356,5 +369,52 @@ export default function MessageView({
         </small>
       )}
     </article>
+  );
+});
+
+/** Bounded tool output or diff: the full text is fetched only when the reader asks for it. */
+function BoundedOutput({
+  session,
+  message,
+  text,
+  detail,
+}: {
+  session: string;
+  message: string;
+  text: string;
+  detail: ActivityDetail;
+}) {
+  const { t } = useI18n();
+  const [full, setFull] = useState<string | null>(null);
+  const [state, setState] = useState('');
+  const kb = (n: number) => `${Math.ceil(n / 1024)} KB`;
+  return (
+    <>
+      <pre>{full ?? text}</pre>
+      {full === null && (
+        <p className="bounded-output">
+          <small>
+            {t('Showing')} {kb(detail.shownBytes)} / {kb(detail.totalBytes)} · {detail.totalLines}{' '}
+            {t('lines')}
+          </small>{' '}
+          <button
+            className="text-button"
+            disabled={state === 'loading'}
+            onClick={() => {
+              setState('loading');
+              call<string>('activity_detail', { id: session, message, digest: detail.digest })
+                .then((value) => {
+                  setFull(value);
+                  setState('');
+                })
+                .catch((e) => setState(errorText(e)));
+            }}
+          >
+            {t('Show full output')}
+          </button>
+          {state && state !== 'loading' && <span role="alert">{state}</span>}
+        </p>
+      )}
+    </>
   );
 }
