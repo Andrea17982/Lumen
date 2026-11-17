@@ -24,6 +24,8 @@ Limits: at most five facts per turn, 300 characters each, exact duplicates skipp
 
 For a personal preference that applies everywhere, an assistant writes `<lumen-remember scope="global">fact</lumen-remember>`. Lumen removes the tag and stores nothing: the message shows "Remember for all projects?" with a Save button. Only after Save is the fact added, dated, to `shared/MEMORY.md` in Lumen's data folder, which every assistant in every project then receives; project notes win on conflict. Lumen saves only facts an assistant actually proposed in that reply, with the same size and credential filters. Edit or delete `MEMORY.md` freely.
 
+Live check (17 November 2026, Claude Sonnet through the official CLI, `CASES=memory,global-it,global-en node tests/live-routine-recognition.mjs`): 3/3. "In this project we use pnpm" stayed a project fact; "in all my projects I prefer short replies in Italian" and "across all my projects use 2-space indentation" were proposed with `scope="global"`.
+
 ## Recipes
 
 The bookmark button under a finished reply saves that request and its accepted result as a shared skill named `recipe-…` in Lumen's shared skills folder. Every assistant receives shared skills, so later you can simply ask "repeat the release recipe" in any project or with another agent; the recipe tells the agent to redo the work for the current state rather than reuse old output. Saving never overwrites an existing recipe. Recipes are listed with the other skills in Settings; to edit or delete one, change or remove its `recipe-…` folder under `shared/skills` in Lumen's data folder. Request and result are stored as written, so do not save replies that contain secrets.

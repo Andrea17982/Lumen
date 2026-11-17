@@ -26,7 +26,17 @@ const cases = [
   ['daily-time', 'Every day at 18:30, list dependencies with known updates.', true],
   ['one-off', 'Elenca le dipendenze di questo progetto.', false],
   ['memory', "D'ora in poi in questo progetto usiamo pnpm, non npm. Elenca le dipendenze.", false],
-];
+  [
+    'global-it',
+    'In tutti i miei progetti preferisco risposte brevi in italiano. Quante dipendenze ha questo progetto?',
+    false,
+  ],
+  [
+    'global-en',
+    'Across all my projects, always use 2-space indentation. How many dependencies are there?',
+    false,
+  ],
+].filter(([name]) => !process.env.CASES || process.env.CASES.split(',').includes(name));
 const dir = mkdtempSync(path.join(tmpdir(), 'lumen-live-'));
 writeFileSync(
   path.join(dir, 'package.json'),
@@ -40,7 +50,7 @@ for (const [name, ask, want] of cases) {
     { input: prompt, cwd: dir, encoding: 'utf8', shell: true, timeout: 300000 },
   );
   const routine = out.match(/<lumen-routine[^>]*>[\s\S]*?<\/lumen-routine>/)?.[0];
-  const memory = out.match(/<lumen-remember>[\s\S]*?<\/lumen-remember>/g);
+  const memory = out.match(/<lumen-remember[^>]*>[\s\S]*?<\/lumen-remember>/g);
   console.log(
     `== ${name}: routine ${routine ? 'YES' : 'no'} (expected ${want ? 'YES' : 'no'}) ${routine ?? ''} | memory: ${memory ?? 'none'}`,
   );
