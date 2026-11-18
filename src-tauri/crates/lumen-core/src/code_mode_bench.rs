@@ -648,6 +648,10 @@ async fn bench_t0() {
 async fn bench_t1() {
     let base = endpoint(&std::env::var("LUMEN_BENCH_URL").expect("set LUMEN_BENCH_URL")).unwrap();
     let ids = std::env::var("LUMEN_BENCH_MODELS").expect("set LUMEN_BENCH_MODELS");
+    let suite = std::env::var("LUMEN_BENCH_SUITE").ok();
+    assert!(suite
+        .as_deref()
+        .is_none_or(|suite| REQUESTS.iter().any(|case| case.0 == suite)));
     for id in ids.split(',') {
         let http = client();
         local_model(id, &Value::Null).unwrap();
@@ -688,6 +692,9 @@ async fn bench_t1() {
             .unwrap();
         for seed in 0..seeds {
             for case in REQUESTS {
+                if suite.as_deref().is_some_and(|suite| suite != case.0) {
+                    continue;
+                }
                 // Interleave paired arms in reproducible pseudorandom order.
                 let first =
                     (seed ^ (case.0.as_bytes()[0] as u32)).wrapping_mul(0x45d9f3b) >> 29 & 1 == 0;
