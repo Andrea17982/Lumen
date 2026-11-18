@@ -174,6 +174,7 @@ pub fn enabled_skills(data: &Path) -> Vec<std::path::PathBuf> {
         .filter_map(Value::as_str)
         .map(|name| root(data).join("skills").join(name))
         .filter(|p| p.join("SKILL.md").is_file())
+        .chain(crate::plugins::skill_folders(data))
         .collect()
 }
 
@@ -255,7 +256,7 @@ fn load(data: &Path) -> Result<Value, String> {
 }
 /// Enabled servers only; `"disabled": true` is Lumen's ON/OFF switch and is never passed on.
 pub fn enabled(data: &Path) -> Result<serde_json::Map<String, Value>, String> {
-    Ok(load(data)?["mcpServers"]
+    let mut servers: serde_json::Map<String, Value> = load(data)?["mcpServers"]
         .as_object()
         .ok_or("Invalid MCP config")?
         .iter()
@@ -267,7 +268,10 @@ pub fn enabled(data: &Path) -> Result<serde_json::Map<String, Value>, String> {
             }
             (k.clone(), s)
         })
-        .collect())
+        .collect();
+    // Enabled plugins add their servers; each starts through Lumen's permission launcher.
+    servers.extend(crate::plugins::mcp_servers(data));
+    Ok(servers)
 }
 /// Health: stdio servers need a resolvable command; HTTP servers need a URL.
 pub fn health(data: &Path) -> Result<Value, String> {

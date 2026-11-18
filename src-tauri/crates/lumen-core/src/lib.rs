@@ -34,6 +34,9 @@ mod opencode;
 mod opencode_acp;
 mod quota_resume;
 pub mod routines;
+pub fn serve_plugin_mcp(data: PathBuf, id: &str, server: &str) -> Result<(), String> {
+    plugins::serve_mcp(&data, id, server)
+}
 pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> Result<(), String> {
     capability_catalog::serve_stdio(data, workspace, id).await
 }
@@ -78,6 +81,7 @@ mod native_claude;
 mod ollama;
 mod ollama_agent;
 mod orchestra;
+mod plugins;
 mod proc;
 mod projecttools;
 mod providers;
@@ -1037,6 +1041,58 @@ fn install_skill(core: crate::CoreRef<'_>, path: String) -> Result<(), String> {
     integrations::install_skill(&core.root, &PathBuf::from(path))
 }
 #[crate::command]
+fn plugins_list(core: crate::CoreRef<'_>) -> Vec<serde_json::Value> {
+    plugins::list(&core.root)
+}
+#[crate::command]
+async fn plugin_inspect(
+    core: crate::CoreRef<'_>,
+    source: String,
+) -> Result<serde_json::Value, String> {
+    plugins::inspect(&core.root, &source).await
+}
+#[crate::command]
+fn plugin_install(core: crate::CoreRef<'_>, token: String) -> Result<serde_json::Value, String> {
+    plugins::install(&core.root, &token)
+}
+#[crate::command]
+fn plugin_set_enabled(core: crate::CoreRef<'_>, id: String, on: bool) -> Result<(), String> {
+    plugins::set_enabled(&core.root, &id, on)
+}
+#[crate::command]
+fn plugin_remove(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
+    plugins::remove(&core.root, &id)
+}
+#[crate::command]
+async fn plugin_reload(core: crate::CoreRef<'_>, id: String) -> Result<serde_json::Value, String> {
+    plugins::reload(&core.root, &id).await
+}
+#[crate::command]
+fn plugin_contributions(core: crate::CoreRef<'_>) -> serde_json::Value {
+    plugins::contributions(&core.root)
+}
+#[crate::command]
+fn plugin_panel(core: crate::CoreRef<'_>, id: String, panel: String) -> Result<String, String> {
+    plugins::panel_html(&core.root, &id, &panel)
+}
+#[crate::command]
+async fn plugin_panel_fetch(
+    core: crate::CoreRef<'_>,
+    id: String,
+    url: String,
+) -> Result<serde_json::Value, String> {
+    plugins::panel_fetch(&core.root, &id, &url).await
+}
+#[crate::command]
+fn plugin_set_secret(
+    core: crate::CoreRef<'_>,
+    id: String,
+    name: String,
+    value: String,
+) -> Result<(), String> {
+    plugins::set_secret(&core.root, &id, &name, &value)
+}
+#[crate::command]
 fn save_mcp(core: crate::CoreRef<'_>, json: String) -> Result<(), String> {
     integrations::save_mcp(&core.root, &json)
 }
@@ -1272,6 +1328,16 @@ pub async fn dispatch(
         "remember_project" => __ipc_remember_project(app, core, args).await,
         "audit_log" => __ipc_audit_log(app, core, args).await,
         "install_skill" => __ipc_install_skill(app, core, args).await,
+        "plugins_list" => __ipc_plugins_list(app, core, args).await,
+        "plugin_inspect" => __ipc_plugin_inspect(app, core, args).await,
+        "plugin_install" => __ipc_plugin_install(app, core, args).await,
+        "plugin_set_enabled" => __ipc_plugin_set_enabled(app, core, args).await,
+        "plugin_remove" => __ipc_plugin_remove(app, core, args).await,
+        "plugin_reload" => __ipc_plugin_reload(app, core, args).await,
+        "plugin_contributions" => __ipc_plugin_contributions(app, core, args).await,
+        "plugin_panel" => __ipc_plugin_panel(app, core, args).await,
+        "plugin_panel_fetch" => __ipc_plugin_panel_fetch(app, core, args).await,
+        "plugin_set_secret" => __ipc_plugin_set_secret(app, core, args).await,
         "save_mcp" => __ipc_save_mcp(app, core, args).await,
         _ => Err("Unknown core command".into()),
     }

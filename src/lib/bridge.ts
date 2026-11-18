@@ -207,6 +207,7 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'visual_variants':
     case 'capture_targets':
     case 'change_layers':
+    case 'plugins_list':
       result = [];
       break;
     case 'repo_map_search':
@@ -214,6 +215,9 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
         symbols: [],
         stats: { files: 0, symbols: 0, refreshed: 0, removed: 0, millis: 0, partial: false },
       };
+      break;
+    case 'plugin_contributions':
+      result = { themes: [], slashCommands: [], panels: [] };
       break;
     case 'ollama_status':
       result = { installed: false, running: false, models: [], selected: null };

@@ -1,0 +1,12 @@
+{
+  "id": "word-count",
+  "name": "Word count",
+  "version": "1.0.0",
+  "description": "A tiny MCP tool that counts words, lines and characters in text it is given.",
+  "lumen": ">=0.10.0 <1.0.0",
+  "contributes": {
+    "mcpServers": {
+      "words": { "command": "node", "args": ["server.mjs"] }
+    }
+  }
+}

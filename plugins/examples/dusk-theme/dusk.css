@@ -1,0 +1,21 @@
+/* Only CSS custom properties under :root are accepted. */
+:root {
+  --surface: #f6efe8;
+  --panel: rgba(252, 248, 244, 0.97);
+  --text: #33291f;
+  --muted: #7a6656;
+  --accent: #b5562f;
+  --button: #4a3427;
+  --aurora-a: rgba(232, 180, 140, 0.55);
+  --aurora-d: rgba(196, 120, 98, 0.35);
+}
+:root[data-theme='dark'] {
+  --surface: #1a1310;
+  --panel: rgba(30, 22, 18, 0.98);
+  --text: #f3e7dc;
+  --muted: #b79c88;
+  --accent: #f0a073;
+  --button: #ecd9c8;
+  --aurora-a: rgba(160, 82, 48, 0.5);
+  --aurora-d: rgba(110, 60, 52, 0.45);
+}
