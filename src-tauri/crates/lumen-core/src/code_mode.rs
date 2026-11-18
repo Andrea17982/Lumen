@@ -112,7 +112,66 @@ struct Script {
     deadline: Instant,
     requests: mpsc::UnboundedSender<Request>,
     replies: blocking::Receiver<(usize, Value)>,
-    done: oneshot::Sender<Result<String, String>>,
+    done: oneshot::Sender<Result<String, ScriptError>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum ScriptError {
+    Syntax(String),
+    Other(String),
+}
+
+impl From<String> for ScriptError {
+    fn from(message: String) -> Self {
+        Self::Other(message)
+    }
+}
+
+impl From<&str> for ScriptError {
+    fn from(message: &str) -> Self {
+        message.to_owned().into()
+    }
+}
+
+impl std::fmt::Display for ScriptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Syntax(message) | Self::Other(message) => f.write_str(message),
+        }
+    }
+}
+
+pub(crate) struct OllamaMode {
+    pub(crate) active: bool,
+    consecutive_syntax_errors: u8,
+}
+
+impl OllamaMode {
+    pub(crate) fn new(active: bool) -> Self {
+        Self {
+            active,
+            consecutive_syntax_errors: 0,
+        }
+    }
+
+    pub(crate) fn observe(&mut self, syntax_error: bool, result: &mut Value) -> Option<Activity> {
+        self.consecutive_syntax_errors = if syntax_error {
+            self.consecutive_syntax_errors + 1
+        } else {
+            0
+        };
+        if self.consecutive_syntax_errors != 2 {
+            return None;
+        }
+        self.active = false;
+        let notice = "Code Mode disabled for this turn after two consecutive JavaScript syntax errors. Continue using classic tool calls.";
+        let text = result["content"][0]["text"].as_str().unwrap_or_default();
+        result["content"][0]["text"] = json!(format!("{text}\n{notice}"));
+        Some(Activity {
+            kind: "code-fallback".into(),
+            text: notice.into(),
+        })
+    }
 }
 
 pub(crate) struct Session(blocking::Sender<Script>);
@@ -135,12 +194,16 @@ impl Session {
                     return;
                 };
                 context.with(|ctx| {
+                    let Ok(syntax_error) = ctx.globals().get::<_, Function>("SyntaxError") else {
+                        return;
+                    };
                     let Ok(bindings) = ctx.eval::<Function, _>(BINDINGS) else {
                         return;
                     };
                     while let Ok(script) = scripts.recv() {
                         deadline.set(script.deadline);
-                        let (output, reusable) = evaluate(&ctx, &bindings, &script, &cancel);
+                        let (output, reusable) =
+                            evaluate(&ctx, &bindings, &syntax_error, &script, &cancel);
                         let _ = script.done.send(output);
                         if !reusable {
                             break;
@@ -157,7 +220,7 @@ impl Session {
         code: &str,
         tools: &[Value],
         dispatch: F,
-    ) -> Result<String, String>
+    ) -> Result<String, ScriptError>
     where
         F: Fn(String, Value) -> Fut,
         Fut: Future<Output = Value>,
@@ -217,7 +280,7 @@ impl Session {
         tools: &[Value],
         code: &str,
         emit: &mut (impl FnMut(Activity) + Send),
-    ) -> Value {
+    ) -> (Value, bool) {
         let actions = tokio::sync::RwLock::new(());
         let events = std::sync::Mutex::new(emit);
         let output = self
@@ -249,7 +312,8 @@ impl Session {
                 }
             })
             .await;
-        report(output, events.into_inner().unwrap())
+        let syntax_error = matches!(output, Err(ScriptError::Syntax(_)));
+        (report(output, events.into_inner().unwrap()), syntax_error)
     }
 }
 
@@ -263,12 +327,39 @@ fn js_error(error: rquickjs::CaughtError<'_>) -> String {
     error.to_string()
 }
 
+fn fails_to_compile(ctx: &Ctx<'_>, code: &str) -> bool {
+    use rquickjs::qjs;
+    let Ok(source) = std::ffi::CString::new(code) else {
+        return false;
+    };
+    let raw = ctx.as_raw().as_ptr();
+    // This thread owns the live context. COMPILE_ONLY never runs the script.
+    // Release either the owned compiled value or the pending exception here.
+    unsafe {
+        let compiled = qjs::JS_Eval(
+            raw,
+            source.as_ptr(),
+            code.len() as _,
+            c"eval_script".as_ptr(),
+            (qjs::JS_EVAL_TYPE_GLOBAL | qjs::JS_EVAL_FLAG_COMPILE_ONLY) as i32,
+        );
+        if qjs::JS_IsException(compiled) {
+            qjs::JS_FreeValue(raw, qjs::JS_GetException(raw));
+            true
+        } else {
+            qjs::JS_FreeValue(raw, compiled);
+            false
+        }
+    }
+}
+
 fn evaluate<'js>(
     ctx: &Ctx<'js>,
     bindings: &Function<'js>,
+    syntax_error: &Function<'js>,
     script: &Script,
     cancel: &watch::Receiver<bool>,
-) -> (Result<String, String>, bool) {
+) -> (Result<String, ScriptError>, bool) {
     let issued = Rc::new(Cell::new(0));
     let count = issued.clone();
     let active = Rc::new(Cell::new(true));
@@ -324,7 +415,7 @@ fn evaluate<'js>(
     let stopped =
         || *cancel.borrow() || Instant::now() >= script.deadline || script.done.is_closed();
     let mut settled = false;
-    let run = || -> Result<String, String> {
+    let run = || -> Result<String, ScriptError> {
         let send = Function::new(ctx.clone(), rquickjs::function::MutFn::from(submit))
             .catch(ctx)
             .map_err(|e| e.to_string())?;
@@ -340,7 +431,16 @@ fn evaluate<'js>(
             Err(error) => {
                 active.set(false);
                 settled = issued.get() == 0;
-                return Err(js_error(error));
+                let syntax = matches!(&error, rquickjs::CaughtError::Exception(e)
+                    if e.as_object().is_instance_of(syntax_error))
+                    && !stopped()
+                    && fails_to_compile(ctx, &script.code);
+                let message = js_error(error);
+                return Err(if syntax {
+                    ScriptError::Syntax(message)
+                } else {
+                    message.into()
+                });
             }
         };
         let mut received = 0;
@@ -403,10 +503,13 @@ fn evaluate<'js>(
     (output, settled && !stopped() && !ctx.execute_pending_job())
 }
 
-pub(crate) fn report(output: Result<String, String>, emit: &mut impl FnMut(Activity)) -> Value {
+pub(crate) fn report(
+    output: Result<String, ScriptError>,
+    emit: &mut impl FnMut(Activity),
+) -> Value {
     let (text, error) = match output {
         Ok(text) => (text, false),
-        Err(error) => (error, true),
+        Err(error) => (error.to_string(), true),
     };
     let mut preview = text.clone();
     if crate::wire::bound("code-output", &mut preview).is_some() {
@@ -476,7 +579,7 @@ mod tests {
                 )
                 .await
                 .unwrap_err();
-            assert!(error.contains("call limit"), "{error}");
+            assert!(error.to_string().contains("call limit"), "{error}");
             assert_eq!(hits.load(Ordering::SeqCst), step * CALL_LIMIT);
         }
     }
@@ -519,7 +622,11 @@ mod tests {
                 .unwrap(),
             "starting\n40"
         );
-        assert!(run("const =").await.unwrap_err().contains("SyntaxError"));
+        assert!(run("const =")
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("SyntaxError"));
         assert_eq!(
             run("(async () => { await sleep(1); return number += 2; })()")
                 .await
@@ -530,6 +637,7 @@ mod tests {
         assert!(run("new ArrayBuffer(300 * 1024 * 1024)")
             .await
             .unwrap_err()
+            .to_string()
             .contains("out of memory"));
         drop(session);
         let next = Session::new(stop).unwrap();
@@ -589,7 +697,7 @@ mod tests {
             )
             .await;
         assert_eq!(asked, 1);
-        assert!(result.to_string().contains("Action denied"), "{result}");
+        assert!(result.0.to_string().contains("Action denied"), "{result:?}");
         assert!(!workspace.join("out.txt").exists());
 
         input.access = AccessMode::ReadOnly;
@@ -609,8 +717,11 @@ mod tests {
             )
             .await;
         assert!(
-            result.to_string().contains("Read only denies file writes"),
-            "{result}"
+            result
+                .0
+                .to_string()
+                .contains("Read only denies file writes"),
+            "{result:?}"
         );
         assert!(!workspace.join("out.txt").exists());
     }
@@ -686,7 +797,7 @@ mod tests {
             tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(run, approve) })
                 .await
                 .unwrap();
-        assert!(result.to_string().contains("Action denied"), "{result}");
+        assert!(result.0.to_string().contains("Action denied"), "{result:?}");
         assert_eq!(
             std::fs::read_to_string(workspace.join("done")).unwrap(),
             "denied"

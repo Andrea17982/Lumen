@@ -525,6 +525,7 @@ pub async fn execute(
                             .unwrap()
                             .dispatch(&input, browser, &hub, &tools, code, &mut emit)
                             .await
+                            .0
                     } else {
                         code_mode::result("Code Mode requires a string in code", true)
                     }

@@ -72,6 +72,8 @@ pub struct AppSettings {
     /// Add repository-map locations of identifiers a request mentions to its prompt.
     pub repo_context: bool,
     pub code_mode: CodeMode,
+    /// Exact local Ollama model IDs explicitly enabled for Code Mode.
+    pub ollama_code_models: Vec<String>,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -90,6 +92,7 @@ impl Default for AppSettings {
             local_assistant: LocalAssistantSettings::default(),
             repo_context: true,
             code_mode: CodeMode::Off,
+            ollama_code_models: Vec::new(),
         }
     }
 }
@@ -135,5 +138,6 @@ mod tests {
         assert!(!s.auto_fallback && !s.orchestra && s.close_to_tray && !s.open_at_login);
         assert!(s.ollama_model.is_empty() && s.self_heal);
         assert!(!s.local_assistant.enabled && s.local_assistant.auto_titles);
+        assert!(s.ollama_code_models.is_empty());
     }
 }

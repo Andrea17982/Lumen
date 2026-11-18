@@ -51,6 +51,9 @@ struct Row<'a> {
     host_calls: usize,
     tool_errors: usize,
     script_errors: usize,
+    code_fallback: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter_trace: Option<Value>,
     script_ms: u64,
     wall_ms: u64,
     success: bool,
@@ -270,16 +273,13 @@ async fn trial<'a>(
     let (_cancel, stop) = watch::channel(false);
     let mut sandbox = None;
     let definitions = definitions(suite);
-    let tools = if cm {
-        vec![function_tool(&code_mode::definition(&definitions))]
-    } else {
-        definitions.iter().map(function_tool).collect()
-    };
+    let classic_tools = definitions.iter().map(function_tool).collect::<Vec<_>>();
+    let code_tools = vec![function_tool(&code_mode::definition(&definitions))];
+    let mut mode = code_mode::OllamaMode::new(cm);
+    let mut filter_trace = Vec::new();
     let mut messages = vec![json!({"role":"user","content":prompt})];
     if !model.native {
-        messages.insert(0, json!({"role":"system","content":format!(
-            "To use a tool, return action=tool, its tool name and arguments, and text empty. When finished, return action=final and your answer in text. Tools: {}", json!(tools)
-        )}));
+        messages.insert(0, json!({"role":"system","content":""}));
     }
     let started = Instant::now();
     let mut row = Row {
@@ -305,6 +305,8 @@ async fn trial<'a>(
         host_calls: 0,
         tool_errors: 0,
         script_errors: 0,
+        code_fallback: false,
+        filter_trace: None,
         script_ms: 0,
         wall_ms: 0,
         success: false,
@@ -341,6 +343,15 @@ async fn trial<'a>(
     let outcome: Result<String, String> = async {
         // The same bounded benchmark budget applies to both arms.
         for _ in 0..12 {
+            let code = mode.active;
+            let tools = if code { &code_tools } else { &classic_tools };
+            if !model.native {
+                let action = if code { "Return action=code and code=<script>." }
+                    else { "Return action=tool, tool=<name>, arguments=<object>, and text empty." };
+                messages[0]["content"] = json!(format!(
+                    "{action} When finished, return action=final and your answer in text. Tools: {}", json!(tools)
+                ));
+            }
             let mut request = json!({"model":model.id,"messages":messages,"stream":true,
                 "keep_alive":"10m","options":{"temperature":0,"seed":seed,"num_ctx":8192,"num_predict":768}});
             if model.effort != "default" {
@@ -349,7 +360,7 @@ async fn trial<'a>(
             if model.native {
                 request["tools"] = json!(tools);
             } else {
-                request["format"] = crate::ollama_agent::schema(&tools);
+                request["format"] = crate::ollama_agent::schema(tools, code);
             }
             let wire = request.to_string();
             row.max_request_bytes = row.max_request_bytes.max(wire.len());
@@ -381,10 +392,11 @@ async fn trial<'a>(
                 if action["action"] == "final" {
                     return Ok(action["text"].as_str().unwrap_or_default().into());
                 }
-                if action["action"] != "tool" {
-                    return Err("unknown structured Ollama action".into());
-                }
-                vec![json!({"function":{"name":action["tool"],"arguments":action["arguments"]}})]
+                vec![match action["action"].as_str() {
+                    Some("code") if code => native_call(code_mode::TOOL, json!({"code":action["code"]})),
+                    Some("tool") if !code => native_call(action["tool"].as_str().unwrap_or_default(), action["arguments"].clone()),
+                    _ => return Err("unknown structured Ollama action".into()),
+                }]
             };
             if requested.is_empty() { return Ok(text.into()); }
             if requested.len() > 16 { return Err("Ollama native per-step tool cap exceeded".into()); }
@@ -396,7 +408,7 @@ async fn trial<'a>(
             for call in requested {
                 let name = call["function"]["name"].as_str().unwrap_or_default();
                 let args = &call["function"]["arguments"];
-                let result = if cm && name == code_mode::TOOL {
+                let result = if code && mode.active && name == code_mode::TOOL {
                     let before = Instant::now();
                     if sandbox.is_none() {
                         sandbox = Some(Session::new(stop.clone())?);
@@ -406,8 +418,17 @@ async fn trial<'a>(
                         .await;
                     row.script_ms += before.elapsed().as_millis() as u64;
                     row.script_errors += usize::from(output.is_err());
-                    code_mode::report(output, &mut |_| {})
-                } else if !cm {
+                    let syntax = matches!(output, Err(code_mode::ScriptError::Syntax(_)));
+                    let mut result = code_mode::report(output, &mut |_| {});
+                    if mode.observe(syntax, &mut result).is_some() {
+                        sandbox = None;
+                        row.code_fallback = true;
+                    }
+                    if suite == "B" && !model.offline {
+                        filter_trace.push(json!({"code": args["code"], "result": result["content"][0]["text"]}));
+                    }
+                    result
+                } else if !code && name != code_mode::TOOL {
                     invoke(name.into(), args.clone()).await
                 } else {
                     row.tool_errors += 1;
@@ -436,6 +457,9 @@ async fn trial<'a>(
         row.partial = f64::from(correct && covered.into_inner() == mask);
     }
     row.success = row.partial == 1. && outcome.is_ok();
+    if suite == "B" && !model.offline {
+        row.filter_trace = Some(json!({"scripts": filter_trace, "answer": outcome.as_ref().ok()}));
+    }
     row.error = outcome.err();
     row
 }
