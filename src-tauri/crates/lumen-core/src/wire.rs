@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 /// Activity kinds whose text is plain tool output or diff text, never parsed as JSON.
-const BOUNDED: [&str; 4] = ["tool", "command", "file", "tool-end"];
+const BOUNDED: [&str; 5] = ["tool", "command", "file", "tool-end", "code-output"];
 pub(crate) const LIMIT: usize = 16 * 1024;
 
 fn digest(text: &str) -> String {
@@ -17,11 +17,32 @@ fn digest(text: &str) -> String {
 }
 
 /// Shortens `text` in place when it is oversized and returns the detail reference.
-fn bound(kind: &str, text: &mut String) -> Option<Value> {
-    if !BOUNDED.contains(&kind) || text.len() <= LIMIT {
+pub(crate) fn bound(kind: &str, text: &mut String) -> Option<Value> {
+    let limit = if kind == "code-output" {
+        24 * 1024
+    } else {
+        LIMIT
+    };
+    if !BOUNDED.contains(&kind) || text.len() <= limit {
         return None;
     }
-    let mut end = LIMIT;
+    let mut end = limit;
+    let mut tail = text.len();
+    let marker = if kind == "code-output" {
+        let marker = format!(
+            "\n… [full output: {} bytes, detail {}] …\n",
+            text.len(),
+            digest(text)
+        );
+        end = (limit - marker.len()) / 2;
+        tail -= end;
+        while !text.is_char_boundary(tail) {
+            tail += 1;
+        }
+        marker
+    } else {
+        String::new()
+    };
     while !text.is_char_boundary(end) {
         end -= 1;
     }
@@ -29,8 +50,12 @@ fn bound(kind: &str, text: &mut String) -> Option<Value> {
         "digest": digest(text),
         "totalBytes": text.len(),
         "totalLines": text.lines().count(),
-        "shownBytes": end,
+        "shownBytes": end + text.len() - tail,
     });
+    if kind == "code-output" {
+        *text = format!("{}{marker}{}", &text[..end], &text[tail..]);
+        return Some(detail);
+    }
     text.truncate(end);
     text.push_str(&format!(
         "\n… [truncated: showing {end} of {} bytes]",
@@ -76,6 +101,20 @@ pub(crate) fn detail(messages: &[Value], message: &str, wanted: &str) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn code_output_has_head_tail_and_the_same_recoverable_detail() {
+        let full = format!("start {} end", "🦀".repeat(10_000));
+        let mut messages = vec![json!({"id":"m","activity":[{"kind":"code-output","text":full}]})];
+        let stored = messages.clone();
+        project_messages(&mut messages);
+        let activity = &messages[0]["activity"][0];
+        let text = activity["text"].as_str().unwrap();
+        assert!(text.starts_with("start ") && text.ends_with(" end"));
+        assert!(text.len() <= 24 * 1024);
+        let digest = activity["detail"]["digest"].as_str().unwrap();
+        assert!(text.contains(digest));
+        assert_eq!(detail(&stored, "m", digest), Some(full));
+    }
     #[test]
     fn large_output_is_bounded_with_totals_and_recoverable() {
         let full = "é".repeat(LIMIT) + "\nend";

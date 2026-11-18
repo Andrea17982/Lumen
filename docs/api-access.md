@@ -28,6 +28,10 @@ OpenAI Responses, Anthropic Messages and Google generateContent retain native ca
 
 There is **no native API session resume**. Continuation uses Lumen’s bounded conversation/task context; it does not reconstruct a private provider session or replay tool effects. Responses are buffered JSON, not token streaming. Native image input, native skill/subagent/hook runtimes and arbitrary provider-specific reasoning controls are not integrated. Images produced by tools can still be shown in Lumen. Subscription quota displays and API budgets are separate.
 
+### Experimental Code Mode
+
+Set `"codeMode": "on"` in the daemon data directory's `settings.json` to use `lumen_code` for official API turns. `off` is the default, and `auto` currently uses classic calls pending model validation. The JavaScript environment and its variables last one turn. Each host call follows the same permission and approval path as a classic call. A script can queue up to 200 calls with eight in flight, within 120 seconds and a 256 MiB JavaScript heap. Actions that can prompt or change shared state run in order. Output over 24 KiB has a head/tail preview and **Show full output** in activity.
+
 Production endpoints are fixed HTTPS, without proxies or redirects. A loopback fixture override exists only in debug builds with an isolated test-data directory; release builds ignore it. Windows keychain/IPC/SQLite and all three wire formats are tested locally; fixture success does not certify a real API key, model entitlement, current prices or account quota. macOS Keychain/Linux Secret Service require platform validation.
 
 Primary contracts: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [Anthropic tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools), [Google generateContent](https://ai.google.dev/api/generate-content), [keyring backends](https://docs.rs/keyring/3.6.3/keyring/).

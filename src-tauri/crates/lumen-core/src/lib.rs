@@ -42,6 +42,7 @@ pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> 
 }
 mod autonomy;
 mod classify;
+mod code_mode;
 mod codegraph;
 mod connectors;
 mod context;

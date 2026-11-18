@@ -3,6 +3,31 @@ use crate::{models::*, providers::Invocation};
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
 use tokio::io::{AsyncRead, AsyncReadExt};
+
+pub(crate) async fn dispatch(
+    input: &Invocation<'_>,
+    browser: &crate::browser::Registration,
+    hub: &tokio::sync::Mutex<crate::shared_tools::Hub>,
+    name: &str,
+    args: &Value,
+    emit: &mut impl FnMut(Activity),
+) -> Value {
+    if input.account.provider != Provider::Ollama && is_builtin(name) {
+        call(input, name, args, emit).await
+    } else if crate::browser::tools()
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|tool| tool["name"] == name)
+    {
+        browser.call(name, args).await
+    } else {
+        hub.lock()
+            .await
+            .call(name, args, input.access, browser)
+            .await
+    }
+}
 pub fn definitions(access: AccessMode) -> Vec<Value> {
     let tool = |name: &str, description: &str, properties: Value, required: Vec<&str>| json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}});
     let mut tools = vec![

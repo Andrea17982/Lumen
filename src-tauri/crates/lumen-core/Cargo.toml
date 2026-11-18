@@ -33,6 +33,7 @@ tokio-tungstenite = "0.28"
 futures-util = "0.3"
 axum = "0.8"
 tiktoken-rs = "0.12.1"
+rquickjs = "0.14"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

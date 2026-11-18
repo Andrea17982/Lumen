@@ -36,6 +36,15 @@ impl Default for LocalAssistantSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeMode {
+    #[default]
+    Off,
+    Auto,
+    On,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -62,6 +71,7 @@ pub struct AppSettings {
     pub local_assistant: LocalAssistantSettings,
     /// Add repository-map locations of identifiers a request mentions to its prompt.
     pub repo_context: bool,
+    pub code_mode: CodeMode,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -79,6 +89,7 @@ impl Default for AppSettings {
             orchestra_limits: OrchestraLimits::default(),
             local_assistant: LocalAssistantSettings::default(),
             repo_context: true,
+            code_mode: CodeMode::Off,
         }
     }
 }

@@ -375,23 +375,32 @@ pub async fn models(a: &Account, dir: &Path) -> Result<Vec<ModelInfo>, String> {
 pub async fn execute(
     input: Invocation<'_>,
     mut cancel: watch::Receiver<bool>,
-    mut emit: impl FnMut(Activity),
+    mut emit: impl FnMut(Activity) + Send,
 ) -> Result<String, String> {
     let data = root(input.config)?;
     let secret = key(&input.account.id)?;
     let model = input.model.ok_or("Select an API model")?;
     let http = client()?;
     let browser = input.browser.ok_or("Browser scope unavailable")?;
-    let mut hub = crate::shared_tools::Hub::default();
+    use crate::{
+        api_tools, code_mode,
+        settings::{AppSettings, CodeMode},
+    };
+    let mut hub = tokio::sync::Mutex::new(crate::shared_tools::Hub::default());
+    let mode = AppSettings::load(data).code_mode;
+    let mut sandbox = None;
+    let code_cancel = cancel.clone();
     let run = async {
-        hub.connect(&input, browser, &mut emit).await?;
+        hub.get_mut().connect(&input, browser, &mut emit).await?;
         let mut history = crate::api_wire::initial(&input.account.provider, input.prompt); // = providers::wire_prompt
         let mut text = String::new();
         let mut call_ids = std::collections::HashSet::new();
         for _ in 0..32 {
-            hub.refresh(input.access, browser, &mut emit).await;
+            hub.get_mut()
+                .refresh(input.access, browser, &mut emit)
+                .await;
             let mut tools = crate::browser::tools().as_array().unwrap().clone();
-            tools.extend(hub.tools.clone());
+            tools.extend(hub.get_mut().tools.clone());
             tools.extend(crate::api_tools::definitions(input.access));
             let mut aliases = std::collections::HashMap::new();
             for (index, tool) in tools.iter_mut().enumerate() {
@@ -399,23 +408,29 @@ pub async fn execute(
                     .as_str()
                     .ok_or("Shared tool has no name")?
                     .to_owned();
-                if name.len() > 64
-                    || !name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                if mode != CodeMode::On
+                    && (name.len() > 64
+                        || !name
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
                 {
                     let alias = format!("lumen_alias_{index}");
                     aliases.insert(alias.clone(), name);
                     tool["name"] = json!(alias);
                 }
             }
+            let advertised = if mode == CodeMode::On {
+                vec![code_mode::definition(&tools)]
+            } else {
+                tools.clone()
+            };
             let c = config(data, &input.account.id)?;
             validate(&c)?;
             let (path, body) = crate::api_wire::request(
                 &input.account.provider,
                 model,
                 &history,
-                &tools,
+                &advertised,
                 c.max_output_tokens,
             )?;
             // Text-only inputs: bytes plus protocol/tool framing bound token counts conservatively.
@@ -500,17 +515,23 @@ pub async fn execute(
                     kind: "tool".into(),
                     text: name.clone(),
                 });
-                let result = if crate::api_tools::is_builtin(name) {
-                    crate::api_tools::call(&input, name, &call.args, &mut emit).await
-                } else if crate::browser::tools()
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|t| t["name"] == *name)
-                {
-                    browser.call(name, &call.args).await
+                let result = if mode == CodeMode::On && name == code_mode::TOOL {
+                    if let Some(code) = call.args["code"].as_str() {
+                        if sandbox.is_none() {
+                            sandbox = Some(code_mode::Session::new(code_cancel.clone())?);
+                        }
+                        sandbox
+                            .as_ref()
+                            .unwrap()
+                            .dispatch(&input, browser, &hub, &tools, code, &mut emit)
+                            .await
+                    } else {
+                        code_mode::result("Code Mode requires a string in code", true)
+                    }
+                } else if mode == CodeMode::On || name == code_mode::TOOL {
+                    code_mode::result("Tool was not advertised for this turn", true)
                 } else {
-                    hub.call(name, &call.args, input.access, browser).await
+                    api_tools::dispatch(&input, browser, &hub, name, &call.args, &mut emit).await
                 };
                 results.push((call, result));
             }
@@ -519,7 +540,7 @@ pub async fn execute(
         Err("API tool-step limit reached; continue explicitly".into())
     };
     let result = tokio::select! {biased;_=cancel.changed()=>Err("Cancelled".into()),r=run=>r};
-    let cleanup = hub.close().await;
+    let cleanup = hub.get_mut().close().await;
     if result.is_ok() {
         cleanup?
     }

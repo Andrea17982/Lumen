@@ -447,7 +447,7 @@ async fn configuration_lease(
 async fn execute_inner(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
-    emit: impl FnMut(Activity),
+    emit: impl FnMut(Activity) + Send,
 ) -> Result<String, String> {
     if input.account.provider == Provider::Opencode {
         return crate::opencode_acp::execute(input, cancel, emit).await;
