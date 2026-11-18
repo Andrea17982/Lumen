@@ -51,4 +51,4 @@ See the [1.0 roadmap](docs/roadmap-1.0.md). Reliability and intelligent collabor
 
 ## Release scope and evidence
 
-The current release scope is in the [0.10.0 changelog](docs/release-notes/0.10.0.md); evidence and known limits are in [validation](docs/validation.md) and the [integration support matrix](docs/integrations.md).
+The current release scope is in the [0.11.0 changelog](docs/release-notes/0.11.0.md); evidence and known limits are in [validation](docs/validation.md) and the [integration support matrix](docs/integrations.md).

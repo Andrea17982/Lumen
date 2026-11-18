@@ -170,8 +170,11 @@ test('search finds conversations and text in rows far above the viewport', async
   await open(page);
   const target = page.locator('article.message').filter({ hasText: 'Message 0007.' });
   await expect(target).toHaveCount(1);
-  await target.scrollIntoViewIfNeeded();
-  await expect(target).toBeInViewport();
+  // content-visibility:auto rows settle to their real height after the first scroll; scroll until stable.
+  await expect(async () => {
+    await target.scrollIntoViewIfNeeded();
+    await expect(target).toBeInViewport({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
   // Native find-in-page searches content-visibility:auto content; assert it is not hidden.
   expect(await target.evaluate((el) => el.checkVisibility({ contentVisibilityAuto: false }))).toBe(
     true,

@@ -1,12 +1,22 @@
 # Validation and known limits
 
-What has actually been verified for the current source (0.10.0), and which limits remain. Planned work is in the [1.0 roadmap](roadmap-1.0.md). Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
+What has actually been verified for the current source (0.11.0), and which limits remain. Planned work is in the [1.0 roadmap](roadmap-1.0.md). Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
-## 0.10.0
+## 0.11.0
 
-- **Automated:** 239 Rust tests (14 opt-in ignored), 76 frontend tests, 44 production-browser tests, Clippy with warnings denied, formatting and documentation/version checks. CI runs source tests on Windows, macOS and Linux.
+- **Automated:** 273 Rust tests (14 opt-in ignored), 81 frontend tests, 50 production-browser tests, Clippy with warnings denied, formatting and documentation/version checks. CI runs source tests on Windows, macOS and Linux.
+- **Auto:** deterministic rule tests for Parallel/Collaborative and Compete (Default and Budget never compete); an offline corpus of six tasks with tests where Compete solved 5 and Single 3; tests that plain questions are answered in Auto while permissions, secrets and risky or external actions still escalate.
+- **Autonomy:** CRLF, Git-filter, concurrency and exact-rollback fixtures; Rewind refusals for shared checkouts and out-of-checkout native turns; memory held for confirmation after untrusted content.
+- **Plugins:** manifest validation, refusal of undeclared capabilities, iframe isolation and permission re-approval, in unit and browser tests.
+- **Handoff corpus:** constraints and decisions survive two compactions for Claude Code, Codex, Antigravity, OpenCode and the three API adapters.
+- **Not done for 0.11:** the native Windows GUI suites and live model checks were not re-run; plugin panels and Git install were not tried in the packaged app.
+
+## Carried over from 0.10.0
+
+These checks were made on 0.10.0 and cover areas 0.11 did not redesign.
+
 - **Native Windows suites** (real WebView2, IPC and SQLite, offline CLI fixtures): service lifecycle and restarts during work, a native question and Orchestra; routing and quota replay; handoff sections and check evidence; execution traces, Stop and the duration line; memory, global-memory confirmation, recurring tasks and recipes through the real GUI and daemon; Orchestra continuation.
 - **Local service:** a hard service crash leaves unrelated processes untouched; ordinary model work is not resubmitted after a crash; a process whose identity cannot be confirmed blocks automatic cleanup. [Receipt](data/local-service-0.10.json).
 - **Command receipts:** eight concurrent create-session requests with the same command ID created one conversation and returned the same result eight times, also after a service restart; a changed payload was rejected. This covers dispatch, not exactly-once effects of external tools. [Receipt](data/command-receipts-0.10.json).

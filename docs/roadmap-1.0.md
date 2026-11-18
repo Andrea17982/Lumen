@@ -51,21 +51,12 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 ### Completate
 
 - **0.9 — Compatibilità e accessi ufficiali.** Contratto versionato per nove adapter; corpus offline comune per Claude Code, Codex, Antigravity e OpenCode (ACP ufficiale); API Anthropic/OpenAI/Google con keychain, strumenti comuni, quattro profili e budget prenotati. Limiti dichiarati nella [matrice delle integrazioni](integrations.md).
-- **0.10 — Core e daemon locale.** `lumen-core` separato dalla GUI; `lumen-daemon` autenticato possiede processi, sessioni e coda; recupero dopo crash senza reinvio silenzioso; ricevute dei comandi. Nella stessa versione sono arrivati i primi tasselli della 0.11 (sotto). [Changelog](release-notes/0.10.0.md) · [Servizio locale](local-service.md).
-
-### 0.11 — Contesto e collaborazione affidabile
-
-**Stato:** consegnati nella 0.10 memoria di progetto automatica in `LUMEN.md` e memoria globale con conferma (`shared/MEMORY.md`), entrambe con data e chat di origine e leggibili come Markdown; handoff verificabile; scelta deterministica fra Single, Review e Orchestra con limiti di tempo, concorrenza, totale sotto-compiti, quote e budget API; risultato unico che termina con il riepilogo scritto da Lumen. In più: attività ricorrenti e ricette ([dettagli](task-quality.md#project-memory)). Consegnati poi nella 0.11: modalità Collaborative scelta da regole deterministiche (catena di dipendenze o due scrittori sullo stesso file) dentro gli stessi limiti; inbox delle approvazioni dei worker con agente, sotto-compito, motivo e stato scaduto quando il processo del worker termina, sopra Gatekeeper e NativeQuestions; corpus di handoff offline su Claude Code, Codex, Antigravity, OpenCode e le tre API, anche dopo due compattazioni consecutive (`handoff_corpus.rs`). Resta la ricerca sul grafo con misure prima/dopo.
-
-- Context Engine strutturato a tre livelli: sessione, progetto, globale. Decisioni di progetto salvate automaticamente con fonti; passaggio alla memoria globale solo dopo conferma. Ispezione, correzione, cancellazione ed esportazione leggibile, per esempio `LUMEN.md`.
-- Handoff verificabile: obiettivo, vincoli, decisioni, file rilevanti, stato Git, lavoro svolto/mancante e incertezze. Non fingere di trasferire la memoria privata dell'agente precedente.
-- Auto sceglie internamente Single, Review, Parallel o Collaborative con regole deterministiche, entro limiti di tempo, concorrenza, turni/consumo e spesa API. L'abilitazione API e il suo budget restano separati dal semplice accesso alle CLI.
-- Una sola attività visibile e un risultato unificato: implementazione, review indipendente, verifiche, artefatti e rischi residui; dettagli degli agenti su richiesta. Gestione di dipendenze e conflitti senza worktree manuali nel flusso ordinario.
-- Ricerca residua sul grafo e allocazione globale del contesto soltanto con misure prima/dopo sul corpus disponibile.
-
-**Uscita:** un corpus di handoff fra i quattro agenti fondamentali e API conserva decisioni e vincoli; la memoria non attraversa progetti estranei; regole di Auto e limiti hanno test deterministici; task multi-agente e task singoli riportano correttamente ciò che è stato verificato e ciò che manca.
+- **0.10 — Core e daemon locale.** `lumen-core` separato dalla GUI; `lumen-daemon` autenticato possiede processi, sessioni e coda; recupero dopo crash senza reinvio silenzioso; ricevute dei comandi. Nella stessa versione sono arrivati i primi tasselli della 0.11 (sotto). [Changelog](https://github.com/Andrea17982/Lumen/releases/tag/v0.10.0) · [Servizio locale](local-service.md).
+- **0.11 — Contesto e collaborazione affidabile.** Memoria a tre livelli con fonti, handoff verificabile e corpus offline fra i quattro agenti e le API; Auto sceglie Single, Review, Parallel, Collaborative o Compete (solo profilo Qualità) e risponde da solo alle domande degli agenti; inbox delle approvazioni dei worker; plugin con permessi dichiarati. La ricerca sul grafo resta aperta e va fatta con misure prima/dopo. Nella stessa versione sono arrivati i primi tasselli della 0.12. [Changelog](release-notes/0.11.0.md).
 
 ### 0.12 — Autonomia recuperabile
+
+**Stato:** consegnati nella 0.11 classificazione delle azioni, audit log per conversazione, controlli di sicurezza su Rewind con snapshot prima del ripristino, snapshot byte-exact e memoria trattenuta dopo contenuti non attendibili ([limiti](autonomy.md)). Restano limiti di turni/risorse oltre a tempo e budget, fixture complete di crash e budget esaurito, e hardening dei confini IPC/MCP.
 
 Classificare azioni reversibili, rischiose/irreversibili ed esterne; audit log per task e checkpoint/rollback comprendenti file non tracciati. Dichiarare i limiti su database, servizi remoti e file esterni al progetto. Tempo, turni, risorse e spesa API sono limitabili; arresto e ripresa non aggirano i limiti.
 
