@@ -59,7 +59,7 @@ async fn post(
         .error_for_status()
         .map_err(|e| format!("Ollama rejected the request: {e}"))
 }
-fn schema(tools: &[Value]) -> Value {
+pub(crate) fn schema(tools: &[Value]) -> Value {
     json!({"type":"object","properties":{"action":{"type":"string","enum":["tool","final"]},"tool":{"type":"string","enum":tools.iter().map(|t|t["function"]["name"].clone()).collect::<Vec<_>>()},"arguments":{"type":"object"},"text":{"type":"string"}},"required":["action","text"],"additionalProperties":false})
 }
 pub async fn execute(
