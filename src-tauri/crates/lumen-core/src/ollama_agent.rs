@@ -640,9 +640,18 @@ mod tests {
             events.iter().filter(|a| a.kind == "code-fallback").count(),
             1
         );
-        assert!(events
-            .iter()
-            .any(|a| a.kind == "tool" && a.text == "web_fetch"));
+        assert!(events.iter().any(|a| a.kind == "code-call"
+            && serde_json::from_str::<Value>(&a.text)
+                .is_ok_and(|call| call["name"] == "web_fetch")));
+        let mut trace = crate::execution::Trace::new("ollama");
+        for event in &events {
+            trace.observe(event);
+        }
+        let snapshot: Value = serde_json::from_str(&trace.activity().text).unwrap();
+        assert_eq!(snapshot["codeMode"]["fallback"], true);
+        assert_eq!(snapshot["codeMode"]["hostCalls"], 1);
+        assert_eq!(snapshot["codeMode"]["subCalls"], 0);
+        assert!(snapshot["codeMode"]["bytesReturned"].as_u64().unwrap() > 0);
         server.abort();
     }
 

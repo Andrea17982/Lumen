@@ -1,7 +1,81 @@
 //! Bounded, content-free observations of a provider invocation. Silence is not a failure.
 use crate::models::{now, Activity, Message};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Mutex;
+use std::time::Instant;
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodeMetrics {
+    pub(crate) script_ms: u64,
+    pub(crate) host_calls: u64,
+    pub(crate) sub_calls: u64,
+    pub(crate) bytes_returned: u64,
+    bytes_withheld: u64,
+    pub(crate) fallback: bool,
+}
+
+/// Records a script even when its dispatch future is cancelled.
+pub(crate) struct CodeRun<F: FnMut(Activity)> {
+    id: String,
+    started: Instant,
+    state: Mutex<(F, CodeMetrics)>,
+}
+
+impl<F: FnMut(Activity)> CodeRun<F> {
+    pub(crate) fn new(script: &str, mut emit: F) -> Self {
+        let id = crate::models::id();
+        emit(Activity {
+            kind: "code".into(),
+            text: serde_json::json!({"id": id, "script": script}).to_string(),
+        });
+        Self {
+            id,
+            started: Instant::now(),
+            state: Mutex::new((emit, CodeMetrics::default())),
+        }
+    }
+
+    pub(crate) fn child(&self, name: &str, inference: bool) {
+        let (emit, metrics) = &mut *self.state.lock().unwrap();
+        if inference {
+            metrics.sub_calls += 1;
+        } else {
+            metrics.host_calls += 1;
+        }
+        emit(Activity {
+            kind: "code-call".into(),
+            text: serde_json::json!({"id": self.id, "name": name, "inference": inference})
+                .to_string(),
+        });
+    }
+
+    pub(crate) fn emit(&self, event: Activity) {
+        if event.kind == "rlm-call" {
+            self.child("llm()", true);
+        } else {
+            (self.state.lock().unwrap().0)(event);
+        }
+    }
+
+    pub(crate) fn output(&self, returned: usize, withheld: usize) {
+        let metrics = &mut self.state.lock().unwrap().1;
+        metrics.bytes_returned = returned as u64;
+        metrics.bytes_withheld = withheld as u64;
+    }
+}
+
+impl<F: FnMut(Activity)> Drop for CodeRun<F> {
+    fn drop(&mut self) {
+        let (emit, metrics) = self.state.get_mut().unwrap();
+        metrics.script_ms = self.started.elapsed().as_millis() as u64;
+        emit(Activity {
+            kind: "code-metrics".into(),
+            text: serde_json::to_string(metrics).expect("code counters serialize"),
+        });
+    }
+}
 
 pub(crate) fn signal(emit: &mut impl FnMut(Activity), milestone: &str) {
     emit(Activity {
@@ -38,6 +112,8 @@ pub struct Snapshot {
     last_kind: String,
     timeline: Vec<(String, i64)>,
     timings: Vec<(String, u64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code_mode: Option<CodeMetrics>,
 }
 pub struct Trace {
     snapshot: Snapshot,
@@ -68,6 +144,7 @@ impl Trace {
                 last_kind: String::new(),
                 timeline: vec![("catalog".into(), at)],
                 timings: vec![("catalog".into(), 0)],
+                code_mode: None,
             },
             tools: HashSet::new(),
             questions: HashSet::new(),
@@ -91,6 +168,26 @@ impl Trace {
         }
     }
     pub fn observe(&mut self, event: &Activity) -> bool {
+        if event.kind == "code-metrics" {
+            if let Ok(run) = serde_json::from_str::<CodeMetrics>(&event.text) {
+                let total = self
+                    .snapshot
+                    .code_mode
+                    .get_or_insert_with(CodeMetrics::default);
+                total.script_ms = total.script_ms.saturating_add(run.script_ms);
+                total.host_calls = total.host_calls.saturating_add(run.host_calls);
+                total.sub_calls = total.sub_calls.saturating_add(run.sub_calls);
+                total.bytes_returned = total.bytes_returned.saturating_add(run.bytes_returned);
+                total.bytes_withheld = total.bytes_withheld.saturating_add(run.bytes_withheld);
+            }
+            return false;
+        }
+        if event.kind == "code-fallback" {
+            self.snapshot
+                .code_mode
+                .get_or_insert_with(CodeMetrics::default)
+                .fallback = true;
+        }
         if event.kind == "latency" {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.text) else {
                 return false;
@@ -142,7 +239,7 @@ impl Trace {
             self.snapshot.last_kind = match kind {
                 "delta" | "text" | "replace" | "final" => "text",
                 "thinking" => "reasoning",
-                "tool" | "file" | "tool-start" | "tool-end" => "tool",
+                "tool" | "file" | "tool-start" | "tool-end" | "code-call" => "tool",
                 "interaction" | "interaction-result" => "question",
                 "error" => "error",
                 "session" => "initialized",
@@ -158,7 +255,7 @@ impl Trace {
                     self.phase("response");
                 }
                 "thinking" => self.phase("reasoning"),
-                "tool" | "file" => {
+                "tool" | "file" | "code-call" => {
                     self.snapshot.tool_events += 1;
                     self.phase("tool-activity");
                 }
@@ -236,15 +333,21 @@ impl Trace {
             return;
         }
         self.published = std::time::Instant::now();
-        let text = serde_json::to_string(&self.snapshot).unwrap_or_default();
-        crate::event(app, session, &out.id, "execution", &text);
-        crate::activity::record(
-            &mut out.activity,
-            Activity {
-                kind: "execution".into(),
-                text,
-            },
-        );
+        let activity = self.activity();
+        crate::event(app, session, &out.id, &activity.kind, &activity.text);
+        crate::activity::record(&mut out.activity, activity);
+    }
+
+    pub(crate) fn activity(&self) -> Activity {
+        Activity {
+            kind: "execution".into(),
+            text: serde_json::to_string(&self.snapshot).unwrap_or_default(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn code_metrics(&self) -> CodeMetrics {
+        self.snapshot.code_mode.clone().unwrap_or_default()
     }
 }
 
@@ -275,6 +378,37 @@ pub fn queued(out: &mut Message) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_metrics_aggregate_completed_and_interrupted_scripts_without_content() {
+        let mut trace = Trace::new("ollama");
+        assert!(!trace.activity().text.contains("codeMode"));
+        {
+            let run = CodeRun::new("private script", |event| {
+                trace.observe(&event);
+            });
+            run.child("private tool", false);
+            run.child("llm()", true);
+            run.output(17, 23);
+        }
+        {
+            let interrupted = CodeRun::new("another private script", |event| {
+                trace.observe(&event);
+            });
+            interrupted.child("llm()", true);
+        }
+        trace.observe(&event("code-fallback", "private error"));
+        let snapshot = trace.activity().text;
+        assert!(!snapshot.contains("private") && !snapshot.contains("llm()"));
+        let value: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+        let code = &value["codeMode"];
+        assert!(code["scriptMs"].is_u64());
+        assert_eq!(code["hostCalls"], 1);
+        assert_eq!(code["subCalls"], 2);
+        assert_eq!(code["bytesReturned"], 17);
+        assert_eq!(code["bytesWithheld"], 23);
+        assert_eq!(code["fallback"], true);
+    }
     #[test]
     fn latency_is_monotonic_bounded_and_never_provider_output() {
         let mut t = Trace::new("test");

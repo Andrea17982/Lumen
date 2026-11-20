@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 /// Activity kinds whose text is plain tool output or diff text, never parsed as JSON.
-const BOUNDED: [&str; 5] = ["tool", "command", "file", "tool-end", "code-output"];
+const BOUNDED: [&str; 6] = ["tool", "command", "file", "tool-end", "code-output", "code"];
 pub(crate) const LIMIT: usize = 16 * 1024;
 
 fn digest(text: &str) -> String {
@@ -70,6 +70,18 @@ pub(crate) fn project_activity(activity: &mut Value) {
     let Some(mut text) = activity["text"].as_str().map(str::to_string) else {
         return;
     };
+    if kind == "code" {
+        if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
+            if let Some(mut script) = value["script"].as_str().map(str::to_string) {
+                if let Some(detail) = bound(&kind, &mut script) {
+                    value["script"] = json!(script);
+                    activity["text"] = json!(value.to_string());
+                    activity["detail"] = detail;
+                }
+            }
+        }
+        return;
+    }
     if let Some(detail) = bound(&kind, &mut text) {
         activity["text"] = json!(text);
         activity["detail"] = detail;
@@ -93,14 +105,44 @@ pub(crate) fn detail(messages: &[Value], message: &str, wanted: &str) -> Option<
         .get("activity")?
         .as_array()?
         .iter()
-        .filter_map(|a| a["text"].as_str())
-        .find(|t| t.len() > LIMIT && digest(t) == wanted)
-        .map(str::to_string)
+        .find_map(|a| {
+            let text = a["text"].as_str()?;
+            let code;
+            let text = if a["kind"] == "code" {
+                code = serde_json::from_str::<Value>(text).ok()?;
+                code["script"].as_str()?
+            } else {
+                text
+            };
+            (text.len() > LIMIT && digest(text) == wanted).then(|| text.to_string())
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_code_script_can_be_loaded_after_wire_projection() {
+        let script = "🦀\n".repeat(LIMIT / 2);
+        let mut rows = vec![];
+        crate::activity::record(
+            &mut rows,
+            crate::models::Activity {
+                kind: "code".into(),
+                text: json!({"id":"run","script":script}).to_string(),
+            },
+        );
+        let stored = vec![json!({"id":"m","activity":rows})];
+        let mut wire = stored.clone();
+        project_messages(&mut wire);
+        let activity = &wire[0]["activity"][0];
+        let preview: Value = serde_json::from_str(activity["text"].as_str().unwrap()).unwrap();
+        assert_eq!(preview["id"], "run");
+        assert!(preview["script"].as_str().unwrap().len() < script.len());
+        let digest = activity["detail"]["digest"].as_str().unwrap();
+        assert_eq!(detail(&stored, "m", digest), Some(script));
+    }
     #[test]
     fn code_output_has_head_tail_and_the_same_recoverable_detail() {
         let full = format!("start {} end", "🦀".repeat(10_000));

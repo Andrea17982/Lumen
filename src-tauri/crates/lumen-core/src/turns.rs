@@ -932,7 +932,7 @@ async fn stage_observed(
             replay_guard.observe(&activity);
             // Timing signals carry no provider content and do not add IPC/SQLite writes.
             // The existing snapshot checkpoint/finish publishes the accumulated offsets.
-            if activity.kind == "latency" {
+            if matches!(activity.kind.as_str(), "latency" | "code-metrics") {
                 trace.observe(&activity);
                 return;
             }
@@ -944,7 +944,7 @@ async fn stage_observed(
             }
             // Lifecycle pairs have already updated the bounded trace. Do not let hidden
             // per-tool rows evict native sessions, questions or checkpoints from activity.
-            if ["tool-start", "tool-end", "latency"].contains(&activity.kind.as_str()) {
+            if matches!(activity.kind.as_str(), "tool-start" | "tool-end") {
                 return;
             }
             let input_needed =
@@ -1091,6 +1091,7 @@ impl ResumeReplayGuard {
             "pid"
                 | "session"
                 | "latency"
+                | "code-metrics"
                 | "quota"
                 | "usage"
                 | "window"

@@ -80,6 +80,7 @@ export function recordActivity(rows: Activity[], incoming: Activity): Activity[]
     const index = next.findIndex((a) =>
       [
         'tool',
+        'code-call',
         'file',
         'thinking',
         'child',

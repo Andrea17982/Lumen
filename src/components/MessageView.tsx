@@ -17,7 +17,7 @@ import ChildSessions from './ChildSessions';
 import ResponseImage from './ResponseImage';
 import { HIDDEN, orchestraOf, providerOf } from '../lib/messages';
 import { splitReasoning } from '../lib/reasoning';
-import type { Account, ActivityDetail, Message } from '../lib/types';
+import type { Account, Activity, ActivityDetail, Message } from '../lib/types';
 import { call } from '../lib/bridge';
 import { errorText, Mark, nameOf } from '../lib/util';
 import { useI18n } from '../lib/i18n';
@@ -64,7 +64,10 @@ export default memo(function MessageView({
 }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
-  const visible = m.activity.filter((a) => !HIDDEN.includes(a.kind));
+  const code = codeRuns(m.activity);
+  const visible = m.activity.filter(
+    (a) => !HIDDEN.includes(a.kind) && !(code.size && a.kind === 'tool' && a.text === 'lumen_code'),
+  );
   const inline =
     m.role === 'assistant'
       ? splitReasoning(
@@ -182,6 +185,37 @@ export default memo(function MessageView({
           <pre>{reasoning}</pre>
         </details>
       )}
+      {Array.from(code, ([id, run]) => (
+        <details className="activity code-activity" key={id}>
+          <summary>
+            <span className="activity-indicator" />
+            {t('Code')}
+            <ChevronDown size={13} />
+          </summary>
+          <div className="activity-content">
+            {run.detail && sessionId ? (
+              <BoundedOutput
+                session={sessionId}
+                message={m.id}
+                text={run.script}
+                detail={run.detail}
+                label={t('Show full script')}
+              />
+            ) : (
+              <pre>{run.script}</pre>
+            )}
+            {run.calls.length > 0 && (
+              <ul aria-label={t('Child calls')}>
+                {run.calls.map((name, index) => (
+                  <li key={index}>
+                    <code>{name}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
+      ))}
       {visible.length > 0 && (
         <details className="activity">
           <summary>
@@ -372,17 +406,38 @@ export default memo(function MessageView({
   );
 });
 
-/** Bounded tool output or diff: the full text is fetched only when the reader asks for it. */
+function codeRuns(activity: Activity[]) {
+  const runs = new Map<string, { script: string; detail?: ActivityDetail; calls: string[] }>();
+  for (const event of activity) {
+    if (event.kind !== 'code' && event.kind !== 'code-call') continue;
+    try {
+      const data = JSON.parse(event.text);
+      if (typeof data?.id !== 'string') continue;
+      if (event.kind === 'code' && typeof data.script === 'string') {
+        runs.set(data.id, { script: data.script, detail: event.detail, calls: [] });
+      } else if (event.kind === 'code-call' && typeof data.name === 'string') {
+        runs.get(data.id)?.calls.push(data.name);
+      }
+    } catch {
+      // Ignore malformed activity in older or imported transcripts.
+    }
+  }
+  return runs;
+}
+
+/** Fetches full text on demand for a bounded script, output or diff. */
 function BoundedOutput({
   session,
   message,
   text,
   detail,
+  label,
 }: {
   session: string;
   message: string;
   text: string;
   detail: ActivityDetail;
+  label?: string;
 }) {
   const { t } = useI18n();
   const [full, setFull] = useState<string | null>(null);
@@ -410,7 +465,7 @@ function BoundedOutput({
                 .catch((e) => setState(errorText(e)));
             }}
           >
-            {t('Show full output')}
+            {label ?? t('Show full output')}
           </button>
           {state && state !== 'loading' && <span role="alert">{state}</span>}
         </p>

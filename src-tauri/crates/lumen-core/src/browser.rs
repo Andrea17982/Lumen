@@ -1301,7 +1301,15 @@ pub(crate) mod tests {
             while activity.try_recv().is_ok() {}
             write_frame(&mut send, &call(6, "(async () => { await tools.lumen_read_file({path:'anchor.txt'}); while (true) {} })()")).await.unwrap();
             tokio::time::timeout(Duration::from_secs(5), async {
-                while activity.recv().await.unwrap().text != "lumen_read_file" {}
+                loop {
+                    let event = activity.recv().await.unwrap();
+                    if event.kind == "code-call"
+                        && serde_json::from_str::<Value>(&event.text)
+                            .is_ok_and(|call| call["name"] == "lumen_read_file")
+                    {
+                        break;
+                    }
+                }
             })
             .await
             .unwrap();
@@ -1312,6 +1320,12 @@ pub(crate) mod tests {
             let next = response(&mut lines).await;
             assert_eq!(next["id"], 7);
             assert_eq!(next["result"]["content"][0]["text"], "undefined");
+            let cancelled = std::iter::from_fn(|| activity.try_recv().ok())
+                .find(|event| event.kind == "code-metrics")
+                .expect("cancelled script still reports counters");
+            let counters: Value = serde_json::from_str(&cancelled.text).unwrap();
+            assert_eq!(counters["hostCalls"], 1);
+            assert_eq!(counters["bytesReturned"], 0);
 
             stop.send_replace(true);
             send.shutdown().await.unwrap();

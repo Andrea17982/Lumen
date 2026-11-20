@@ -1685,6 +1685,11 @@ label {
 .activity-content summary {
   cursor: pointer;
 }
+.code-activity ul {
+  margin: 0;
+  padding-inline-start: 1.5em;
+  overflow-wrap: anywhere;
+}
 .activity pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -394,21 +394,19 @@ impl Session {
         code: &str,
         emit: &mut (impl FnMut(Activity) + Send),
     ) -> (Value, bool) {
+        let script = if code.len() <= SCRIPT_LIMIT { code } else { "" };
+        let run = crate::execution::CodeRun::new(script, emit);
         let actions = tokio::sync::RwLock::new(());
-        let events = std::sync::Mutex::new(emit);
         let output = self
             .run_with(
                 code,
                 tools,
                 |name, args| {
-                    let (actions, events) = (&actions, &events);
+                    let (actions, run) = (&actions, &run);
                     async move {
-                        let mut emit = |event| (events.lock().unwrap())(event);
+                        let mut emit = |event| run.emit(event);
                         let mut call = async || {
-                            emit(Activity {
-                                kind: "tool".into(),
-                                text: name.clone(),
-                            });
+                            run.child(&name, false);
                             api_tools::dispatch(input, browser, hub, &name, &args, &mut emit).await
                         };
                         // Calls that can prompt, change files, or share mutable connector
@@ -427,11 +425,42 @@ impl Session {
                         }
                     }
                 },
-                &|event| (events.lock().unwrap())(event),
+                &|event| run.emit(event),
             )
             .await;
         let syntax_error = matches!(output, Err(ScriptError::Syntax(_)));
-        (report(output, events.into_inner().unwrap()), syntax_error)
+        (report_run(output, &run), syntax_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn bench_run<F, Fut>(
+        &self,
+        code: &str,
+        tools: &[Value],
+        dispatch: F,
+        trace: &mut crate::execution::Trace,
+    ) -> (Value, bool, bool)
+    where
+        F: Fn(String, Value) -> Fut,
+        Fut: Future<Output = Value>,
+    {
+        let run = crate::execution::CodeRun::new("", |event| {
+            trace.observe(&event);
+        });
+        let output = self
+            .run_with(
+                code,
+                tools,
+                |name, args| {
+                    run.child(&name, false);
+                    dispatch(name, args)
+                },
+                &|event| run.emit(event),
+            )
+            .await;
+        let syntax = matches!(output, Err(ScriptError::Syntax(_)));
+        let failed = output.is_err();
+        (report_run(output, &run), syntax, failed)
     }
 }
 
@@ -627,22 +656,34 @@ fn evaluate<'js>(
     (output, settled && !stopped() && !ctx.execute_pending_job())
 }
 
-pub(crate) fn report(
+fn report_run(
+    output: Result<String, ScriptError>,
+    run: &crate::execution::CodeRun<impl FnMut(Activity)>,
+) -> Value {
+    let (result, returned, withheld) = report(output, &mut |event| run.emit(event));
+    run.output(returned, withheld);
+    result
+}
+
+fn report(
     output: Result<String, ScriptError>,
     emit: &mut impl FnMut(Activity),
-) -> Value {
+) -> (Value, usize, usize) {
     let (text, error) = match output {
         Ok(text) => (text, false),
         Err(error) => (error.to_string(), true),
     };
     let mut preview = text.clone();
-    if crate::wire::bound("code-output", &mut preview).is_some() {
+    let total = text.len();
+    let mut returned = total;
+    if let Some(detail) = crate::wire::bound("code-output", &mut preview) {
+        returned = detail["shownBytes"].as_u64().expect("bounded byte count") as usize;
         emit(Activity {
             kind: "code-output".into(),
             text,
         });
     }
-    result(&preview, error)
+    (result(&preview, error), returned, total - returned)
 }
 #[cfg(test)]
 mod tests {
@@ -655,6 +696,19 @@ mod tests {
 
     fn tool(name: &str) -> Value {
         json!({"name": name})
+    }
+
+    #[test]
+    fn preview_metrics_count_only_source_bytes() {
+        let output = "🦀".repeat(10_000);
+        let mut events = vec![];
+        let (preview, returned, withheld) =
+            report(Ok(output.clone()), &mut |event| events.push(event));
+        assert_eq!(returned + withheld, output.len());
+        assert_eq!(returned % "🦀".len(), 0);
+        assert!(returned > 0 && withheld > 0);
+        assert_eq!(events[0].text, output);
+        assert!(preview["content"][0]["text"].as_str().unwrap().len() > returned);
     }
 
     #[tokio::test]

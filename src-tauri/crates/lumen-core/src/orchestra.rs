@@ -1184,6 +1184,7 @@ async fn attempt(
         sources.add("orchestra-worker-brief", job.prompt.clone());
         sources
     });
+    let mut code_trace = None;
     let r = providers::execute(
         providers::Invocation {
             rlm: sources.as_ref(),
@@ -1211,6 +1212,14 @@ async fn attempt(
         job.cancel.clone(),
         |activity| {
             guard.observe(&activity);
+            if matches!(
+                activity.kind.as_str(),
+                "code" | "code-call" | "code-metrics" | "code-fallback"
+            ) {
+                let trace = code_trace
+                    .get_or_insert_with(|| crate::execution::Trace::new(a.provider.binary()));
+                trace.observe(&activity);
+            }
             if activity.kind == "quota" {
                 crate::record_claude_usage(core, app, &a.id, &activity.text);
                 return;
@@ -1227,6 +1236,10 @@ async fn attempt(
                 "child",
                 "browser",
                 "image",
+                "code",
+                "code-call",
+                "code-fallback",
+                "api-cost",
             ]
             .contains(&activity.kind.as_str())
             {
@@ -1263,6 +1276,14 @@ async fn attempt(
         },
     )
     .await;
+    if let Some(mut trace) = code_trace {
+        trace.finish(&r);
+        let activity = trace.activity();
+        event(app, session, message, &activity.kind, &activity.text);
+        let _ = core
+            .store
+            .record_external_activity(session, message, activity);
+    }
     if r.is_ok() {
         core.limits.record_turn(&a.id, now());
     }

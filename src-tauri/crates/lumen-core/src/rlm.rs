@@ -431,6 +431,10 @@ impl Turn {
     ) -> Result<(Value, api_wire::Turn), String> {
         let _slot = self.slots.acquire().await.map_err(|_| "llm() cancelled")?;
         usage.rounds.fetch_add(1, Relaxed);
+        emit(Activity {
+            kind: "rlm-call".into(),
+            text: String::new(),
+        });
         let (response, turn) = match target {
             crate::router::RlmTarget::Local {
                 http,
@@ -666,6 +670,13 @@ mod tests {
         assert!(raised.contains("within the parent's effort"));
         for model in ["fixture", "fixture-json"] {
             let turn = Turn::new(&fixture.root, &address, Some(model), Effort::Max, &sources);
+            let reported = AtomicUsize::new(0);
+            let emit = |event: Activity| {
+                if event.kind == "rlm-call" {
+                    assert!(event.text.is_empty());
+                    reported.fetch_add(1, Relaxed);
+                }
+            };
             assert_eq!(
                 turn.ask(&json!({"prompt":"outer","maxTokens":80}), &emit)
                     .await
@@ -673,6 +684,7 @@ mod tests {
                 "merged"
             );
             assert_eq!(turn.usage.rounds.load(Relaxed), 3);
+            assert_eq!(reported.load(Relaxed), 3);
             assert_eq!(*turn.calls.lock().unwrap(), 2);
         }
         server.abort();

@@ -55,6 +55,7 @@ struct Row<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     filter_trace: Option<Value>,
     script_ms: u64,
+    code_metrics: crate::execution::CodeMetrics,
     wall_ms: u64,
     success: bool,
     partial: f64,
@@ -309,6 +310,7 @@ async fn trial<'a>(
         code_fallback: false,
         filter_trace: None,
         script_ms: 0,
+        code_metrics: Default::default(),
         wall_ms: 0,
         success: false,
         partial: 0.,
@@ -341,6 +343,7 @@ async fn trial<'a>(
             result
         }
     };
+    let mut trace = crate::execution::Trace::new("benchmark");
     let outcome: Result<String, String> = async {
         // The same bounded benchmark budget applies to both arms.
         for _ in 0..12 {
@@ -410,20 +413,16 @@ async fn trial<'a>(
                 let name = call["function"]["name"].as_str().unwrap_or_default();
                 let args = &call["function"]["arguments"];
                 let result = if code && mode.active && name == code_mode::TOOL {
-                    let before = Instant::now();
                     if sandbox.is_none() {
                         sandbox = Some(Session::new(stop.clone())?);
                     }
-                    let output = sandbox.as_ref().unwrap()
-                        .run(args["code"].as_str().ok_or("missing code")?, &definitions, &invoke)
+                    let (mut result, syntax, failed) = sandbox.as_ref().unwrap()
+                        .bench_run(args["code"].as_str().ok_or("missing code")?, &definitions, &invoke, &mut trace)
                         .await;
-                    row.script_ms += before.elapsed().as_millis() as u64;
-                    row.script_errors += usize::from(output.is_err());
-                    let syntax = matches!(output, Err(code_mode::ScriptError::Syntax(_)));
-                    let mut result = code_mode::report(output, &mut |_| {});
-                    if mode.observe(syntax, &mut result).is_some() {
+                    row.script_errors += usize::from(failed);
+                    if let Some(activity) = mode.observe(syntax, &mut result) {
                         sandbox = None;
-                        row.code_fallback = true;
+                        trace.observe(&activity);
                     }
                     if suite == "B" && !model.offline {
                         filter_trace.push(json!({"code": args["code"], "result": result["content"][0]["text"]}));
@@ -441,6 +440,9 @@ async fn trial<'a>(
         }
         Err("benchmark step cap reached".into())
     }.await;
+    row.code_metrics = trace.code_metrics();
+    row.script_ms = row.code_metrics.script_ms;
+    row.code_fallback = row.code_metrics.fallback;
     row.host_calls = calls.into_inner();
     row.tool_errors += errors.into_inner();
     row.wall_ms = started.elapsed().as_millis() as u64;
@@ -632,6 +634,9 @@ async fn bench_t0() {
         save(&cm);
         assert!(tc.success && cm.success);
         assert_eq!(tc.host_calls, cm.host_calls);
+        assert_eq!(tc.code_metrics.host_calls, 0);
+        assert_eq!(cm.code_metrics.host_calls, cm.host_calls as u64);
+        assert!(cm.code_metrics.bytes_returned > 0);
         let (classic, code) = match case.0 {
             "A" => (5, 2),
             _ => (2, 2),
@@ -805,7 +810,8 @@ async fn bench_e() {
                 let tools: &[Value] = if arm == "TC" { &classic } else { &code };
                 let mut history = vec![json!({"role":"user","content":prompt})];
                 let (mut input, mut output, mut rounds, mut errors) = (0, 0, 0, 0);
-                let (mut peak, mut ttft, mut script_ms) = (0, None, 0);
+                let (mut peak, mut ttft) = (0, None);
+                let mut trace = crate::execution::Trace::new("benchmark");
                 let start = Instant::now();
                 let outcome: Result<String, String> = tokio::time::timeout(Duration::from_secs(45), async {
                     for _ in 0..4 {
@@ -837,12 +843,9 @@ async fn bench_e() {
                                     }
                                 }
                                 ("CM" | "CM+RLM", code_mode::TOOL) => {
-                                    let before = Instant::now();
-                                    let output = sandbox.run(args["code"].as_str().ok_or("missing code")?, &[], |_, _| async {
+                                    sandbox.bench_run(args["code"].as_str().ok_or("missing code")?, &[], |_, _| async {
                                         code_mode::result("Tool is outside this benchmark catalog", true)
-                                    }).await;
-                                    script_ms += before.elapsed().as_millis() as u64;
-                                    code_mode::report(output, &mut |_| {})
+                                    }, &mut trace).await.0
                                 }
                                 _ => code_mode::result("Tool is outside the advertised arm", true),
                             };
@@ -854,12 +857,14 @@ async fn bench_e() {
                     }
                     Err("Benchmark step cap reached".into())
                 }).await.unwrap_or_else(|_| Err("Benchmark 45-second trial limit reached".into()));
+                let metrics = trace.code_metrics();
                 save(
                     &json!({"tier":"T1","suite":"E","case":case,"model":model.id,
                     "arm":arm,"seed":seed,"effort":if effort==Effort::Low {"low"} else {"medium"},
                     "corpusTokens":size,"inputTokens":input,"outputTokens":output,"rounds":rounds,
-                    "subRounds":turn.usage.rounds.load(Relaxed),"subInputTokens":turn.usage.input.load(Relaxed),
-                    "subOutputTokens":turn.usage.output.load(Relaxed),"peakRootInputTokens":peak,"ttftMs":ttft,"scriptMs":script_ms,
+                    "subRounds":metrics.sub_calls,"subInputTokens":turn.usage.input.load(Relaxed),
+                    "subOutputTokens":turn.usage.output.load(Relaxed),"peakRootInputTokens":peak,"ttftMs":ttft,"scriptMs":metrics.script_ms,
+                    "codeMetrics":metrics,
                     "toolErrors":errors,"wallMs":start.elapsed().as_millis(),"costUsd":0,
                     "success":outcome.as_ref().is_ok_and(|text| text.eq_ignore_ascii_case(expected)),
                     "answer":outcome.as_ref().ok(),"expected":expected,"error":outcome.err()}),

@@ -88,6 +88,7 @@ pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
         "orchestra",
         "native",
         "validation",
+        "code",
     ]
     .contains(&activity.kind.as_str())
     {
@@ -100,6 +101,7 @@ pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
             .position(|a| {
                 [
                     "tool",
+                    "code-call",
                     "file",
                     "thinking",
                     "child",

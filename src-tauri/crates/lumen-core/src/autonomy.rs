@@ -182,6 +182,10 @@ pub struct Entry {
 
 /// Classifies one recorded activity. `None` for rows that are not actions.
 fn classify_activity(a: &Activity) -> Option<(Class, String, String)> {
+    if a.kind == "code-call" {
+        let name = code_host_tool(a)?;
+        return Some((tool(&name, &Value::Null), name, String::new()));
+    }
     let first = a.text.lines().next().unwrap_or_default().trim();
     let rest = a.text[first.len().min(a.text.len())..].trim();
     match a.kind.as_str() {
@@ -340,8 +344,16 @@ pub fn rewind_blocker(scope: &Path, discarded: &[Message]) -> Option<String> {
 pub fn untrusted(a: &Activity) -> bool {
     match a.kind.as_str() {
         "browser" | "mcp" | "native-mcp" | "connector-status" => true,
-        "tool" => {
-            let first = a.text.lines().next().unwrap_or_default().to_lowercase();
+        "tool" | "code-call" => {
+            let name = if a.kind == "code-call" {
+                let Some(name) = code_host_tool(a) else {
+                    return false;
+                };
+                name
+            } else {
+                a.text.lines().next().unwrap_or_default().into()
+            };
+            let first = name.to_lowercase();
             [
                 "webfetch",
                 "websearch",
@@ -364,6 +376,14 @@ pub fn untrusted(a: &Activity) -> bool {
         }
         _ => false,
     }
+}
+
+fn code_host_tool(a: &Activity) -> Option<String> {
+    let value: Value = serde_json::from_str(&a.text).ok()?;
+    if value["inference"] != false {
+        return None;
+    }
+    Some(value["name"].as_str()?.into())
 }
 
 /// Project memory a finished reply proposes: saved to LUMEN.md when the turn read only
@@ -573,6 +593,22 @@ mod tests {
         assert!(!untrusted);
         assert_eq!(saved, ["Tests use vitest"]);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn code_host_calls_keep_the_classic_audit_and_trust_classification() {
+        for name in ["web_fetch", "mcp__example__query", "lumen_write_file"] {
+            let classic = Activity {
+                kind: "tool".into(),
+                text: name.into(),
+            };
+            let child = Activity {
+                kind: "code-call".into(),
+                text: serde_json::json!({"id":"call","name":name,"inference":false}).to_string(),
+            };
+            assert_eq!(classify_activity(&child), classify_activity(&classic));
+            assert_eq!(untrusted(&child), untrusted(&classic));
+        }
     }
 
     #[test]

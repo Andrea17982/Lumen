@@ -166,6 +166,64 @@ test('keyboard reaches controls in far-away rows and scrolls them into view', as
   ).toBeFocused();
 });
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`Code rows group their own calls and disclose scripts with the keyboard (${theme})`, async ({
+    page,
+  }, info) => {
+    await page.emulateMedia({ colorScheme: theme });
+    const row = (kind: string, payload: object) => ({ kind, text: JSON.stringify(payload) });
+    await open(page, { details: { script123: 'return "full script";' } }, [
+      {
+        id: 'code',
+        role: 'assistant',
+        text: 'Checked the files.',
+        activity: [
+          { kind: 'tool', text: 'lumen_code' },
+          {
+            ...row('code', { id: 'first', script: 'await tools.lumen_list_files({});' }),
+            detail: { digest: 'script123', totalBytes: 32000, totalLines: 900, shownBytes: 16384 },
+          },
+          row('code', { id: 'second', script: 'return llm({ prompt: "Summarize" });' }),
+          row('code-call', { id: 'second', name: 'llm()' }),
+          row('code-call', { id: 'first', name: 'lumen_list_files' }),
+          row('code-call', { id: 'first', name: 'lumen_read_file' }),
+          row('api-cost', { requestId: 'fixture', estimatedUsd: 0.000123 }),
+        ],
+      },
+    ]);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const code = page.locator('details.code-activity');
+    await expect(code).toHaveCount(2);
+    await expect(page.locator('details.activity')).toHaveCount(2);
+    await expect(page.getByText('API estimate · $0.000123')).toBeVisible();
+    await expect(code.locator('pre').first()).toBeHidden();
+    const summary = code.first().locator('summary');
+    await expect(summary).toHaveText('Code');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(code.first().locator('pre')).toBeVisible();
+    await expect(code.first().getByRole('listitem')).toHaveText([
+      'lumen_list_files',
+      'lumen_read_file',
+    ]);
+    await expect(code.last().locator('pre')).toBeHidden();
+    await page.screenshot({ path: info.outputPath('code-desktop.png') });
+    await code.first().getByRole('button', { name: 'Show full script' }).click();
+    await expect(code.first().locator('pre')).toHaveText('return "full script";');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(code.first().locator('pre')).toBeHidden();
+    await page.setViewportSize({ width: 420, height: 860 });
+    await page.getByRole('button', { name: 'Close sidebar' }).click();
+    await code.last().locator('summary').click();
+    await expect(code.last().getByRole('listitem')).toHaveText(['llm()']);
+    expect(
+      await page.locator('article.message').evaluate((el) => el.scrollWidth),
+    ).toBeLessThanOrEqual(420);
+    await page.screenshot({ path: info.outputPath('code-narrow.png') });
+  });
+}
+
 test('search finds conversations and text in rows far above the viewport', async ({ page }) => {
   await open(page);
   const target = page.locator('article.message').filter({ hasText: 'Message 0007.' });
