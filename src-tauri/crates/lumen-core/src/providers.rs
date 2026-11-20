@@ -291,6 +291,7 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
     out
 }
 
+#[derive(Clone)]
 pub struct Invocation<'a> {
     pub(crate) rlm: Option<&'a crate::rlm::Sources>,
     pub automatic: bool,
@@ -321,7 +322,16 @@ pub async fn execute(
     // IPC is limited to one text delta per frame. Control/diagnostic events flush pending text
     // first, so ordering and interactive questions are preserved without delaying decisions.
     let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
-    let browser = crate::browser::Registration::new(&input, send.clone()).await?;
+    let prefs = crate::api::root(input.config)
+        .map(crate::settings::AppSettings::load)
+        .unwrap_or_default();
+    let (code_tx, code_rx) = if crate::code_mcp::enabled(&prefs, &input.account.provider) {
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+    let browser = crate::browser::Registration::with_code(&input, send.clone(), code_tx).await?;
     let prompt = format!("{}\n\n{}", crate::browser::INSTRUCTIONS, input.prompt);
     let input = Invocation {
         rlm: input.rlm,
@@ -339,20 +349,36 @@ pub async fn execute(
         browser_artifacts: input.browser_artifacts,
         browser: Some(&browser),
     };
-    let run = execute_inner(input, cancel, |activity| {
+    let (code_close, code_scope) = watch::channel(false);
+    let mut code_running = code_rx.is_some();
+    let code_cancel = cancel.clone();
+    let code = async {
+        if let Some(rx) = code_rx {
+            crate::code_mcp::run(&input, &browser, rx, code_cancel, code_scope, |activity| {
+                let _ = send.send(activity);
+            })
+            .await;
+        }
+    };
+    let run = execute_inner(input.clone(), cancel, |activity| {
         let _ = send.send(activity);
     });
-    tokio::pin!(run);
+    tokio::pin!(run, code);
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(24));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut text = String::new();
     loop {
         tokio::select! {
             result = &mut run => {
+                code_close.send_replace(true);
+                if code_running {
+                    code.as_mut().await;
+                }
                 while let Ok(activity) = receive.try_recv() { buffered(activity, &mut text, &mut emit); }
                 flush_delta(&mut text, &mut emit);
                 return result.map_err(|e| if crate::limits::is_rate_limit(&e) && !e.starts_with(crate::limits::RATE_LIMIT) { format!("{}{e}", crate::limits::RATE_LIMIT) } else { e });
             }
+            _ = &mut code, if code_running => code_running = false,
             Some(activity) = receive.recv() => buffered(activity, &mut text, &mut emit),
             _ = interval.tick() => flush_delta(&mut text, &mut emit),
         }

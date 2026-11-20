@@ -235,7 +235,7 @@ impl OllamaMode {
 
 pub(crate) struct Session {
     scripts: blocking::Sender<Script>,
-    pub(crate) rlm: Option<crate::rlm::Turn>,
+    pub(crate) rlm: Option<std::sync::Arc<crate::rlm::Turn>>,
 }
 
 impl Session {
@@ -280,8 +280,8 @@ impl Session {
         })
     }
 
-    pub(crate) fn with_rlm(mut self, turn: crate::rlm::Turn) -> Self {
-        self.rlm = Some(turn);
+    pub(crate) fn with_rlm(mut self, turn: impl Into<std::sync::Arc<crate::rlm::Turn>>) -> Self {
+        self.rlm = Some(turn.into());
         self
     }
 
@@ -330,7 +330,7 @@ impl Session {
                 inference: self
                     .rlm
                     .as_ref()
-                    .is_some_and(crate::rlm::Turn::inference_enabled),
+                    .is_some_and(|turn| turn.inference_enabled()),
                 deadline,
                 requests,
                 replies,

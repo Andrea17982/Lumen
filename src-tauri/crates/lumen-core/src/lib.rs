@@ -42,6 +42,7 @@ pub async fn serve_shared_stdio(data: PathBuf, workspace: PathBuf, id: &str) -> 
 }
 mod autonomy;
 mod classify;
+mod code_mcp;
 mod code_mode;
 #[cfg(test)]
 mod code_mode_bench;
@@ -813,6 +814,10 @@ fn gatekeeper_decide(
 /// Entry for `lumen --lumen-graph-mcp <data> <root>`: the code graph as a stdio MCP server.
 pub async fn serve_browser() -> Result<(), String> {
     browser::proxy_stdio().await
+}
+
+pub async fn serve_code() -> Result<(), String> {
+    browser::proxy_code_stdio().await
 }
 pub fn serve_graph(data: std::path::PathBuf, root: std::path::PathBuf) -> std::io::Result<()> {
     graph_mcp::serve(data, root)

@@ -870,6 +870,7 @@ async fn stage_observed(
     let prefs = crate::settings::AppSettings::load(&core.root);
     let rlm_sources = if (a.provider.is_api() && prefs.code_mode == crate::settings::CodeMode::On)
         || (a.provider == Provider::Ollama && prefs.ollama_code_models.contains(&selected.id))
+        || crate::code_mcp::enabled(&prefs, &a.provider)
     {
         let messages = core.store.messages(&s.id)?;
         let attachments = messages

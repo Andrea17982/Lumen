@@ -89,6 +89,7 @@ async fn run() -> Result<(), String> {
                 )
             }
             "--lumen-browser-mcp" => return lumen_core::serve_browser().await,
+            "--lumen-code-mcp" => return lumen_core::serve_code().await,
             "--lumen-gatekeeper-mcp" => return lumen_gatekeeper::mcp::proxy_stdio().await,
             "--lumen-graph-mcp-context" if args.len() >= 3 => {
                 return lumen_core::serve_graph(

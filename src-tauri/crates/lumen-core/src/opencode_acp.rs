@@ -85,7 +85,7 @@ fn rules(access: AccessMode, servers: &[Value]) -> Value {
     rules.push(json!({"action":"external_directory","resource":"*","effect":"deny"}));
     json!(rules)
 }
-fn servers(input: &Invocation<'_>) -> Result<Vec<Value>, String> {
+pub(crate) fn servers(input: &Invocation<'_>) -> Result<Vec<Value>, String> {
     let data = crate::api::root(input.config)?;
     let mut configs =
         crate::capability_catalog::shared_servers(data, Some(input.workspace), input.access);
@@ -99,13 +99,21 @@ fn servers(input: &Invocation<'_>) -> Result<Vec<Value>, String> {
         json!({"command":exe,"args":[crate::graph_mcp::FLAG,data,input.workspace]}),
     );
     let mut inherited = crate::proc::command(&exe);
-    input
-        .browser
-        .ok_or("Moli scope unavailable")?
-        .env(&mut inherited);
+    let browser = input.browser.ok_or("Moli scope unavailable")?;
+    browser.env(&mut inherited);
+    if let Some(env) = browser.code_env() {
+        configs.insert(
+            crate::code_mcp::SERVER.into(),
+            json!({
+                "command":exe, "args":[crate::code_mcp::FLAG],
+                "env":env.into_iter().collect::<std::collections::BTreeMap<_, _>>()
+            }),
+        );
+    }
     let inherited = inherited
         .as_std()
         .get_envs()
+        .filter(|(k, _)| *k == "LUMEN_BROWSER_URL" || *k == "LUMEN_BROWSER_CAP")
         .filter_map(|(k, v)| {
             v.map(|v| json!({"name":k.to_string_lossy(),"value":v.to_string_lossy()}))
         })

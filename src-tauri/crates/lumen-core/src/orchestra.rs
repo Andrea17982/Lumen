@@ -1175,10 +1175,10 @@ async fn attempt(
     let config = config_dir(core, a);
     let (app, session, message, id) = (&job.app, &job.session, &job.message, &job.id);
     let browser_artifacts = PathBuf::from(core.store.session(&job.session)?.workspace);
-    let sources = (a.provider == Provider::Ollama
-        && crate::settings::AppSettings::load(&core.root)
-            .ollama_code_models
-            .contains(&selected.id))
+    let prefs = crate::settings::AppSettings::load(&core.root);
+    let sources = ((a.provider == Provider::Ollama
+        && prefs.ollama_code_models.contains(&selected.id))
+        || crate::code_mcp::enabled(&prefs, &a.provider))
     .then(|| {
         let mut sources = crate::rlm::Sources::default();
         sources.add("orchestra-worker-brief", job.prompt.clone());

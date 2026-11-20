@@ -1,8 +1,11 @@
 //! One browser service for every provider. Native CLIs use the stdio proxy; Ollama calls
 //! the same dispatcher. Capabilities live for one invocation, never in project settings.
-use crate::models::{AccessMode, Activity, Provider};
+use crate::{
+    code_mcp,
+    models::{AccessMode, Activity, Provider},
+};
 use axum::{
-    extract::State,
+    extract::{OriginalUri, State},
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
@@ -137,6 +140,11 @@ struct Scope {
     events: mpsc::UnboundedSender<Activity>,
     stop: tokio::sync::watch::Sender<bool>,
     pending: Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
+    code: Option<CodeScope>,
+}
+struct CodeScope {
+    token: String,
+    queue: mpsc::Sender<code_mcp::Request>,
 }
 pub struct Registration {
     endpoint: String,
@@ -150,9 +158,18 @@ impl Drop for Registration {
     }
 }
 impl Registration {
+    #[cfg(test)]
     pub async fn new(
         input: &crate::providers::Invocation<'_>,
         events: mpsc::UnboundedSender<Activity>,
+    ) -> Result<Self, String> {
+        Self::with_code(input, events, None).await
+    }
+
+    pub(crate) async fn with_code(
+        input: &crate::providers::Invocation<'_>,
+        events: mpsc::UnboundedSender<Activity>,
+        code: Option<mpsc::Sender<code_mcp::Request>>,
     ) -> Result<Self, String> {
         let workspace = dunce::canonicalize(input.workspace)
             .map_err(|_| "The conversation folder is unavailable")?;
@@ -212,6 +229,10 @@ impl Registration {
             events,
             stop: tokio::sync::watch::channel(false).0,
             pending: Default::default(),
+            code: code.map(|queue| CodeScope {
+                token: uuid::Uuid::new_v4().to_string(),
+                queue,
+            }),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -223,6 +244,8 @@ impl Registration {
         let router = Router::new()
             .route("/call", post(handle))
             .route("/cancel", post(cancel_request))
+            .route("/code/call", post(handle))
+            .route("/code/cancel", post(cancel_request))
             .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
             .with_state(scope.clone());
         let server = tokio::spawn(async move {
@@ -237,16 +260,33 @@ impl Registration {
     pub fn env(&self, c: &mut tokio::process::Command) {
         c.env("LUMEN_BROWSER_URL", &self.endpoint)
             .env("LUMEN_BROWSER_CAP", &self.scope.token);
+        if let Some(env) = self.code_env() {
+            c.envs(env);
+        }
+    }
+    pub(crate) fn code_env(&self) -> Option<[(&'static str, String); 2]> {
+        let code = self.scope.code.as_ref()?;
+        let base = self.endpoint.strip_suffix("/call")?;
+        Some([
+            (code_mcp::URL_ENV, format!("{base}/code/call")),
+            (code_mcp::CAP_ENV, code.token.clone()),
+        ])
     }
     pub fn args(&self, args: &mut Vec<String>, provider: &Provider) -> Result<(), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         match provider {
             Provider::Claude => {
-                args.extend([
-                    "--mcp-config".into(),
-                    json!({"mcpServers":{SERVER:{"command":exe,"args":[FLAG]}}}).to_string(),
-                ]);
-                let read = "mcp__lumen_browser";
+                let mut config = json!({"mcpServers":{SERVER:{"command":exe,"args":[FLAG]}}});
+                if self.scope.code.is_some() {
+                    config["mcpServers"][code_mcp::SERVER] =
+                        json!({"command":exe,"args":[code_mcp::FLAG]});
+                }
+                args.extend(["--mcp-config".into(), config.to_string()]);
+                let read = if self.scope.code.is_some() {
+                    "mcp__lumen_browser,mcp__lumen_code__lumen_code"
+                } else {
+                    "mcp__lumen_browser"
+                };
                 if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
                     args[i + 1].push_str(&format!(",{read}"));
                 } else {
@@ -277,6 +317,25 @@ impl Registration {
                         format!(
                             "mcp_servers.{SERVER}.tools.{}.approval_mode=\"approve\"",
                             tool["name"].as_str().unwrap()
+                        ),
+                    ]);
+                }
+                if self.scope.code.is_some() {
+                    let name = code_mcp::SERVER;
+                    extra.extend([
+                        "-c".into(),
+                        format!("mcp_servers.{name}.command={}", json!(exe)),
+                        "-c".into(),
+                        format!("mcp_servers.{name}.args={}", json!([code_mcp::FLAG])),
+                        "-c".into(),
+                        format!(
+                            "mcp_servers.{name}.env_vars={}",
+                            json!([code_mcp::URL_ENV, code_mcp::CAP_ENV])
+                        ),
+                        "-c".into(),
+                        format!(
+                            "mcp_servers.{name}.tools.{}.approval_mode=\"approve\"",
+                            crate::code_mode::TOOL
                         ),
                     ]);
                 }
@@ -316,19 +375,21 @@ pub fn google_settings(value: &mut Value) -> Result<(), String> {
 }
 async fn handle(
     State(scope): State<Arc<Scope>>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
-    if headers.get("authorization").and_then(|h| h.to_str().ok())
-        != Some(format!("Bearer {}", scope.token).as_str())
-    {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
+    let code = authorize(&scope, &headers, uri.path().starts_with("/code/"))?;
     let key = request["requestId"]
         .as_str()
         .filter(|s| !s.is_empty() && s.len() <= 128)
-        .ok_or(StatusCode::BAD_REQUEST)?
-        .to_owned();
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let key = format!("{}:{key}", if code.is_some() { "code" } else { "browser" });
+    let (closed_error, cancelled_error) = if code.is_some() {
+        ("Code Mode turn closed", "Code Mode request cancelled")
+    } else {
+        ("Browser scope closed", "Browser request cancelled")
+    };
     let (stop, mut cancelled) = tokio::sync::watch::channel(false);
     let mut closed = scope.stop.subscribe();
     {
@@ -337,18 +398,33 @@ async fn handle(
             .lock()
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if *scope.stop.borrow() {
-            return Ok(Json(failure("Browser scope closed")));
+            return Ok(Json(failure(closed_error)));
         }
         if pending.get(&key).is_some_and(|stop| *stop.borrow()) {
             pending.remove(&key);
-            return Ok(Json(failure("Browser request cancelled")));
+            return Ok(Json(failure(cancelled_error)));
         }
-        if pending.len() >= 8 || pending.contains_key(&key) {
+        if pending.values().filter(|stop| !*stop.borrow()).count() >= 8
+            || pending.contains_key(&key)
+        {
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
         pending.insert(key.clone(), stop);
     }
-    let response = tokio::select! {biased;_=closed.changed()=>failure("Browser scope closed"),_=cancelled.changed()=>failure("Browser request cancelled"),value=result(scope.clone(),request["name"].as_str().unwrap_or(""),&request["arguments"])=>value};
+    let request_cancel = cancelled.clone();
+    let invoke = async {
+        if let Some(code) = code {
+            code_mcp::relay(&code.queue, &request, request_cancel).await
+        } else {
+            result(
+                scope.clone(),
+                request["name"].as_str().unwrap_or(""),
+                &request["arguments"],
+            )
+            .await
+        }
+    };
+    let response = tokio::select! {biased;_=closed.changed()=>failure(closed_error),_=cancelled.changed()=>failure(cancelled_error),value=invoke=>value};
     if let Ok(mut pending) = scope.pending.lock() {
         pending.remove(&key);
     }
@@ -356,30 +432,49 @@ async fn handle(
 }
 async fn cancel_request(
     State(scope): State<Arc<Scope>>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
-    if headers.get("authorization").and_then(|h| h.to_str().ok())
-        != Some(format!("Bearer {}", scope.token).as_str())
-    {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
+    let code = authorize(&scope, &headers, uri.path().starts_with("/code/"))?;
     let key = request["requestId"]
         .as_str()
         .filter(|s| !s.is_empty() && s.len() <= 128)
         .ok_or(StatusCode::BAD_REQUEST)?;
+    let key = format!("{}:{key}", if code.is_some() { "code" } else { "browser" });
     if let Ok(mut pending) = scope.pending.lock() {
-        if pending.len() >= 32 && !pending.contains_key(key) {
+        if pending.len() >= 32 && !pending.contains_key(&key) {
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
         // A cancellation may arrive before its call is dispatched by the HTTP server.
         // Retain that tombstone so reordering cannot execute a cancelled action.
         pending
-            .entry(key.to_owned())
+            .entry(key)
             .or_insert_with(|| tokio::sync::watch::channel(true).0)
             .send_replace(true);
     }
     Ok(Json(json!({})))
+}
+fn authorize<'a>(
+    scope: &'a Scope,
+    headers: &HeaderMap,
+    code: bool,
+) -> Result<Option<&'a CodeScope>, StatusCode> {
+    let selected = if code {
+        Some(scope.code.as_ref().ok_or(StatusCode::UNAUTHORIZED)?)
+    } else {
+        None
+    };
+    let token = selected.map_or(scope.token.as_str(), |code| code.token.as_str());
+    if headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        != Some(token)
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(selected)
 }
 fn failure(e: impl AsRef<str>) -> Value {
     json!({"content":[{"type":"text","text":e.as_ref()}],"isError":true})
@@ -838,7 +933,10 @@ impl Drop for Engine {
 }
 
 /// No app startup or credentials in this helper. It only proxies this invocation's capability.
-async fn write_frame(out: &mut tokio::io::Stdout, frame: &Value) -> Result<(), String> {
+async fn write_frame(
+    out: &mut (impl tokio::io::AsyncWrite + Unpin),
+    frame: &Value,
+) -> Result<(), String> {
     out.write_all(format!("{frame}\n").as_bytes())
         .await
         .map_err(|e| e.to_string())?;
@@ -854,21 +952,55 @@ async fn cancel_proxy(http: &reqwest::Client, endpoint: &str, cap: &str, key: &s
         .await;
 }
 pub async fn proxy_stdio() -> Result<(), String> {
-    let endpoint = std::env::var("LUMEN_BROWSER_URL").map_err(|_| "Browser scope unavailable")?;
-    let cap = std::env::var("LUMEN_BROWSER_CAP").map_err(|_| "Browser capability unavailable")?;
-    let u = reqwest::Url::parse(&endpoint).map_err(|_| "Invalid browser endpoint")?;
+    proxy_from_env(false).await
+}
+pub(crate) async fn proxy_code_stdio() -> Result<(), String> {
+    proxy_from_env(true).await
+}
+async fn proxy_from_env(code: bool) -> Result<(), String> {
+    let (url, cap) = if code {
+        (code_mcp::URL_ENV, code_mcp::CAP_ENV)
+    } else {
+        ("LUMEN_BROWSER_URL", "LUMEN_BROWSER_CAP")
+    };
+    let endpoint = std::env::var(url).map_err(|_| "MCP scope unavailable")?;
+    let cap = std::env::var(cap).map_err(|_| "MCP capability unavailable")?;
+    proxy(
+        code,
+        &endpoint,
+        &cap,
+        tokio::io::stdin(),
+        tokio::io::stdout(),
+    )
+    .await
+}
+async fn proxy(
+    code: bool,
+    endpoint: &str,
+    cap: &str,
+    input: impl tokio::io::AsyncRead + Unpin,
+    mut out: impl tokio::io::AsyncWrite + Unpin,
+) -> Result<(), String> {
+    let u = reqwest::Url::parse(endpoint).map_err(|_| "Invalid MCP endpoint")?;
     if u.scheme() != "http"
         || u.host_str() != Some("127.0.0.1")
         || !u.username().is_empty()
         || u.password().is_some()
+        || u.path() != if code { "/code/call" } else { "/call" }
+        || u.query().is_some()
+        || u.fragment().is_some()
     {
-        return Err("Browser endpoint must be local".into());
+        return Err("MCP endpoint must be local".into());
     }
     let http = client();
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
-    let mut out = tokio::io::stdout();
+    let mut lines = BufReader::new(input).lines();
+    let (server, instructions) = if code {
+        (code_mcp::SERVER, code_mcp::INSTRUCTIONS)
+    } else {
+        (SERVER, INSTRUCTIONS)
+    };
     let (tx, mut rx) = mpsc::channel::<Value>(16);
-    let mut jobs: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
+    let mut jobs: HashMap<String, (String, tokio::task::JoinHandle<()>)> = HashMap::new();
     let result: Result<(), String> = async {
         loop {
             tokio::select! {
@@ -884,35 +1016,48 @@ pub async fn proxy_stdio() -> Result<(), String> {
                     };
                     if msg["method"] == "notifications/cancelled" {
                         let key = msg["params"]["requestId"].to_string();
-                        if let Some(job) = jobs.remove(&key) {
+                        if let Some((request, job)) = jobs.remove(&key) {
                             job.abort();
-                            cancel_proxy(&http, &endpoint, &cap, &key).await;
+                            cancel_proxy(&http, endpoint, cap, &request).await;
                         }
                         continue;
                     }
-                    let Some(id) = msg.get("id").cloned() else { continue; };
+                    let Some(id) = msg.get("id").filter(|id| id.is_number() || id.is_string()).cloned() else { continue; };
+                    let list = msg["method"] == "tools/list";
                     let value = match msg["method"].as_str().unwrap_or("") {
-                        "initialize" => json!({"protocolVersion":msg["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),"capabilities":{"tools":{}},"serverInfo":{"name":SERVER,"version":env!("CARGO_PKG_VERSION")},"instructions":INSTRUCTIONS}),
+                        "initialize" => json!({"protocolVersion":msg["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),"capabilities":{"tools":{}},"serverInfo":{"name":server,"version":env!("CARGO_PKG_VERSION")},"instructions":instructions}),
                         "ping" => json!({}),
-                        "tools/list" => json!({"tools":tools()}),
-                        "tools/call" => {
-                            jobs.retain(|_, job| !job.is_finished());
+                        "tools/list" if !code => json!({"tools":tools()}),
+                        "tools/call" | "tools/list" => {
+                            jobs.retain(|_, (_, job)| !job.is_finished());
                             let key = id.to_string();
                             if jobs.len() >= 8 || jobs.contains_key(&key) {
-                                write_frame(&mut out, &json!({"jsonrpc":"2.0","id":id,"result":failure("Too many concurrent or duplicate browser requests")})).await?;
+                                let error = "Too many concurrent or duplicate MCP requests";
+                                let response = if list {
+                                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":error}})
+                                } else {
+                                    json!({"jsonrpc":"2.0","id":id,"result":failure(error)})
+                                };
+                                write_frame(&mut out, &response).await?;
                                 continue;
                             }
-                            let (http, endpoint, cap, tx) = (http.clone(), endpoint.clone(), cap.clone(), tx.clone());
-                            let mut params = msg["params"].clone();
-                            params["requestId"] = json!(key);
-                            jobs.insert(key, tokio::spawn(async move {
+                            let (http, endpoint, cap, tx) = (http.clone(), endpoint.to_owned(), cap.to_owned(), tx.clone());
+                            let request = uuid::Uuid::new_v4().to_string();
+                            let params = json!({"name":msg["params"]["name"],"arguments":msg["params"]["arguments"],"list":list,"requestId":request});
+                            let job = tokio::spawn(async move {
                                 let result = async {
                                     http.post(endpoint).bearer_auth(cap).json(&params).send().await
                                         .map_err(|e|e.to_string())?.error_for_status().map_err(|e|e.to_string())?
                                         .json::<Value>().await.map_err(|e|e.to_string())
                                 }.await.unwrap_or_else(failure);
-                                let _ = tx.send(json!({"jsonrpc":"2.0","id":id,"result":result})).await;
-                            }));
+                                let response = if list && !result["tools"].is_array() {
+                                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":"Code Mode catalog unavailable"}})
+                                } else {
+                                    json!({"jsonrpc":"2.0","id":id,"result":result})
+                                };
+                                let _ = tx.send(response).await;
+                            });
+                            jobs.insert(key, (request, job));
                             continue;
                         }
                         _ => {
@@ -927,9 +1072,11 @@ pub async fn proxy_stdio() -> Result<(), String> {
         }
         Ok(())
     }.await;
-    for (key, job) in jobs {
-        job.abort();
-        cancel_proxy(&http, &endpoint, &cap, &key).await;
+    for (_, (request, job)) in jobs {
+        if !job.is_finished() {
+            job.abort();
+            cancel_proxy(&http, endpoint, cap, &request).await;
+        }
     }
     result
 }
@@ -937,6 +1084,245 @@ pub async fn proxy_stdio() -> Result<(), String> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn code_mcp_scopes_native_config_dispatch_and_cancellation() {
+        use crate::{
+            providers::Invocation,
+            settings::{AppSettings, CodeMode},
+            test_support::Fixture,
+        };
+        use tokio::sync::watch;
+
+        async fn response(
+            lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
+        ) -> Value {
+            let line = tokio::time::timeout(Duration::from_secs(10), lines.next_line())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            serde_json::from_str(&line).unwrap()
+        }
+
+        let f = Fixture::new();
+        let config = f.directory("accounts/local");
+        let project = f.directory("project");
+        std::fs::write(project.join("anchor.txt"), "workspace fixture").unwrap();
+        std::fs::write(
+            project.join("anchor.ts"),
+            "export function anchorMarker() {}\n",
+        )
+        .unwrap();
+        crate::integrations::save_mcp(
+            &f.root,
+            &json!({
+                "mcpServers":{"fixture":crate::shared_tools::tests::server("code-bridge-fixture")}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let a = crate::models::Account {
+            id: "local".into(),
+            name: "fixture".into(),
+            provider: Provider::Opencode,
+        };
+        let mut sources = crate::rlm::Sources::default();
+        sources.add("selected document", "turn-local fixture".into());
+        let input = Invocation {
+            rlm: Some(&sources),
+            automatic: false,
+            browser_scope: None,
+            browser_artifacts: None,
+            browser: None,
+            account: &a,
+            config: &config,
+            workspace: &project,
+            prompt: "",
+            model: None,
+            effort: "low",
+            access: AccessMode::ReadOnly,
+            approvals: None,
+            resume: None,
+        };
+        let (events, mut activity) = mpsc::unbounded_channel();
+        let off = Registration::new(&input, events.clone()).await.unwrap();
+        let off_input = Invocation {
+            browser: Some(&off),
+            ..input.clone()
+        };
+        assert!(off.code_env().is_none());
+        assert!(crate::opencode_acp::servers(&off_input)
+            .unwrap()
+            .iter()
+            .all(|v| v["name"] != code_mcp::SERVER));
+        for provider in [
+            Provider::Claude,
+            Provider::Gpt,
+            Provider::Opencode,
+            Provider::Cursor,
+            Provider::Antigravity,
+        ] {
+            for mode in [CodeMode::Off, CodeMode::Auto, CodeMode::On] {
+                let prefs = AppSettings {
+                    code_mode: mode,
+                    ..AppSettings::default()
+                };
+                assert_eq!(
+                    code_mcp::enabled(&prefs, &provider),
+                    mode == CodeMode::On
+                        && matches!(
+                            provider,
+                            Provider::Claude | Provider::Gpt | Provider::Opencode
+                        )
+                );
+            }
+        }
+
+        let (tx, rx) = mpsc::channel(8);
+        let browser = Registration::with_code(&input, events.clone(), Some(tx))
+            .await
+            .unwrap();
+        let input = Invocation {
+            browser: Some(&browser),
+            ..input
+        };
+        let mut claude = vec![];
+        browser.args(&mut claude, &Provider::Claude).unwrap();
+        assert!(claude.iter().any(|arg| arg.contains(code_mcp::FLAG)));
+        assert!(claude
+            .iter()
+            .any(|arg| arg.contains("mcp__lumen_code__lumen_code")));
+        let mut codex = vec!["resume".into()];
+        browser.args(&mut codex, &Provider::Gpt).unwrap();
+        assert_eq!(codex.last().unwrap(), "resume");
+        assert!(codex
+            .iter()
+            .any(|arg| arg.contains("mcp_servers.lumen_code.env_vars")));
+        let servers = crate::opencode_acp::servers(&input).unwrap();
+        let code = servers
+            .iter()
+            .find(|v| v["name"] == code_mcp::SERVER)
+            .unwrap();
+        assert_eq!(code["args"][0], code_mcp::FLAG);
+        assert!(code["env"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["name"].as_str().unwrap().starts_with("LUMEN_CODE_")));
+        let moli = servers.iter().find(|v| v["name"] == SERVER).unwrap();
+        assert!(moli["env"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["name"].as_str().unwrap().starts_with("LUMEN_BROWSER_")));
+
+        let [(_, endpoint), (_, cap)] = browser.code_env().unwrap();
+        let http = client();
+        let params = json!({"requestId":"wrong-capability","list":true});
+        for (url, token) in [(&endpoint, &browser.scope.token), (&browser.endpoint, &cap)] {
+            assert_eq!(
+                http.post(url)
+                    .bearer_auth(token)
+                    .json(&params)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (read, mut send) = tokio::io::split(client_io);
+        let (input_io, output_io) = tokio::io::split(server_io);
+        let mut lines = BufReader::new(read).lines();
+        let (stop, cancel) = watch::channel(false);
+        let (_lifetime, lifetime) = watch::channel(false);
+        let worker = code_mcp::run(&input, &browser, rx, cancel, lifetime, |a| {
+            let _ = events.send(a);
+        });
+        let serve = proxy(true, &endpoint, &cap, input_io, output_io);
+        let drive = async {
+            let call = |id, code: &str| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"lumen_code","arguments":{"code":code}}});
+            write_frame(&mut send, &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}})).await.unwrap();
+            assert_eq!(
+                response(&mut lines).await["result"]["serverInfo"]["name"],
+                code_mcp::SERVER
+            );
+            write_frame(
+                &mut send,
+                &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            )
+            .await
+            .unwrap();
+            let listed = response(&mut lines).await;
+            let tools = listed["result"]["tools"].as_array().unwrap();
+            assert_eq!(tools.len(), 1);
+            let description = tools[0]["description"].as_str().unwrap();
+            assert!(
+                description.contains("lumen_graph_")
+                    && description.contains("web_fetch")
+                    && description.contains("selected document")
+            );
+            assert!(!description.contains("lumen_write_file"));
+            write_frame(&mut send, &call(3, "let counter = 41; (async () => [(await tools.lumen_read_file({path:'anchor.txt'})).content[0].text, await context.get(0)])()")).await.unwrap();
+            assert_eq!(
+                response(&mut lines).await["result"]["content"][0]["text"],
+                r#"["workspace fixture","turn-local fixture"]"#
+            );
+            write_frame(&mut send, &call(4, "++counter")).await.unwrap();
+            assert_eq!(
+                response(&mut lines).await["result"]["content"][0]["text"],
+                "42"
+            );
+            write_frame(
+                &mut send,
+                &call(
+                    5,
+                    "tools.lumen_write_file({path:'denied.txt',content:'bad'})",
+                ),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response(&mut lines).await["result"]["isError"], true);
+            assert!(!project.join("denied.txt").exists());
+
+            write_frame(&mut send, &call(8, r#"(async () => {
+                const graph = await tools.lumen_graph_find_symbol({query:'anchorMarker'});
+                const shared = await tools[Object.keys(tools).find(name => name.startsWith('shared_'))]({count:3,enabled:false});
+                return [graph.content[0].text.includes('anchor.ts'), shared.content[0].text.includes('code-bridge-fixture')];
+            })()"#)).await.unwrap();
+            assert_eq!(
+                response(&mut lines).await["result"]["content"][0]["text"],
+                "[true,true]"
+            );
+
+            while activity.try_recv().is_ok() {}
+            write_frame(&mut send, &call(6, "(async () => { await tools.lumen_read_file({path:'anchor.txt'}); while (true) {} })()")).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while activity.recv().await.unwrap().text != "lumen_read_file" {}
+            })
+            .await
+            .unwrap();
+            write_frame(&mut send, &json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":6}})).await.unwrap();
+            write_frame(&mut send, &call(7, "typeof counter"))
+                .await
+                .unwrap();
+            let next = response(&mut lines).await;
+            assert_eq!(next["id"], 7);
+            assert_eq!(next["result"]["content"][0]["text"], "undefined");
+
+            stop.send_replace(true);
+            send.shutdown().await.unwrap();
+        };
+        let ((), served, ()) = tokio::time::timeout(Duration::from_secs(30), async {
+            tokio::join!(worker, serve, drive)
+        })
+        .await
+        .expect("offline Code Mode MCP completion");
+        served.unwrap();
+    }
     #[test]
     fn antigravity_transport_preserves_the_image_path_and_bounds_escaped_text() {
         use base64::Engine as _;
