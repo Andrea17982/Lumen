@@ -90,6 +90,7 @@ mod projecttools;
 mod providers;
 mod repomap;
 mod review;
+mod rlm;
 mod router;
 mod scheduling;
 mod screens;

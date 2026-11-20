@@ -366,6 +366,102 @@ pub fn route_with(
     }
     Ok(plan)
 }
+
+pub(crate) enum RlmTarget {
+    Local {
+        http: reqwest::Client,
+        base: reqwest::Url,
+        model: String,
+        native: bool,
+        thinking: bool,
+    },
+    Api {
+        account: Account,
+        model: String,
+    },
+}
+
+impl RlmTarget {
+    pub(crate) fn provider(&self) -> Provider {
+        match self {
+            Self::Local { .. } => Provider::Ollama,
+            Self::Api { account, .. } => account.provider.clone(),
+        }
+    }
+
+    pub(crate) fn structured(&self) -> bool {
+        matches!(self, Self::Local { native: false, .. })
+    }
+}
+
+pub(crate) async fn rlm_target(
+    data: &std::path::Path,
+    endpoint: &str,
+    current_local: Option<&str>,
+    accounts: &[Account],
+) -> Result<RlmTarget, String> {
+    let local = async {
+        let (http, base) = crate::ollama::local_http_at(endpoint)?;
+        let model = if let Some(model) = current_local {
+            model.to_owned()
+        } else {
+            let models = crate::ollama::list_at(&http, &base).await?;
+            let pinned = crate::settings::AppSettings::load(data).ollama_model;
+            models
+                .iter()
+                .find(|m| m.name == pinned)
+                .or_else(|| models.iter().min_by_key(|m| m.bytes))
+                .ok_or("No installed local text model")?
+                .name
+                .clone()
+        };
+        crate::ollama_agent::local_model(&model, &serde_json::Value::Null)?;
+        let show = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let raw = crate::ollama_agent::post(
+                &http,
+                &base,
+                "api/show",
+                &serde_json::json!({"model":model}),
+            )
+            .await?;
+            crate::rlm::bounded_json(raw).await
+        })
+        .await
+        .map_err(|_| "Local model discovery timed out")??;
+        crate::ollama_agent::local_model(&model, &show)?;
+        let capability = |name: &str| {
+            show["capabilities"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|c| c == name))
+        };
+        Ok(RlmTarget::Local {
+            http,
+            base,
+            model,
+            native: capability("tools"),
+            thinking: capability("thinking"),
+        })
+    }
+    .await;
+    if local.is_ok() || current_local.is_some() {
+        // A local parent stays local, even on discovery or generation failure.
+        return local;
+    }
+    accounts
+        .iter()
+        .filter_map(|a| crate::api::rlm_price(data, a).map(|(model, rate)| (a, model, rate)))
+        .min_by(|left, right| {
+            left.2
+                .total_cmp(&right.2)
+                .then_with(|| left.0.id.cmp(&right.0.id))
+        })
+        .map(|(account, model, _)| RlmTarget::Api {
+            account: account.clone(),
+            model,
+        })
+        .ok_or_else(|| "llm() has no local model or API account opted into Auto".into())
+}
+
 pub fn review_partner<'a>(accounts: &'a [Account], writer: &Account) -> Option<&'a Account> {
     accounts
         .iter()

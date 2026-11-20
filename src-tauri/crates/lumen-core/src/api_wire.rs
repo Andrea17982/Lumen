@@ -26,7 +26,7 @@ pub fn request(
     tools: &[Value],
     max: u32,
 ) -> Result<(String, Value), String> {
-    let result = match p {
+    let (path, mut body) = match p {
         Provider::Openaiapi => (
             "responses".into(),
             json!({"model":model,"input":history,"tools":tools.iter().map(|t|json!({"type":"function","name":t["name"],"description":t["description"],"parameters":t["inputSchema"],"strict":false})).collect::<Vec<_>>(),"max_output_tokens":max,"store":false}),
@@ -41,7 +41,10 @@ pub fn request(
         ),
         _ => return Err("Not an API provider".into()),
     };
-    Ok(result)
+    if tools.is_empty() {
+        body.as_object_mut().unwrap().remove("tools");
+    }
+    Ok((path, body))
 }
 fn parts_text(parts: &Value) -> String {
     parts
@@ -170,6 +173,38 @@ pub fn response(p: &Provider, v: &Value) -> Result<Turn, String> {
                 )
             }
         }
+        Provider::Ollama => {
+            let message = v["message"]
+                .as_object()
+                .ok_or("Ollama returned no message")?;
+            turn.text = message
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into();
+            for call in message
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let function = &call["function"];
+                turn.calls.push(Call {
+                    id: String::new(),
+                    name: function["name"]
+                        .as_str()
+                        .ok_or("Missing Ollama tool name")?
+                        .into(),
+                    args: function["arguments"].clone(),
+                });
+            }
+            turn.usage = v["prompt_eval_count"]
+                .as_u64()
+                .zip(v["eval_count"].as_u64());
+            if v["done"] != true {
+                turn.error = Some("Ollama response did not complete".into());
+            }
+        }
         _ => return Err("Not an API provider".into()),
     }
     if turn.calls.len() > 32
@@ -189,6 +224,7 @@ pub fn append_assistant(p: &Provider, history: &mut Vec<Value>, v: &Value) {
         }
         Provider::Anthropicapi => history.push(json!({"role":"assistant","content":v["content"]})),
         Provider::Googleapi => history.push(v["candidates"][0]["content"].clone()),
+        Provider::Ollama => history.push(json!({"role":"assistant","content":v["message"]["content"],"tool_calls":v["message"]["tool_calls"]})),
         _ => {}
     }
 }
@@ -202,7 +238,8 @@ pub fn append_results(p: &Provider, h: &mut Vec<Value>, results: Vec<(Call, Valu
     match p{
  Provider::Openaiapi=>h.extend(results.into_iter().map(|(c,r)|json!({"type":"function_call_output","call_id":c.id,"output":tool_text(r)}))),
  Provider::Anthropicapi=>h.push(json!({"role":"user","content":results.into_iter().map(|(c,r)|json!({"type":"tool_result","tool_use_id":c.id,"content":tool_text(r)})).collect::<Vec<_>>()})),
- Provider::Googleapi=>h.push(json!({"role":"user","parts":results.into_iter().map(|(c,r)|{let mut value=json!({"functionResponse":{"name":c.name,"response":{"result":tool_text(r)}}});if !c.id.is_empty(){value["functionResponse"]["id"]=json!(c.id)}value}).collect::<Vec<_>>()})),_=>{}}
+ Provider::Googleapi=>h.push(json!({"role":"user","parts":results.into_iter().map(|(c,r)|{let mut value=json!({"functionResponse":{"name":c.name,"response":{"result":tool_text(r)}}});if !c.id.is_empty(){value["functionResponse"]["id"]=json!(c.id)}value}).collect::<Vec<_>>()})),
+ Provider::Ollama=>h.extend(results.into_iter().map(|(c,r)|json!({"role":"tool","tool_name":c.name,"content":tool_text(r)}))),_=>{}}
 }
 #[cfg(test)]
 mod tests {

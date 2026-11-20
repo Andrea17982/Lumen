@@ -130,7 +130,7 @@ fn reserve(
     id: &str,
     model: &str,
     input: u64,
-    output_limit: u32,
+    output_limit: (u32, u32),
     automatic: bool,
 ) -> Result<(String, Config, i64), String> {
     let mut d = db(root)?;
@@ -150,13 +150,13 @@ fn reserve(
     if c.model != model {
         return Err("API pricing belongs to another model. Update its rates in Accounts before switching models.".into());
     }
-    if c.max_output_tokens != output_limit {
+    if c.max_output_tokens != output_limit.0 || !(1..=output_limit.0).contains(&output_limit.1) {
         return Err(
             "API output limit changed while preparing the request; retry with the saved settings"
                 .into(),
         );
     }
-    let amount = cost(&c, input, output_limit as u64)?;
+    let amount = cost(&c, input, output_limit.1 as u64)?;
     if spent(&tx, id)?
         .checked_add(amount)
         .ok_or("API budget overflow")?
@@ -372,27 +372,135 @@ pub async fn models(a: &Account, dir: &Path) -> Result<Vec<ModelInfo>, String> {
     Ok(rows)
 }
 
+pub(crate) struct Client<'a> {
+    data: &'a Path,
+    account: &'a Account,
+    model: &'a str,
+    http: reqwest::Client,
+    secret: String,
+    automatic: bool,
+}
+
+impl<'a> Client<'a> {
+    pub(crate) fn new(
+        data: &'a Path,
+        account: &'a Account,
+        model: &'a str,
+        automatic: bool,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            data,
+            account,
+            model,
+            http: client()?,
+            secret: key(&account.id)?,
+            automatic,
+        })
+    }
+
+    pub(crate) async fn step(
+        &self,
+        history: &[Value],
+        tools: &[Value],
+        max: Option<u32>,
+        mut emit: impl FnMut(Activity),
+    ) -> Result<(Value, crate::api_wire::Turn), String> {
+        let c = config(self.data, &self.account.id)?;
+        validate(&c)?;
+        let max = max.unwrap_or(c.max_output_tokens).min(c.max_output_tokens);
+        let (path, body) =
+            crate::api_wire::request(&self.account.provider, self.model, history, tools, max)?;
+        // Text-only inputs: bytes plus protocol/tool framing bound token counts conservatively.
+        let bytes = serde_json::to_vec(&body).map_err(|_| "Invalid API request")?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("API request exceeds 8 MB; compact the conversation".into());
+        }
+        let bound = bytes.len() as u64 + 8192;
+        let (request, c, reserved) = reserve(
+            self.data,
+            &self.account.id,
+            self.model,
+            bound,
+            (c.max_output_tokens, max),
+            self.automatic,
+        )?;
+        let activity = |value: i64, status: &str| {
+            Activity{kind:"api-cost".into(),text:json!({"requestId":request,"model":self.model,"estimatedUsd":value as f64/1e6,"status":status,"source":"user-confirmed model rates"}).to_string()}
+        };
+        emit(activity(reserved, "reserved"));
+        let url = format!("{}{}", base(&self.account.provider), path);
+        let raw = auth(self.http.post(url), &self.account.provider, &self.secret)
+            .header("content-type", "application/json")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|_| "Official API request interrupted; its budget reservation is retained")?;
+        if [400, 401, 403, 404, 422, 429].contains(&raw.status().as_u16()) {
+            db(self.data)?
+                .execute(
+                    "UPDATE charges SET micros=0,status='rejected' WHERE id=?",
+                    [&request],
+                )
+                .map_err(|_| "Cannot release rejected API reservation")?;
+            emit(activity(0, "rejected"));
+        }
+        let response = json_response(raw).await?;
+        let turn = crate::api_wire::response(&self.account.provider, &response)?;
+        if let Some((i, o)) = turn.usage {
+            let actual = cost(&c, i, o)?;
+            db(self.data)?
+                .execute(
+                    "UPDATE charges SET micros=?,status='reported' WHERE id=?",
+                    params![actual, request],
+                )
+                .map_err(|_| "Cannot record API usage")?;
+            emit(activity(actual, "reported"));
+        }
+        Ok((response, turn))
+    }
+}
+
+/// Price only opted-in, ready API accounts using their confirmed model rates.
+pub(crate) fn rlm_price(root: &Path, account: &Account) -> Option<(String, f64)> {
+    if !account.provider.is_api() || !eligible(root, account) {
+        return None;
+    }
+    let config = config(root, &account.id).ok()?;
+    Some((
+        config.model,
+        config.input_per_million + config.output_per_million,
+    ))
+}
+
 pub async fn execute(
     input: Invocation<'_>,
     mut cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity) + Send,
 ) -> Result<String, String> {
     let data = root(input.config)?;
-    let secret = key(&input.account.id)?;
     let model = input.model.ok_or("Select an API model")?;
-    let http = client()?;
+    let client = Client::new(data, input.account, model, input.automatic)?;
     let browser = input.browser.ok_or("Browser scope unavailable")?;
     use crate::{
         api_tools, code_mode,
         settings::{AppSettings, CodeMode},
     };
     let mut hub = tokio::sync::Mutex::new(crate::shared_tools::Hub::default());
-    let mode = AppSettings::load(data).code_mode;
+    let prefs = AppSettings::load(data);
+    let mode = prefs.code_mode;
+    let effort = crate::rlm::Effort::for_turn(input.effort, prefs.rlm_effort);
+    let endpoint = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://127.0.0.1:11434".into());
     let mut sandbox = None;
     let code_cancel = cancel.clone();
     let run = async {
         hub.get_mut().connect(&input, browser, &mut emit).await?;
-        let mut history = crate::api_wire::initial(&input.account.provider, input.prompt); // = providers::wire_prompt
+        let mut prompt = input.prompt.to_owned();
+        if mode == CodeMode::On {
+            if let Some(sources) = input.rlm {
+                prompt.push_str(&sources.hint());
+            }
+        }
+        let mut history = crate::api_wire::initial(&input.account.provider, &prompt);
         let mut text = String::new();
         let mut call_ids = std::collections::HashSet::new();
         for _ in 0..32 {
@@ -420,66 +528,12 @@ pub async fn execute(
                 }
             }
             let advertised = if mode == CodeMode::On {
-                vec![code_mode::definition(&tools)]
+                vec![code_mode::definition_with_context(&tools, effort)]
             } else {
                 tools.clone()
             };
-            let c = config(data, &input.account.id)?;
-            validate(&c)?;
-            let (path, body) = crate::api_wire::request(
-                &input.account.provider,
-                model,
-                &history,
-                &advertised,
-                c.max_output_tokens,
-            )?;
-            // Text-only inputs: bytes plus protocol/tool framing bound token counts conservatively.
-            let bytes = serde_json::to_vec(&body).map_err(|_| "Invalid API request")?;
-            if bytes.len() > 8 * 1024 * 1024 {
-                return Err("API request exceeds 8 MB; compact the conversation".into());
-            }
-            let bound = bytes.len() as u64 + 8192;
-            let (request, c, reserved) = reserve(
-                data,
-                &input.account.id,
-                model,
-                bound,
-                c.max_output_tokens,
-                input.automatic,
-            )?;
-            let activity = |value: i64, status: &str| {
-                Activity{kind:"api-cost".into(),text:json!({"requestId":request,"model":model,"estimatedUsd":value as f64/1e6,"status":status,"source":"user-confirmed model rates"}).to_string()}
-            };
-            emit(activity(reserved, "reserved"));
-            let url = format!("{}{}", base(&input.account.provider), path);
-            let raw = auth(http.post(url), &input.account.provider, &secret)
-                .header("content-type", "application/json")
-                .body(bytes)
-                .send()
-                .await
-                .map_err(|_| {
-                    "Official API request interrupted; its budget reservation is retained"
-                })?;
-            if [400, 401, 403, 404, 422, 429].contains(&raw.status().as_u16()) {
-                db(data)?
-                    .execute(
-                        "UPDATE charges SET micros=0,status='rejected' WHERE id=?",
-                        [&request],
-                    )
-                    .map_err(|_| "Cannot release rejected API reservation")?;
-                emit(activity(0, "rejected"));
-            }
-            let response = json_response(raw).await?;
-            let turn = crate::api_wire::response(&input.account.provider, &response)?;
-            if let Some((i, o)) = turn.usage {
-                let actual = cost(&c, i, o)?;
-                db(data)?
-                    .execute(
-                        "UPDATE charges SET micros=?,status='reported' WHERE id=?",
-                        params![actual, request],
-                    )
-                    .map_err(|_| "Cannot record API usage")?;
-                emit(activity(actual, "reported"));
+            let (response, turn) = client.step(&history, &advertised, None, &mut emit).await?;
+            if let Some((i, _)) = turn.usage {
                 emit(Activity {
                     kind: "usage".into(),
                     text: i.to_string(),
@@ -518,7 +572,9 @@ pub async fn execute(
                 let result = if mode == CodeMode::On && name == code_mode::TOOL {
                     if let Some(code) = call.args["code"].as_str() {
                         if sandbox.is_none() {
-                            sandbox = Some(code_mode::Session::new(code_cancel.clone())?);
+                            sandbox = Some(code_mode::Session::new(code_cancel.clone())?.with_rlm(
+                                crate::rlm::Turn::from_invocation(&input, data, &endpoint, effort),
+                            ));
                         }
                         sandbox
                             .as_ref()
@@ -551,6 +607,37 @@ pub async fn execute(
 mod tests {
     use super::*;
     #[test]
+    fn rlm_budget_reserves_only_the_bounded_output_and_requires_auto_consent() {
+        let f = crate::test_support::Fixture::new();
+        let mut config = Config {
+            model: "test".into(),
+            auto_enabled: false,
+            budget_usd: 0.001,
+            input_per_million: 1.,
+            output_per_million: 10.,
+            max_output_tokens: 4096,
+            rates_confirmed: true,
+        };
+        let ledger = db(&f.root).unwrap();
+        let save = |config: &Config| {
+            ledger
+                .execute(
+                    "INSERT OR REPLACE INTO config VALUES('a',?)",
+                    [serde_json::to_string(config).unwrap()],
+                )
+                .unwrap();
+        };
+        save(&config);
+        assert!(reserve(&f.root, "a", "test", 10, (4096, 64), true).is_err());
+        assert_eq!(spent(&ledger, "a").unwrap(), 0);
+        config.auto_enabled = true;
+        save(&config);
+        let (_, _, bounded) = reserve(&f.root, "a", "test", 10, (4096, 64), true).unwrap();
+        assert_eq!(bounded, 650);
+        assert!(reserve(&f.root, "a", "test", 10, (4096, 64), true).is_err());
+    }
+
+    #[test]
     fn reservations_are_durable_and_pricing_bound() {
         let f = crate::test_support::Fixture::new();
         let c = Config {
@@ -569,12 +656,12 @@ mod tests {
                 [serde_json::to_string(&c).unwrap()],
             )
             .unwrap();
-        assert!(reserve(&f.root, "a", "wrong", 10, 4096, false).is_err());
-        assert!(reserve(&f.root, "a", "test", 10, 4096, false).is_ok());
-        assert!(reserve(&f.root, "a", "test", 10, 4096, false).is_ok());
-        assert!(reserve(&f.root, "a", "test", 10, 4096, false).is_err());
+        assert!(reserve(&f.root, "a", "wrong", 10, (4096, 4096), false).is_err());
+        assert!(reserve(&f.root, "a", "test", 10, (4096, 4096), false).is_ok());
+        assert!(reserve(&f.root, "a", "test", 10, (4096, 4096), false).is_ok());
+        assert!(reserve(&f.root, "a", "test", 10, (4096, 4096), false).is_err());
         assert!(spent(&db(&f.root).unwrap(), "a").unwrap() > 80_000);
-        assert!(reserve(&f.root, "a", "test", 10, 256, false)
+        assert!(reserve(&f.root, "a", "test", 10, (256, 256), false)
             .unwrap_err()
             .contains("output limit changed"));
         assert!(money(f64::NAN).is_err());
@@ -602,7 +689,9 @@ mod tests {
         let handles = (0..8)
             .map(|_| {
                 let root = f.root.clone();
-                std::thread::spawn(move || reserve(&root, "a", "test", 10, 4096, true).is_ok())
+                std::thread::spawn(move || {
+                    reserve(&root, "a", "test", 10, (4096, 4096), true).is_ok()
+                })
             })
             .collect::<Vec<_>>();
         assert_eq!(

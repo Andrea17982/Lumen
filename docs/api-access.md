@@ -32,6 +32,19 @@ There is **no native API session resume**. Continuation uses Lumen’s bounded c
 
 Set `"codeMode": "on"` in the daemon data directory's `settings.json` to use `lumen_code` for official API turns. `off` is the default, and `auto` currently uses classic calls pending model validation. The JavaScript environment and its variables last one turn. Each host call follows the same permission and approval path as a classic call. A script can queue up to 200 calls with eight in flight, within 120 seconds and a 256 MiB JavaScript heap. Actions that can prompt or change shared state run in order. Output over 24 KiB has a head/tail preview and **Show full output** in activity.
 
+Code Mode exposes turn-local `context.list()`, `get(id)`, `slice(id,start,end)`, `grep(id,pattern,limit)`, and `chunks(id,size)`. These return promises. Slice offsets and chunk sizes are UTF-8 bytes. The store holds up to 32 MiB of selected text attachments, transcript, handoffs and large tool text. Large tool text includes a `contextId`. The conversation still provides its ordinary bounded history and attachment previews.
+
+`llm(prompt, {effort, maxTokens})` sends the explicit prompt to a text submodel. It has no workspace or connector tools. The router prefers an installed local model and otherwise selects an API account opted into Auto. Each API request reserves its budget through the same ledger as the main turn. `maxTokens` accepts 16–4096, with a default of 512 and the account output cap applied. An Ollama turn stays on its selected local model, including when that model fails.
+
+| Effort | Subqueries per turn | Depth | In-flight inference |
+| --- | ---: | ---: | ---: |
+| `low` | 0 | 0 | 0 |
+| `medium` | 8 | 1 | 4 |
+| `high` | 32 | 1 | 8 |
+| `max` | 128 | 2 | 8 |
+
+The parent turn sets the ceiling. Supported provider effort names map directly. A provider default or an unmapped name uses `"rlmEffort": "medium"` in `settings.json`. At `max`, a submodel can ask one nested question via native tool calling or an Ollama JSON action, then synthesize its result within the remaining output budget.
+
 Production endpoints are fixed HTTPS, without proxies or redirects. A loopback fixture override exists only in debug builds with an isolated test-data directory; release builds ignore it. Windows keychain/IPC/SQLite and all three wire formats are tested locally; fixture success does not certify a real API key, model entitlement, current prices or account quota. macOS Keychain/Linux Secret Service require platform validation.
 
 Primary contracts: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [Anthropic tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools), [Google generateContent](https://ai.google.dev/api/generate-content), [keyring backends](https://docs.rs/keyring/3.6.3/keyring/).

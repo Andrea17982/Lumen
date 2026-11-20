@@ -292,6 +292,7 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
 }
 
 pub struct Invocation<'a> {
+    pub(crate) rlm: Option<&'a crate::rlm::Sources>,
     pub automatic: bool,
     pub browser_scope: Option<&'a str>,
     pub browser_artifacts: Option<&'a Path>,
@@ -323,6 +324,7 @@ pub async fn execute(
     let browser = crate::browser::Registration::new(&input, send.clone()).await?;
     let prompt = format!("{}\n\n{}", crate::browser::INSTRUCTIONS, input.prompt);
     let input = Invocation {
+        rlm: input.rlm,
         automatic: input.automatic,
         account: input.account,
         config: input.config,

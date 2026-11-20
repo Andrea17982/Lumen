@@ -256,6 +256,7 @@ async fn trial<'a>(
         provider: Provider::Ollama,
     };
     let input = Invocation {
+        rlm: None,
         automatic: false,
         account: &account,
         config: &config,
@@ -587,7 +588,7 @@ fn result_text(message: &Value) -> Option<(bool, String)> {
     ))
 }
 
-fn save(row: &Row<'_>) {
+fn save(row: &impl Serialize) {
     let line = serde_json::to_string(row).unwrap();
     println!("{line}");
     if let Some(path) = std::env::var_os("LUMEN_BENCH_OUTPUT") {
@@ -641,6 +642,272 @@ async fn bench_t0() {
         }
     }
     server.abort();
+}
+
+type LongCase = (
+    &'static str,
+    &'static str,
+    &'static str,
+    Vec<(String, String)>,
+);
+
+fn long_cases() -> Vec<LongCase> {
+    use std::fmt::Write as _;
+    let noise = "Archive background. A routine entry had no recorded change. This explanatory note is unrelated to the records under study.\n";
+    let padding = noise.repeat(9500);
+    let mut aggregate = String::new();
+    for (index, n) in [2, 4, 7, 8, 3, 9, 5, 6].into_iter().enumerate() {
+        aggregate.push_str(&padding[..padding.len() / 8]);
+        writeln!(
+            aggregate,
+            "\nEVENT region={} units={n}",
+            if index % 2 == 0 { "north" } else { "south" }
+        )
+        .unwrap();
+    }
+    let mut links = String::new();
+    for row in [
+        "START K71",
+        "LINK K71 -> K42",
+        "LINK K42 -> K16",
+        "VALUE K16 = vermilion",
+    ] {
+        links.push_str(&padding[..padding.len() / 4]);
+        writeln!(links, "\n{row}").unwrap();
+    }
+    let repo = [
+        ("api_tools.rs", include_str!("api_tools.rs")),
+        ("api_wire.rs", include_str!("api_wire.rs")),
+        ("code_mode.rs", include_str!("code_mode.rs")),
+        ("ollama_agent.rs", include_str!("ollama_agent.rs")),
+    ]
+    .into_iter()
+    .map(|(name, text)| (name.into(), text.into()))
+    .chain([(String::from("historical-build-notes.md"), padding.clone())])
+    .collect();
+    let corpus = [
+        (
+            "archive",
+            format!("{padding}\nNOTE: Bayside used the old retention code amber."),
+        ),
+        (
+            "policy",
+            format!("{padding}\nCURRENT POLICY: Bayside uses the stone retention code."),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, text)| (name.into(), text))
+    .collect();
+    vec![
+        ("aggregation", "In the event archive, sum units from EVENT lines where region=north. Reply with the integer only.", "17",
+            vec![("event-archive".into(), aggregate)]),
+        ("multi-hop", "Find the key on the START line in the link log. Follow each LINK until reaching its VALUE. Reply with the value only.", "vermilion",
+            vec![("link-log".into(), links)]),
+        ("repository", "In api_tools.rs, what is the maximum project file size for lumen_read_file, as an integer number of bytes? Reply with the integer alone.", "2000000", repo),
+        ("document-qa", "What is the current Bayside retention code? Use the CURRENT POLICY line, and reply with the code word alone.", "stone", corpus),
+    ]
+}
+
+#[tokio::test]
+#[ignore = "uses an installed loopback Ollama model; no cloud endpoints"]
+async fn bench_e() {
+    use crate::rlm::{Effort, Sources, Turn};
+    use std::sync::atomic::Ordering::Relaxed;
+    let address = std::env::var("LUMEN_BENCH_URL").expect("set LUMEN_BENCH_URL");
+    let base = endpoint(&address).unwrap();
+    let model_id = std::env::var("LUMEN_BENCH_MODELS").expect("set one LUMEN_BENCH_MODELS ID");
+    let model = Model {
+        http: client(),
+        base,
+        id: &model_id,
+        effort: "default",
+        native: true,
+        offline: false,
+    };
+    let show = crate::rlm::bounded_json(
+        crate::ollama_agent::post(
+            &model.http,
+            &model.base,
+            "api/show",
+            &json!({"model":model_id}),
+        )
+        .await
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    local_model(model.id, &show).unwrap();
+    assert!(show["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c == "tools"));
+    let fixture = Fixture::new();
+    let grep = definition("lumen_grep_context",
+        "Search line by line with a regular expression in a document. Returns matching {line,text} rows.",
+        json!({"id":{"type":"integer"},"pattern":{"type":"string"},"limit":{"type":"integer"}}),
+        &["id","pattern"]);
+    let slice = definition(
+        "lumen_slice_context",
+        "Read a document range by UTF-8 byte offsets.",
+        json!({"id":{"type":"integer"},"start":{"type":"integer"},"end":{"type":"integer"}}),
+        &["id", "start", "end"],
+    );
+    let classic = [function_tool(&grep), function_tool(&slice)];
+    let seeds = std::env::var("LUMEN_BENCH_SEEDS")
+        .unwrap_or_else(|_| "5".into())
+        .parse::<usize>()
+        .unwrap();
+    for (index, (case, task, expected, documents)) in long_cases().into_iter().enumerate() {
+        let mut sources = Sources::default();
+        let mut size = 0;
+        for (name, text) in documents {
+            size += tiktoken_rs::o200k_base_singleton()
+                .encode_ordinary(&text)
+                .len();
+            sources.add(&name, text);
+        }
+        assert!(size > 100_000, "{case}: {size}");
+        let catalog = Turn::new(
+            &fixture.root,
+            &address,
+            Some(model.id),
+            Effort::Low,
+            &sources,
+        )
+        .document(&json!({"method":"list"}))
+        .unwrap();
+        let prompt = format!(
+            "{task}\nDocuments are available by numeric ID: {catalog}. Search the source evidence before answering. If llm() is available, use it to check the relevant excerpts before giving the final answer.",
+        );
+        for seed in 0..seeds {
+            let arms = ["TC", "CM", "CM+RLM"];
+            for step in 0..3 {
+                let arm = arms[(index + seed + step) % arms.len()];
+                let effort = if arm == "CM+RLM" {
+                    Effort::Medium
+                } else {
+                    Effort::Low
+                };
+                let (_stop, cancel) = watch::channel(false);
+                let sandbox = Session::new(cancel).unwrap().with_rlm(Turn::new(
+                    &fixture.root,
+                    &address,
+                    Some(model.id),
+                    effort,
+                    &sources,
+                ));
+                let turn = sandbox.rlm.as_ref().unwrap();
+                let code = [function_tool(&code_mode::definition_with_context(
+                    &[],
+                    effort,
+                ))];
+                let tools: &[Value] = if arm == "TC" { &classic } else { &code };
+                let mut history = vec![json!({"role":"user","content":prompt})];
+                let (mut input, mut output, mut rounds, mut errors) = (0, 0, 0, 0);
+                let (mut peak, mut ttft, mut script_ms) = (0, None, 0);
+                let start = Instant::now();
+                let outcome: Result<String, String> = tokio::time::timeout(Duration::from_secs(45), async {
+                    for _ in 0..4 {
+                        rounds += 1;
+                        let request = json!({"model":model.id,"messages":history,"tools":tools,"stream":true,"keep_alive":"10m",
+                            "options":{"temperature":0,"seed":seed,"num_ctx":8192,"num_predict":320}});
+                        let (response, latency) = response(&model, &request.to_string()).await?;
+                        if rounds == 1 { ttft = latency; }
+                        let i = response["prompt_eval_count"].as_u64().ok_or("Ollama supplied no input usage")?;
+                        input += i;
+                        peak = peak.max(i);
+                        output += response["eval_count"].as_u64().ok_or("Ollama supplied no output usage")?;
+                        let msg = &response["message"];
+                        let calls = msg["tool_calls"].as_array().unwrap();
+                        if calls.is_empty() {
+                            return Ok(msg["content"].as_str().unwrap_or_default().trim().into());
+                        }
+                        if calls.len() > 16 { return Err("Ollama native per-step tool cap exceeded".into()); }
+                        history.push(json!({"role":"assistant","content":msg["content"],"tool_calls":calls}));
+                        for call in calls {
+                            let name = call["function"]["name"].as_str().unwrap_or_default();
+                            let mut args = call["function"]["arguments"].clone();
+                            let result = match (arm, name) {
+                                ("TC", "lumen_grep_context" | "lumen_slice_context") if args.is_object() => {
+                                    args["method"] = json!(if name == "lumen_grep_context" {"grep"} else {"slice"});
+                                    match turn.document(&args) {
+                                        Ok(value) => code_mode::result(&value.to_string(), false),
+                                        Err(e) => code_mode::result(&e, true),
+                                    }
+                                }
+                                ("CM" | "CM+RLM", code_mode::TOOL) => {
+                                    let before = Instant::now();
+                                    let output = sandbox.run(args["code"].as_str().ok_or("missing code")?, &[], |_, _| async {
+                                        code_mode::result("Tool is outside this benchmark catalog", true)
+                                    }).await;
+                                    script_ms += before.elapsed().as_millis() as u64;
+                                    code_mode::report(output, &mut |_| {})
+                                }
+                                _ => code_mode::result("Tool is outside the advertised arm", true),
+                            };
+                            errors += usize::from(result["isError"] == true);
+                            let mut text = result.to_string();
+                            crate::wire::bound("code-output", &mut text);
+                            history.push(json!({"role":"tool","tool_name":name,"content":text}));
+                        }
+                    }
+                    Err("Benchmark step cap reached".into())
+                }).await.unwrap_or_else(|_| Err("Benchmark 45-second trial limit reached".into()));
+                save(
+                    &json!({"tier":"T1","suite":"E","case":case,"model":model.id,
+                    "arm":arm,"seed":seed,"effort":if effort==Effort::Low {"low"} else {"medium"},
+                    "corpusTokens":size,"inputTokens":input,"outputTokens":output,"rounds":rounds,
+                    "subRounds":turn.usage.rounds.load(Relaxed),"subInputTokens":turn.usage.input.load(Relaxed),
+                    "subOutputTokens":turn.usage.output.load(Relaxed),"peakRootInputTokens":peak,"ttftMs":ttft,"scriptMs":script_ms,
+                    "toolErrors":errors,"wallMs":start.elapsed().as_millis(),"costUsd":0,
+                    "success":outcome.as_ref().is_ok_and(|text| text.eq_ignore_ascii_case(expected)),
+                    "answer":outcome.as_ref().ok(),"expected":expected,"error":outcome.err()}),
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "uses an installed loopback Ollama model; no cloud endpoints"]
+async fn live_rlm_query() {
+    use crate::rlm::{Effort, Sources, Turn};
+    use std::sync::atomic::Ordering::Relaxed;
+    let model = std::env::var("LUMEN_BENCH_MODELS").expect("set one local model ID");
+    let address = std::env::var("LUMEN_BENCH_URL").expect("set LUMEN_BENCH_URL");
+    let fixture = Fixture::new();
+    let mut sources = Sources::default();
+    let (_, _, expected, documents) = long_cases().remove(0);
+    for (name, text) in documents {
+        sources.add(&name, text);
+    }
+    let (_stop, cancel) = watch::channel(false);
+    let sandbox = Session::new(cancel).unwrap().with_rlm(Turn::new(
+        &fixture.root,
+        &address,
+        Some(&model),
+        Effort::Medium,
+        &sources,
+    ));
+    let output = sandbox.run(
+        r#"(async () => {
+            const records = (await context.grep(0, '^EVENT region=north')).map(row => row.text).join('\n');
+            return await llm('Sum the units in these records. Reply with only the integer.\n' + records,
+                {effort:'low', maxTokens:128});
+        })()"#,
+        &[],
+        |_, _| async { panic!("Unexpected workspace tool in the subquery fixture") },
+    ).await.unwrap();
+    let usage = &sandbox.rlm.as_ref().unwrap().usage;
+    save(
+        &json!({"tier":"T1","suite":"E","case":"direct-subquery-smoke","model":model,
+        "costUsd":0,"subRounds":usage.rounds.load(Relaxed),"subInputTokens":usage.input.load(Relaxed),
+        "subOutputTokens":usage.output.load(Relaxed),"answer":output,"expected":expected,
+        "success":output.trim()==expected}),
+    );
+    assert_eq!(usage.rounds.load(Relaxed), 1);
+    assert_eq!(output.trim(), expected);
 }
 
 #[tokio::test]

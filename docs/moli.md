@@ -36,6 +36,8 @@ Ollama's official `/api/chat` supports structured calls and tool-result messages
 
 Code Mode is opt-in for each local Ollama model. Add its exact selected ID to `"ollamaCodeModels"` in the daemon's `settings.json`, for example `"ollamaCodeModels": ["qwen3-coder:30b-a3b-q4_K_M"]`. An empty list uses classic tools for all Ollama models. The API setting `codeMode` applies to official API turns. Ollama advertises `lumen_code` for models with native tools and `action: "code"` in the structured envelope otherwise. Scripts use the turn's Moli and shared tools. After two consecutive JavaScript syntax errors, Lumen records a fallback and continues with classic calls in the same turn.
 
+These turns can access the [turn-local context and subquery limits](api-access.md#experimental-code-mode). `llm()` keeps the selected model and the same loopback endpoint.
+
 CDP compatibility also needs regression coverage rather than assuming Playwright parity: Playwright documents a lower-fidelity connection than its own protocol; the local probe validates only the methods it exercises. [Playwright CDP documentation](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp).
 
 ## Validation and limits

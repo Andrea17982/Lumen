@@ -867,8 +867,34 @@ async fn stage_observed(
     };
     let mut native: Option<String> = None;
     let retry_cancel = cancel.clone();
+    let prefs = crate::settings::AppSettings::load(&core.root);
+    let rlm_sources = if (a.provider.is_api() && prefs.code_mode == crate::settings::CodeMode::On)
+        || (a.provider == Provider::Ollama && prefs.ollama_code_models.contains(&selected.id))
+    {
+        let messages = core.store.messages(&s.id)?;
+        let attachments = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "user")
+            .and_then(|m| m.activity.iter().find(|a| a.kind == "run-options"))
+            .and_then(|a| serde_json::from_str::<RunOptions>(&a.text).ok())
+            .map(|options| options.attachments)
+            .unwrap_or_default();
+        let accounts = core
+            .store
+            .accounts()?
+            .into_iter()
+            .filter(|a| !core.limits.cooling(&a.id, now()))
+            .collect();
+        let mut sources = crate::rlm::Sources::new(accounts);
+        sources.capture(&workspace, &attachments, &messages);
+        Some(sources)
+    } else {
+        None
+    };
     let result = providers::execute(
         providers::Invocation {
+            rlm: rlm_sources.as_ref(),
             automatic: a.provider.is_api()
                 && core
                     .store

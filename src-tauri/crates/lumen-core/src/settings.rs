@@ -74,6 +74,8 @@ pub struct AppSettings {
     pub code_mode: CodeMode,
     /// Exact local Ollama model IDs explicitly enabled for Code Mode.
     pub ollama_code_models: Vec<String>,
+    /// RLM effort for provider models without a mapped native reasoning effort.
+    pub(crate) rlm_effort: crate::rlm::Effort,
 }
 impl Default for AppSettings {
     fn default() -> Self {
@@ -93,6 +95,7 @@ impl Default for AppSettings {
             repo_context: true,
             code_mode: CodeMode::Off,
             ollama_code_models: Vec::new(),
+            rlm_effort: crate::rlm::Effort::Medium,
         }
     }
 }

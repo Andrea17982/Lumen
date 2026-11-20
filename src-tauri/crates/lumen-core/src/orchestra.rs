@@ -1175,8 +1175,18 @@ async fn attempt(
     let config = config_dir(core, a);
     let (app, session, message, id) = (&job.app, &job.session, &job.message, &job.id);
     let browser_artifacts = PathBuf::from(core.store.session(&job.session)?.workspace);
+    let sources = (a.provider == Provider::Ollama
+        && crate::settings::AppSettings::load(&core.root)
+            .ollama_code_models
+            .contains(&selected.id))
+    .then(|| {
+        let mut sources = crate::rlm::Sources::default();
+        sources.add("orchestra-worker-brief", job.prompt.clone());
+        sources
+    });
     let r = providers::execute(
         providers::Invocation {
+            rlm: sources.as_ref(),
             automatic: false,
             browser: None,
             browser_scope: Some(&job.id),

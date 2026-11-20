@@ -369,6 +369,7 @@ mod tests {
             provider: Provider::Ollama,
         };
         let input = Invocation {
+            rlm: None,
             automatic: false,
             account: &account,
             config: &config,
@@ -448,6 +449,7 @@ mod tests {
             provider: Provider::Ollama,
         };
         let input = Invocation {
+            rlm: None,
             automatic: true,
             account: &account,
             config: &config,

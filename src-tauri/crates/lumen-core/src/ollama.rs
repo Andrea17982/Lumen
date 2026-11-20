@@ -65,7 +65,10 @@ pub fn choose<'a>(models: &'a [LocalModel], pinned: &str) -> Option<&'a LocalMod
 
 fn local_http() -> Result<(reqwest::Client, reqwest::Url), String> {
     let address = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://127.0.0.1:11434".into());
-    let endpoint = crate::ollama_agent::endpoint(&address)?;
+    local_http_at(&address)
+}
+pub(crate) fn local_http_at(address: &str) -> Result<(reqwest::Client, reqwest::Url), String> {
+    let endpoint = crate::ollama_agent::endpoint(address)?;
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -102,6 +105,12 @@ fn models_from_tags(value: &Value) -> Result<Vec<LocalModel>, String> {
 }
 pub async fn list() -> Result<Vec<LocalModel>, String> {
     let (http, base) = local_http()?;
+    list_at(&http, &base).await
+}
+pub(crate) async fn list_at(
+    http: &reqwest::Client,
+    base: &reqwest::Url,
+) -> Result<Vec<LocalModel>, String> {
     let value = http
         .get(base.join("api/tags").map_err(|e| e.to_string())?)
         .timeout(std::time::Duration::from_secs(5))

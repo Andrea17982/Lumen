@@ -1003,6 +1003,7 @@ pub(crate) mod tests {
         let workspace = f.directory("project");
         Registration::new(
             &crate::providers::Invocation {
+                rlm: None,
                 automatic: false,
                 account: &account,
                 config: &config,
