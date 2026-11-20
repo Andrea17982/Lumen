@@ -13,6 +13,12 @@ Fixtures, builds, small real-account checks and owner observations are different
 - **Handoff corpus:** constraints and decisions survive two compactions for Claude Code, Codex, Antigravity, OpenCode and the three API adapters.
 - **Not done for 0.11:** the native Windows GUI suites and live model checks were not re-run; plugin panels and Git install were not tried in the packaged app.
 
+## Code Mode branch
+
+- **F1–F5:** opt-in Code Mode, per-model opt-in and syntax fallback on Ollama, routed RLM and turn-scoped MCP for Claude Code, Codex and OpenCode. At commit `9317a43`, offline verification passed 293 Rust tests (17 opt-in cases ignored), Clippy, 81 frontend tests and 52 Chromium Playwright tests. Fixtures covered syntax fallback, MCP cancellation and permissions, RLM routing, counters and keyboard access to Code rows. [Configuration and limits](api-access.md)
+- **Local Ollama:** Qwen3-Coder gained on repeated file edits and lost on log filtering. The explicit MCP text instructions left the log-filter success rate at 0/5. In the long-context suite the model made zero `llm()` calls. A separate scripted smoke exercised a local subquery. [A/B/C](../reports/bench/2026-11-18/f2-qwen3/summary.md) · [Log-filter rerun](../reports/bench/2026-11-18/f2-mcp-text/summary.md) · [Long context and smoke](../reports/bench/2026-11-18/f3-suite-e/summary.md)
+- **Coverage still open:** paid provider/model/effort measurements and a packaged WebView2 pass for Code Mode. The competitor comparison draws on their official documentation. [Comparison](../research_notes/competitors-t3-paseo-paradev-orca.md)
+
 ## Carried over from 0.10.0
 
 These checks were made on 0.10.0 and cover areas 0.11 did not redesign.

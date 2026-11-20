@@ -102,6 +102,8 @@ Non si fissano percentuali di miglioramento o limiti economici universali prima 
 
 ## Decisioni tecniche da prendere durante l'implementazione
 
+Il [confronto con T3 Code, Paseo, Paradev e Orca](../research_notes/competitors-t3-paseo-paradev-orca.md#prime-tre-priorità-proposte) propone un pannello Changes con flusso Git/PR, una PWA remota con TLS obbligatorio seguita dal relay E2EE post-1.0 e nuovi tool per pilotare Lumen attraverso il bridge MCP di Code Mode. Le proposte attendono approvazione.
+
 L'intervista di perimetro è chiusa; questi punti richiedono prove del codice, non altre scelte strategiche preventive: trasporto IPC locale autenticato e recupero eventi; confini del core/daemon; applicazione dei budget con uso/costi mancanti; protocollo di handoff e gestione dei conflitti; threat model e pairing LAN/VPN. Documentare le alternative e scegliere il percorso minimo che passa i criteri di uscita.
 
 [Validazione attuale](validation.md) · [Integrazioni](integrations.md) · [Prodotto](../PRODUCT.md) · [Documentazione](README.md)

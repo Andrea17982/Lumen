@@ -31,19 +31,19 @@ I profili Budget e Default non fanno mai gare, quindi un'installazione nuova non
 
 ## Perché l'ho fatto (e cosa fanno meglio gli altri)
 
-Uso più abbonamenti AI ed ero stanco di scegliere quale aprire, copiare il contesto da uno all'altro e controllare il loro lavoro a mano. In questo campo ci sono ottimi strumenti. Questo è il mio parere onesto, basato sulla loro documentazione e sul mio uso, non su un benchmark.
+Uso più abbonamenti AI ed ero stanco di scegliere quale aprire, copiare il contesto da uno all'altro e controllare il loro lavoro a mano.
 
-**T3 Code** — Pulito, veloce, e il miglior flusso Git/PR che abbia visto, con client web e mobile. Lumen riprende il suo design delle ricevute dei comandi (crediti sotto). È meglio di Lumen su Git, terminali e uso da remoto. Lumen è meglio nello scegliere e combinare gli agenti al posto tuo e nella memoria fra sessioni.
-
-**Paseo** — L'ecosistema di plugin è bellissimo, ha vere app mobile e un relay cifrato. È avanti a Lumen su mobile, remoto ed estendibilità. Però il lavoro lo dividi e lo giudichi ancora tu, e i suoi plugin girano con accesso completo. In Lumen il lavoro lo divide e lo verifica Auto, e i plugin (in sviluppo) dichiarano i permessi prima che tu li attivi.
+Il [confronto con T3 Code, Paseo, Paradev e Orca](research_notes/competitors-t3-paseo-paradev-orca.md) raccoglie le fonti ufficiali su Git/PR, accesso remoto e controllo da parte degli agenti.
 
 **Hermes Agent** — Mi piace molto come impara skill e conserva la memoria, e che puoi parlargli da Telegram o Slack. È migliore come agente personale che vive su un server. Lumen è uno spazio di lavoro per programmare sul tuo desktop, che usa i tuoi abbonamenti tramite le CLI ufficiali e verifica il risultato con i controlli del tuo progetto.
 
-**Conductor, Claude Squad, Orca e simili** — Ottimi per far girare tanti agenti in parallelo nei worktree. Con loro l'orchestratore sei tu. Con Lumen è Auto.
+**Conductor, Claude Squad e simili** — Ottimi per far girare tanti agenti in parallelo nei worktree.
 
 **Cursor, l'app Codex, Claude Code** — Curati, ma ognuno ti tiene dentro un solo fornitore. Lumen esiste per farli lavorare insieme.
 
-Dove Lumen oggi è indietro: niente app mobile per ora (il controllo remoto in LAN/VPN è previsto per la 1.0), pacchetti non firmati, e Windows è l'unica piattaforma provata a fondo sul desktop.
+Dove Lumen oggi è indietro: niente app mobile per ora, pacchetti non firmati, e Windows è l'unica piattaforma provata a fondo sul desktop.
+
+**Misure di Code Mode.** Su Qwen3-Coder con Ollama locale e cinque seed appaiati, dai tool classici a Code Mode i successi sono passati da **0/5 a 5/5** nelle modifiche di file e da **5/5 a 0/5** nel filtro dei log. Nella suite di contesto lungo, i tre bracci classico, Code Mode e Code Mode con RLM abilitato hanno ottenuto **5/20, 4/20 e 5/20**. Il modello ha fatto zero chiamate a `llm()` in quella suite. Costo d'inferenza dei due esperimenti **0 USD**. [Modifiche e filtro](reports/bench/2026-11-18/f2-qwen3/summary.md) · [Contesto lungo](reports/bench/2026-11-18/f3-suite-e/summary.md)
 
 ## C'è anche
 

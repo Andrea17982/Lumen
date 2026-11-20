@@ -36,19 +36,19 @@ Budget and Default profiles never run competing solutions, so a fresh install wo
 
 ## Why I built it (and what the others do better)
 
-I use several AI subscriptions and I was tired of choosing which one to open, copying context between them and checking their work by hand. There are good tools in this space. This is my honest take, based on their docs and my own use, not on a benchmark.
+I use several AI subscriptions and I was tired of choosing which one to open, copying context between them and checking their work by hand.
 
-**T3 Code** — Clean, fast, and the best Git/PR flow I've seen, with web and mobile clients. Lumen borrows its command-receipt design (credited below). It's better than Lumen at Git, terminals and remote use. Lumen is better at choosing and combining agents for you, and at memory between sessions.
-
-**Paseo** — The plugin ecosystem is wonderful, it has real mobile apps and an encrypted relay. It's ahead of Lumen on mobile, remote and extensibility. But you still split the work and judge the results yourself, and its plugins run with full access. Lumen's Auto does the splitting and checking, and Lumen's plugins (in progress) declare their permissions before you enable them.
+See the [source-backed comparison of T3 Code, Paseo, Paradev and Orca](research_notes/competitors-t3-paseo-paradev-orca.md) for Git/PR, remote access and agent control.
 
 **Hermes Agent** — I love how it learns skills and keeps memory, and that you can talk to it from Telegram or Slack. It's better as a personal agent living on a server. Lumen is a coding workspace on your desktop that uses your subscriptions through their official CLIs and verifies the result against your project's checks.
 
-**Conductor, Claude Squad, Orca and similar** — Great for running many agents in parallel worktrees. With them, you are the orchestrator. With Lumen, Auto is.
+**Conductor, Claude Squad and similar** — Great for running many agents in parallel worktrees.
 
 **Cursor, the Codex app, Claude Code** — Polished, but each one keeps you inside one vendor. Lumen exists to make them work together.
 
-Where Lumen is behind today: no mobile app yet (remote control over LAN/VPN is planned for 1.0), unsigned packages, and Windows is the only platform with full desktop testing.
+Where Lumen is behind today: no mobile app yet, unsigned packages, and Windows is the only platform with full desktop testing.
+
+**Code Mode measurements.** On Qwen3-Coder through local Ollama with five paired seeds, classic tools → Code Mode finished **0/5 → 5/5** file-edit trials and **5/5 → 0/5** log-filter trials. In the long-context suite, classic tools, Code Mode and Code Mode with RLM enabled scored **5/20, 4/20 and 5/20**. The model made zero `llm()` calls in that suite. Both experiments spent **USD 0** on inference. [File and log trials](reports/bench/2026-11-18/f2-qwen3/summary.md) · [Long-context trials](reports/bench/2026-11-18/f3-suite-e/summary.md)
 
 ## Also inside
 
