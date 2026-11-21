@@ -55,4 +55,4 @@ Windows uses a local named pipe with remote clients rejected and first-instance 
 
 There is no new TCP listener, remote pairing or network exposure for the desktop/service connection. Existing invocation-scoped loopback MCP brokers retain their capability checks. RPC bodies containing API keys or private connector answers are not journalled. Signed connector URLs are opened in Rust and do not return to the webview. Keep app-data backups private: message content and event journals contain the same sensitive task material as the transcript.
 
-Packaging follows Tauri's [sidecar contract](https://v2.tauri.app/develop/sidecar/) and [build-hook target variables](https://v2.tauri.app/reference/config/). LAN/VPN control, remote pairing and the full updater belong to later [roadmap milestones](roadmap-1.0.md).
+Packaging follows Tauri's [sidecar contract](https://v2.tauri.app/develop/sidecar/) and [build-hook target variables](https://v2.tauri.app/reference/config/). LAN/VPN control, remote pairing and the full updater belong to later milestones.

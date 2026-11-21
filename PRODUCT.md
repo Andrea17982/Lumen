@@ -39,7 +39,7 @@ Lumen uses the approved satin-glass lm logo, restrained Liquid Glass, system typ
 
 ## Direction to 1.0
 
-See the [1.0 roadmap](docs/roadmap-1.0.md). Reliability and intelligent collaboration take priority over breadth. Complexity belongs in the architecture, not in the interface.
+Reliability and intelligent collaboration take priority over breadth. Complexity belongs in the architecture, not in the interface.
 
 - Guaranteed fundamental flows for Claude Code, Codex, Antigravity and OpenCode. Cursor/Ollama keep declared support and limits; no universal native-parity claim.
 - All three official API integrations (Anthropic/OpenAI/Google) with OS-keychain storage. Auto requires explicit API enablement and a mandatory budget.

@@ -17,7 +17,6 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Architecture](architecture.md) | Modules, storage, protocols and process ownership |
 | [Development](development.md) | Build, tests, native harnesses and release procedure |
 | [Validation and known limits](validation.md) | What has been verified for the current source and what remains open |
-| [Roadmap 1.0](roadmap-1.0.md) | Single canonical roadmap (Italian) |
 | [Official API access](api-access.md) | Keychain, confirmed pricing, permissions and reserved budgets |
 | [Release history](release-notes/README.md) | Current changelog; earlier versions on GitHub Releases |
 

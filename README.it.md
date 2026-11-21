@@ -84,7 +84,7 @@ Test e build di release sono in [development](docs/development.md).
 
 ## Da sapere
 
-Autopilot dà agli agenti accesso ampio al computer; non è una sandbox del sistema operativo. Lumen non copia mai le credenziali dei provider: ogni CLI fa il login per conto suo. Cosa è stato provato, e cosa no, è in [validazione](docs/validation.md). Dove sta andando Lumen è nella [roadmap](docs/roadmap-1.0.md). I dettagli di sicurezza sono in [SECURITY.md](SECURITY.md).
+Autopilot dà agli agenti accesso ampio al computer; non è una sandbox del sistema operativo. Lumen non copia mai le credenziali dei provider: ogni CLI fa il login per conto suo. Cosa è stato provato, e cosa no, è in [validazione](docs/validation.md). I dettagli di sicurezza sono in [SECURITY.md](SECURITY.md).
 
 ## Come è fatto
 

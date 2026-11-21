@@ -31,3 +31,6 @@ SHA256SUMS.txt
 
 builds/
 src/features/**/target/
+
+# Personal planning, not published
+docs/roadmap-1.0.md

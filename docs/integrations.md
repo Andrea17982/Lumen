@@ -1,6 +1,6 @@
 # Shared integrations
 
-Lumen discovers existing MCP servers, skills and plugin components and makes portable components available through supported adapter paths. OpenCode bridges this layer through official ACP; Cursor retains its native tools without shared injection. The three official API adapters use the same Lumen host tool layer. Identity, consent and the original configuration stay with the owning profile. This is a documented subset, **not universal compatibility** with every proprietary extension; declared limits remain visible in the settings matrix and the [1.0 roadmap](roadmap-1.0.md).
+Lumen discovers existing MCP servers, skills and plugin components and makes portable components available through supported adapter paths. OpenCode bridges this layer through official ACP; Cursor retains its native tools without shared injection. The three official API adapters use the same Lumen host tool layer. Identity, consent and the original configuration stay with the owning profile. This is a documented subset, **not universal compatibility** with every proprietary extension; declared limits remain visible in the settings matrix.
 
 ## What is supported
 

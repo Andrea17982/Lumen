@@ -23,7 +23,8 @@ for(const target of targets){
   }
   if(await hash(archive)!==asset[1])throw Error(`Moli archive digest mismatch: ${target}`);
   const extracted=path.join(cache,'extracted');await mkdir(extracted,{recursive:true});
-  if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-File',path.join(root,'scripts/extract-moli.ps1'),'-Archive',archive,'-Destination',extracted],{windowsHide:true,stdio:'pipe'});
+  // Windows ships bsdtar, which reads zip; Expand-Archive breaks on some runner .NET builds.
+  if(process.platform==='win32')execFileSync(path.join(process.env.SystemRoot||'C:\\Windows','System32','tar.exe'),['-xf',archive,'-C',extracted],{windowsHide:true,stdio:'pipe'});
   else execFileSync('tar',['-xzf',archive,'-C',extracted],{stdio:'pipe'});
   async function find(dir){for(const entry of await readdir(dir,{withFileTypes:true})){if(entry.isFile()&&entry.name===binary)return dir;if(entry.isDirectory()){const nested=await find(path.join(dir,entry.name));if(nested)return nested;}}}
   const packageRoot=await find(extracted);if(!packageRoot)throw Error('Moli executable missing from verified archive');

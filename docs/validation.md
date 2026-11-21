@@ -1,6 +1,6 @@
 # Validation and known limits
 
-What has actually been verified for the current source (0.12.0), and which limits remain. Planned work is in the [1.0 roadmap](roadmap-1.0.md). Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
+What has actually been verified for the current source (0.12.0), and which limits remain. Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
