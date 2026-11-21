@@ -1,6 +1,6 @@
 [package]
 name = "lumen"
-version = "0.11.0"
+version = "0.12.0"
 description = "Native AI sessions, optional orchestration and Moli browsing"
 authors = ["Andrea17982"]
 edition = "2021"

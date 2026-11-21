@@ -1,6 +1,6 @@
 # Roadmap 1.0 — All your agents. One seamless workflow.
 
-Revisione del **17 novembre 2026**, basata sulle decisioni del proprietario e sulla [chat strategica condivisa](https://chatgpt.com/share/e/6af6d485-2b1c-8335-9a07-2fe523f8a7a4). È l'unica roadmap attiva.
+Revisione del **21 novembre 2026**, basata sulle decisioni del proprietario, sulla [chat strategica condivisa](https://chatgpt.com/share/e/6af6d485-2b1c-8335-9a07-2fe523f8a7a4) e sullo [studio competitivo](../research_notes/competitor-gap-study.md). È l'unica roadmap attiva.
 
 Il blueprint condiviso è una proposta, non un elenco di funzionalità già disponibili. Le decisioni esplicite qui sotto prevalgono sui suoi esempi: Gemini CLI resta ritirata, non si introducono benchmark live né promesse di calendario. Lumen è sviluppato principalmente dal proprietario con assistenza AI; ogni milestone si chiude sui criteri di uscita, non su una data.
 
@@ -44,7 +44,7 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 - **Completamento reale.** Modifiche, test e build richiesti sono collegati a esiti degli strumenti e artefatti. Se una verifica non è eseguita o fallisce, il risultato lo dice e il lavoro mancante rimane visibile.
 - **Quote e spesa.** Distinguere uso riportato, stime e valori non disponibili. I costi API calcolati sono etichettati come stime, non fatture. Mancanza di dati affidabili per applicare il budget impedisce invii API autonomi.
 - **Più agenti quando servono.** Regole deterministiche e segnali misurabili prima di un ulteriore LLM-router; nessuna delega per il solo effetto dimostrativo. Review e worker non possono superare i permessi del task.
-- **Un grande cambiamento alla volta.** Adapter → core/daemon → contesto/collaborazione → autonomia → remoto essenziale → beta. Riutilizzare i componenti esistenti e misurare prima di ottimizzare.
+- **Un grande cambiamento alla volta.** Adapter → core/daemon → contesto/collaborazione → autonomia → flusso Git automatico → remoto essenziale → beta. Riutilizzare i componenti esistenti e misurare prima di ottimizzare.
 
 ## Milestone e criteri di uscita
 
@@ -53,8 +53,9 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 - **0.9 — Compatibilità e accessi ufficiali.** Contratto versionato per nove adapter; corpus offline comune per Claude Code, Codex, Antigravity e OpenCode (ACP ufficiale); API Anthropic/OpenAI/Google con keychain, strumenti comuni, quattro profili e budget prenotati. Limiti dichiarati nella [matrice delle integrazioni](integrations.md).
 - **0.10 — Core e daemon locale.** `lumen-core` separato dalla GUI; `lumen-daemon` autenticato possiede processi, sessioni e coda; recupero dopo crash senza reinvio silenzioso; ricevute dei comandi. Nella stessa versione sono arrivati i primi tasselli della 0.11 (sotto). [Changelog](https://github.com/Andrea17982/Lumen/releases/tag/v0.10.0) · [Servizio locale](local-service.md).
 - **0.11 — Contesto e collaborazione affidabile.** Memoria a tre livelli con fonti, handoff verificabile e corpus offline fra i quattro agenti e le API; Auto sceglie Single, Review, Parallel, Collaborative o Compete (solo profilo Qualità) e risponde da solo alle domande degli agenti; inbox delle approvazioni dei worker; plugin con permessi dichiarati. La ricerca sul grafo resta aperta e va fatta con misure prima/dopo. Nella stessa versione sono arrivati i primi tasselli della 0.12. [Changelog](release-notes/0.11.0.md).
+- **0.12 — Code Mode sperimentale.** Uscita fuori sequenza rispetto alla milestone qui sotto: `lumen_code` opt-in per API ufficiali, Ollama (per modello) e Claude Code/Codex/OpenCode via MCP, contesto locale al turno e sottoquery `llm()` con limiti per effort, righe **Code** e contatori nell'esecuzione. Resta disattivato di default: nessun modello misurato supera il gate di qualità; mancano misure su API a pagamento, CLI e app pacchettizzata. [Changelog](release-notes/0.12.0.md).
 
-### 0.12 — Autonomia recuperabile
+### Autonomia recuperabile (milestone 0.12, ancora aperta)
 
 **Stato:** consegnati nella 0.11 classificazione delle azioni, audit log per conversazione, controlli di sicurezza su Rewind con snapshot prima del ripristino, snapshot byte-exact e memoria trattenuta dopo contenuti non attendibili ([limiti](autonomy.md)). Restano limiti di turni/risorse oltre a tempo e budget, fixture complete di crash e budget esaurito, e hardening dei confini IPC/MCP.
 
@@ -62,7 +63,21 @@ Classificare azioni reversibili, rischiose/irreversibili ed esterne; audit log p
 
 Hardening su comandi distruttivi, prompt injection da pagine Moli/output strumenti, confini IPC/MCP e dipendenze. Il salvataggio automatico della memoria di progetto non trasforma contenuti esterni non attendibili in istruzioni approvate.
 
+**Dallo [studio competitivo](../research_notes/competitor-gap-study.md#punti-deboli-da-sfruttare):** i bug più votati di T3 sono permessi ignorati in entrambi i sensi (domande per ogni comando, oppure esecuzione senza la domanda dovuta) e checkpoint che superano il timeout Git sui repository grandi. Fixture per ogni profilo e adapter: nessuna domanda superflua sulle azioni già autorizzate, nessuna esecuzione che doveva chiedere. Misurare snapshot e Rewind su un repository grande.
+
 **Uscita:** fixture di injection, comandi distruttivi, crash e budget esaurito verificano conferme, log, arresto e recupero; il rollback dichiarato riporta il progetto allo stato del checkpoint nei limiti supportati. Nessuna dichiarazione di build riuscita senza artefatto e controlli richiesti.
+
+### 0.12.5 — Dal task alla PR verificata, da solo
+
+Funzioni che T3 Code, Paseo, Orca e Paradev offrono tutte, ma che lì l'utente configura e aziona a mano. In Lumen Auto le decide; l'utente vede il risultato e un solo pulsante.
+
+- **Worktree pronto da solo.** Rilevare package manager e lockfile, eseguire l'install, copiare gli ignorati necessari (`.env*`, config locali) nel worktree e generare un nome di branch leggibile. Nessun file di configurazione richiesto; un file di progetto serve solo come override.
+- **Anteprima per worktree.** Rilevare le porte aperte dai processi del worktree e aprire l'anteprima giusta. Moli la usa per verificare la UI prima che il lavoro risulti completato.
+- **Commit e PR.** Riutilizzare `gitops.rs`, `review.rs` e la proiezione dei diff. Commit locale automatico a verifica superata, messaggio generato, PR draft preparata via `gh` già autenticato. Push e apertura restano azioni esterne: **un solo pulsante "Pubblica"** con anteprima di remote, base e head.
+- **Ciclo dopo la pubblicazione.** Check CI falliti e commenti di review rientrano come turno di correzione nello stesso worktree, entro budget, permessi e limiti di tentativi.
+- **Revisione più rapida.** Righe scritte dall'AI marcate nel diff a partire dai checkpoint per turno; note su singole righe inviate all'agente come un unico turno.
+
+**Uscita:** repository temporaneo con due worktree, modifica concorrente, remote locale e fixture `gh` per esiti incerti e retry senza duplicati. Un task "aggiungi una funzione e i test" arriva da prompt a PR draft pronta senza passaggi manuali oltre a "Pubblica"; un check fallito simulato produce un fix e un nuovo push solo dopo conferma.
 
 ### 0.13 — Controllo remoto essenziale
 
@@ -72,11 +87,15 @@ Connessione in LAN o tramite VPN dell'utente; pairing con conferma sul desktop. 
 
 **Gate di sicurezza remoto obbligatorio:** threat model, autenticazione del canale, identità dei dispositivi, pairing robusto, scadenza/revoca delle sessioni, rate limiting e log. Nessuna porta di rete aperta di default. Il client remoto non può superare il profilo deciso sul desktop; Autopilot remoto richiede abilitazione esplicita. Test di pairing debole, replay, furto del dispositivo e revoca; nessun finding high/critical aperto.
 
+Pairing con **QR code** mostrato dal desktop, come in Paseo: l'utente non deve capire VPN o indirizzi. Fixture aggiuntive tratte dai bug dei concorrenti: comandi accodati dal telefono eseguiti anche con l'app in background, pairing LAN con TLS e non soltanto `http://`.
+
 **Uscita:** con GUI desktop chiusa, un telefono in LAN e via VPN può avviare un task, seguire la chat, rispondere a una domanda, fermare/riprendere il lavoro. Eventi e comandi non vengono duplicati dopo una riconnessione; il gate remoto passa.
 
 ### 1.0 beta → 1.0 — Esperienza e qualità di rilascio
 
-- Onboarding: rilevamento delle CLI/account, autenticazione ufficiale, profili preconfigurati (React/TypeScript, Godot, solo locale con Ollama), installazione personalizzabile e primo task senza manuale tecnico.
+- Onboarding: rilevamento delle CLI/account, autenticazione ufficiale, profili preconfigurati (React/TypeScript, Godot, solo locale con Ollama), installazione personalizzabile e primo task senza manuale tecnico. Lumen installa le CLI mancanti e apre il login ufficiale senza terminale, e propone già pronti i progetti trovati nella cronologia di Claude Code, Codex e OpenCode (come il Welcome di T3).
+- Quote semplici: una sola barra per provider che somma gli account collegati, con il prossimo reset. Il dettaglio per account resta in Avanzate. Auto distribuisce il lavoro secondo la [decisione D1](../research_notes/competitor-gap-study.md#decisioni-richieste) sul cambio account.
+- **Ripara Lumen:** un pulsante che fa leggere a un agente log e stato locale, propone e applica la correzione o prepara una segnalazione senza dati personali.
 - UI minimale e accessibile, stato del lavoro comprensibile, diagnostica progressiva; brand satin-glass approvato. Conservare disclosure AI, ringraziamenti ai tester, MIT/open source e supporto economico facoltativo.
 - Auto-update con firme degli aggiornamenti, rollback/migrazione documentati, packaging e risorse/licenze verificati. Code signing OS resta escluso.
 - Windows x64 target principale; matrice di installazione, flussi fondamentali e limiti di macOS/Linux esplicita. Nessuna compatibilità dedotta dalla sola compilazione.
@@ -99,10 +118,19 @@ Non si fissano percentuali di miglioramento o limiti economici universali prima 
 - Dettatura vocale, condivisione delle sessioni e gestione multi-macchina.
 - Profili Office/Creator/Research, marketplace aperto di skill ed editor visuale bidirezionale avanzato.
 - Perk in abbonamento, senza bloccare funzioni fondamentali. Nessuna automazione autonoma senza supervisione implicita nella 1.0.
+- Dallo [studio competitivo](../research_notes/competitor-gap-study.md#punti-di-forza-da-mutuare), in ordine di valore stimato:
+  - issue GitHub/Linear → task: Lumen propone quali risolvere e le porta fino alla PR verificata;
+  - routine attivate da eventi (PR aperta, check fallito) sopra `/every`, senza cloud Lumen; bot Slack/Discord dopo;
+  - progetti multi-repo con un diff unico (richiesta più votata in Orca e Paradev);
+  - esecuzione isolata in Docker, scelta da Auto per task rischiosi o repository sconosciuti;
+  - design mode in Moli: clic su un elemento dell'anteprima e contesto pronto nel composer;
+  - risposte HTML sandboxate nel transcript per report, grafici e confronti di Compete;
+  - controllo di app desktop ed emulatori iOS/Android per la verifica visiva, entro Autopilot;
+  - guest link e pagine commentabili sopra il relay E2EE.
 
 ## Decisioni tecniche da prendere durante l'implementazione
 
-Il [confronto con T3 Code, Paseo, Paradev e Orca](../research_notes/competitors-t3-paseo-paradev-orca.md#prime-tre-priorità-proposte) propone un pannello Changes con flusso Git/PR, una PWA remota con TLS obbligatorio seguita dal relay E2EE post-1.0 e nuovi tool per pilotare Lumen attraverso il bridge MCP di Code Mode. Le proposte attendono approvazione.
+Lo [studio competitivo del 21 novembre](../research_notes/competitor-gap-study.md) assegna il flusso Git/PR alla 0.12.5 e il pairing QR alla 0.13. Restano da approvare la PWA con TLS obbligatorio, i tool per pilotare Lumen attraverso il bridge MCP di Code Mode ([proposta](../research_notes/competitors-t3-paseo-paradev-orca.md#prime-tre-priorità-proposte)) e le decisioni D1 (cambio account automatico) e D2 (pubblicazione).
 
 L'intervista di perimetro è chiusa; questi punti richiedono prove del codice, non altre scelte strategiche preventive: trasporto IPC locale autenticato e recupero eventi; confini del core/daemon; applicazione dei budget con uso/costi mancanti; protocollo di handoff e gestione dei conflitti; threat model e pairing LAN/VPN. Documentare le alternative e scegliere il percorso minimo che passa i criteri di uscita.
 
