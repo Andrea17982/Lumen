@@ -36,6 +36,13 @@ test('glass selectors work by keyboard and About fits half-screen settings', asy
   await expect(language).toHaveText('English');
   await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   const about = page.getByRole('tab', { name: 'About', exact: true });
+  // Tabs stay on one scrollable row; the last one is reachable by scrolling.
+  expect(
+    await page
+      .locator('.settings-tabs [role=tab]')
+      .evaluateAll((tabs) => new Set(tabs.map((t) => t.getBoundingClientRect().top)).size),
+  ).toBe(1);
+  await about.scrollIntoViewIfNeeded();
   await expect(about).toBeInViewport();
   await about.click();
   await expect(page.getByRole('heading', { name: 'About Lumen' })).toBeVisible();

@@ -609,12 +609,16 @@ export default function App() {
           setProjectForm(false);
           return;
         }
+        if (usageOpen) {
+          setUsageOpen(false);
+          return;
+        }
         closeSidebar();
       }
     };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [settings, closeSidebar, context, projectForm, tourStep]);
+  }, [settings, closeSidebar, context, projectForm, tourStep, usageOpen]);
 
   async function pickFolder() {
     if (!desktop) return 'Browser preview';
