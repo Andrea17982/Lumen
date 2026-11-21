@@ -37,7 +37,7 @@ Il ridimensionamento del remoto è una scelta esplicita del 16 novembre: il work
 
 ## Regole di esecuzione e accettazione
 
-- **Interfacce ufficiali.** Nessun proxy di inferenza, estrazione di token o rotazione di account per aggirare limiti. Le autorizzazioni dei connettori restano con il profilo proprietario.
+- **Interfacce ufficiali.** Nessun proxy di inferenza né estrazione di token. Auto può passare fra tutti gli account collegati dall'utente, anche dello stesso provider, dopo un consenso unico che ricorda che i termini dei provider restano responsabilità dell'utente (decisione del 21 novembre). Le autorizzazioni dei connettori restano con il profilo proprietario.
 - **Capacità dichiarate.** Ripresa, strumenti, immagini, sub-agenti, approvazioni, streaming, annullamento, cambio modello, MCP, skill e hook hanno stato e limiti per adapter. “Non disponibile” e “non implementato” non sono sinonimi di “completato”.
 - **Continuità senza replay del lavoro osservato.** Quota, Stop, crash e passaggi di agente conservano output parziale ed effetti noti. Se lo stato è incerto, si ferma o si propone un recupero esplicito; non si promette exactly-once su strumenti esterni opachi.
 - **Qualità conservata.** “Prosegui.” eredita difficoltà, reasoning e vincoli. Un modello più debole richiede consenso; una working tree già modificata non giustifica da sola il rifiuto di lavorare.
@@ -94,7 +94,7 @@ Pairing con **QR code** mostrato dal desktop, come in Paseo: l'utente non deve c
 ### 1.0 beta → 1.0 — Esperienza e qualità di rilascio
 
 - Onboarding: rilevamento delle CLI/account, autenticazione ufficiale, profili preconfigurati (React/TypeScript, Godot, solo locale con Ollama), installazione personalizzabile e primo task senza manuale tecnico. Lumen installa le CLI mancanti e apre il login ufficiale senza terminale, e propone già pronti i progetti trovati nella cronologia di Claude Code, Codex e OpenCode (come il Welcome di T3).
-- Quote semplici: una sola barra per provider che somma gli account collegati, con il prossimo reset. Il dettaglio per account resta in Avanzate. Auto distribuisce il lavoro secondo la [decisione D1](../research_notes/competitor-gap-study.md#decisioni-richieste) sul cambio account.
+- Quote semplici: una sola barra per provider che somma gli account collegati, con il prossimo reset. Il dettaglio per account resta in Avanzate. Cambio account automatico ([D1](../research_notes/competitor-gap-study.md#decisioni-richieste)): dopo il consenso unico all'onboarding, a quota esaurita e prima di lavoro osservato Auto passa senza chiedere a un altro account, anche dello stesso provider, o a un altro provider con modello pari o superiore. Con soli modelli più deboli programma la ripresa al reset. Lavoro già osservato continua a impedire il replay. Fixture: account esaurito → stesso provider, poi altro provider, poi ripresa al reset, senza duplicare output.
 - **Ripara Lumen:** un pulsante che fa leggere a un agente log e stato locale, propone e applica la correzione o prepara una segnalazione senza dati personali.
 - UI minimale e accessibile, stato del lavoro comprensibile, diagnostica progressiva; brand satin-glass approvato. Conservare disclosure AI, ringraziamenti ai tester, MIT/open source e supporto economico facoltativo.
 - Auto-update con firme degli aggiornamenti, rollback/migrazione documentati, packaging e risorse/licenze verificati. Code signing OS resta escluso.
@@ -130,7 +130,7 @@ Non si fissano percentuali di miglioramento o limiti economici universali prima 
 
 ## Decisioni tecniche da prendere durante l'implementazione
 
-Lo [studio competitivo del 21 novembre](../research_notes/competitor-gap-study.md) assegna il flusso Git/PR alla 0.12.5 e il pairing QR alla 0.13. Restano da approvare la PWA con TLS obbligatorio, i tool per pilotare Lumen attraverso il bridge MCP di Code Mode ([proposta](../research_notes/competitors-t3-paseo-paradev-orca.md#prime-tre-priorità-proposte)) e le decisioni D1 (cambio account automatico) e D2 (pubblicazione).
+Lo [studio competitivo del 21 novembre](../research_notes/competitor-gap-study.md) assegna il flusso Git/PR alla 0.12.5 e il pairing QR alla 0.13. Restano da approvare la PWA con TLS obbligatorio, i tool per pilotare Lumen attraverso il bridge MCP di Code Mode ([proposta](../research_notes/competitors-t3-paseo-paradev-orca.md#prime-tre-priorità-proposte)) e la decisione D2 (pubblicazione). D1 è decisa: cambio account automatico anche fra account dello stesso provider.
 
 L'intervista di perimetro è chiusa; questi punti richiedono prove del codice, non altre scelte strategiche preventive: trasporto IPC locale autenticato e recupero eventi; confini del core/daemon; applicazione dei budget con uso/costi mancanti; protocollo di handoff e gestione dei conflitti; threat model e pairing LAN/VPN. Documentare le alternative e scegliere il percorso minimo che passa i criteri di uscita.
 
