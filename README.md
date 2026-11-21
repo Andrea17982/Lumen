@@ -38,8 +38,6 @@ Budget and Default profiles never run competing solutions, so a fresh install wo
 
 I use several AI subscriptions and I was tired of choosing which one to open, copying context between them and checking their work by hand.
 
-See the [source-backed comparison of T3 Code, Paseo, Paradev and Orca](research_notes/competitors-t3-paseo-paradev-orca.md) for Git/PR, remote access and agent control.
-
 **Hermes Agent** — I love how it learns skills and keeps memory, and that you can talk to it from Telegram or Slack. It's better as a personal agent living on a server. Lumen is a coding workspace on your desktop that uses your subscriptions through their official CLIs and verifies the result against your project's checks.
 
 **Conductor, Claude Squad and similar** — Great for running many agents in parallel worktrees.

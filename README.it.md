@@ -33,8 +33,6 @@ I profili Budget e Default non fanno mai gare, quindi un'installazione nuova non
 
 Uso più abbonamenti AI ed ero stanco di scegliere quale aprire, copiare il contesto da uno all'altro e controllare il loro lavoro a mano.
 
-Il [confronto con T3 Code, Paseo, Paradev e Orca](research_notes/competitors-t3-paseo-paradev-orca.md) raccoglie le fonti ufficiali su Git/PR, accesso remoto e controllo da parte degli agenti.
-
 **Hermes Agent** — Mi piace molto come impara skill e conserva la memoria, e che puoi parlargli da Telegram o Slack. È migliore come agente personale che vive su un server. Lumen è uno spazio di lavoro per programmare sul tuo desktop, che usa i tuoi abbonamenti tramite le CLI ufficiali e verifica il risultato con i controlli del tuo progetto.
 
 **Conductor, Claude Squad e simili** — Ottimi per far girare tanti agenti in parallelo nei worktree.
