@@ -619,6 +619,21 @@ pub async fn execute(
                     } else {
                         code_mode::result("Code Mode requires a string in code", true)
                     }
+                } else if let Some(code) = (mode == CodeMode::On)
+                    .then(|| code_mode::direct_script(name, &call.args, &tools))
+                    .flatten()
+                {
+                    if sandbox.is_none() {
+                        sandbox = Some(code_mode::Session::new(code_cancel.clone())?.with_rlm(
+                            crate::rlm::Turn::from_invocation(&input, data, &endpoint, effort),
+                        ));
+                    }
+                    sandbox
+                        .as_ref()
+                        .unwrap()
+                        .dispatch(&input, browser, &hub, &tools, &code, &mut emit)
+                        .await
+                        .0
                 } else if mode == CodeMode::On || name == code_mode::TOOL {
                     code_mode::result("Tool was not advertised for this turn", true)
                 } else {

@@ -251,12 +251,20 @@ async fn execute_at(
                     .as_str()
                     .ok_or("Tool name is missing")?;
                 let arguments = &call["function"]["arguments"];
-                let mut result = if code && mode.active && name == code_mode::TOOL {
+                let direct = (code && mode.active && name != code_mode::TOOL)
+                    .then(|| code_mode::direct_script(name, arguments, &definitions))
+                    .flatten();
+                let mut result = if code
+                    && mode.active
+                    && (name == code_mode::TOOL || direct.is_some())
+                {
                     emit(Activity {
                         kind: "tool".into(),
                         text: name.into(),
                     });
-                    let (mut result, syntax) = if let Some(script) = arguments["code"].as_str() {
+                    let (mut result, syntax) = if let Some(script) =
+                        direct.as_deref().or(arguments["code"].as_str())
+                    {
                         if sandbox.is_none() {
                             sandbox = Some(code_mode::Session::new(code_cancel.clone())?.with_rlm(
                                 crate::rlm::Turn::from_invocation(

@@ -123,6 +123,22 @@ fn describe(tools: &[Value], example: &str) -> Value {
     })
 }
 
+/// Models often call a catalogue tool directly although only lumen_code is
+/// advertised. Run it as the one-line script it stands for, through the same dispatch.
+pub(crate) fn direct_script(name: &str, args: &Value, tools: &[Value]) -> Option<String> {
+    tools.iter().any(|tool| tool["name"] == name).then(|| {
+        format!(
+            "tools[{}]({})",
+            json!(name),
+            if args.is_object() {
+                args.to_string()
+            } else {
+                "{}".into()
+            }
+        )
+    })
+}
+
 pub(crate) fn result(text: &str, error: bool) -> Value {
     let mut value = json!({"content": [{"type": "text", "text": text}]});
     if error {
@@ -974,6 +990,20 @@ mod tests {
         assert_eq!(
             next.run("typeof number", &[], no_host).await.unwrap(),
             "undefined"
+        );
+    }
+
+    #[test]
+    fn direct_calls_become_scripts_only_for_catalogue_tools() {
+        let tools = [tool("lumen_read_file")];
+        assert_eq!(
+            direct_script("lumen_read_file", &json!({"path": "a"}), &tools).as_deref(),
+            Some(r#"tools["lumen_read_file"]({"path":"a"})"#)
+        );
+        assert_eq!(direct_script("lumen_write_file", &json!({}), &tools), None);
+        assert_eq!(
+            direct_script("lumen_read_file", &json!("x"), &tools).as_deref(),
+            Some(r#"tools["lumen_read_file"]({})"#)
         );
     }
 

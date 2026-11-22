@@ -919,12 +919,16 @@ async fn trial<'a>(
             for call in requested {
                 let name = call["function"]["name"].as_str().unwrap_or_default();
                 let args = &call["function"]["arguments"];
-                let result = if code && mode.active && name == code_mode::TOOL {
+                let direct = (code && mode.active && name != code_mode::TOOL)
+                    .then(|| code_mode::direct_script(name, args, &definitions))
+                    .flatten();
+                let result = if code && mode.active && (name == code_mode::TOOL || direct.is_some()) {
                     if sandbox.is_none() {
                         sandbox = Some(Session::new(stop.clone())?);
                     }
+                    let script = direct.as_deref().or(args["code"].as_str()).ok_or("missing code")?;
                     let (mut result, syntax, failed) = sandbox.as_ref().unwrap()
-                        .bench_run(args["code"].as_str().ok_or("missing code")?, &definitions, &invoke, &mut trace)
+                        .bench_run(script, &definitions, &invoke, &mut trace)
                         .await;
                     row.script_errors += usize::from(failed);
                     if let Some(activity) = mode.observe(syntax, &mut result) {
@@ -1262,8 +1266,13 @@ async fn trial_api(
             }
             let mut results = vec![];
             for call in turn.calls {
-                let result = if cm && call.name == code_mode::TOOL {
-                    let code = call.args["code"].as_str().unwrap_or_default().to_owned();
+                let direct = (cm && call.name != code_mode::TOOL)
+                    .then(|| code_mode::direct_script(&call.name, &call.args, &definitions))
+                    .flatten();
+                let result = if cm && (call.name == code_mode::TOOL || direct.is_some()) {
+                    let code = direct.unwrap_or_else(|| {
+                        call.args["code"].as_str().unwrap_or_default().to_owned()
+                    });
                     let (result, _, failed) = sandbox
                         .bench_run(&code, &definitions, &invoke, &mut trace)
                         .await;
