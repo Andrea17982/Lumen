@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lumen",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "identifier": "io.github.andrea17982.lumen",
   "build": {
     "beforeDevCommand": "node scripts/prepare-daemon.mjs --debug && npm run dev",

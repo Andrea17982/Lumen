@@ -1,12 +1,12 @@
 # Validation and known limits
 
-What has actually been verified for the current source (0.12.0), and which limits remain. Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
+What has actually been verified for the current source (0.12.1), and which limits remain. Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
-## 0.12.1 (in progress)
+## 0.12.1
 
-- **Automated:** 298 Rust tests (19 opt-in ignored), 81 frontend tests, Clippy with warnings denied and formatting. A permission matrix checks every access profile against read, write, command, destructive command and `git push`, for classic and Code Mode calls.
+- **Automated:** 299 Rust tests (19 opt-in ignored), 81 frontend tests, Clippy with warnings denied and formatting. A permission matrix checks every access profile against read, write, command, destructive command and `git push`, for classic and Code Mode calls.
 - **Code Mode, local only:** suites D (88 MCP tools) and F (six coding tasks judged by their tests) added. No local model passes the gate: gpt-oss 20B (low) holds quality (44/50 → 46/50) but saves no tokens overall; Qwen3-Coder 30B loses quality. Code Mode stays opt-in. Through the subscription CLIs (Codex and Claude Code, about 150 sessions), models ignored `lumen_code` while direct tools were offered, so Code Mode now offers Moli and MCP only inside scripts. With large tool results Claude used 90% fewer uncached tokens and answered more often (1/3 → 2/3); with small results scripts add a few requests. Paid API runs were not measured. [Results](../reports/bench/2026-11-22/summary.md)
 - **Packaged app:** a release WebView2 build with isolated data ran Code Mode scripts and Moli calls through Ollama, with read-only denial and no console errors. It also found that Ollama's 4K default context dropped the tool list; requests now size the window.
 - **Autonomy:** the native API suite runs again (the debug service overflowed its stack) and adds a budget exhausted mid-turn. Crash and restart suites pass. Restore on a 50,000-file repository went from 66 s to 11 s by touching only changed paths. The Orchestra time limit now continues across a resume.

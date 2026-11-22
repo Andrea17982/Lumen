@@ -46,7 +46,7 @@ I use several AI subscriptions and I was tired of choosing which one to open, co
 
 Where Lumen is behind today: no mobile app yet, unsigned packages, and Windows is the only platform with full desktop testing.
 
-**Code Mode measurements.** On Qwen3-Coder through local Ollama with five paired seeds, classic tools → Code Mode finished **0/5 → 5/5** file-edit trials and **5/5 → 0/5** log-filter trials. In the long-context suite, classic tools, Code Mode and Code Mode with RLM enabled scored **5/20, 4/20 and 5/20**. The model made zero `llm()` calls in that suite. Both experiments spent **USD 0** on inference. [File and log trials](reports/bench/2026-11-18/f2-qwen3/summary.md) · [Long-context trials](reports/bench/2026-11-18/f3-suite-e/summary.md)
+**Code Mode measurements.** With Code Mode on, Moli and MCP tools are reachable only from a script. On Claude Code, reading twelve large files cost about 357k uncached tokens with direct tools and 37k from a script (−90%), with more correct answers (1/3 → 2/3). With small tool results scripts add a few requests, and Codex saved nothing. Local models through Ollama did not meet the bar for a default, so Code Mode stays opt-in. Subscription quota only; no API spend. [Results](reports/bench/2026-11-22/summary.md)
 
 ## Also inside
 

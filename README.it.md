@@ -41,7 +41,7 @@ Uso più abbonamenti AI ed ero stanco di scegliere quale aprire, copiare il cont
 
 Dove Lumen oggi è indietro: niente app mobile per ora, pacchetti non firmati, e Windows è l'unica piattaforma provata a fondo sul desktop.
 
-**Misure di Code Mode.** Su Qwen3-Coder con Ollama locale e cinque seed appaiati, dai tool classici a Code Mode i successi sono passati da **0/5 a 5/5** nelle modifiche di file e da **5/5 a 0/5** nel filtro dei log. Nella suite di contesto lungo, i tre bracci classico, Code Mode e Code Mode con RLM abilitato hanno ottenuto **5/20, 4/20 e 5/20**. Il modello ha fatto zero chiamate a `llm()` in quella suite. Costo d'inferenza dei due esperimenti **0 USD**. [Modifiche e filtro](reports/bench/2026-11-18/f2-qwen3/summary.md) · [Contesto lungo](reports/bench/2026-11-18/f3-suite-e/summary.md)
+**Misure di Code Mode.** Con Code Mode attivo, Moli e i tool MCP sono raggiungibili solo da uno script. Su Claude Code, leggere dodici file grandi è costato circa 357k token non in cache con i tool diretti e 37k con uno script (−90%), con più risposte corrette (da 1/3 a 2/3). Con risultati piccoli lo script aggiunge qualche richiesta, e Codex non ha risparmiato nulla. I modelli locali con Ollama non hanno raggiunto la soglia per diventare predefiniti, quindi Code Mode resta opt-in. Solo quota degli abbonamenti, nessuna spesa API. [Risultati](reports/bench/2026-11-22/summary.md)
 
 ## C'è anche
 
