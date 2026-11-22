@@ -4,6 +4,13 @@ What has actually been verified for the current source (0.12.0), and which limit
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
+## 0.12.1 (in progress)
+
+- **Automated:** 298 Rust tests (19 opt-in ignored), 81 frontend tests, Clippy with warnings denied and formatting. A permission matrix checks every access profile against read, write, command, destructive command and `git push`, for classic and Code Mode calls.
+- **Code Mode, local only:** suites D (88 MCP tools) and F (six coding tasks judged by their tests) added. No local model passes the gate: gpt-oss 20B (low) holds quality (44/50 → 46/50) but saves no tokens overall; Qwen3-Coder 30B loses quality. Code Mode stays opt-in. Paid API and CLI runs are not done. [Results](../reports/bench/2026-11-22/summary.md)
+- **Packaged app:** a release WebView2 build with isolated data ran Code Mode scripts and Moli calls through Ollama, with read-only denial and no console errors. It also found that Ollama's 4K default context dropped the tool list; requests now size the window.
+- **Autonomy:** the native API suite runs again (the debug service overflowed its stack) and adds a budget exhausted mid-turn. Crash and restart suites pass. Restore on a 50,000-file repository went from 66 s to 11 s by touching only changed paths. The Orchestra time limit now continues across a resume.
+
 ## 0.12.0
 
 - **Automated:** 293 Rust tests (17 opt-in ignored), 81 frontend tests, 52 production-browser tests, Clippy with warnings denied, formatting and documentation/version checks. CI runs source tests on Windows, macOS and Linux.
@@ -36,7 +43,7 @@ These checks were made on 0.10.0 and cover areas 0.11 and 0.12 did not redesign.
 - **Platforms:** Windows x64 is the only platform with interactive desktop acceptance. macOS and Linux packages pass CI builds, tests and package probes only.
 - **Live coverage:** no live quality benchmark; the broader multi-account, CLI-version, quota/restart and repeated-Resume matrix is not certified. A naturally exhausted real-account quota transition has not been observed.
 - **Integrations:** universal connector/plugin portability is not delivered. See the [compatibility audit](integrations.md#compatibility-audit-and-explicit-limits). Cursor is explicit Autopilot only; API adapters are buffered and not Orchestra workers.
-- **Memory and schedules:** facts come from model replies and can echo untrusted content the model read; review them. A recurring task's end date is end of day in UTC. The Orchestra time limit restarts after a service restart.
+- **Memory and schedules:** facts come from model replies and can echo untrusted content the model read; review them. A recurring task's end date is end of day in UTC. The Orchestra time limit counts active time only; downtime between a restart and Resume is free.
 - **Performance:** the complete transcript stays mounted; repeated same-process opening drift is unresolved.
 - **Graph:** pattern-based, not a compiler. Arbitrary aliases, dynamic paths and Godot UIDs remain open.
 - **Moli:** coverage beyond controlled fixtures varies by website, CAPTCHA and rendering; Canvas/WebGL pixel parity is not guaranteed.
