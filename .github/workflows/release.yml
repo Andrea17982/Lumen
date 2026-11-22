@@ -9,8 +9,8 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -47,15 +47,15 @@ jobs:
           $env:LUMEN_RELEASE_EXE = Join-Path $portableRoot 'Lumen.exe'
           node tests/release-smoke.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Portable package probe failed' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist-release/*
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -85,7 +85,7 @@ jobs:
           export LUMEN_RELEASE_MOLI=$(find "$mount" -path "*/resources/moli/darwin-$arch/moli" -type f -print -quit)
           test -n "$LUMEN_RELEASE_MOLI"
           node tests/release-smoke.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
@@ -93,8 +93,8 @@ jobs:
     # xcap/libspa need newer PipeWire headers than Ubuntu 22.04 provides.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -131,7 +131,7 @@ jobs:
           test -n "$LUMEN_RELEASE_EXE" && test -n "$LUMEN_RELEASE_MOLI"
           cd "$GITHUB_WORKSPACE"
           node tests/release-smoke.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -142,8 +142,8 @@ jobs:
     needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -168,7 +168,7 @@ jobs:
           sha256sum -- * > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Keep the assembled release reviewable until its assets/checks are verified.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Lumen ${{ steps.release.outputs.version }}
           body_path: ${{ steps.release.outputs.notes }}
