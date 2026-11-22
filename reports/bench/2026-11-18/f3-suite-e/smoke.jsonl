@@ -1,1 +1,0 @@
-{"answer":"17","case":"direct-subquery-smoke","costUsd":0,"expected":"17","model":"qwen3-coder:30b-a3b-q4_K_M","subInputTokens":52,"subOutputTokens":3,"subRounds":1,"success":true,"suite":"E","tier":"T1"}

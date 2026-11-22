@@ -123,14 +123,14 @@ mod tests {
     #[test]
     fn explicit_directory_changes_preserve_spaces() {
         for text in [
-            r"/workspace M:\Personal Projects\Lumen",
-            r"Cambia directory di lavoro in M:\Personal Projects\Lumen",
-            r#"Use workspace "M:\Personal Projects\Lumen""#,
-            r"Change: Procedi, ovviamente Lumen su cui lavorare e' questo: M:\Personal Projects\Lumen (avevo sbagliato directory)",
+            r"/workspace D:\My Projects\App",
+            r"Cambia directory di lavoro in D:\My Projects\App",
+            r#"Use workspace "D:\My Projects\App""#,
+            r"Change: Procedi, il progetto su cui lavorare e' questo: D:\My Projects\App (avevo sbagliato directory)",
         ] {
             assert_eq!(
                 requested_folder(text).unwrap().as_deref(),
-                Some(r"M:\Personal Projects\Lumen"),
+                Some(r"D:\My Projects\App"),
                 "{text}"
             );
         }
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn references_and_quoted_instructions_do_not_switch_projects() {
         for text in [
-            r"Leggi M:\Personal Projects\Lumen\README.md",
+            r"Leggi D:\My Projects\App\README.md",
             r"> /workspace M:\Other",
             "```text\n/workspace /other\n```",
             "Ecco il documento:\n\n/workspace /other\nfine",

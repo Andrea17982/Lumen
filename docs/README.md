@@ -20,7 +20,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Official API access](api-access.md) | Keychain, confirmed pricing, permissions and reserved budgets |
 | [Release history](release-notes/README.md) | Current changelog; earlier versions on GitHub Releases |
 
-[Design system](../DESIGN.md) · [Product brief](../PRODUCT.md) · [Security](../SECURITY.md) · [Third-party notices](../THIRD_PARTY_NOTICES.md) · [Contributing](../CONTRIBUTING.md)
+[Security](../SECURITY.md) · [Third-party notices](../THIRD_PARTY_NOTICES.md) · [Contributing](../CONTRIBUTING.md)
 
 ## Gallery
 

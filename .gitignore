@@ -15,14 +15,9 @@ src-tauri/gen/
 *.db-wal
 auth.json
 .claude/
+.agents/
 .codex/
-!.codex/
-.codex/*
-!.codex/hooks.json
 .impeccable/
-!.impeccable/
-.impeccable/*
-!.impeccable/config.json
 test-results/
 playwright-report/
 *.tsbuildinfo
@@ -36,3 +31,6 @@ src/features/**/target/
 docs/roadmap-1.0.md
 research_notes/
 reports/Lumen e T3 Code.md
+PRODUCT.md
+DESIGN.md
+reports/bench/**/*.jsonl

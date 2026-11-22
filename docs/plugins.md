@@ -43,7 +43,7 @@ A plugin whose files change on disk to ask for more than you approved stops work
 ```
 
 - `id` is 2–64 lowercase letters, digits or dashes. `version` looks like `1.2.3`.
-- `lumen` is a list of comparators that all must match the running Lumen version, for example `>=0.10.0 <0.12.0`.
+- `lumen` is a list of comparators that all must match the running Lumen version, for example `>=0.12.0 <0.13.0`.
 - Unknown fields are rejected. Every path must stay inside the plugin folder, and symbolic links are refused.
 
 ### Permissions

@@ -5,7 +5,7 @@ Feedback is useful even without code. Open an [issue](https://github.com/Andrea1
 ## Changes
 
 1. Create a focused branch. Discuss substantial product or protocol changes before implementation.
-2. Read [Product](PRODUCT.md), [Design](DESIGN.md) and [Architecture](docs/architecture.md). Preserve explicit provider/model choices, real permissions, native authentication and workspace ownership.
+2. Read the [Architecture](docs/architecture.md). Preserve explicit provider/model choices, real permissions, native authentication and workspace ownership.
 3. Keep UI in components/settings, native ownership in Rust and protocol decisions out of the renderer. Use fixtures for substantive regressions, not live credentials in CI.
 4. Run [development checks](docs/development.md), including documentation/version/link checks for doc or release changes.
 5. Explain resulting behavior, why it changed, evidence and remaining validation limits. Capture the actual interface with synthetic/private-safe data for UI changes.

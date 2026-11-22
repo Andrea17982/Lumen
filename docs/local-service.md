@@ -1,6 +1,6 @@
 # Local service and recovery
 
-The 0.10 desktop consists of `lumen.exe` (the Tauri interface) and `lumen-daemon.exe` (the local execution service). The corresponding Unix executables have no `.exe` suffix. Keep the service beside the interface, including in portable installations.
+The desktop consists of `lumen.exe` (the Tauri interface) and `lumen-daemon.exe` (the local execution service). The corresponding Unix executables have no `.exe` suffix. Keep the service beside the interface, including in portable installations.
 
 ## Closing, stopping and login
 
