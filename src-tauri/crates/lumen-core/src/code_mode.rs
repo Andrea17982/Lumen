@@ -1170,6 +1170,68 @@ mod tests {
         assert!(!workspace.join("out.txt").exists());
     }
 
+    #[tokio::test]
+    async fn scripts_follow_the_same_permission_matrix() {
+        for (access, tool, args, asks, runs) in api_tools::permission_matrix() {
+            let f = Fixture::new();
+            let account = Account {
+                id: "fixture".into(),
+                name: "fixture".into(),
+                provider: Provider::Openaiapi,
+            };
+            let (config, workspace) = (f.directory("accounts/fixture"), f.directory("project"));
+            api_tools::matrix_fixture(&workspace);
+            let input = Invocation {
+                rlm: None,
+                automatic: false,
+                account: &account,
+                config: &config,
+                workspace: &workspace,
+                prompt: "",
+                model: None,
+                effort: "",
+                access,
+                approvals: None,
+                resume: None,
+                browser_scope: None,
+                browser_artifacts: None,
+                browser: None,
+            };
+            let browser = Registration::new(&input, mpsc::unbounded_channel().0)
+                .await
+                .unwrap();
+            let (_cancel, stop) = watch::channel(false);
+            let mut asked = 0;
+            let (out, _) = Session::new(stop)
+                .unwrap()
+                .dispatch(
+                    &input,
+                    &browser,
+                    &Default::default(),
+                    &api_tools::definitions(access),
+                    &direct_script(tool, &args, &[json!({"name": tool})]).unwrap(),
+                    &mut |event| {
+                        if event.kind == "interaction" && event.text.contains("\"permission\"") {
+                            asked += 1;
+                            let question: Value = serde_json::from_str(&event.text).unwrap();
+                            crate::interactions::answer_question(
+                                question["id"].as_str().unwrap().into(),
+                                [("action".into(), vec!["Allow once".into()])].into(),
+                            )
+                            .unwrap();
+                        }
+                    },
+                )
+                .await;
+            // The script returns the tool's MCP result; a refused name throws instead.
+            let text = out["content"][0]["text"].as_str().unwrap_or_default();
+            let ran = out["isError"] != true && !text.contains("\"isError\":true");
+            let case = format!("{access:?} {tool} {args}: {out}");
+            assert_eq!(asked, asks, "prompts for {case}");
+            assert_eq!(ran, runs, "outcome for {case}");
+        }
+    }
+
     fn deny(event: &Activity) {
         let question: Value = serde_json::from_str(&event.text).unwrap();
         crate::interactions::answer_question(

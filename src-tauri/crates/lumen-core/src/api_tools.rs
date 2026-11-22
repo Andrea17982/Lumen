@@ -335,9 +335,113 @@ pub async fn call(
         Err(error) => json!({"isError":true,"content":[{"type":"text","text":error}]}),
     }
 }
+/// Fixtures from T3 Code's top permission bugs, in both directions: no question for an
+/// action the profile already allows, and no action that should have asked. Each row:
+/// profile, tool, arguments, prompts expected, and whether the action runs once the
+/// user allows every prompt.
+#[cfg(test)]
+pub(crate) fn permission_matrix() -> Vec<(AccessMode, &'static str, Value, usize, bool)> {
+    let destroy = if cfg!(windows) {
+        "rmdir /s /q build"
+    } else {
+        "rm -rf build"
+    };
+    let actions = [
+        ("lumen_read_file", json!({"path": "a.txt"})),
+        ("lumen_write_file", json!({"path": "b.txt", "content": "x"})),
+        ("lumen_run_command", json!({"command": "echo ok"})),
+        ("lumen_run_command", json!({"command": destroy})),
+        // Not a repository, so the external command fails harmlessly after classification.
+        ("lumen_run_command", json!({"command": "git push"})),
+    ];
+    // (asks, runs) per action, in the order above.
+    let expected = [
+        (
+            AccessMode::ReadOnly,
+            [(0, true), (0, false), (0, false), (0, false), (0, false)],
+        ),
+        (
+            AccessMode::FileEdits,
+            [(0, true), (0, true), (0, false), (0, false), (0, false)],
+        ),
+        (
+            AccessMode::Ask,
+            [(1, true), (1, true), (1, true), (1, true), (1, false)],
+        ),
+        (
+            AccessMode::Autopilot,
+            [(0, true), (0, true), (0, true), (1, true), (0, false)],
+        ),
+    ];
+    expected
+        .into_iter()
+        .flat_map(|(access, outcomes)| {
+            actions
+                .clone()
+                .into_iter()
+                .zip(outcomes)
+                .map(move |((tool, args), (asks, runs))| (access, tool, args, asks, runs))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn matrix_fixture(root: &std::path::Path) {
+    std::fs::write(root.join("a.txt"), "a").unwrap();
+    std::fs::create_dir_all(root.join("build")).unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn permission_matrix_has_no_superfluous_or_missing_prompts() {
+        for (access, tool, args, asks, runs) in permission_matrix() {
+            let f = crate::test_support::Fixture::new();
+            let workspace = f.directory("project");
+            let config = f.directory("accounts/test");
+            matrix_fixture(&workspace);
+            let account = Account {
+                id: "test".into(),
+                name: "fixture".into(),
+                provider: Provider::Ollama,
+            };
+            let input = Invocation {
+                rlm: None,
+                automatic: false,
+                account: &account,
+                config: &config,
+                workspace: &workspace,
+                prompt: "",
+                model: None,
+                effort: "",
+                access,
+                approvals: None,
+                resume: None,
+                browser_scope: None,
+                browser_artifacts: None,
+                browser: None,
+            };
+            let mut asked = 0;
+            let out = call(&input, tool, &args, &mut |a| {
+                if a.kind == "interaction" && a.text.contains("\"permission\"") {
+                    asked += 1;
+                    let v: Value = serde_json::from_str(&a.text).unwrap();
+                    crate::interactions::answer_question(
+                        v["id"].as_str().unwrap().into(),
+                        [("action".to_string(), vec!["Allow once".to_string()])].into(),
+                    )
+                    .unwrap();
+                }
+            })
+            .await;
+            let case = format!("{access:?} {tool} {args}: {out}");
+            assert_eq!(asked, asks, "prompts for {case}");
+            assert_eq!(out["isError"] != true, runs, "outcome for {case}");
+        }
+    }
+
     #[test]
     fn traversal_and_git_internals_are_rejected() {
         let f = crate::test_support::Fixture::new();
