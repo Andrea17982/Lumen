@@ -2,7 +2,7 @@
 
 22 novembre 2026. Tutte le esecuzioni sono locali (T0 scriptato, T1 Ollama): costo di inferenza **0 USD**. I JSONL grezzi restano locali accanto a questo file. Confronto con il [primo gate](../2026-11-18/summary.md).
 
-**Esito.** Nessuna configurazione T1 supera il gate §0. gpt-oss 20B (effort low) supera per la prima volta la soglia di **qualità** (TC 44/50 → CM 46/50, IC 95% [0, +12] pp) ma non quella di **efficienza**: sui task da una o due call Code Mode costa più token. Qwen3-Coder 30B peggiora sui task di codice (F) e resta a 0/5 sul filtro di log (B). Code Mode resta opt-in per tutti i modelli locali. Su Codex CLI (T3) è stato offerto in 12 sessioni e mai usato. T2 (API) non è stato misurato: non ci sono chiavi API.
+**Esito.** Nessuna configurazione T1 supera il gate §0. gpt-oss 20B (effort low) supera per la prima volta la soglia di **qualità** (TC 44/50 → CM 46/50, IC 95% [0, +12] pp) ma non quella di **efficienza**: sui task da una o due call Code Mode costa più token. Qwen3-Coder 30B peggiora sui task di codice (F) e resta a 0/5 sul filtro di log (B). Code Mode resta opt-in per tutti i modelli locali. Sulle CLI (T3, Codex e Claude Code) i tool MCP ora passano solo da `lumen_code`: con risultati grandi Claude risparmia il 90% dei token non in cache e sbaglia meno; con risultati piccoli Code Mode costa qualche richiesta in più. Resta opt-in. T2 (API) non è stato misurato: non ci sono chiavi API.
 
 ## Cosa è cambiato rispetto al 18 novembre
 
@@ -86,20 +86,40 @@ Sonda `rewind_scale_probe`: 50.000 file tracciati, 2.500 modifiche (1% dei file 
 | Prima | 9,1 s | 10,5 s | 66,1 s | sì |
 | Dopo (solo i file cambiati) | 7,0 s | 10,8 s | 11,3 s | sì |
 
-## T3 · Codex CLI con abbonamento ChatGPT
+## T3 · CLI con abbonamento (Codex e Claude Code)
 
-`gpt-6.2-sol` tramite la CLI ufficiale nello slot account esistente, 3 seed per task, Autopilot, prompt identici nei due bracci. Il braccio CM aggiunge il server MCP `lumen_code` ai tool nativi della CLI. Costo: quota dell'abbonamento, 24 sessioni da 12 a 30 s.
+CLI ufficiali negli slot account esistenti, Autopilot, 3 seed, prompt identici nei due bracci, quota dell'abbonamento (nessuna chiave API). Modelli: `gpt-6.2-sol` (Codex) e Claude Haiku. I token vengono dai log locali delle CLI (`token_count` di Codex, `usage` dei transcript di Claude): "non in cache" = input non in cache + output, la parte che consuma la quota.
 
-| Task | Successi TC → CM | Tempo mediano (s) | Contesto finale (token) | Tool mediani | Script `lumen_code` |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| A | 3/3 → 3/3 | 23 → 26 | 21586 → 21452 | 2 → 2 | 0 |
-| F | 3/3 → 3/3 | 20 → 19 | 21184 → 21179 | 3 → 3 | 0 |
-| M | 3/3 → 3/3 | 14 → 13 | 22149 → 22234 | 1 → 1 | 0 |
-| D | 2/3 → 3/3 | 23 → 25 | 23950 → 23684 | 3 → 3 | 0 |
+**Prima prova: `lumen_code` accanto ai tool diretti.** In 24 sessioni Codex e 24 Claude nessuno dei due modelli ha scelto `lumen_code` se non richiesto esplicitamente (una sessione di controllo lo chiama e risponde correttamente): con Moli e MCP diretti disponibili, Code Mode non cambiava nulla.
 
-A = 20 file da modificare, F = slug con `node check.js`, M = conteggio su una pagina locale con Moli, D = issue e file tramite un server MCP di progetto con 64 tool. **Codex non ha mai scelto `lumen_code`** (0 su 12): ha modificato e verificato i file con la propria shell e chiamato direttamente i tool MCP. Le differenze tra i bracci sono rumore; l'unico fallimento (D, TC) è un tentativo di aprire GitHub con Moli invece di usare il server MCP. In D ogni chiamata a un tool MCP importato chiede conferma (il consenso di Codex inoltrato da Lumen); il runner accetta solo i tool del fixture.
+**Seconda prova: solo tramite codice**, come la Code Mode di Anthropic. Con Code Mode attivo Lumen non dà più alla CLI Moli e gli MCP condivisi o di progetto come tool diretti: li espone solo dentro `lumen_code` (stessi permessi). Shell e file nativi della CLI restano. A, F = file e test (la CLI usa la sua shell); M = Moli; D = issue e file su un server MCP di progetto con 64 tool; G = 12 letture piccole; H = 12 letture da ~30 KB di cui serve un solo dato.
 
-La CLI riporta solo la dimensione del contesto all'ultima richiesta, non i token cumulativi, quindi qui non c'è un risparmio di token misurabile. Conclusione per le CLI: con shell e MCP nativi disponibili, offrire Code Mode non cambia il comportamento di Codex. Claude Code non è stato misurato: lo slot si è disconnesso durante il pilota (vedi sotto).
+**Codex**
+
+| Task | Successi TC → CM | Token non in cache (mediana) | Richieste al modello | CM ha usato `lumen_code` |
+| --- | ---: | ---: | ---: | ---: |
+| A | 3/3 → 3/3 | 22340 → 22219 | 3 → 3 | 0/3 |
+| F | 3/3 → 3/3 | 10013 → 21485 | 4 → 4 | 0/3 |
+| M | 3/3 → 3/3 | 10664 → 10998 | 3 → 3 | 3/3 |
+| D | 3/3 → 3/3 | 24620 → 21939 | 6 → 8 | 3/3 |
+| G | 3/3 → 3/3 | 10199 → 17331 | 4 → 6 | 3/3 |
+| H | 3/3 → 3/3 | 12450 → 14151 | 3 → 7 | 3/3 |
+
+**Claude Code (Haiku)**
+
+| Task | Successi TC → CM | Token non in cache (mediana) | Richieste al modello | CM ha usato `lumen_code` |
+| --- | ---: | ---: | ---: | ---: |
+| A | 3/3 → 3/3 | 16876 → 16410 | 3 → 3 | 0/3 |
+| F | 3/3 → 3/3 | 16113 → 16109 | 3 → 3 | 0/3 |
+| M | 3/3 → 3/3 | 14763 → 16243 | 2 → 3 | 3/3 |
+| D | 3/3 → 3/3 | 18098 → 28982 | 4 → 8 | 3/3 |
+| G | 3/3 → 2/3 | 20709 → 22342 | 5 → 7 | 3/3 |
+| H | 1/3 → 2/3 | 356751 → 36537 | 7 → 10 | 1/3 |
+
+- **Dove aiuta:** risultati grandi (H). Claude in modalità classica riversa ~30 KB per file nel contesto: ~357k token non in cache e 1/3 corretti. Con Code Mode lo script tiene i file fuori dal contesto: ~37k (−90%) e 2/3.
+- **Dove costa:** task con risultati piccoli (D, G). Script e ricerca del tool aggiungono 2–4 richieste. Codex fa già chiamate parallele in un turno e tronca da solo i risultati MCP lunghi, quindi non risparmia neanche su H.
+- **Qualità:** Codex 18/18 in entrambi i bracci; Claude 16/18 → 17/18. Due correzioni sono venute da queste tracce: il nome leggibile del server (`acme`) nella descrizione dei tool condivisi e il divieto dei server che Claude Code caricava da solo dal `.mcp.json`.
+- **Limiti:** 3 seed e un solo modello per CLI; Haiku è il più piccolo dei Claude. Il server fixture era inizialmente dentro il workspace e Claude lo leggeva come file: D, G e H sono stati rifatti con il fixture fuori dal workspace. In un caso Claude ha avviato il fixture da shell invece di usare MCP.
 
 ## Metodo e limiti
 
@@ -107,7 +127,7 @@ La CLI riporta solo la dimensione del contesto all'ultima richiesta, non i token
 - Durante il T1 finale la macchina compilava e misurava il Rewind: i tempi non sono confrontabili, i token e i round-trip sì.
 - Qwen2.5-Coder 7B e Llama 3.2 3B non sono stati rimisurati: nel primo gate non risolvevano nulla in nessun braccio.
 - Il caso E di classificazione è sintetico; i risultati non sono punteggi OOLONG.
-- T3: un solo modello Codex, 3 seed; il pilota su Claude Code ha prodotto 4 errori di avvio e lo slot si è disconnesso, quindi Claude non compare.
+- T3: un modello per CLI, 3 seed. Il primo pilota Claude usava uno slot con un abbonamento non più attivo; quello slot è stato disconnesso.
 
 ## Riproduzione
 

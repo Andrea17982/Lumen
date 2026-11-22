@@ -87,19 +87,25 @@ fn rules(access: AccessMode, servers: &[Value]) -> Value {
 }
 pub(crate) fn servers(input: &Invocation<'_>) -> Result<Vec<Value>, String> {
     let data = crate::api::root(input.config)?;
-    let mut configs =
-        crate::capability_catalog::shared_servers(data, Some(input.workspace), input.access);
+    let browser = input.browser.ok_or("Moli scope unavailable")?;
+    // With Code Mode on, Moli and shared MCP are reached only through lumen_code.
+    let mut configs = if browser.code_only() {
+        Default::default()
+    } else {
+        crate::capability_catalog::shared_servers(data, Some(input.workspace), input.access)
+    };
     let exe = std::env::current_exe().map_err(|_| "Lumen executable unavailable")?;
-    configs.insert(
-        "lumen_browser".into(),
-        json!({"command":exe,"args":["--lumen-browser-mcp"]}),
-    );
+    if !browser.code_only() {
+        configs.insert(
+            "lumen_browser".into(),
+            json!({"command":exe,"args":["--lumen-browser-mcp"]}),
+        );
+    }
     configs.insert(
         "lumen_graph".into(),
         json!({"command":exe,"args":[crate::graph_mcp::FLAG,data,input.workspace]}),
     );
     let mut inherited = crate::proc::command(&exe);
-    let browser = input.browser.ok_or("Moli scope unavailable")?;
     browser.env(&mut inherited);
     if let Some(env) = browser.code_env() {
         configs.insert(

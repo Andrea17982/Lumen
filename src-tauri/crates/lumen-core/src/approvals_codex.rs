@@ -296,8 +296,13 @@ pub async fn codex_turn(
         .kill_on_drop(true);
     let mut _shared_config = None;
     if let Some(data) = input.config.parent().and_then(Path::parent) {
-        let (extra, _, guard) =
-            crate::integrations::args_for(data, &Provider::Gpt, Some(&cwd), input.access)?;
+        let (extra, _, guard) = crate::integrations::args_for_turn(
+            data,
+            &Provider::Gpt,
+            Some(&cwd),
+            input.access,
+            input.browser,
+        )?;
         _shared_config = guard;
         c.args(extra);
         if providers::graph_enabled(data) {

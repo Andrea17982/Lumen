@@ -354,6 +354,8 @@ pub struct Hub {
     routes: BTreeMap<String, (String, String)>,
     pub tools: Vec<Value>,
     skills: BTreeMap<PathBuf, String>,
+    /// Readable server names (the key in .mcp.json or the CLI config) by integration id.
+    labels: BTreeMap<String, String>,
 }
 impl Hub {
     fn remove_tools(&mut self, server: &str) {
@@ -386,8 +388,12 @@ impl Hub {
             }
             let exposed = alias(name, &original);
             tool["name"] = json!(exposed);
+            let label = self
+                .labels
+                .get(name)
+                .map_or(name.to_owned(), |label| format!("{label} ({name})"));
             tool["description"] = json!(format!(
-                "Shared integration {name}/{original}: {}",
+                "Shared integration {label}/{original}: {}",
                 tool["description"].as_str().unwrap_or("")
             ));
             self.routes.insert(exposed, (name.to_owned(), original));
@@ -449,6 +455,13 @@ impl Hub {
             .and_then(Path::parent)
             .ok_or("Invalid account directory")?;
         let catalog = crate::capability_catalog::discover(data, Some(input.workspace));
+        self.labels.extend(
+            catalog
+                .entries
+                .iter()
+                .filter(|e| e.kind == "mcp")
+                .map(|e| (e.id.clone(), e.name.clone())),
+        );
         let gateways =
             crate::capability_catalog::shared_servers(data, Some(input.workspace), input.access);
         // Execute portable stdio from its original declaration in this process.

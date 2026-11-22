@@ -168,7 +168,7 @@ const issues = JSON.stringify([
 ]);
 const source =
   "import { zone } from './zone';\n\nexport function formatInstant(value: Date): string {\n  return zone(value).toISOString().slice(0, 10);\n}\n";
-const mcpServer = `import{createInterface}from'node:readline';const tools=${JSON.stringify(tools)};for await(const line of createInterface({input:process.stdin})){const v=JSON.parse(line);let result={};if(v.method==='initialize')result={protocolVersion:'2025-06-18',serverInfo:{name:'acme',version:'1'},capabilities:{tools:{}}};else if(v.method==='tools/list')result={tools};else if(v.method==='tools/call'){const n=v.params.name,a=v.params.arguments||{};const text=n==='github_list_issues'&&a.repo==='web'?${JSON.stringify(issues)}:(n==='filesystem_read_file'||n==='github_get_file_contents')&&String(a.path).endsWith('src/date/format.ts')?${JSON.stringify(source)}:'No results';result={content:[{type:'text',text}]};}if(v.id!==undefined)console.log(JSON.stringify({jsonrpc:'2.0',id:v.id,result}));}`;
+const mcpServer = `import{createInterface}from'node:readline';const tools=${JSON.stringify(tools)};for await(const line of createInterface({input:process.stdin})){const v=JSON.parse(line);let result={};if(v.method==='initialize')result={protocolVersion:'2025-06-18',serverInfo:{name:'acme',version:'1'},capabilities:{tools:{}}};else if(v.method==='tools/list')result={tools};else if(v.method==='tools/call'){const n=v.params.name,a=v.params.arguments||{};const big=(p)=>{const m=String(p).match(/src\\/big-(\\d\\d)\\.ts$/);if(!m)return null;const filler=Array.from({length:600},(_,k)=>'// '+k+' lorem ipsum dolor sit amet consectetur').join('\\n');return filler+'\\n'+Array.from({length:Number(m[1])%4+1},(_,k)=>'export const v'+k+' = '+k+';').join('\\n')+'\\n'};const mod=(p)=>{const m=String(p).match(/src\\/mod-(\\d\\d)\\.ts$/);return m?Array.from({length:Number(m[1])%3+1},(_,k)=>'export function f'+k+'() {}').join('\\n')+'\\nconst internal = 1;\\n':null};if(n==='filesystem_read_multiple_files'&&Array.isArray(a.paths)){console.log(JSON.stringify({jsonrpc:'2.0',id:v.id,result:{content:[{type:'text',text:a.paths.map(p=>p+':\\n'+(mod(p)??'No such file')).join('\\n---\\n')}]}}));continue;}const text=n==='github_list_issues'&&a.repo==='web'?${JSON.stringify(issues)}:(n==='filesystem_read_file'||n==='github_get_file_contents')&&String(a.path).endsWith('src/date/format.ts')?${JSON.stringify(source)}:n==='filesystem_read_file'&&big(a.path)?big(a.path):n==='filesystem_read_file'&&/src\\/mod-(\\d\\d)\\.ts$/.test(String(a.path))?Array.from({length:Number(String(a.path).match(/(\\d\\d)\\.ts$/)[1])%3+1},(_,k)=>'export function f'+k+'() {}').join('\\n')+'\\nconst internal = 1;\\n':'No results';result={content:[{type:'text',text}]};}if(v.id!==undefined)console.log(JSON.stringify({jsonrpc:'2.0',id:v.id,result}));}`;
 
 const slugCheck =
   "const f=require('./lib.js');const a=require('node:assert');a.equal(f('Hello World'),'hello-world');a.equal(f('  A--B  '),'a-b');a.equal(f('Ünïcode & Co.'),'n-code-co');a.equal(f('x'),'x');console.log('ok');";
@@ -222,21 +222,104 @@ const cases = {
       ' with the Moli browser tools, read the page and count the list items marked SOLD. Answer with the integer only.',
     answer: '8',
   },
+  // Probe, run only when selected: is lumen_code offered and callable at all?
+  P: {
+    probe: true,
+    prompt:
+      'Use the lumen_code tool to run a script that returns 6*7. Answer with the result only.',
+    answer: '42',
+  },
+  G: {
+    prompt:
+      'With the acme filesystem tools, read src/mod-01.ts through src/mod-12.ts and answer with the total number of exported functions across the twelve files, as an integer alone.',
+    prepare: (w) => cases.D.prepare(w),
+    answer: String(Array.from({ length: 12 }, (_, i) => ((i + 1) % 3) + 1).reduce((a, b) => a + b)),
+  },
+  H: {
+    prompt:
+      'With the acme filesystem tools, read src/big-01.ts through src/big-12.ts and answer with the total number of exported constants across the twelve files, as an integer alone.',
+    prepare: (w) => cases.D.prepare(w),
+    answer: String(Array.from({ length: 12 }, (_, i) => ((i + 1) % 4) + 1).reduce((a, b) => a + b)),
+  },
   D: {
     prompt:
       'In the GitHub repository acme/web, find the open issue labelled regression. Its body names a source file. Read that file with the acme filesystem tools and answer with the name of the function it exports, alone.',
     async prepare(w) {
-      await writeFile(path.join(w, 'acme-mcp.mjs'), mcpServer);
+      // The fixture server lives outside the workspace so its answers cannot be read as files.
+      const server = path.join(path.dirname(w), 'fixtures', path.basename(w) + '-acme.mjs');
+      await mkdir(path.dirname(server), { recursive: true });
+      await writeFile(server, mcpServer);
       await writeFile(
         path.join(w, '.mcp.json'),
-        JSON.stringify({
-          mcpServers: { acme: { command: process.execPath, args: [path.join(w, 'acme-mcp.mjs')] } },
-        }),
+        JSON.stringify({ mcpServers: { acme: { command: process.execPath, args: [server] } } }),
       );
     },
     answer: 'formatInstant',
   },
 };
+// Cumulative usage from the CLI's own local logs (transcripts, never credentials).
+async function walk(dir, out = []) {
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) await walk(p, out);
+    else if (e.name.endsWith('.jsonl')) out.push(p);
+  }
+  return out;
+}
+async function nativeUsage(provider, home, workspace, since) {
+  const { stat } = await import('node:fs/promises');
+  const files = await walk(path.join(home, provider === 'claude' ? 'projects' : 'sessions'));
+  for (const f of files) {
+    if ((await stat(f)).mtimeMs < since) continue;
+    const text = await readFile(f, 'utf8');
+    // Match on folder names: the temp root may be an 8.3 short path in our copy.
+    if (
+      !text.includes(path.basename(path.dirname(workspace))) ||
+      !text.includes(path.basename(workspace))
+    )
+      continue;
+    const lines = text
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return {};
+        }
+      });
+    if (provider === 'claude') {
+      const seen = new Map();
+      for (const l of lines)
+        if (l.type === 'assistant' && l.message?.usage) seen.set(l.message.id, l.message.usage);
+      const u = [...seen.values()];
+      const input = u.reduce(
+        (a, x) =>
+          a +
+          (x.input_tokens || 0) +
+          (x.cache_creation_input_tokens || 0) +
+          (x.cache_read_input_tokens || 0),
+        0,
+      );
+      return {
+        requests: u.length,
+        inputTokens: input,
+        cachedTokens: u.reduce((a, x) => a + (x.cache_read_input_tokens || 0), 0),
+        outputTokens: u.reduce((a, x) => a + (x.output_tokens || 0), 0),
+      };
+    }
+    const counts = lines.filter((l) => l.payload?.type === 'token_count' && l.payload.info);
+    const t = counts.at(-1)?.payload.info.total_token_usage;
+    if (t)
+      return {
+        requests: counts.length,
+        inputTokens: t.input_tokens,
+        cachedTokens: t.cached_input_tokens,
+        outputTokens: t.output_tokens,
+      };
+  }
+  return null;
+}
 const root = process.cwd();
 const data = await mkdtemp(path.join(tmpdir(), 'lumen-live-code-'));
 const links = [];
@@ -310,7 +393,7 @@ try {
           : models.find((m) => m.isDefault)) || models[0];
     for (let seed = 0; seed < seeds; seed++)
       for (const [key, c] of Object.entries(cases)) {
-        if (only && !only.includes(key)) continue;
+        if (only ? !only.includes(key) : c.probe) continue;
         // Alternate arm order within each pair.
         for (const arm of (seed + key.charCodeAt(0)) % 2 ? ['CM', 'TC'] : ['TC', 'CM']) {
           const prefs = await invoke('get_settings');
@@ -355,7 +438,11 @@ try {
               const allow = open.questions?.[0]?.options?.find((o) =>
                 /^(accept|allow)/i.test(o.label),
               );
-              if (key === 'D' && /run tool \\"(github|filesystem)_[a-z_]+\\"\?/.test(text) && allow)
+              if (
+                ['D', 'G', 'H'].includes(key) &&
+                /run tool \\"(github|filesystem)_[a-z_]+\\"\?/.test(text) &&
+                allow
+              )
                 await invoke('answer_question', {
                   id: open.id,
                   answers: { [open.questions[0].id]: [allow.label] },
@@ -370,8 +457,20 @@ try {
           const answer = (last?.text || '').trim();
           const success =
             status === 'completed' &&
-            (c.judge ? await c.judge(workspace) : answer.replace(/[`.*]/g, '').trim() === c.answer);
+            (c.judge
+              ? await c.judge(workspace)
+              : (answer
+                  .replace(/[`*]/g, '')
+                  .trim()
+                  .match(/([A-Za-z0-9_]+)\.?$/)?.[1] ?? '') === c.answer);
+          const native = await nativeUsage(
+            provider,
+            path.join(original, 'accounts', actual.id),
+            workspace,
+            started - 1000,
+          );
           const row = {
+            native,
             tier: 'T3',
             provider,
             model: model.id,

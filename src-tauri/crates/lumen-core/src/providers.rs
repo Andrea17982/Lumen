@@ -556,8 +556,13 @@ async fn execute_inner(
             .parent()
             .and_then(|p| p.parent())
             .ok_or("Invalid account directory")?;
-        let (shared, names, guard) =
-            crate::integrations::args_for(data, p, Some(&workspace), input.access)?;
+        let (shared, names, guard) = crate::integrations::args_for_turn(
+            data,
+            p,
+            Some(&workspace),
+            input.access,
+            input.browser,
+        )?;
         _shared_config = guard;
         if *p == Provider::Gpt {
             args.pop();

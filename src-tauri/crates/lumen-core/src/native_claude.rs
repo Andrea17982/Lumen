@@ -109,8 +109,13 @@ pub async fn execute(
     ]);
     let mut _shared_config = None;
     if let Some(data) = input.config.parent().and_then(std::path::Path::parent) {
-        let (extra, names, guard) =
-            crate::integrations::args_for(data, &Provider::Claude, Some(&cwd), input.access)?;
+        let (extra, names, guard) = crate::integrations::args_for_turn(
+            data,
+            &Provider::Claude,
+            Some(&cwd),
+            input.access,
+            input.browser,
+        )?;
         _shared_config = guard;
         args.extend(extra);
         if let Some(i) = args.iter().position(|a| a == "--allowedTools") {

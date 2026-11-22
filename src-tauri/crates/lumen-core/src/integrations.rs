@@ -377,6 +377,35 @@ pub fn allow_unfiltered_mcp(access: crate::models::AccessMode) -> bool {
 pub fn read_only_tool(tool: &Value) -> bool {
     tool["annotations"]["readOnlyHint"] == true && tool["annotations"]["destructiveHint"] != true
 }
+/// With Code Mode on, shared and project MCP tools are reached through lumen_code scripts,
+/// so the CLI gets no direct copy that would compete with the script path.
+pub fn args_for_turn(
+    data: &Path,
+    provider: &crate::models::Provider,
+    workspace: Option<&Path>,
+    access: crate::models::AccessMode,
+    browser: Option<&crate::browser::Registration>,
+) -> Result<Arguments, String> {
+    if browser.is_some_and(|b| b.code_only()) {
+        // Claude Code also loads project and user servers by itself; deny their direct
+        // tools so the same servers are used only through lumen_code.
+        let names: Vec<String> = crate::capability_catalog::discover(data, workspace)
+            .entries
+            .into_iter()
+            .filter(|e| e.kind == "mcp" && e.status == "available")
+            .map(|e| format!("mcp__{}", e.name))
+            .collect();
+        if *provider == crate::models::Provider::Claude && !names.is_empty() {
+            return Ok((
+                vec!["--disallowedTools".into(), names.join(",")],
+                vec![],
+                None,
+            ));
+        }
+        return Ok((vec![], vec![], None));
+    }
+    args_for(data, provider, workspace, access)
+}
 pub fn args_for(
     data: &Path,
     provider: &crate::models::Provider,

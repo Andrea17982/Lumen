@@ -264,6 +264,10 @@ impl Registration {
             c.envs(env);
         }
     }
+    /// Code Mode is on for this turn: Moli and shared MCP are offered only inside lumen_code.
+    pub(crate) fn code_only(&self) -> bool {
+        self.scope.code.is_some()
+    }
     pub(crate) fn code_env(&self) -> Option<[(&'static str, String); 2]> {
         let code = self.scope.code.as_ref()?;
         let base = self.endpoint.strip_suffix("/call")?;
@@ -276,17 +280,18 @@ impl Registration {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         match provider {
             Provider::Claude => {
-                let mut config = json!({"mcpServers":{SERVER:{"command":exe,"args":[FLAG]}}});
-                if self.scope.code.is_some() {
-                    config["mcpServers"][code_mcp::SERVER] =
-                        json!({"command":exe,"args":[code_mcp::FLAG]});
-                }
-                args.extend(["--mcp-config".into(), config.to_string()]);
-                let read = if self.scope.code.is_some() {
-                    "mcp__lumen_browser,mcp__lumen_code__lumen_code"
+                let (config, read) = if self.code_only() {
+                    (
+                        json!({"mcpServers":{code_mcp::SERVER:{"command":exe,"args":[code_mcp::FLAG]}}}),
+                        "mcp__lumen_code__lumen_code",
+                    )
                 } else {
-                    "mcp__lumen_browser"
+                    (
+                        json!({"mcpServers":{SERVER:{"command":exe,"args":[FLAG]}}}),
+                        "mcp__lumen_browser",
+                    )
                 };
+                args.extend(["--mcp-config".into(), config.to_string()]);
                 if let Some(i) = args.iter().position(|a| a == "--allowedTools") {
                     args[i + 1].push_str(&format!(",{read}"));
                 } else {
@@ -299,28 +304,29 @@ impl Registration {
                 }
             }
             Provider::Gpt => {
-                let mut extra = vec![
-                    "-c".into(),
-                    "web_search=\"disabled\"".into(),
+                let mut extra: Vec<String> = vec!["-c".into(), "web_search=\"disabled\"".into()];
+                if !self.code_only() {
+                    extra.extend([
                     "-c".into(),
                     format!("mcp_servers.{SERVER}.command={}", json!(exe)),
                     "-c".into(),
                     format!("mcp_servers.{SERVER}.args=[\"{FLAG}\"]"),
                     "-c".into(),
                     format!("mcp_servers.{SERVER}.env_vars=[\"LUMEN_BROWSER_URL\",\"LUMEN_BROWSER_CAP\"]"),
-                ];
-                // Explicit per-tool approval avoids sandbox-triggered duplicate prompts. The
-                // broker enforces this turn's access mode, including Ask, before executing.
-                for tool in tools().as_array().unwrap() {
-                    extra.extend([
-                        "-c".into(),
-                        format!(
-                            "mcp_servers.{SERVER}.tools.{}.approval_mode=\"approve\"",
-                            tool["name"].as_str().unwrap()
-                        ),
                     ]);
+                    // Explicit per-tool approval avoids sandbox-triggered duplicate prompts. The
+                    // broker enforces this turn's access mode, including Ask, before executing.
+                    for tool in tools().as_array().unwrap() {
+                        extra.extend([
+                            "-c".into(),
+                            format!(
+                                "mcp_servers.{SERVER}.tools.{}.approval_mode=\"approve\"",
+                                tool["name"].as_str().unwrap()
+                            ),
+                        ]);
+                    }
                 }
-                if self.scope.code.is_some() {
+                if self.code_only() {
                     let name = code_mcp::SERVER;
                     extra.extend([
                         "-c".into(),
@@ -1218,12 +1224,12 @@ pub(crate) mod tests {
             .unwrap()
             .iter()
             .all(|v| v["name"].as_str().unwrap().starts_with("LUMEN_CODE_")));
-        let moli = servers.iter().find(|v| v["name"] == SERVER).unwrap();
-        assert!(moli["env"]
-            .as_array()
-            .unwrap()
+        // Code Mode offers Moli only inside scripts: no direct server competes with it.
+        assert!(servers.iter().all(|v| v["name"] != SERVER));
+        assert!(!claude.iter().any(|arg| arg.contains("mcp__lumen_browser")));
+        assert!(!codex
             .iter()
-            .all(|v| v["name"].as_str().unwrap().starts_with("LUMEN_BROWSER_")));
+            .any(|arg| arg.contains("mcp_servers.lumen_browser")));
 
         let [(_, endpoint), (_, cap)] = browser.code_env().unwrap();
         let http = client();

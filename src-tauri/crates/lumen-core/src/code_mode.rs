@@ -69,7 +69,32 @@ fn describe(tools: &[Value], example: &str) -> Value {
             .filter_map(|tool| tool["name"].as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        format!("{} tools, names only; call searchTools(query) or describeTool(name), both synchronous, for descriptions and parameters before using one: {names}", tools.len())
+        // Shared tools carry an opaque id; name their servers so a request that says
+        // "the acme tools" can be matched to the right prefix.
+        let mut servers = std::collections::BTreeMap::<String, (String, usize)>::new();
+        for tool in tools {
+            let (Some(name), Some(about)) = (tool["name"].as_str(), tool["description"].as_str())
+            else {
+                continue;
+            };
+            if let (Some((prefix, _)), Some(rest)) = (
+                name.split_once("__"),
+                about.strip_prefix("Shared integration "),
+            ) {
+                let label = rest.split(['/', ' ']).next().unwrap_or(prefix).to_owned();
+                servers.entry(prefix.to_owned()).or_insert((label, 0)).1 += 1;
+            }
+        }
+        let servers = servers
+            .iter()
+            .map(|(prefix, (label, count))| format!("{label}: {count} tools named {prefix}__*"))
+            .collect::<Vec<_>>();
+        let servers = if servers.is_empty() {
+            String::new()
+        } else {
+            format!(" MCP servers: {}.", servers.join("; "))
+        };
+        format!("{} tools, names only; call searchTools(query) or describeTool(name), both synchronous, for descriptions and parameters before using one.{servers} Names: {names}", tools.len())
     } else {
         tools
             .iter()
@@ -990,6 +1015,21 @@ mod tests {
         assert_eq!(
             next.run("typeof number", &[], no_host).await.unwrap(),
             "undefined"
+        );
+    }
+
+    #[test]
+    fn compact_catalogues_name_their_mcp_servers() {
+        let tools: Vec<Value> = (0..45)
+            .map(|i| json!({"name": format!("imported_ab12__tool_{i}"), "description": format!("Shared integration acme (imported_ab12)/tool_{i}: does {i}"), "inputSchema": {"type":"object"}}))
+            .collect();
+        let text = definition(&tools)["description"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert!(
+            text.contains("acme: 45 tools named imported_ab12__*"),
+            "{text}"
         );
     }
 
