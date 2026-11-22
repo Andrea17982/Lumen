@@ -466,15 +466,23 @@ fn authorize<'a>(
         None
     };
     let token = selected.map_or(scope.token.as_str(), |code| code.token.as_str());
-    if headers
+    let offered = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        != Some(token)
-    {
+        .and_then(|s| s.strip_prefix("Bearer "));
+    if !offered.is_some_and(|offered| same_secret(offered, token)) {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(selected)
+}
+/// Compares capabilities without returning early at the first differing byte.
+fn same_secret(offered: &str, token: &str) -> bool {
+    offered.len() == token.len()
+        && offered
+            .bytes()
+            .zip(token.bytes())
+            .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+            == 0
 }
 fn failure(e: impl AsRef<str>) -> Value {
     json!({"content":[{"type":"text","text":e.as_ref()}],"isError":true})
@@ -1370,6 +1378,14 @@ pub(crate) mod tests {
         assert!(text.to_string().contains("truncated"));
         assert!(!text.to_string().contains("PNG"));
     }
+    #[test]
+    fn capability_comparison_is_exact() {
+        assert!(same_secret("abc123", "abc123"));
+        assert!(!same_secret("abc124", "abc123"));
+        assert!(!same_secret("abc12", "abc123"));
+        assert!(!same_secret("", "abc123"));
+    }
+
     #[test]
     fn permissions_and_urls() {
         for name in ["browser_click", "browser_fill", "browser_evaluate"] {
