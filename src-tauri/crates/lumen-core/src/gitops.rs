@@ -273,17 +273,6 @@ pub async fn checkpoint(top: &Path, key: &str) -> Result<String, String> {
     Ok(tree)
 }
 
-async fn files(top: &Path, tree: &str) -> Result<BTreeSet<String>, String> {
-    Ok(
-        run(top, &["ls-tree", "-r", "--name-only", "-z", tree], None)
-            .await?
-            .split('\0')
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect(),
-    )
-}
-
 /// Files that a restore would change, as `M path`, `A path` (recreated) or `D path` (removed).
 pub async fn preview(top: &Path, tree: &str) -> Result<Vec<String>, String> {
     let now = write_tree(top).await?;
@@ -312,10 +301,33 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
     // As in Hermes Agent's rollback, the state being replaced is kept first, so a restore
     // can itself be undone from `refs/lumen/checkpoints/before-restore-*`.
     let current_tree = checkpoint(top, &format!("before-restore-{}", crate::models::id())).await?;
-    let before = files(top, &current_tree).await?;
-    let after = files(top, tree).await?;
-    let changed = preview(top, tree).await?.len();
-    for extra in before.difference(&after) {
+    // Only the paths that differ are touched: rewriting every file made a restore of a
+    // 50,000-file checkout take minutes (T3 Code's checkpoint timeouts).
+    let diff = run(
+        top,
+        &[
+            "diff-tree",
+            "-r",
+            "-z",
+            "--name-status",
+            "--no-renames",
+            &current_tree,
+            tree,
+        ],
+        None,
+    )
+    .await?;
+    let mut fields = diff.split('\0').filter(|s| !s.is_empty());
+    let (mut removed, mut paths) = (vec![], vec![]);
+    while let (Some(status), Some(path)) = (fields.next(), fields.next()) {
+        if status == "D" {
+            removed.push(path.to_owned());
+        } else {
+            paths.push(path.to_owned());
+        }
+    }
+    let changed = removed.len() + paths.len();
+    for extra in &removed {
         let path = top.join(extra);
         if path.starts_with(top) {
             let _ = std::fs::remove_file(&path);
@@ -323,12 +335,15 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
     }
     let index = temp_index(top);
     let result = async {
+        if paths.is_empty() {
+            return Ok(());
+        }
         run(top, &["read-tree", tree], Some(&index)).await?;
-        let paths: Vec<String> = after.iter().cloned().collect();
         let (_, filters) = attributed(top, &paths).await?;
         let mut checkout = neutral(&filters);
-        checkout.extend(["checkout-index", "-a", "-f"].map(String::from));
-        run(top, &argv(&checkout), Some(&index)).await?;
+        checkout.extend(["checkout-index", "-f", "-z", "--stdin"].map(String::from));
+        let list: String = paths.iter().map(|p| format!("{p}\0")).collect();
+        run_io(top, &argv(&checkout), Some(&index), Some(list.into_bytes())).await?;
         // Attributes as of the snapshot, now that its own .gitattributes is back on disk.
         let (exact, _) = attributed(top, &paths).await?;
         // Snapshot bytes of attributed files were stored unconverted: write them back as-is.
@@ -531,6 +546,109 @@ mod tests {
 
     fn bytes(top: &Path, p: &str) -> Vec<u8> {
         std::fs::read(top.join(p)).unwrap()
+    }
+
+    /// Scale probe for T3 Code's checkpoint timeouts: checkpoint, preview and restore on a
+    /// large repository. Synthetic by default; LUMEN_BENCH_REPO clones a real one with
+    /// --local into TEMP, so the original is never touched. Prints one JSON line.
+    #[tokio::test]
+    #[ignore = "timing probe on a large repository; run on demand"]
+    async fn rewind_scale_probe() {
+        use std::time::Instant;
+        let top = std::env::temp_dir().join(format!("lumen-scale-{}", crate::models::id()));
+        let files: usize = std::env::var("LUMEN_BENCH_FILES")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(50_000);
+        let source = std::env::var("LUMEN_BENCH_REPO").ok();
+        let started = Instant::now();
+        if let Some(repo) = &source {
+            run(
+                Path::new(repo),
+                &["clone", "-q", "--local", repo, &top.to_string_lossy()],
+                None,
+            )
+            .await
+            .unwrap();
+        } else {
+            std::fs::create_dir_all(&top).unwrap();
+            for i in 0..files {
+                let dir = top.join(format!("src/m{:03}", i % 500));
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(
+                    dir.join(format!("f{i}.ts")),
+                    format!("export const v{i} = {i};\n").repeat(20),
+                )
+                .unwrap();
+            }
+            // Setup is not measured and may exceed run()'s per-command timeout.
+            for args in [
+                &["init", "-q"][..],
+                &["add", "."],
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t",
+                    "commit",
+                    "-qm",
+                    "init",
+                ],
+            ] {
+                assert!(std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&top)
+                    .status()
+                    .unwrap()
+                    .success());
+            }
+        }
+        let tracked = run(&top, &["ls-files"], None)
+            .await
+            .unwrap()
+            .lines()
+            .count();
+        let setup_ms = started.elapsed().as_millis();
+        // A turn's worth of work: 1% edited, 2,000 new untracked files.
+        let paths: Vec<String> = run(&top, &["ls-files"], None)
+            .await
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect();
+        let timed = |t: Instant| t.elapsed().as_millis();
+        let t = Instant::now();
+        let tree = checkpoint(&top, "scale").await.unwrap();
+        let checkpoint_ms = timed(t);
+        for p in paths.iter().step_by(100) {
+            let _ = std::fs::write(top.join(p), "edited by the agent\n");
+        }
+        std::fs::create_dir_all(top.join("generated")).unwrap();
+        for i in 0..2000 {
+            std::fs::write(top.join(format!("generated/n{i}.txt")), "new").unwrap();
+        }
+        let t = Instant::now();
+        let changes = preview(&top, &tree).await.unwrap().len();
+        let preview_ms = timed(t);
+        let t = Instant::now();
+        restore(&top, &tree).await.unwrap();
+        let restore_ms = timed(t);
+        let exact = write_tree(&top).await.unwrap() == tree;
+        let line = serde_json::json!({"probe":"rewind-scale","source":source.as_deref().unwrap_or("synthetic"),
+            "trackedFiles":tracked,"changes":changes,"setupMs":setup_ms,"checkpointMs":checkpoint_ms,
+            "previewMs":preview_ms,"restoreMs":restore_ms,"exact":exact});
+        println!("{line}");
+        if let Some(path) = std::env::var_os("LUMEN_BENCH_OUTPUT") {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .unwrap();
+            writeln!(f, "{line}").unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&top);
+        assert!(exact);
     }
 
     /// Rollback returns exactly to the checkpoint and can itself be undone.
