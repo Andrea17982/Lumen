@@ -2,7 +2,7 @@
 
 22 novembre 2026. Tutte le esecuzioni sono locali (T0 scriptato, T1 Ollama): costo di inferenza **0 USD**. I JSONL grezzi restano locali accanto a questo file. Confronto con il [primo gate](../2026-11-18/summary.md).
 
-**Esito.** Nessuna configurazione T1 supera il gate §0. gpt-oss 20B (effort low) supera per la prima volta la soglia di **qualità** (TC 44/50 → CM 46/50, IC 95% [0, +12] pp) ma non quella di **efficienza**: sui task da una o due call Code Mode costa più token. Qwen3-Coder 30B peggiora sui task di codice (F) e resta a 0/5 sul filtro di log (B). Code Mode resta opt-in per tutti i modelli locali; T2 (API) e T3 (CLI) non sono ancora misurati.
+**Esito.** Nessuna configurazione T1 supera il gate §0. gpt-oss 20B (effort low) supera per la prima volta la soglia di **qualità** (TC 44/50 → CM 46/50, IC 95% [0, +12] pp) ma non quella di **efficienza**: sui task da una o due call Code Mode costa più token. Qwen3-Coder 30B peggiora sui task di codice (F) e resta a 0/5 sul filtro di log (B). Code Mode resta opt-in per tutti i modelli locali. Su Codex CLI (T3) è stato offerto in 12 sessioni e mai usato. T2 (API) non è stato misurato: non ci sono chiavi API.
 
 ## Cosa è cambiato rispetto al 18 novembre
 
@@ -86,12 +86,28 @@ Sonda `rewind_scale_probe`: 50.000 file tracciati, 2.500 modifiche (1% dei file 
 | Prima | 9,1 s | 10,5 s | 66,1 s | sì |
 | Dopo (solo i file cambiati) | 7,0 s | 10,8 s | 11,3 s | sì |
 
+## T3 · Codex CLI con abbonamento ChatGPT
+
+`gpt-6.2-sol` tramite la CLI ufficiale nello slot account esistente, 3 seed per task, Autopilot, prompt identici nei due bracci. Il braccio CM aggiunge il server MCP `lumen_code` ai tool nativi della CLI. Costo: quota dell'abbonamento, 24 sessioni da 12 a 30 s.
+
+| Task | Successi TC → CM | Tempo mediano (s) | Contesto finale (token) | Tool mediani | Script `lumen_code` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 3/3 → 3/3 | 23 → 26 | 21586 → 21452 | 2 → 2 | 0 |
+| F | 3/3 → 3/3 | 20 → 19 | 21184 → 21179 | 3 → 3 | 0 |
+| M | 3/3 → 3/3 | 14 → 13 | 22149 → 22234 | 1 → 1 | 0 |
+| D | 2/3 → 3/3 | 23 → 25 | 23950 → 23684 | 3 → 3 | 0 |
+
+A = 20 file da modificare, F = slug con `node check.js`, M = conteggio su una pagina locale con Moli, D = issue e file tramite un server MCP di progetto con 64 tool. **Codex non ha mai scelto `lumen_code`** (0 su 12): ha modificato e verificato i file con la propria shell e chiamato direttamente i tool MCP. Le differenze tra i bracci sono rumore; l'unico fallimento (D, TC) è un tentativo di aprire GitHub con Moli invece di usare il server MCP. In D ogni chiamata a un tool MCP importato chiede conferma (il consenso di Codex inoltrato da Lumen); il runner accetta solo i tool del fixture.
+
+La CLI riporta solo la dimensione del contesto all'ultima richiesta, non i token cumulativi, quindi qui non c'è un risparmio di token misurabile. Conclusione per le CLI: con shell e MCP nativi disponibili, offrire Code Mode non cambia il comportamento di Codex. Claude Code non è stato misurato: lo slot si è disconnesso durante il pilota (vedi sotto).
+
 ## Metodo e limiti
 
 - T1: Ollama 0.40.16 in loopback, temperatura 0, finestra 8.192, 768 token per richiesta, fino a 12 round-trip; bracci alternati entro le coppie. Il gate usa coppie per suite, seed e caso; IC bootstrap a blocchi per seed (2.000 campioni); McNemar esatto. Con 5 seed le stime restano esplorative.
 - Durante il T1 finale la macchina compilava e misurava il Rewind: i tempi non sono confrontabili, i token e i round-trip sì.
 - Qwen2.5-Coder 7B e Llama 3.2 3B non sono stati rimisurati: nel primo gate non risolvevano nulla in nessun braccio.
 - Il caso E di classificazione è sintetico; i risultati non sono punteggi OOLONG.
+- T3: un solo modello Codex, 3 seed; il pilota su Claude Code ha prodotto 4 errori di avvio e lo slot si è disconnesso, quindi Claude non compare.
 
 ## Riproduzione
 
@@ -105,6 +121,9 @@ $env:LUMEN_BENCH_MODELS = 'gpt-oss:20b'; $env:LUMEN_BENCH_EFFORT = 'low'
 cargo test --manifest-path src-tauri/Cargo.toml -p lumen-core --locked code_mode_bench::bench_t1 -- --ignored --nocapture --exact
 cargo test --manifest-path src-tauri/Cargo.toml -p lumen-core --locked code_mode_bench::bench_e -- --ignored --nocapture --exact
 cargo test --manifest-path src-tauri/Cargo.toml -p lumen-core --locked gitops::tests::rewind_scale_probe -- --ignored --nocapture --exact
+# T3, quota dell'abbonamento: richiede LUMEN_LIVE_CODE_MODE=1
+$env:LUMEN_LIVE_CODE_MODE = '1'; $env:LUMEN_LIVE_PROVIDERS = 'gpt'
+node tests/live-code-mode.mjs
 ```
 
 ## Ambiente
