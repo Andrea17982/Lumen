@@ -1167,6 +1167,209 @@ fn client() -> reqwest::Client {
         .unwrap()
 }
 
+// T2: official APIs through the product client, so every request reserves budget in
+// api.sqlite first. The ledger is a fresh benchmark directory, not the user's data:
+// LUMEN_BENCH_CAP_USD becomes each account's budget, capping the whole run.
+fn cached_tokens(provider: &Provider, response: &Value) -> u64 {
+    let usage = match provider {
+        Provider::Anthropicapi => &response["usage"]["cache_read_input_tokens"],
+        Provider::Openaiapi => &response["usage"]["input_tokens_details"]["cached_tokens"],
+        _ => &response["usageMetadata"]["cachedContentTokenCount"],
+    };
+    usage.as_u64().unwrap_or(0)
+}
+
+async fn trial_api(
+    data: &Path,
+    account: &Account,
+    model: &str,
+    case: (&'static str, &'static str, &'static str),
+    cm: bool,
+    seed: u32,
+) -> Value {
+    let (suite, prompt, expected) = case;
+    let fixture = Fixture::new();
+    let workspace = fixture.directory("project");
+    let config = fixture.directory("accounts/bench");
+    prepare(&workspace, suite, prompt);
+    let input = Invocation {
+        rlm: None,
+        automatic: false,
+        account,
+        config: &config,
+        workspace: &workspace,
+        prompt,
+        model: Some(model),
+        effort: "",
+        access: AccessMode::Autopilot,
+        approvals: None,
+        resume: None,
+        browser_scope: None,
+        browser_artifacts: None,
+        browser: None,
+    };
+    let definitions = definitions(suite);
+    let tools = if cm {
+        vec![code_mode::definition(&definitions)]
+    } else {
+        definitions.clone()
+    };
+    let client = crate::api::Client::new(data, account, model, false);
+    let (_cancel, stop) = watch::channel(false);
+    let sandbox = Session::new(stop).unwrap();
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let invoke = |name: String, args: Value| {
+        let (input, calls) = (&input, &calls);
+        async move {
+            calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            dispatch(input, suite, &name, &args).await
+        }
+    };
+    let mut trace = crate::execution::Trace::new("benchmark");
+    let (mut tokens_in, mut tokens_out, mut cached, mut rounds, mut errors, mut micros) =
+        (0u64, 0u64, 0u64, 0, 0, 0f64);
+    let started = Instant::now();
+    let outcome: Result<String, String> = async {
+        let client = client?;
+        let mut history = crate::api_wire::initial(&account.provider, prompt);
+        for _ in 0..12 {
+            rounds += 1;
+            let (response, turn) = client
+                .step(
+                    &history,
+                    &tools,
+                    Some(768),
+                    |event: crate::models::Activity| {
+                        if event.kind == "api-cost" {
+                            let cost: Value = serde_json::from_str(&event.text).unwrap_or_default();
+                            if cost["status"] == "reported" {
+                                micros += cost["estimatedUsd"].as_f64().unwrap_or(0.) * 1e6;
+                            }
+                        }
+                    },
+                )
+                .await?;
+            let (i, o) = turn.usage.ok_or("API reported no usage")?;
+            tokens_in += i;
+            tokens_out += o;
+            cached += cached_tokens(&account.provider, &response);
+            if let Some(error) = turn.error {
+                return Err(error);
+            }
+            crate::api_wire::append_assistant(&account.provider, &mut history, &response);
+            if turn.calls.is_empty() {
+                return Ok(turn.text.trim().to_owned());
+            }
+            let mut results = vec![];
+            for call in turn.calls {
+                let result = if cm && call.name == code_mode::TOOL {
+                    let code = call.args["code"].as_str().unwrap_or_default().to_owned();
+                    let (result, _, failed) = sandbox
+                        .bench_run(&code, &definitions, &invoke, &mut trace)
+                        .await;
+                    errors += usize::from(failed);
+                    result
+                } else if !cm && call.name != code_mode::TOOL {
+                    invoke(call.name.clone(), call.args.clone()).await
+                } else {
+                    errors += 1;
+                    code_mode::result("Tool is outside the advertised arm", true)
+                };
+                results.push((call, result));
+            }
+            crate::api_wire::append_results(&account.provider, &mut history, results);
+        }
+        Err("benchmark step cap reached".into())
+    }
+    .await;
+    let passed = match suite {
+        "A" => (0..FILES).all(|i| {
+            fs::read_to_string(workspace.join(format!("item-{i:02}.txt"))).ok()
+                == Some(format!("value=beta\nkeep={i:02}\n"))
+        }),
+        "F" => std::process::Command::new("node")
+            .arg("check.js")
+            .current_dir(&workspace)
+            .output()
+            .is_ok_and(|out| out.status.success()),
+        _ => outcome.as_ref().is_ok_and(|text| text.trim() == expected),
+    };
+    json!({"tier":"T2","suite":suite,"model":model,"provider":format!("{:?}", account.provider),
+        "seed":seed,"arm":if cm {"CM"} else {"TC"},"inputTokens":tokens_in,"outputTokens":tokens_out,
+        "cachedInputTokens":cached,"rounds":rounds,"hostCalls":calls.into_inner(),"scriptErrors":errors,
+        "codeMetrics":trace.code_metrics(),"wallMs":started.elapsed().as_millis() as u64,
+        "costUsd":micros / 1e6,"success":passed && outcome.is_ok(),"answer":outcome.as_ref().ok(),
+        "error":outcome.err()})
+}
+
+/// LUMEN_BENCH_API: comma-separated provider:accountId:model:inputUsd:outputUsd entries,
+/// using official per-million rates. Keys are read from the OS keychain by account ID.
+#[tokio::test]
+#[ignore = "spends real API credit within LUMEN_BENCH_CAP_USD; run only with owner approval"]
+async fn bench_t2() {
+    let cap: f64 = std::env::var("LUMEN_BENCH_CAP_USD")
+        .expect("set LUMEN_BENCH_CAP_USD")
+        .parse()
+        .unwrap();
+    assert!(cap > 0. && cap <= 100., "cap must be between 0 and 100 USD");
+    let data = std::path::PathBuf::from(
+        std::env::var("LUMEN_BENCH_DATA")
+            .expect("set LUMEN_BENCH_DATA to an empty benchmark directory"),
+    );
+    fs::create_dir_all(&data).unwrap();
+    let specs = std::env::var("LUMEN_BENCH_API").expect("set LUMEN_BENCH_API");
+    let seeds: u32 = std::env::var("LUMEN_BENCH_SEEDS")
+        .unwrap_or_else(|_| "3".into())
+        .parse()
+        .unwrap();
+    let suites = std::env::var("LUMEN_BENCH_SUITES").unwrap_or_else(|_| "A,B,C,D,F".into());
+    for spec in specs.split(',') {
+        let [provider, id, model, input, output] = spec.split(':').collect::<Vec<_>>()[..] else {
+            panic!("bad LUMEN_BENCH_API entry {spec}");
+        };
+        let provider = match provider {
+            "anthropic" => Provider::Anthropicapi,
+            "openai" => Provider::Openaiapi,
+            "google" => Provider::Googleapi,
+            other => panic!("unknown provider {other}"),
+        };
+        let account = Account {
+            id: id.into(),
+            name: "bench".into(),
+            provider,
+        };
+        crate::api::bench_configure(
+            &data,
+            id,
+            model,
+            input.parse().unwrap(),
+            output.parse().unwrap(),
+            cap,
+        )
+        .unwrap();
+        for seed in 0..seeds {
+            for case in REQUESTS
+                .iter()
+                .filter(|case| suites.split(',').any(|s| s == case.0))
+            {
+                let first =
+                    (seed ^ (case.0.as_bytes()[0] as u32)).wrapping_mul(0x45d9f3b) >> 29 & 1 == 0;
+                for cm in [first, !first] {
+                    let row = trial_api(&data, &account, model, *case, cm, seed).await;
+                    let exhausted = row["error"]
+                        .as_str()
+                        .is_some_and(|e| e.contains("budget exhausted"));
+                    save(&row);
+                    if exhausted {
+                        println!("Benchmark cap reached; stopping.");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn bench_t0() {
     let address = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

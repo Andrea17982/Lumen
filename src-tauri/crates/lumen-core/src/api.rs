@@ -460,6 +460,40 @@ impl<'a> Client<'a> {
     }
 }
 
+/// Benchmark-only ledger setup: the budget of every account is the run's remaining cap.
+#[cfg(test)]
+pub(crate) fn bench_configure(
+    root: &Path,
+    id: &str,
+    model: &str,
+    input_per_million: f64,
+    output_per_million: f64,
+    cap_usd: f64,
+) -> Result<(), String> {
+    let d = db(root)?;
+    let all: i64 = d
+        .query_row("SELECT coalesce(sum(micros),0) FROM charges", [], |r| {
+            r.get(0)
+        })
+        .map_err(|_| "Cannot read API budget")?;
+    let remaining = (cap_usd - all as f64 / 1e6).max(0.);
+    let c = Config {
+        model: model.into(),
+        auto_enabled: false,
+        budget_usd: spent(&d, id)? as f64 / 1e6 + remaining,
+        input_per_million,
+        output_per_million,
+        max_output_tokens: 768,
+        rates_confirmed: true,
+    };
+    d.execute(
+        "INSERT OR REPLACE INTO config VALUES(?,?)",
+        params![id, serde_json::to_string(&c).map_err(|e| e.to_string())?],
+    )
+    .map_err(|_| "Cannot save API settings")?;
+    Ok(())
+}
+
 /// Price only opted-in, ready API accounts using their confirmed model rates.
 pub(crate) fn rlm_price(root: &Path, account: &Account) -> Option<(String, f64)> {
     if !account.provider.is_api() || !eligible(root, account) {
