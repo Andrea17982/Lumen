@@ -83,6 +83,9 @@ pub struct State {
     /// Conversation snapshot shared with the planner and workers, including prior decisions.
     pub context: String,
     pub execution_authorized: bool,
+    /// Active run time so far. A resume continues the time limit instead of restarting it;
+    /// time the service was down does not count.
+    pub elapsed_ms: i64,
     /// Root where file ownership and the plan were determined.
     pub workspace: String,
     pub questions: Vec<Question>,
@@ -1310,6 +1313,11 @@ fn time_limit(max_minutes: Option<u64>) -> i64 {
     max_minutes.unwrap_or(120).clamp(1, 24 * 60) as i64 * 60_000
 }
 
+/// The limit covers the whole run, across restarts and resumes.
+fn run_deadline(now: i64, max_minutes: Option<u64>, elapsed_ms: i64) -> i64 {
+    now + (time_limit(max_minutes) - elapsed_ms).max(0)
+}
+
 fn provider_id(p: &Provider) -> String {
     serde_json::to_value(p)
         .ok()
@@ -1619,9 +1627,13 @@ pub async fn execute(
     let (pid_tx, mut pid_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
     let mut notes: HashMap<String, String> = HashMap::new();
     let mut set = tokio::task::JoinSet::new();
-    let deadline = now() + time_limit(limits.max_minutes);
+    let segment = now();
+    let prior = if resume { st.elapsed_ms.max(0) } else { 0 };
+    let deadline = run_deadline(segment, limits.max_minutes, prior);
     let mut timed_out = false;
     loop {
+        // Saved with every publish, so a restart resumes with the time already used.
+        st.elapsed_ms = prior + (now() - segment);
         refresh_quota(core, &mut sched, &accounts);
         timed_out |= now() >= deadline;
         let extra = core
@@ -2622,6 +2634,16 @@ mod tests {
             name: id.into(),
             provider: p,
         }
+    }
+
+    #[test]
+    fn resume_continues_the_time_limit() {
+        assert_eq!(super::run_deadline(1_000, Some(10), 0), 1_000 + 600_000);
+        assert_eq!(
+            super::run_deadline(1_000, Some(10), 540_000),
+            1_000 + 60_000
+        );
+        assert_eq!(super::run_deadline(1_000, Some(10), 900_000), 1_000);
     }
 
     #[test]
