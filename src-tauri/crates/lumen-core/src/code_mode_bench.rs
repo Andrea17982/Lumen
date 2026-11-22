@@ -24,11 +24,427 @@ const READ: &str = "lumen_read_file";
 const WRITE: &str = "lumen_write_file";
 const SCAN: &str = "bench_scan_log";
 const CHECKS: [&str; 3] = ["bench_test", "bench_lint", "bench_build"];
-const REQUESTS: [(&str, &str, &str); 3] = [
+const CHECK: &str = "bench_check";
+// Suite F reuses the Compete corpus checks; solutions are only used by the T0 replay.
+const F_TASKS: [(&str, &str); 6] = [
+    (crate::compete_corpus::SLUG_CHECK, "module.exports=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');"),
+    (crate::compete_corpus::DURATION_CHECK, "module.exports=s=>{let t=0;for(const[,n,u]of s.matchAll(/(\\d+)([hm])/g))t+=n*(u==='h'?3600:60);return t;};"),
+    (crate::compete_corpus::CLAMP_CHECK, "module.exports=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));"),
+    (crate::compete_corpus::DEDUPE_CHECK, "module.exports=xs=>[...new Set(xs)];"),
+    (crate::compete_corpus::ROMAN_CHECK, "module.exports=n=>{let s='';for(const[v,r]of[[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']])while(n>=v){s+=r;n-=v;}return s;};"),
+    (crate::compete_corpus::LEAP_CHECK, "module.exports=y=>y%4===0&&(y%100!==0||y%400===0);"),
+];
+const REQUESTS: [(&str, &str, &str); 10] = [
     ("A", "Change the value alpha to beta in every file item-00.txt through item-19.txt. Preserve the other line in each file. Make the edits with the available tools.", "edited"),
     ("B", "Scan shards 0, 1, 2 and 3 of the log using the available tools. Sum the units from the PAID entries only and answer with that integer alone.", "28"),
     ("C", "Use the three tools to run the project's test, lint and build checks. Answer only with the name of the check that failed, without the bench_ prefix.", "build"),
+    ("F", "Implement lib.js so that module.exports is a function that turns a string into a lowercase slug: runs of non-alphanumeric characters become one hyphen, with no leading or trailing hyphen. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("F", "Implement lib.js so that module.exports is a function that parses durations such as '1h30m', '45m' or '2h' into a number of seconds. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("F", "Implement lib.js so that module.exports is a function that takes (x, lo, hi) and clamps x into the range from lo to hi. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("F", "Implement lib.js so that module.exports is a function that removes duplicates from an array while keeping the order of first occurrence. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("F", "Implement lib.js so that module.exports is a function that converts a positive integer to Roman numerals in subtractive form, for example 4 is IV and 1994 is MCMXCIV. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("F", "Implement lib.js so that module.exports is a function that returns true when a year is a Gregorian leap year and false otherwise. check.js holds the tests. Write lib.js, run the check with the available tools, fix it until it passes, then answer done.", "done"),
+    ("D", "In the GitHub repository acme/web, find the open issue labelled regression. Its body names a source file. Read that file with the filesystem tools and answer with the name of the function it exports, alone.", "formatInstant"),
 ];
+
+// Suite D: a synthetic catalogue shaped like the official MCP servers in plan §4.
+// Only the GitHub issue list and the filesystem read return task data.
+const MCP: &[(&str, &str, &str)] = &[
+    (
+        "github_create_issue",
+        "Create a new issue in a GitHub repository.",
+        "owner,repo,title,body,labels",
+    ),
+    (
+        "github_list_issues",
+        "List issues in a GitHub repository with optional filters for state and labels.",
+        "owner,repo,state,labels",
+    ),
+    (
+        "github_get_issue",
+        "Get the details of one issue in a GitHub repository.",
+        "owner,repo,issue_number",
+    ),
+    (
+        "github_update_issue",
+        "Update the title, body, state or labels of an existing issue.",
+        "owner,repo,issue_number,title,body,state",
+    ),
+    (
+        "github_add_issue_comment",
+        "Add a comment to an existing issue.",
+        "owner,repo,issue_number,body",
+    ),
+    (
+        "github_search_issues",
+        "Search issues and pull requests across GitHub repositories.",
+        "q,sort,order",
+    ),
+    (
+        "github_create_pull_request",
+        "Create a new pull request.",
+        "owner,repo,title,head,base,body",
+    ),
+    (
+        "github_list_pull_requests",
+        "List and filter repository pull requests.",
+        "owner,repo,state,base",
+    ),
+    (
+        "github_get_pull_request",
+        "Get the details of a specific pull request.",
+        "owner,repo,pull_number",
+    ),
+    (
+        "github_merge_pull_request",
+        "Merge a pull request.",
+        "owner,repo,pull_number,merge_method",
+    ),
+    (
+        "github_get_pull_request_files",
+        "List the files changed in a pull request.",
+        "owner,repo,pull_number",
+    ),
+    (
+        "github_create_branch",
+        "Create a new branch in a GitHub repository.",
+        "owner,repo,branch,from_branch",
+    ),
+    (
+        "github_list_branches",
+        "List the branches in a GitHub repository.",
+        "owner,repo",
+    ),
+    (
+        "github_list_commits",
+        "List the commits of a branch in a GitHub repository.",
+        "owner,repo,sha",
+    ),
+    (
+        "github_get_commit",
+        "Get the details of one commit.",
+        "owner,repo,sha",
+    ),
+    (
+        "github_search_code",
+        "Search for code across GitHub repositories.",
+        "q",
+    ),
+    (
+        "github_search_repositories",
+        "Search for GitHub repositories.",
+        "query",
+    ),
+    (
+        "github_get_file_contents",
+        "Get the contents of a file or directory from a GitHub repository.",
+        "owner,repo,path,branch",
+    ),
+    (
+        "github_create_or_update_file",
+        "Create or update a single file in a GitHub repository.",
+        "owner,repo,path,content,message,branch",
+    ),
+    (
+        "github_push_files",
+        "Push several files to a GitHub repository in one commit.",
+        "owner,repo,branch,files,message",
+    ),
+    (
+        "github_fork_repository",
+        "Fork a GitHub repository to your account.",
+        "owner,repo",
+    ),
+    (
+        "github_list_workflow_runs",
+        "List the workflow runs of a repository.",
+        "owner,repo,workflow_id",
+    ),
+    (
+        "github_get_workflow_run_logs",
+        "Download the logs of a workflow run.",
+        "owner,repo,run_id",
+    ),
+    (
+        "github_list_releases",
+        "List the releases of a repository.",
+        "owner,repo",
+    ),
+    (
+        "github_get_me",
+        "Get details of the authenticated GitHub user.",
+        "",
+    ),
+    (
+        "github_list_notifications",
+        "List notifications for the authenticated user.",
+        "all,participating",
+    ),
+    (
+        "github_create_repository",
+        "Create a new GitHub repository in your account.",
+        "name,description,private",
+    ),
+    (
+        "github_list_tags",
+        "List the git tags of a repository.",
+        "owner,repo",
+    ),
+    (
+        "filesystem_read_file",
+        "Read the complete contents of a file from the file system.",
+        "path",
+    ),
+    (
+        "filesystem_read_multiple_files",
+        "Read the contents of multiple files at once.",
+        "paths",
+    ),
+    (
+        "filesystem_write_file",
+        "Create a new file or overwrite an existing file.",
+        "path,content",
+    ),
+    (
+        "filesystem_edit_file",
+        "Make line-based edits to a text file.",
+        "path,edits,dryRun",
+    ),
+    (
+        "filesystem_create_directory",
+        "Create a new directory or ensure it exists.",
+        "path",
+    ),
+    (
+        "filesystem_list_directory",
+        "List the files and directories in a path.",
+        "path",
+    ),
+    (
+        "filesystem_directory_tree",
+        "Get a recursive tree view of files and directories.",
+        "path",
+    ),
+    (
+        "filesystem_move_file",
+        "Move or rename files and directories.",
+        "source,destination",
+    ),
+    (
+        "filesystem_search_files",
+        "Recursively search for files and directories matching a pattern.",
+        "path,pattern,excludePatterns",
+    ),
+    (
+        "filesystem_get_file_info",
+        "Retrieve metadata about a file or directory.",
+        "path",
+    ),
+    (
+        "filesystem_list_allowed_directories",
+        "List the directories this server may access.",
+        "",
+    ),
+    ("browser_navigate", "Navigate the browser to a URL.", "url"),
+    ("browser_navigate_back", "Go back to the previous page.", ""),
+    (
+        "browser_click",
+        "Click an element on the page.",
+        "element,ref,button",
+    ),
+    (
+        "browser_type",
+        "Type text into an editable element.",
+        "element,ref,text,submit",
+    ),
+    (
+        "browser_fill_form",
+        "Fill several form fields at once.",
+        "fields",
+    ),
+    (
+        "browser_snapshot",
+        "Capture an accessibility snapshot of the current page.",
+        "",
+    ),
+    (
+        "browser_take_screenshot",
+        "Take a screenshot of the current page.",
+        "filename,fullPage",
+    ),
+    (
+        "browser_wait_for",
+        "Wait for text to appear or disappear, or for a time to pass.",
+        "text,textGone,time",
+    ),
+    ("browser_press_key", "Press a key on the keyboard.", "key"),
+    (
+        "browser_select_option",
+        "Select an option in a dropdown.",
+        "element,ref,values",
+    ),
+    (
+        "browser_hover",
+        "Hover over an element on the page.",
+        "element,ref",
+    ),
+    (
+        "browser_drag",
+        "Drag and drop between two elements.",
+        "startElement,startRef,endElement,endRef",
+    ),
+    (
+        "browser_evaluate",
+        "Evaluate a JavaScript expression on the page.",
+        "function,element,ref",
+    ),
+    (
+        "browser_console_messages",
+        "Return all console messages of the page.",
+        "",
+    ),
+    (
+        "browser_network_requests",
+        "Return all network requests since loading the page.",
+        "",
+    ),
+    (
+        "browser_tabs",
+        "List, create, close or select a browser tab.",
+        "action,index",
+    ),
+    ("browser_close", "Close the page.", ""),
+    (
+        "browser_resize",
+        "Resize the browser window.",
+        "width,height",
+    ),
+    ("browser_file_upload", "Upload one or more files.", "paths"),
+    (
+        "browser_handle_dialog",
+        "Handle a dialog.",
+        "accept,promptText",
+    ),
+    (
+        "browser_install",
+        "Install the browser named in the configuration.",
+        "",
+    ),
+    (
+        "sqlite_read_query",
+        "Execute a SELECT query on the SQLite database.",
+        "query",
+    ),
+    (
+        "sqlite_write_query",
+        "Execute an INSERT, UPDATE or DELETE query.",
+        "query",
+    ),
+    (
+        "sqlite_create_table",
+        "Create a new table in the SQLite database.",
+        "query",
+    ),
+    (
+        "sqlite_list_tables",
+        "List all tables in the SQLite database.",
+        "",
+    ),
+    (
+        "sqlite_describe_table",
+        "Get the schema of a table.",
+        "table_name",
+    ),
+    (
+        "sqlite_append_insight",
+        "Add a business insight to the memo.",
+        "insight",
+    ),
+    (
+        "memory_create_entities",
+        "Create multiple new entities in the knowledge graph.",
+        "entities",
+    ),
+    (
+        "memory_create_relations",
+        "Create multiple new relations between entities.",
+        "relations",
+    ),
+    (
+        "memory_add_observations",
+        "Add new observations to existing entities.",
+        "observations",
+    ),
+    (
+        "memory_delete_entities",
+        "Delete entities and their relations.",
+        "entityNames",
+    ),
+    (
+        "memory_delete_observations",
+        "Delete specific observations from entities.",
+        "deletions",
+    ),
+    (
+        "memory_delete_relations",
+        "Delete relations from the knowledge graph.",
+        "relations",
+    ),
+    ("memory_read_graph", "Read the entire knowledge graph.", ""),
+    (
+        "memory_search_nodes",
+        "Search for nodes in the knowledge graph.",
+        "query",
+    ),
+    ("memory_open_nodes", "Open specific nodes by name.", "names"),
+    (
+        "fetch_fetch",
+        "Fetch a URL and return its contents as markdown.",
+        "url,max_length,start_index,raw",
+    ),
+    ("git_status", "Show the working tree status.", "repo_path"),
+    (
+        "git_diff_unstaged",
+        "Show changes in the working directory that are not staged.",
+        "repo_path,context_lines",
+    ),
+    (
+        "git_diff_staged",
+        "Show changes that are staged for commit.",
+        "repo_path,context_lines",
+    ),
+    (
+        "git_diff",
+        "Show differences between branches or commits.",
+        "repo_path,target,context_lines",
+    ),
+    (
+        "git_commit",
+        "Record changes to the repository.",
+        "repo_path,message",
+    ),
+    (
+        "git_add",
+        "Add file contents to the staging area.",
+        "repo_path,files",
+    ),
+    ("git_reset", "Unstage all staged changes.", "repo_path"),
+    ("git_log", "Show the commit logs.", "repo_path,max_count"),
+    (
+        "git_create_branch",
+        "Create a new branch from an optional base branch.",
+        "repo_path,branch_name,base_branch",
+    ),
+    ("git_checkout", "Switch branches.", "repo_path,branch_name"),
+    (
+        "git_show",
+        "Show the contents of a commit.",
+        "repo_path,revision",
+    ),
+    ("git_branch", "List git branches.", "repo_path,branch_type"),
+];
+const ISSUES: &str = r#"[{"number":41,"title":"Docs typo on pricing page","labels":["docs"],"body":"The word 'monthly' is misspelled."},{"number":57,"title":"Dates render one day early","labels":["regression","bug"],"body":"Since the timezone refactor, the crash comes from src/date/format.ts."},{"number":63,"title":"Add dark mode toggle","labels":["enhancement"],"body":"Requested by several users."}]"#;
+const SOURCE: &str = "import { zone } from './zone';\n\nexport function formatInstant(value: Date): string {\n  return zone(value).toISOString().slice(0, 10);\n}\n";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,11 +541,41 @@ fn definition(name: &str, description: &str, properties: Value, required: &[&str
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required}})
 }
 
+fn f_task(prompt: &str) -> (&'static str, &'static str) {
+    let index = REQUESTS
+        .iter()
+        .filter(|case| case.0 == "F")
+        .position(|case| case.1 == prompt)
+        .expect("suite F prompt");
+    F_TASKS[index]
+}
+
 fn definitions(suite: &str) -> Vec<Value> {
     match suite {
+        "F" => api_tools::definitions(AccessMode::FileEdits)
+            .into_iter()
+            .filter(|d| d["name"] == READ || d["name"] == WRITE)
+            .chain([definition(
+                CHECK,
+                "Run node check.js and return its output.",
+                json!({}),
+                &[],
+            )])
+            .collect(),
         "A" => api_tools::definitions(AccessMode::FileEdits)
             .into_iter()
             .filter(|d| d["name"] == READ || d["name"] == WRITE)
+            .collect(),
+        "D" => MCP
+            .iter()
+            .map(|(name, about, keys)| {
+                let properties = keys
+                    .split(',')
+                    .filter(|key| !key.is_empty())
+                    .map(|key| (key.to_owned(), json!({"type":"string"})))
+                    .collect::<serde_json::Map<_, _>>();
+                definition(name, about, Value::Object(properties), &[])
+            })
             .collect(),
         "B" => vec![definition(
             SCAN,
@@ -151,7 +597,15 @@ fn definitions(suite: &str) -> Vec<Value> {
     }
 }
 
-fn prepare(root: &Path, suite: &str) {
+fn prepare(root: &Path, suite: &str, prompt: &str) {
+    if suite == "F" {
+        fs::write(root.join("check.js"), f_task(prompt).0).unwrap();
+        fs::write(
+            root.join("lib.js"),
+            "module.exports=()=>{throw new Error('todo')};\n",
+        )
+        .unwrap();
+    }
     if suite == "A" {
         for i in 0..FILES {
             fs::write(
@@ -232,6 +686,53 @@ async fn dispatch(input: &Invocation<'_>, suite: &str, name: &str, args: &Value)
             )
             .await
         }
+        ("F", READ | WRITE) => {
+            let path = args["path"]
+                .as_str()
+                .unwrap_or_default()
+                .trim_start_matches("./");
+            if path != "lib.js" && !(name == READ && path == "check.js") {
+                return code_mode::result("Only lib.js can be written; check.js can be read", true);
+            }
+            api_tools::call(
+                input,
+                name,
+                &json!({"path": path, "content": args["content"]}),
+                &mut |_| {},
+            )
+            .await
+        }
+        ("F", CHECK) => {
+            api_tools::call(
+                input,
+                "lumen_run_command",
+                &json!({"command":"node check.js"}),
+                &mut |_| {},
+            )
+            .await
+        }
+        ("D", "github_list_issues") => {
+            let args = args.to_string();
+            if args.contains("acme") && args.contains("web") {
+                code_mode::result(ISSUES, false)
+            } else {
+                code_mode::result("Repository not found", true)
+            }
+        }
+        ("D", "filesystem_read_file") => {
+            let path = args["path"].as_str().unwrap_or_default();
+            if path
+                .trim_start_matches("./")
+                .ends_with("src/date/format.ts")
+            {
+                code_mode::result(SOURCE, false)
+            } else {
+                code_mode::result(&format!("ENOENT: no such file {path}"), true)
+            }
+        }
+        ("D", name) if MCP.iter().any(|tool| tool.0 == name) => {
+            code_mode::result("No results for this request", false)
+        }
         _ => code_mode::result("Tool is outside this benchmark task", true),
     }
 }
@@ -250,7 +751,7 @@ async fn trial<'a>(
     let fixture = Fixture::new();
     let workspace = fixture.directory("project");
     let config = fixture.directory("accounts/bench");
-    prepare(&workspace, suite);
+    prepare(&workspace, suite, prompt);
     let account = Account {
         id: "bench".into(),
         name: "bench".into(),
@@ -335,6 +836,12 @@ async fn trial<'a>(
                 errors.fetch_add(1, Relaxed);
             } else if suite == "B" && name == SCAN {
                 covered.fetch_or(1 << args["shard"].as_u64().unwrap(), Relaxed);
+            } else if suite == "D" {
+                match name.as_str() {
+                    "github_list_issues" => covered.fetch_or(1, Relaxed),
+                    "filesystem_read_file" => covered.fetch_or(2, Relaxed),
+                    _ => 0,
+                };
             } else if suite == "C" {
                 if let Some(index) = CHECKS.iter().position(|&check| check == name) {
                     covered.fetch_or(1 << index, Relaxed);
@@ -446,7 +953,14 @@ async fn trial<'a>(
     row.host_calls = calls.into_inner();
     row.tool_errors += errors.into_inner();
     row.wall_ms = started.elapsed().as_millis() as u64;
-    if suite == "A" {
+    if suite == "F" {
+        let passed = std::process::Command::new("node")
+            .arg("check.js")
+            .current_dir(&workspace)
+            .output()
+            .is_ok_and(|out| out.status.success());
+        row.partial = f64::from(passed);
+    } else if suite == "A" {
         row.partial = (0..FILES)
             .filter(|&i| {
                 fs::read_to_string(workspace.join(format!("item-{i:02}.txt"))).ok()
@@ -455,7 +969,11 @@ async fn trial<'a>(
             .count() as f64
             / FILES as f64;
     } else {
-        let mask = if suite == "B" { 0b1111 } else { 0b111 };
+        let mask = match suite {
+            "B" => 0b1111,
+            "D" => 0b11,
+            _ => 0b111,
+        };
         let correct = outcome.as_ref().is_ok_and(|text| text.trim() == expected);
         row.partial = f64::from(correct && covered.into_inner() == mask);
     }
@@ -478,7 +996,7 @@ async fn replay(axum::Json(request): axum::Json<Value>) -> String {
         .iter()
         .find(|&&(_, prompt, _)| prompt == content)
         .unwrap();
-    let (suite, _, _) = *case;
+    let (suite, prompt, _) = *case;
     let round = messages.iter().filter(|m| m["role"] == "assistant").count();
     let cm = request["tools"][0]["function"]["name"] == code_mode::TOOL;
     let calls = if cm && round == 0 {
@@ -497,6 +1015,18 @@ async fn replay(axum::Json(request): axum::Json<Value>) -> String {
                 r#"(async () => {
                 const logs = await Promise.all([0,1,2,3].map(shard => tools.bench_scan_log({shard})));
                 return logs.reduce((sum, row) => sum + Number(row.content[0].text.match(/state=PAID units=(\d+)/)[1]), 0);
+            })()"#
+            }
+            "F" => &format!(
+                "(async () => {{ await tools.lumen_write_file({{path:'lib.js', content:{}}}); const r = await tools.bench_check(); return r.isError ? r.text : 'done'; }})()",
+                json!(f_task(prompt).1)
+            ),
+            "D" => {
+                r#"(async () => {
+                const issues = JSON.parse((await tools.github_list_issues({owner:'acme', repo:'web', labels:'regression'})).text);
+                const path = issues.find(i => i.labels.includes('regression')).body.match(/src\/\S+\.ts/)[0];
+                const source = (await tools.filesystem_read_file({path})).text;
+                return source.match(/export function (\w+)/)[1];
             })()"#
             }
             _ => {
@@ -537,6 +1067,19 @@ async fn replay(axum::Json(request): axum::Json<Value>) -> String {
                 .iter()
                 .map(|name| native_call(name, json!({})))
                 .collect(),
+            ("F", 0) => vec![native_call(
+                WRITE,
+                json!({"path":"lib.js","content":f_task(prompt).1}),
+            )],
+            ("F", 1) => vec![native_call(CHECK, json!({}))],
+            ("D", 0) => vec![native_call(
+                "github_list_issues",
+                json!({"owner":"acme","repo":"web","labels":"regression"}),
+            )],
+            ("D", 1) => vec![native_call(
+                "filesystem_read_file",
+                json!({"path":"src/date/format.ts"}),
+            )],
             _ => vec![],
         }
     } else {
@@ -567,6 +1110,17 @@ async fn replay(axum::Json(request): axum::Json<Value>) -> String {
                     })
                     .sum::<u32>()
                     .to_string(),
+                "F" => "done".into(),
+                "D" => results
+                    .last()
+                    .and_then(|(_, text, _)| {
+                        text.split_once("export function ")?
+                            .1
+                            .split('(')
+                            .next()
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_default(),
                 "C" => results
                     .iter()
                     .find(|(error, _, _)| *error)
@@ -639,10 +1193,11 @@ async fn bench_t0() {
         assert!(cm.code_metrics.bytes_returned > 0);
         let (classic, code) = match case.0 {
             "A" => (5, 2),
+            "D" | "F" => (3, 2),
             _ => (2, 2),
         };
         assert_eq!((tc.rounds, cm.rounds), (classic, code));
-        if case.0 == "B" {
+        if matches!(case.0, "B" | "D") {
             assert!(cm.max_request_bytes * 2 < tc.max_request_bytes);
         }
     }
@@ -703,7 +1258,66 @@ fn long_cases() -> Vec<LongCase> {
     .into_iter()
     .map(|(name, text)| (name.into(), text))
     .collect();
+    // OOLONG-like: the label needs reading, not a regex, and the tickets exceed the window.
+    let issues = [
+        (
+            "S",
+            "The courier left my parcel at an address two streets away",
+        ),
+        ("B", "I was charged twice for the same order last Tuesday"),
+        (
+            "A",
+            "I cannot reset my password because the reset page loops back",
+        ),
+        (
+            "S",
+            "The tracking page has not moved in nine days and the box is still at the depot",
+        ),
+        (
+            "B",
+            "The refund you promised three weeks ago never reached my card",
+        ),
+        (
+            "S",
+            "The box arrived crushed and two of the plates inside were broken",
+        ),
+        (
+            "A",
+            "After changing my email address I am locked out of my profile",
+        ),
+        ("B", "The invoice lists the wrong VAT number for my company"),
+        (
+            "S",
+            "The van driver marked the package as handed over but nobody rang the bell",
+        ),
+        (
+            "A",
+            "My profile shows somebody else's name and order history",
+        ),
+        (
+            "B",
+            "My card was declined at checkout yet the money left my account",
+        ),
+        (
+            "S",
+            "The carrier sent the parcel back to your warehouse without trying again",
+        ),
+    ];
+    let filler = "I have been a customer for several years and usually everything is fine. I would appreciate a reply when someone has time to look into it. Thank you for reading this message. ";
+    let mut tickets = String::new();
+    for n in 0..36 {
+        let (_, issue) = issues[(n * 5) % issues.len()];
+        tickets.push_str(&padding[..padding.len() / 64]);
+        writeln!(tickets, "\nTICKET {}: {filler}{issue}. {filler}", n + 1).unwrap();
+    }
+    let shipping = (0..36)
+        .filter(|n| issues[(n * 5) % issues.len()].0 == "S")
+        .count()
+        .to_string();
+    let shipping: &'static str = Box::leak(shipping.into_boxed_str());
     vec![
+        ("classification", "Each TICKET line in the support log describes one customer problem. How many tickets are about a delivery or parcel problem (not billing or account access)? Reply with the integer only.", shipping,
+            vec![("support-log".into(), tickets)]),
         ("aggregation", "In the event archive, sum units from EVENT lines where region=north. Reply with the integer only.", "17",
             vec![("event-archive".into(), aggregate)]),
         ("multi-hop", "Find the key on the START line in the link log. Follow each LINK until reaching its VALUE. Reply with the value only.", "vermilion",
@@ -763,7 +1377,11 @@ async fn bench_e() {
         .unwrap_or_else(|_| "5".into())
         .parse::<usize>()
         .unwrap();
+    let only = std::env::var("LUMEN_BENCH_CASE").ok();
     for (index, (case, task, expected, documents)) in long_cases().into_iter().enumerate() {
+        if only.as_deref().is_some_and(|only| only != case) {
+            continue;
+        }
         let mut sources = Sources::default();
         let mut size = 0;
         for (name, text) in documents {
@@ -883,7 +1501,7 @@ async fn live_rlm_query() {
     let address = std::env::var("LUMEN_BENCH_URL").expect("set LUMEN_BENCH_URL");
     let fixture = Fixture::new();
     let mut sources = Sources::default();
-    let (_, _, expected, documents) = long_cases().remove(0);
+    let (_, _, expected, documents) = long_cases().remove(1);
     for (name, text) in documents {
         sources.add(&name, text);
     }

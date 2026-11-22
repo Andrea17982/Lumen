@@ -14,12 +14,12 @@ struct Task {
     b: &'static str,
 }
 
-const SLUG_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f('Hello, World!'),'hello-world');a.strictEqual(f('  A  b '),'a-b');";
-const DURATION_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f('1h30m'),5400);a.strictEqual(f('45m'),2700);a.strictEqual(f('2h'),7200);";
-const CLAMP_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(5,0,3),3);a.strictEqual(f(-1,0,3),0);a.strictEqual(f(2,0,3),2);";
-const DEDUPE_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.deepStrictEqual(f([3,1,3,2,1]),[3,1,2]);";
-const ROMAN_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(4),'IV');a.strictEqual(f(1994),'MCMXCIV');";
-const LEAP_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(2000),true);a.strictEqual(f(1900),false);a.strictEqual(f(2024),true);";
+pub(crate) const SLUG_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f('Hello, World!'),'hello-world');a.strictEqual(f('  A  b '),'a-b');";
+pub(crate) const DURATION_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f('1h30m'),5400);a.strictEqual(f('45m'),2700);a.strictEqual(f('2h'),7200);";
+pub(crate) const CLAMP_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(5,0,3),3);a.strictEqual(f(-1,0,3),0);a.strictEqual(f(2,0,3),2);";
+pub(crate) const DEDUPE_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.deepStrictEqual(f([3,1,3,2,1]),[3,1,2]);";
+pub(crate) const ROMAN_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(4),'IV');a.strictEqual(f(1994),'MCMXCIV');";
+pub(crate) const LEAP_CHECK: &str = "const a=require('assert');const f=require('./lib.js');a.strictEqual(f(2000),true);a.strictEqual(f(1900),false);a.strictEqual(f(2024),true);";
 
 fn corpus() -> Vec<Task> {
     vec![
