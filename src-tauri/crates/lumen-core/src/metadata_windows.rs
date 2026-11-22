@@ -113,7 +113,8 @@ mod tests {
             .kill_on_drop(true);
         let mut child = MetadataChild::spawn(command).unwrap();
         let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-        let line = tokio::time::timeout(std::time::Duration::from_secs(10), lines.next_line())
+        let line = // PowerShell cold starts on CI runners can exceed 10 s.
+        tokio::time::timeout(std::time::Duration::from_secs(30), lines.next_line())
             .await
             .unwrap()
             .unwrap()
@@ -231,7 +232,7 @@ mod tests {
                 )
                 .await
             });
-            let text = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let text = tokio::time::timeout(std::time::Duration::from_secs(30), async {
                 loop {
                     if let Ok(text) = std::fs::read_to_string(&file) {
                         if text.split_whitespace().count() == 2 {
