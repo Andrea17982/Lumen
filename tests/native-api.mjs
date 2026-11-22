@@ -92,7 +92,7 @@ const server = createServer(async (req, res) => {
             ? 'lumen_graph_file_outline'
             : fixtureMode === 'shared'
               ? shared?.name
-              : ['shell', 'shell-slow', 'shell-error'].includes(fixtureMode)
+              : ['shell', 'shell-slow', 'shell-error', 'shell-gate'].includes(fixtureMode)
                 ? 'lumen_run_command'
                 : 'lumen_write_file';
     const args =
@@ -110,7 +110,16 @@ const server = createServer(async (req, res) => {
                   ? { command: 'exit 7' }
                   : fixtureMode === 'shell-slow'
                     ? { command: 'node api-shell-slow.mjs' }
-                    : { path: `api-${provider}.txt`, content: 'written once' };
+                    : fixtureMode === 'shell-gate'
+                      ? { command: 'node api-shell-gate.mjs' }
+                      : fixtureMode === 'midbudget'
+                        ? {
+                            path: `api-mid-${provider}.txt`,
+                            content: 'written before the budget ran out',
+                          }
+                        : { path: `api-${provider}.txt`, content: 'written once' };
+    // Mid-turn exhaustion: the first step's reported usage consumes the remaining budget.
+    const used = fixtureMode === 'midbudget' ? 45000 : 10;
     assert(name, 'Missing advertised shared tool');
     const text = JSON.stringify(history).includes('isError') ? 'DENIED' : 'API_OK';
     if (provider === 'openaiapi')
@@ -126,7 +135,7 @@ const server = createServer(async (req, res) => {
                 arguments: JSON.stringify(args),
               },
             ],
-        usage: { input_tokens: 10, output_tokens: 5 },
+        usage: { input_tokens: used, output_tokens: 5 },
       });
     else if (provider === 'anthropicapi')
       reply({
@@ -134,7 +143,7 @@ const server = createServer(async (req, res) => {
           ? [{ type: 'text', text }]
           : [{ type: 'tool_use', id: 'fixture-call', name, input: args }],
         stop_reason: hasResult ? 'end_turn' : 'tool_use',
-        usage: { input_tokens: 10, output_tokens: 5 },
+        usage: { input_tokens: used, output_tokens: 5 },
       });
     else
       reply({
@@ -154,7 +163,7 @@ const server = createServer(async (req, res) => {
             finishReason: 'STOP',
           },
         ],
-        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+        usageMetadata: { promptTokenCount: used, candidatesTokenCount: 5 },
       });
   } catch (error) {
     res.statusCode = 500;
@@ -403,20 +412,30 @@ try {
   );
   assert.equal(generations.length, before);
   await h.invoke('save_api_settings', { id: a.id, value: { ...policy, autoEnabled: true } });
-  fixtureMode = 'question';
+  // Auto answers questions with an assumption since 0.11, so the turn is held inside a
+  // command that waits for a gate file instead.
+  await writeFile(
+    path.join(h.workspace, 'api-shell-gate.mjs'),
+    `import{existsSync}from'node:fs';const t=setInterval(()=>{if(existsSync('api-gate-open'))clearInterval(t)},50);`,
+  );
+  fixtureMode = 'shell-gate';
   const paused = await chat();
   await h.invoke('send_message', {
     id: paused.id,
     text: 'Hi API_AUTO_WAIT',
     options: { mode: 'auto', effort: '', accessMode: 'autopilot', autoReview: false },
   });
-  const question = await pending(paused.id);
+  for (let i = 0; i < 200 && !generations.some((x) => x.mode === 'shell-gate'); i++)
+    await sleep(30);
+  await sleep(300);
   const sent = generations.length;
   await h.invoke('save_api_settings', { id: a.id, value: policy });
-  await h.invoke('answer_question', { id: question.id, answers: { answer: ['Continue'] } });
+  await writeFile(path.join(h.workspace, 'api-gate-open'), '');
   assert.equal((await done(paused.id)).s.status, 'error');
   assert.equal(generations.length, sent);
-  checks.push('Auto requires opt-in; revocation during a tool turn prevents the next paid request');
+  checks.push(
+    'Auto requires opt-in; revocation during a tool action prevents the next paid request',
+  );
   fixtureMode = 'write';
   await h.invoke('save_api_settings', { id: a.id, value: { ...policy, budgetUsd: 0.000001 } });
   const exhausted = await chat();
@@ -426,6 +445,30 @@ try {
   assert.equal(generations.length, count);
   await h.invoke('save_api_settings', { id: a.id, value: policy });
   checks.push('Budget exhaustion blocks inference before HTTP and does not reset prior charges');
+  // Exhausted after the first step: the write already made stays, nothing is replayed,
+  // and the next paid request is never sent.
+  fixtureMode = 'midbudget';
+  const spent = (await h.invoke('get_api_settings', { id: a.id })).spentUsd;
+  await h.invoke('save_api_settings', { id: a.id, value: { ...policy, budgetUsd: spent + 0.05 } });
+  const midway = await chat();
+  const sentBefore = generations.length;
+  await h.invoke('send_message', { id: midway.id, text: 'API_BUDGET_MIDWAY', options: opts(a) });
+  const mid = await done(midway.id);
+  assert.equal(mid.s.status, 'error');
+  assert.equal(generations.length, sentBefore + 1, 'no request after the budget ran out');
+  assert.equal(
+    await readFile(path.join(h.workspace, `api-mid-${a.provider}.txt`), 'utf8'),
+    'written before the budget ran out',
+  );
+  assert.match(JSON.stringify(mid), /budget exhausted/i);
+  assert(
+    mid.m.activity.some((x) => x.kind === 'api-cost' && JSON.parse(x.text).status === 'reported'),
+  );
+  await h.invoke('save_api_settings', { id: a.id, value: policy });
+  fixtureMode = 'write';
+  checks.push(
+    'Budget exhausted mid-turn keeps the completed write, sends nothing more and says why',
+  );
   fixtureMode = 'quota';
   const limited = await chat();
   await h.invoke('send_message', { id: limited.id, text: 'API_QUOTA', options: opts(a) });

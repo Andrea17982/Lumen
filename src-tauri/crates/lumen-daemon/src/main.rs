@@ -51,7 +51,10 @@ fn main() {
             }
         }
     }
+    // A full API tool turn (Code Mode, MCP, browser) is one deep async state machine;
+    // tokio's 2 MiB default overflowed in debug builds of the native API suite.
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(8 * 1024 * 1024)
         .enable_all()
         .build()
         .expect("Service runtime");
