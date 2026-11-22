@@ -46,7 +46,7 @@ impl Effort {
         Self::parse(raw).unwrap_or(default)
     }
 
-    fn limits(self) -> (usize, usize, usize) {
+    pub(crate) fn limits(self) -> (usize, usize, usize) {
         match self {
             Self::Low => (0, 0, 0),
             Self::Medium => (8, 1, 4),

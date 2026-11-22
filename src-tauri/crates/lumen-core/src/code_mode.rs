@@ -137,7 +137,8 @@ pub(crate) fn definition_with_context(tools: &[Value], effort: crate::rlm::Effor
     let mut text = tool["description"].as_str().unwrap_or_default().to_owned();
     text.push_str(" Read turn-local data with await context.list(), context.get(id), context.slice(id,start,end) (UTF-8 byte offsets), context.grep(id,pattern,limit) (regex, returns {line,text} rows), or context.chunks(id,size). All context calls are asynchronous. Use the contextId on large tool results to read the stored text.");
     if effort != crate::rlm::Effort::Low {
-        text.push_str(" Use await llm(prompt,{effort,maxTokens}) for a bounded text subquery. Pass the relevant excerpts in the prompt and combine the returned answers.");
+        let (calls, _, parallel) = effort.limits();
+        text.push_str(&format!(" Use await llm(prompt,{{effort,maxTokens}}) for judgements a regex cannot make, such as meaning, classification or paraphrase: select the excerpts with context.grep or context.chunks, group them into a few batches, ask llm() about each batch with Promise.all, then combine the answers in code. This turn allows {calls} llm() calls, {parallel} at a time; a subquery sees only its prompt. Example: (async () => {{ const rows = (await context.grep(0, 'NOTE', 200)).map(r => r.text); const batches = []; for (let i = 0; i < rows.length; i += 12) batches.push(rows.slice(i, i + 12).join('\\n')); const counts = await Promise.all(batches.map(b => llm('How many of these notes mention a missed deadline? Reply with an integer only.\\n' + b, {{maxTokens: 16}}))); return counts.reduce((sum, c) => sum + parseInt(c, 10), 0); }})()"));
     }
     tool["description"] = json!(text);
     tool
@@ -244,7 +245,9 @@ const BINDINGS: &str = r#"
                 list: () => read({method:'list'}),
                 get: id => read({method:'get', id}),
                 slice: (id, start, end) => read({method:'slice', id, start, end}),
-                grep: (id, pattern, limit) => read({method:'grep', id, pattern, limit}),
+                // Accept a RegExp literal too: models write /EVENT/ as often as 'EVENT'.
+                grep: (id, pattern, limit) => read({method:'grep', id, limit, pattern:
+                    pattern instanceof RegExp ? (pattern.flags.includes('i') ? '(?i)' : '') + pattern.source : pattern}),
                 chunks: (id, size) => read({method:'chunks', id, size})
             });
         }
@@ -1002,6 +1005,29 @@ mod tests {
             "{shape}"
         );
         assert_eq!(run("typeof tools.then").await.unwrap(), "undefined");
+        let (_stop, cancel) = watch::channel(false);
+        let mut sources = crate::rlm::Sources::default();
+        sources.add("log", "one\nEvent two\nthree".into());
+        let fixture = crate::test_support::Fixture::new();
+        let grep = Session::new(cancel)
+            .unwrap()
+            .with_rlm(crate::rlm::Turn::new(
+                &fixture.root,
+                "127.0.0.1:1",
+                None,
+                crate::rlm::Effort::Low,
+                &sources,
+            ));
+        assert_eq!(
+            grep.run(
+                "context.grep(0, /event/i).then(r => r.map(x => x.line))",
+                &[],
+                |_, _| async { Value::Null }
+            )
+            .await
+            .unwrap(),
+            "[2]"
+        );
         let many: Vec<_> = (0..41)
             .map(|i| json!({"name": format!("svc_tool_{i}"), "description": format!("Handles case {i}."), "inputSchema": {"properties": {"id": {"type": "string"}}}}))
             .collect();

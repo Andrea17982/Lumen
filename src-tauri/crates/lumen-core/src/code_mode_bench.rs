@@ -1633,6 +1633,7 @@ async fn bench_e() {
                 let (mut input, mut output, mut rounds, mut errors) = (0, 0, 0, 0);
                 let (mut peak, mut ttft) = (0, None);
                 let mut trace = crate::execution::Trace::new("benchmark");
+                let mut scripts = Vec::new();
                 let start = Instant::now();
                 let outcome: Result<String, String> = tokio::time::timeout(Duration::from_secs(45), async {
                     for _ in 0..4 {
@@ -1664,9 +1665,11 @@ async fn bench_e() {
                                     }
                                 }
                                 ("CM" | "CM+RLM", code_mode::TOOL) => {
-                                    sandbox.bench_run(args["code"].as_str().ok_or("missing code")?, &[], |_, _| async {
+                                    let result = sandbox.bench_run(args["code"].as_str().ok_or("missing code")?, &[], |_, _| async {
                                         code_mode::result("Tool is outside this benchmark catalog", true)
-                                    }, &mut trace).await.0
+                                    }, &mut trace).await.0;
+                                    scripts.push(json!({"code": args["code"], "result": result["content"][0]["text"].as_str().map(|t| t.chars().take(600).collect::<String>())}));
+                                    result
                                 }
                                 _ => code_mode::result("Tool is outside the advertised arm", true),
                             };
@@ -1688,7 +1691,7 @@ async fn bench_e() {
                     "codeMetrics":metrics,
                     "toolErrors":errors,"wallMs":start.elapsed().as_millis(),"costUsd":0,
                     "success":outcome.as_ref().is_ok_and(|text| text.eq_ignore_ascii_case(expected)),
-                    "answer":outcome.as_ref().ok(),"expected":expected,"error":outcome.err()}),
+                    "answer":outcome.as_ref().ok(),"expected":expected,"error":outcome.err(),"scripts":scripts}),
                 );
             }
         }
