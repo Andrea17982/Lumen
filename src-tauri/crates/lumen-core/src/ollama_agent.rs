@@ -108,6 +108,8 @@ async fn execute_at(
         let native = show["capabilities"]
             .as_array()
             .is_some_and(|a| a.iter().any(|c| c == "tools"));
+        let window = context_window(&show);
+        let mut num_ctx = 0;
         let browser = input.browser.ok_or("Moli browser scope is unavailable")?;
         let data = crate::api::root(input.config).ok();
         let prefs = data.map(AppSettings::load).unwrap_or_default();
@@ -156,6 +158,10 @@ async fn execute_at(
             } else {
                 body["format"] = schema(&tools, code);
             }
+            // Ollama otherwise uses its small default window and silently drops the
+            // start of the prompt, where the system text and tools are.
+            num_ctx = num_ctx.max(context_size(body.to_string().len(), window));
+            body["options"] = json!({"num_ctx": num_ctx});
             let mut stream = post(&http, &base, "api/chat", &body).await?.bytes_stream();
             let mut pending = Vec::new();
             let mut content = String::new();
@@ -335,8 +341,38 @@ async fn execute_at(
         Err(reason) => Err(reason),
     }
 }
+/// The model's trained context length from `api/show`, when Ollama reports it.
+fn context_window(show: &Value) -> Option<u64> {
+    show["model_info"]
+        .as_object()?
+        .iter()
+        .find(|(key, _)| key.ends_with(".context_length"))?
+        .1
+        .as_u64()
+}
+
+/// A window that fits the request plus room for the reply: a power of two from 8K,
+/// capped by the model's own limit, so a turn reloads the model at most a few times.
+fn context_size(request_bytes: usize, window: Option<u64>) -> u64 {
+    let needed = (request_bytes as u64 / 3 + 4096)
+        .next_power_of_two()
+        .max(8192);
+    needed.min(window.unwrap_or(32_768))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn context_size_fits_the_request_within_the_model_limit() {
+        use super::{context_size, context_window};
+        assert_eq!(context_size(1_000, None), 8192);
+        assert_eq!(context_size(40_000, None), 32_768);
+        assert_eq!(context_size(40_000, Some(16_384)), 16_384);
+        let show = serde_json::json!({"model_info": {"qwen3moe.context_length": 262_144}});
+        assert_eq!(context_window(&show), Some(262_144));
+        assert_eq!(context_size(200_000, context_window(&show)), 131_072);
+    }
+
     use super::*;
     #[tokio::test]
     #[ignore = "Requires an installed local Ollama model; no model is downloaded"]

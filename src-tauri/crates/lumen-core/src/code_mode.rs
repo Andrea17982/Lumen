@@ -187,7 +187,11 @@ const BINDINGS: &str = r#"
             const name = entries[i].name;
             names[i] = name;
             about[name] = entries[i];
-            known[name] = async (args = {}) => withText(await call(name, args));
+            known[name] = async (args = {}) => {
+                if (args === null || typeof args !== 'object' || isArray(args))
+                    throw new NativeError('tools.' + name + ' takes one object argument, for example tools.' + name + '({...}). Use describeTool(' + stringify(name) + ') for its parameters.');
+                return withText(await call(name, args));
+            };
         }
         const copy = value => parse(stringify(value));
         describeTool = name => {
@@ -985,6 +989,14 @@ mod tests {
                 .await
                 .unwrap(),
             "n 2\n[2,\"content\"]"
+        );
+        let positional = run("tools.bench_scan_log('shard 0')")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            positional.contains("takes one object argument"),
+            "{positional}"
         );
         let unknown = run("tools.lumen_scan_log({shard: 0})")
             .await
