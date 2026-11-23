@@ -43,6 +43,10 @@ pub struct Pr {
     pub rounds: u32,
     /// Failed checks (`sha:name`) and reviews (`review:id`) already sent for correction.
     pub handled: Vec<String>,
+    /// How many of `handled` the last correction request sent, to send them again when
+    /// that turn ended in an agent error rather than a failed fix.
+    #[serde(default)]
+    pub sent: usize,
     /// Run options of the request that produced the branch, reused for corrections.
     pub options: serde_json::Value,
     /// Last state seen on GitHub, for the conversation bar.
@@ -273,7 +277,12 @@ pub(crate) async fn create(
     };
     save(core, &s.id, &task)?;
     // The user's uncommitted work becomes the branch's first commit, so the pull request
-    // shows it separately from Lumen's changes.
+    // shows it separately from Lumen's changes. The byte-exact checkout leaves the index
+    // holding raw working bytes; resetting it to HEAD lets `git add` apply the repository's
+    // own line-ending rules, so core.autocrlf noise never reaches the branch.
+    if !task.start.is_empty() {
+        gitops::run(&path, &["read-tree", "HEAD"], None).await?;
+    }
     let carried = gitops::commit_all(&path, "Uncommitted changes the task started from")
         .await
         .ok()
@@ -551,8 +560,6 @@ pub async fn task_worktree_status(
 pub struct Published {
     pub session: Session,
     pub url: String,
-    /// Why GitHub did not accept automatic merge, when it did not.
-    pub auto_merge_error: Option<String>,
 }
 
 #[crate::command]
@@ -612,9 +619,6 @@ pub async fn publish_task(
                 .to_string()
         }
     };
-    let auto_merge_error = gh_run(&path, &["pr", "merge", &url, "--auto", "--merge"])
-        .await
-        .err();
     let entry = autonomy::decision(
         autonomy::Class::External,
         "publish pull request",
@@ -629,8 +633,7 @@ pub async fn publish_task(
                 &id,
                 last,
                 "task-published",
-                serde_json::json!({"url": url, "branch": t.branch, "base": base, "autoMerge": auto_merge_error.is_none()})
-                    .to_string(),
+                serde_json::json!({"url": url, "branch": t.branch, "base": base}).to_string(),
             );
             let _ = core.store.save_message(&id, last);
         }
@@ -659,11 +662,7 @@ pub async fn publish_task(
         ..Default::default()
     });
     save(&core, &id, &t)?;
-    Ok(Published {
-        session: s,
-        url,
-        auto_merge_error,
-    })
+    Ok(Published { session: s, url })
 }
 
 #[crate::command]
@@ -729,6 +728,24 @@ error: expected 1 got 2".into()),
         }
     }
 
+    fn fake_green(args: &[&str]) -> Result<String, String> {
+        match args {
+            ["pr", "view", ..] => Ok(serde_json::json!({
+                "state": "OPEN",
+                "headRefOid": *HEAD.lock().unwrap(),
+                "reviewDecision": "",
+                "statusCheckRollup": [{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]
+            })
+            .to_string()),
+            ["api", path] if path.ends_with("/reviews") => Ok(serde_json::json!([
+                {"id":9,"state":"CHANGES_REQUESTED","author_association":"OWNER","user":{"login":"andrea"}},
+                {"id":11,"state":"APPROVED","author_association":"OWNER","user":{"login":"andrea"}}
+            ])
+            .to_string()),
+            _ => Err("unexpected".into()),
+        }
+    }
+
     fn fake_gh(args: &[&str]) -> Result<String, String> {
         GH_CALLS.lock().unwrap().push(args.join(" "));
         match args {
@@ -751,6 +768,64 @@ error: expected 1 got 2".into()),
             text: String::new(),
             activity: vec![],
         }
+    }
+
+    /// A clean clone with core.autocrlf (LF in the repository, CRLF on disk) starts its
+    /// branch with no commit of its own, and a task commit holds only the real change.
+    #[tokio::test]
+    async fn autocrlf_checkout_adds_no_line_ending_commit() {
+        if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
+            return;
+        }
+        let f = crate::test_support::Fixture::new();
+        let app = crate::host::EventHub::default();
+        let project = f.directory("crlf");
+        git(&project, &["init", "-q", "-b", "main"]).await;
+        git(&project, &["config", "core.autocrlf", "false"]).await;
+        std::fs::write(project.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(project.join("b.txt"), "x\n").unwrap();
+        git(&project, &["add", "."]).await;
+        git(&project, &["commit", "-qm", "init"]).await;
+        git(&project, &["config", "core.autocrlf", "true"]).await;
+        std::fs::write(project.join("a.txt"), "one\r\ntwo\r\n").unwrap();
+        std::fs::write(project.join("b.txt"), "x\r\n").unwrap();
+        assert!(git(&project, &["diff", "--stat"]).await.trim().is_empty());
+
+        let s = f
+            .core
+            .store
+            .create(project.to_string_lossy().into())
+            .unwrap();
+        let mut out = message();
+        let moved = create(
+            &app,
+            &f.core,
+            &s,
+            &mut out,
+            "Change b",
+            AccessMode::FileEdits,
+            watch::channel(false).1,
+        )
+        .await
+        .unwrap()
+        .expect("worktree");
+        let t = active(&f.core, &moved).expect("active");
+        let wt = PathBuf::from(&t.path);
+        assert!(!out
+            .activity
+            .iter()
+            .any(|a| a.kind == "task-worktree" && a.text.contains("first commit")));
+        std::fs::write(wt.join("b.txt"), "y\r\n").unwrap();
+        commit_turn(&app, &f.core, &s.id, &mut out, "Change b").await;
+        let range = format!("{}..HEAD", t.start);
+        assert_eq!(git(&wt, &["rev-list", "--count", &range]).await.trim(), "1");
+        assert_eq!(
+            git(&wt, &["diff", "--name-only", &t.start, "HEAD"])
+                .await
+                .trim(),
+            "b.txt"
+        );
+        assert_eq!(git(&wt, &["show", "HEAD:b.txt"]).await, "y\n");
     }
 
     #[tokio::test]
@@ -875,7 +950,6 @@ node_modules/
         .await
         .unwrap();
         assert_eq!(published.url, "https://github.com/o/r/pull/7");
-        assert!(published.auto_merge_error.is_none());
         // The worktree stays while Lumen follows the pull request.
         assert_eq!(published.session.workspace, moved.workspace);
         assert!(wt.exists());
@@ -895,10 +969,8 @@ node_modules/
             calls.contains("pr create --base main --head lumen/"),
             "{calls}"
         );
-        assert!(
-            calls.contains("pr merge https://github.com/o/r/pull/7 --auto --merge"),
-            "{calls}"
-        );
+        // Publish never merges: Lumen merges once the checks have passed.
+        assert!(!calls.contains("pr merge"), "{calls}");
         let saved = f.core.store.messages(&s.id).unwrap();
         assert!(saved
             .iter()
@@ -921,6 +993,13 @@ node_modules/
             crate::pr_watch::check(&mut task).await.unwrap(),
             crate::pr_watch::Step::GaveUp(_)
         ));
+        // Green checks and no outstanding change request: Lumen merges.
+        *FAKE_GH.lock().unwrap() = Some(fake_green);
+        assert_eq!(
+            crate::pr_watch::check(&mut task).await.unwrap(),
+            crate::pr_watch::Step::Merge
+        );
+        *FAKE_GH.lock().unwrap() = Some(fake_pr);
         *STATE.lock().unwrap() = "MERGED";
         assert_eq!(
             crate::pr_watch::check(&mut task).await.unwrap(),

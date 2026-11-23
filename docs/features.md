@@ -38,7 +38,7 @@ A large Auto task that writes files (rated complex or top tier) runs in the conv
 - **Ready to work.** The branch is named after the request (`lumen/<first words>-<id>`). Uncommitted changes in the folder become the branch's first commit. Ignored local files that a fresh checkout needs (`.env*` and `*.local*`, up to 1 MB each) are copied. In Autopilot, Lumen installs dependencies from the lockfile (npm, pnpm, yarn, bun or uv). In other profiles the agent installs them only if it needs them.
 - **Commit after checks.** After each turn that finishes without failing checks, Lumen commits the changes on the branch. The message is drafted by a short Claude call, with a plain fallback, and ends with `Generated-by: Lumen`. Follow-ups continue in the same worktree.
 - **Publish, Apply or Discard.** The topbar shows the branch, and three actions sit above the composer.
-  - **Publish** first shows the remote, base and branch, with an editable title and description. It then pushes the branch, opens a ready pull request with `gh` and turns on GitHub's automatic merge when CI and review pass. If the repository does not allow automatic merge, Lumen says so and leaves the pull request open. Publishing twice reuses the open pull request.
+  - **Publish** first shows the remote, base and branch, with an editable title and description. It then pushes the branch and opens a ready pull request with `gh`. Publishing twice reuses the open pull request.
   - **Apply to folder** copies the task's changes into the project folder.
   - **Discard** deletes the worktree and its branch.
 
@@ -46,6 +46,7 @@ A large Auto task that writes files (rated complex or top tier) runs in the conv
 - **Corrections after Publish.** The worktree stays, and Lumen's service checks the pull request every minute.
   - **When it sends a correction:** when a check fails or someone with write access to the repository requests changes. Lumen then sends this conversation a correction request with the failed CI log or the review comments, presented as data to fix rather than instructions. The fix is committed after Lumen's checks and pushed to the same branch.
   - **When it stops:** after three correction rounds, or when a correction ends without a commit, Lumen stops and hands over. You can also stop it with **Stop following**.
+  - **When it merges:** once every check has finished green and no trusted reviewer's latest review still requests changes, Lumen merges the pull request. If the base branch has protection rules that are not met yet, such as a required review, Lumen turns on GitHub's automatic merge instead, which waits for them. Lumen merges only while it is running.
   - **When the pull request is merged:** the conversation returns to the project folder and the worktree is removed.
 
 Publish needs an `origin` remote and a signed-in GitHub CLI; without them the button says why.

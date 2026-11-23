@@ -190,9 +190,17 @@ pub async fn execute(
         }
     });
     let stderr = child.stderr.take().ok_or("No Claude diagnostics")?;
+    // Diagnostics are never exposed (they can describe authentication); only a missing
+    // session is recognized, so Lumen can replay the request in a new one.
+    let missing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let seen = missing.clone();
     let diagnostics = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(_)) = lines.next_line().await {} // never expose authentication diagnostics
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.contains("No conversation found") {
+                seen.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
     });
     let mut lines = BufReader::new(child.stdout.take().ok_or("No Claude output")?).lines();
     let questions = crate::interactions::Connection::default();
@@ -204,7 +212,16 @@ pub async fn execute(
         tokio::time::timeout(std::time::Duration::from_secs(60), async {
             loop {
                 let line = tokio::select! { biased; _=cancel.changed()=>return Err("Cancelled".to_string()), r=lines.next_line()=>r.map_err(|e|e.to_string())? };
-                let value: Value = serde_json::from_str(&line.ok_or("Claude exited during initialization")?).map_err(|e|e.to_string())?;
+                let Some(line) = line else {
+                    // stderr may still be draining when stdout closes.
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    return Err(if missing.load(std::sync::atomic::Ordering::SeqCst) {
+                        "Claude session not found: no conversation found to resume".to_string()
+                    } else {
+                        "Claude exited during initialization".to_string()
+                    });
+                };
+                let value: Value = serde_json::from_str(&line).map_err(|e|e.to_string())?;
                 if value["type"] == "control_response" && value["response"]["request_id"] == init_id {
                     if value["response"]["subtype"] == "error" { return Err("Installed Claude does not support the interactive connection".into()); }
                     return Ok(());

@@ -476,9 +476,8 @@ const it: Record<string, string> = {
   Publish: 'Pubblica',
   'Apply to folder': 'Applica alla cartella',
   Discard: 'Scarta',
-  'Automatic merge is not active:': 'Merge automatico non attivo:',
-  'Merges automatically when CI and review pass.':
-    'Viene unita automaticamente quando CI e review passano.',
+  'Lumen merges it once the checks pass and no reviewer is waiting on changes.':
+    'Lumen la unisce quando i check passano e nessun revisore aspetta modifiche.',
   Close: 'Chiudi',
   'Delete the worktree and branch': 'Eliminare il worktree e il branch',
   'The project folder is not changed.': 'La cartella del progetto non cambia.',
@@ -488,8 +487,8 @@ const it: Record<string, string> = {
   'Base branch': 'Branch di base',
   Title: 'Titolo',
   Description: 'Descrizione',
-  'Lumen pushes the branch, opens the pull request and turns on automatic merge. It then follows checks and reviews and corrects failures, up to three times.':
-    'Lumen fa il push del branch, apre la pull request e attiva il merge automatico. Poi segue check e review e corregge i fallimenti, fino a tre volte.',
+  'Lumen pushes the branch and opens the pull request. It then follows checks and reviews, corrects failures up to three times and merges once the checks pass.':
+    'Lumen fa il push del branch e apre la pull request. Poi segue check e review, corregge i fallimenti fino a tre volte e fa il merge quando i check passano.',
   'Pull request': 'Pull request',
   corrections: 'correzioni',
   'Stop following': 'Smetti di seguire',
@@ -497,7 +496,12 @@ const it: Record<string, string> = {
   'The branch stays for its pull request.': 'Il branch resta per la sua pull request.',
   'Waiting for checks': 'In attesa dei check',
   'Checks running': 'Check in corso',
-  'Checks passed · waiting for review and merge': 'Check superati · in attesa di review e merge',
+  'No checks reported yet': 'Nessun check ancora segnalato',
+  'Waiting for the reviewer to approve the changes':
+    'In attesa che il revisore approvi le modifiche',
+  Merging: 'Merge in corso',
+  'Checks passed · GitHub merges once its requirements are met':
+    'Check superati · GitHub fa il merge quando i suoi requisiti sono soddisfatti',
   'Pushing the correction': 'Push della correzione',
   'Not watched': 'Non seguita',
   'Closed without merging': 'Chiusa senza merge',
