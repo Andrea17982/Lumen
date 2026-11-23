@@ -1,6 +1,6 @@
 // Offline long-transcript timing in the browser preview (fixture data only; no app data).
 // Usage: build with `npx vite build --outDir <dir>`, serve with `npx vite preview --outDir <dir>
-// --port <port>`, then `node tests/transcript-performance.mjs http://127.0.0.1:<port> [label]`.
+// --port <port>`, then `node tests/manual/transcript-performance.mjs http://127.0.0.1:<port> [label]`.
 import { chromium } from '@playwright/test';
 
 const url = process.argv[2] || 'http://127.0.0.1:1420';

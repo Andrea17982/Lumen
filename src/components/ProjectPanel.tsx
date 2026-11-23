@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Search, X } from 'lucide-react';
 import { call } from '../lib/bridge';
 import ProjectTools from './ProjectTools';
-import VisualReview from './VisualReview';
 import RepoMap from './RepoMap';
 import type { FileEntry, ProjectContext } from '../lib/types';
 import { errorText } from '../lib/util';
@@ -115,7 +114,6 @@ export default function ProjectPanel({
           </section>
           <RepoMap folder={folder} onError={onError} />
           <ProjectTools folder={folder} onError={onError} />
-          <VisualReview folder={folder} onError={onError} />
           <section className="file-section">
             <div className="panel-label">
               Attach files{' '}

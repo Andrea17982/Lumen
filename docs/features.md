@@ -31,10 +31,6 @@ Workers receive the team manifest, relevant prior decisions, impact/contracts an
 
 Closing the GUI keeps work running in the local service, including native questions and Orchestra. After a service crash/restart, unfinished execution requires explicit Resume; a turn is not silently replayed. Explicitly scheduled quota intentions persist and are revalidated separately. [Service lifecycle](local-service.md). [Recovery and limitations](validation.md).
 
-## Both and manual merge
-
-Both compares Claude and Codex side by side in the read-only interface. Worktree-backed variants support changes inspection, per-file selections and manual merge text where applicable. Merge previews use immutable Git snapshots and a private index, preserve unrelated staging and reject stale source previews. Retained static web outputs can be compared in the inspector without executing arbitrary project build commands.
-
 ## Context and project location
 
 Projects group conversations independently of their working folders. `/workspace <absolute path>` changes the selected conversation's folder explicitly; ambiguous references or quoted instructions do not move it. `/compact` and the context popover support a fresh continuation with retained decisions. Folder changes are refused while work is active.
@@ -51,11 +47,11 @@ Moli is bundled and automatically wired into every provider and worker invocatio
 
 Local captures are shown with image enlargement and keyboard focus restoration. Remote response images load only after the user requests them. Antigravity uses saved PNG paths for its native viewer instead of the inline MCP image handoff that stalled in live tests. [Moli details](moli.md).
 
-## Inspector and Godot
+## Inspector
 
-The inspector offers local web preview, image pixel zoom/grid, read-only JSON/SQLite, project checks, changes, scene/resource diffs, screenshot comparison, layout blocks and retained static worktree variants. Layout constraints are saved per project and delivered as context changes to native sessions.
+The inspector offers local web preview, image pixel zoom/grid, read-only JSON/SQLite, project checks, changes and scene/resource diffs. An optional global hotkey attaches a screen capture to the next message; registration itself never captures.
 
-Godot discovery and Play/Stop/Reload/viewport capture are opt-in and verify the connected editor root. Native screen/window capture and image import are also available; an optional global hotkey attaches a capture. Registration itself never captures. Purchased addons and runtime services are not enabled or redistributed implicitly.
+Godot support is a separate plugin in [plugins/godot](../plugins/godot/README.md): it finds Godot projects and the editor, opens the editor, and teaches agents to run and capture scenes through the project's own Godot MCP server.
 
 ## Checks, review and Rewind
 
@@ -63,8 +59,6 @@ Additional Lumen validation is opt-in for ordinary native sessions. When enabled
 
 Rewind snapshots tracked and untracked working-tree state byte for byte through a private Git index, previews restoration and rebuilds retained task state. Ignored files are not restored. Rewind is refused while an overlapping conversation could be affected; see [Recoverable autonomy](autonomy.md) for action classes, the audit log and rollback limits. File writes into the same canonical folder are serialized across Lumen conversations.
 
-## Local helper and settings
-
-The optional Ollama helper generates titles, editable commit-message drafts and handoff summaries. It never commits or sends work to a remote inference provider. A helper failure preserves manual editing. Its opt-in settings are separate from the selected Ollama conversation model.
+## Settings
 
 Simple settings expose the Orchestra switch; Advanced reveals the other sections and controls. Restore defaults preserves accounts, conversations and project folders. Appearance supports English/Italian, light/dark/system themes and system display scaling. See [Security](../SECURITY.md) for full-access and storage boundaries.

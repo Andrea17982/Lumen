@@ -10,7 +10,7 @@ const rows = [];
 for (let pair = -1; pair < 20; pair++)
   for (const arm of pair % 2 ? ['candidate', 'baseline'] : ['baseline', 'candidate']) {
     await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, ['tests/performance-native.mjs', arm], {
+      const child = spawn(process.execPath, ['tests/manual/performance-native.mjs', arm], {
         windowsHide: true,
         stdio: 'inherit',
         env: {

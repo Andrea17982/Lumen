@@ -14,6 +14,9 @@ pub(crate) struct CodeMetrics {
     pub(crate) bytes_returned: u64,
     bytes_withheld: u64,
     pub(crate) fallback: bool,
+    /// Auto switched from classic calls to scripts during the turn.
+    #[serde(default)]
+    pub(crate) escalated: bool,
 }
 
 /// Records a script even when its dispatch future is cancelled.
@@ -187,6 +190,12 @@ impl Trace {
                 .code_mode
                 .get_or_insert_with(CodeMetrics::default)
                 .fallback = true;
+        }
+        if event.kind == "code-escalate" {
+            self.snapshot
+                .code_mode
+                .get_or_insert_with(CodeMetrics::default)
+                .escalated = true;
         }
         if event.kind == "latency" {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.text) else {

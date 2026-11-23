@@ -14,33 +14,12 @@ pub struct OrchestraLimits {
     pub quota_thresholds: HashMap<String, f64>,
 }
 
-/// Optional local helper (Ollama) for titles, commit messages and handoff drafts.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", default)]
-pub struct LocalAssistantSettings {
-    pub enabled: bool,
-    /// Installed Ollama model used by the helper; empty means none chosen yet.
-    pub model: String,
-    /// Name new chats automatically after their first reply.
-    pub auto_titles: bool,
-    pub timeout_ms: u64,
-}
-impl Default for LocalAssistantSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            model: String::new(),
-            auto_titles: true,
-            timeout_ms: 60_000,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeMode {
-    #[default]
     Off,
+    /// Classic calls first; scripts once a turn needs many calls or large results.
+    #[default]
     Auto,
     On,
 }
@@ -68,10 +47,11 @@ pub struct AppSettings {
     /// The one-time "still running in the notification area" notice was shown.
     pub tray_hint_shown: bool,
     pub orchestra_limits: OrchestraLimits,
-    pub local_assistant: LocalAssistantSettings,
     /// Add repository-map locations of identifiers a request mentions to its prompt.
     pub repo_context: bool,
     pub code_mode: CodeMode,
+    /// The user picked `code_mode` in Settings. Before 0.13 `off` was only the saved default.
+    pub code_mode_chosen: bool,
     /// Exact local Ollama model IDs explicitly enabled for Code Mode.
     pub ollama_code_models: Vec<String>,
     /// RLM effort for provider models without a mapped native reasoning effort.
@@ -91,9 +71,9 @@ impl Default for AppSettings {
             ollama_model: String::new(),
             tray_hint_shown: false,
             orchestra_limits: OrchestraLimits::default(),
-            local_assistant: LocalAssistantSettings::default(),
             repo_context: true,
-            code_mode: CodeMode::Off,
+            code_mode: CodeMode::Auto,
+            code_mode_chosen: false,
             ollama_code_models: Vec::new(),
             rlm_effort: crate::rlm::Effort::Medium,
         }
@@ -101,10 +81,14 @@ impl Default for AppSettings {
 }
 impl AppSettings {
     pub fn load(root: &Path) -> Self {
-        std::fs::read(root.join("settings.json"))
+        let mut settings: Self = std::fs::read(root.join("settings.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if settings.code_mode == CodeMode::Off && !settings.code_mode_chosen {
+            settings.code_mode = CodeMode::Auto;
+        }
+        settings
     }
     pub fn save(&self, root: &Path) -> Result<(), String> {
         std::fs::write(
@@ -116,9 +100,6 @@ impl AppSettings {
     pub fn validate(&mut self) -> Result<(), String> {
         self.review_rounds = self.review_rounds.clamp(1, 3);
         self.ollama_model = self.ollama_model.trim().chars().take(120).collect();
-        let a = &mut self.local_assistant;
-        a.model = a.model.trim().chars().take(120).collect();
-        a.timeout_ms = a.timeout_ms.clamp(5_000, 300_000);
         let l = &mut self.orchestra_limits;
         l.max_concurrent = l.max_concurrent.filter(|&n| n >= 1).map(|n| n.min(32));
         l.max_subtasks = l.max_subtasks.filter(|&n| n >= 1).map(|n| n.min(999));
@@ -140,7 +121,18 @@ mod tests {
         let s: AppSettings = serde_json::from_str(r#"{"autoFallback":false}"#).unwrap();
         assert!(!s.auto_fallback && !s.orchestra && s.close_to_tray && !s.open_at_login);
         assert!(s.ollama_model.is_empty() && s.self_heal);
-        assert!(!s.local_assistant.enabled && s.local_assistant.auto_titles);
         assert!(s.ollama_code_models.is_empty());
+    }
+    #[test]
+    fn saved_off_becomes_auto_unless_chosen() {
+        let f = crate::test_support::Fixture::new();
+        let write = |text: &str| std::fs::write(f.root.join("settings.json"), text).unwrap();
+        write(r#"{"codeMode":"off"}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::Auto);
+        write(r#"{"codeMode":"off","codeModeChosen":true}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::Off);
+        write(r#"{"codeMode":"on"}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::On);
+        assert_eq!(AppSettings::default().code_mode, CodeMode::Auto);
     }
 }

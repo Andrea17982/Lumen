@@ -744,7 +744,7 @@ fn function_tool(definition: &Value) -> Value {
 async fn trial<'a>(
     model: &'a Model<'a>,
     case: (&'a str, &'a str, &'a str),
-    cm: bool,
+    arm: &'static str,
     seed: u32,
 ) -> Row<'a> {
     let (suite, prompt, expected) = case;
@@ -778,7 +778,7 @@ async fn trial<'a>(
     let definitions = definitions(suite);
     let classic_tools = definitions.iter().map(function_tool).collect::<Vec<_>>();
     let code_tools = vec![function_tool(&code_mode::definition(&definitions))];
-    let mut mode = code_mode::OllamaMode::new(cm);
+    let mut mode = code_mode::CodePolicy::new(arm == "CM", arm == "AUTO");
     let mut filter_trace = Vec::new();
     let mut messages = vec![json!({"role":"user","content":prompt})];
     if !model.native {
@@ -791,7 +791,7 @@ async fn trial<'a>(
         model: model.id,
         effort: model.effort,
         seed,
-        arm: if cm { "CM" } else { "TC" },
+        arm,
         native_tools: model.native,
         input_tokens: 0,
         output_tokens: 0,
@@ -916,8 +916,10 @@ async fn trial<'a>(
             } else {
                 messages.push(json!({"role":"assistant","content":text}));
             }
+            let mut last_tool = String::new();
             for call in requested {
                 let name = call["function"]["name"].as_str().unwrap_or_default();
+                last_tool = name.to_owned();
                 let args = &call["function"]["arguments"];
                 let direct = (code && mode.active && name != code_mode::TOOL)
                     .then(|| code_mode::direct_script(name, args, &definitions))
@@ -947,6 +949,12 @@ async fn trial<'a>(
                 };
                 messages.push(json!({"role":if model.native {"tool"} else {"user"},
                     "tool_name": name,"content":result.to_string()}));
+            }
+            if let Some(notice) = mode.after_round(false, &last_tool) {
+                if let Some(content) = messages.last_mut().and_then(|m| m.get_mut("content")) {
+                    *content = json!(format!("{}\n{}", content.as_str().unwrap_or_default(), notice.text));
+                }
+                trace.observe(&notice);
             }
         }
         Err("benchmark step cap reached".into())
@@ -1394,8 +1402,8 @@ async fn bench_t0() {
         offline: true,
     };
     for case in REQUESTS {
-        let tc = trial(&model, case, false, 0).await;
-        let cm = trial(&model, case, true, 0).await;
+        let tc = trial(&model, case, "TC", 0).await;
+        let cm = trial(&model, case, "CM", 0).await;
         save(&tc);
         save(&cm);
         assert!(tc.success && cm.success);
@@ -1803,8 +1811,15 @@ async fn bench_t1() {
                 // Interleave paired arms in reproducible pseudorandom order.
                 let first =
                     (seed ^ (case.0.as_bytes()[0] as u32)).wrapping_mul(0x45d9f3b) >> 29 & 1 == 0;
-                for cm in [first, !first] {
-                    save(&trial(&model, case, cm, seed).await);
+                // LUMEN_BENCH_AUTO=1 pairs classic calls with Auto escalation instead of Code Mode.
+                let other = if std::env::var("LUMEN_BENCH_AUTO").is_ok_and(|v| v == "1") {
+                    "AUTO"
+                } else {
+                    "CM"
+                };
+                let arms = if first { ["TC", other] } else { [other, "TC"] };
+                for arm in arms {
+                    save(&trial(&model, case, arm, seed).await);
                 }
             }
         }

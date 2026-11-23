@@ -1,5 +1,5 @@
-//! Turn orchestration: single, writer + cross-audit and
-//! side-by-side broadcast, with rate-limit fallback, checkpoints and self-healing.
+//! Turn orchestration: single or writer + cross-audit, with rate-limit fallback,
+//! checkpoints and self-healing.
 use crate::{
     account, config_dir, context, event, gitops, integrations, limits, models::*, models_for,
     models_in, providers, resolve_effort, router, Core,
@@ -137,14 +137,9 @@ pub(crate) async fn submit(
     let mut verdict = if let Some(v) = reused {
         v
     } else if options.mode == "auto" && options.audit_of.is_none() && requested.is_none() {
-        let local = core.settings.lock().ok().and_then(|s| {
-            let l = &s.local_assistant;
-            (l.enabled && !l.model.is_empty()).then(|| (l.model.clone(), l.timeout_ms))
-        });
         crate::classify::classify(
             &core.root,
             &available,
-            local,
             &text,
             &crate::classify::recent_context(&history),
         )
@@ -180,7 +175,7 @@ pub(crate) async fn submit(
         if verdict.source != "keywords" {
             plan.reason = format!("{} · rated by {}", plan.reason, verdict.source);
         }
-    } else if options.mode != "both" {
+    } else {
         let a = account(&core, &plan.account_id)?;
         let models = models_in(&core, &a, false, None, &session.workspace).await?;
         crate::catalog::validate(&models, plan.model.as_deref(), &plan.effort)?;
@@ -209,7 +204,6 @@ pub(crate) async fn submit(
     let mut orchestra_nogit = false;
     if options.audit_of.is_none()
         && requested.is_none()
-        && plan.strategy != "broadcast"
         && core.settings.lock().map(|s| s.orchestra).unwrap_or(false)
         && verdict.complex
     {
@@ -302,15 +296,7 @@ pub(crate) async fn submit(
         let mut cancelled = rx.clone();
         let permit = tokio::select! {biased;_=cancelled.changed()=>None,p=core.slots.clone().acquire_owned()=>p.ok()};
         let last_id;
-        let result = if plan.strategy == "broadcast" {
-            last_id = String::new();
-            if permit.is_none() {
-                Err("Cancelled".to_string())
-            } else {
-                let _ = core.store.status(&id, "running");
-                run_broadcast(&app, &core, &session, &plan, &options, rx, &user).await
-            }
-        } else {
+        let result = {
             let mid = crate::models::id();
             last_id = mid.clone();
             let mut output = Message {
@@ -516,7 +502,6 @@ fn stick_to_previous(
             .native_resume
             .support
             != crate::adapter_contract::Support::Available
-        || plan.strategy == "broadcast"
     {
         return;
     }
@@ -569,8 +554,6 @@ pub(crate) struct Native {
     pub account: String,
     pub session: String,
     pub workspace: String,
-    #[serde(default)]
-    pub layout_revision: Option<String>,
     #[serde(default)]
     pub context_revision: Option<String>,
 }
@@ -646,20 +629,11 @@ pub(crate) async fn resume_prompt(
         )
     };
     let text = context::spill(&workspace, &request.text).0;
-    let (revision, mut layout) = crate::layout::context(&workspace);
     let previous_native = messages
         .iter()
         .rev()
         .filter(|m| !exclude.contains(&m.id.as_str()))
         .find_map(native_of);
-    let previous = previous_native
-        .as_ref()
-        .and_then(|n| n.layout_revision.clone());
-    if revision == previous {
-        layout.clear();
-    } else if revision.is_none() {
-        layout = "\nThe user removed the saved layout constraints. No previous canvas constraint remains active.\n".into();
-    }
     let owned = crate::workstate::owned_context(core, s).ok()?;
     let old_context = previous_native
         .as_ref()
@@ -684,7 +658,7 @@ pub(crate) async fn resume_prompt(
         session,
         replay: Some(options.clone()),
         prompt: format!(
-            "[Lumen: {}]\n{layout}{delta}{text}{attached}",
+            "[Lumen: {}]\n{delta}{text}{attached}",
             permission_text(options.access())
         ),
     })
@@ -792,7 +766,6 @@ async fn stage_observed(
     let full_prompt = prompt;
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let workspace = PathBuf::from(&s.workspace);
-    let layout_revision = crate::layout::context(&workspace).0;
     let context_revision = Some(crate::workstate::owned_context(core, s)?.revision);
     let mut checkpoint = std::time::Instant::now();
     if !out.activity.iter().any(|a| a.kind == "workspace-root") {
@@ -1064,7 +1037,6 @@ async fn stage_observed(
                     account: a.id.clone(),
                     session,
                     workspace: s.workspace.clone(),
-                    layout_revision,
                     context_revision,
                 })
                 .unwrap_or_default(),
@@ -1430,11 +1402,7 @@ pub(crate) async fn build_prompt(
     let map = repo_references(core, s, &workspace, &messages).await;
     let prompt = assemble_prompt(
         &shared,
-        &format!(
-            "{}{map}{}",
-            notes_block(&workspace),
-            crate::layout::context(&workspace).1
-        ),
+        &format!("{}{map}", notes_block(&workspace)),
         permission_text(options.access()),
         &fit_history(&messages, &history, exclude, 100_000),
         &attached,
@@ -2199,6 +2167,7 @@ fn record_validation(
     Ok(())
 }
 
+/// Worktree recorded by the removed Both mode; Rewind still cleans up old ones.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Lane {
@@ -2209,233 +2178,11 @@ pub(crate) struct Lane {
     pub files: usize,
 }
 
-/// Same prompt to Claude and ChatGPT in parallel, each in its own message.
-/// With edits enabled, each provider works in its own git worktree.
-async fn run_broadcast(
-    app: &crate::host::EventHub,
-    core: &Arc<Core>,
-    s: &Session,
-    plan: &Plan,
-    options: &RunOptions,
-    cancel: watch::Receiver<bool>,
-    user: &Message,
-) -> Result<(), String> {
-    let first = account(core, &plan.account_id)?;
-    let second = account(
-        core,
-        plan.partner_account
-            .as_deref()
-            .ok_or("Missing ChatGPT account")?,
-    )?;
-    let workspace = PathBuf::from(&s.workspace);
-    let mut access = options.access();
-    let write_lock = workspace_lock(core, s)?;
-    let _write_guard = if access == AccessMode::ReadOnly {
-        None
-    } else {
-        Some(write_lock.lock().await)
-    };
-    let checkpoint = if access == AccessMode::ReadOnly {
-        None
-    } else {
-        checkpoint_message(core, s, &user.id).await?
-    };
-    let mut outs: Vec<Message> = [&first, &second]
-        .iter()
-        .map(|a| Message {
-            id: crate::models::id(),
-            role: "assistant".into(),
-            text: String::new(),
-            activity: vec![Activity {
-                kind: "lane".into(),
-                text: a.provider.binary().into(),
-            }],
-        })
-        .collect();
-    for o in &outs {
-        let _ = core.store.save_message(&s.id, o);
-        event(app, &s.id, &o.id, "start", "");
-    }
-    let mut lanes: Vec<Option<(PathBuf, String, PathBuf)>> = vec![None, None];
-    let mut sessions = [s.clone(), s.clone()];
-    let mut base = String::new();
-    if access != AccessMode::ReadOnly {
-        match gitops::toplevel(&workspace).await {
-            Some(top) => {
-                base = match checkpoint.clone() {
-                    Some(t) => t,
-                    None => gitops::write_tree(&top).await?,
-                };
-                let rel = workspace
-                    .strip_prefix(&top)
-                    .unwrap_or(Path::new(""))
-                    .to_path_buf();
-                let short: String = user.id.chars().take(8).collect();
-                for (i, a) in [&first, &second].iter().enumerate() {
-                    let name = if a.provider == Provider::Claude {
-                        "claude"
-                    } else {
-                        "chatgpt"
-                    };
-                    let path = core.root.join("worktrees").join(&short).join(name);
-                    let branch = format!("lumen/{name}-{short}");
-                    gitops::add_lane(&top, &base, &path, &branch).await?;
-                    sessions[i].workspace = path.join(&rel).to_string_lossy().into_owned();
-                    lanes[i] = Some((path, branch, top.clone()));
-                }
-            }
-            None => {
-                access = AccessMode::ReadOnly;
-                for o in outs.iter_mut() {
-                    note(app, &s.id, o, "lane-note", "Edits in Both mode need a git repository, so both assistants ran read-only.".into());
-                }
-            }
-        }
-    }
-    let exclude: Vec<&str> = outs.iter().map(|o| o.id.as_str()).collect();
-    let (prompt, _) = build_prompt(core, s, &exclude, options).await?;
-    let mut picked = vec![];
-    for a in [&first, &second] {
-        let models = models_for(core, a, false, None).await?;
-        picked.push(
-            router::select_model(&models, &user.text, &options.auto_policy)?
-                .id
-                .clone(),
-        );
-    }
-    let (m1, m2) = (picked[0].clone(), picked[1].clone());
-    let (o1, rest) = outs.split_at_mut(1);
-    let (r1, r2) = tokio::join!(
-        stage(
-            app,
-            core,
-            &sessions[0],
-            &mut o1[0],
-            &first,
-            &prompt,
-            Some(&m1),
-            &plan.effort,
-            access,
-            cancel.clone(),
-            true
-        ),
-        stage(
-            app,
-            core,
-            &sessions[1],
-            &mut rest[0],
-            &second,
-            &prompt,
-            Some(&m2),
-            &plan.effort,
-            access,
-            cancel.clone(),
-            true
-        )
-    );
-    let mut failures = vec![];
-    for (i, r) in [r1, r2].into_iter().enumerate() {
-        let o = &mut outs[i];
-        match r {
-            Ok(t) => o.text = t,
-            Err(e) => {
-                note(app, &s.id, o, "error", friendly(&e));
-                failures.push(e);
-            }
-        }
-        if let Some((path, branch, top)) = &lanes[i] {
-            let files = gitops::lane_patch(path, &base)
-                .await
-                .map(|p| p.matches("diff --git").count())
-                .unwrap_or(0);
-            if files == 0 {
-                gitops::remove_lane(top, path, branch).await;
-            } else {
-                let lane = Lane {
-                    top: top.to_string_lossy().into(),
-                    path: path.to_string_lossy().into(),
-                    branch: branch.clone(),
-                    base: base.clone(),
-                    files,
-                };
-                note(
-                    app,
-                    &s.id,
-                    o,
-                    "worktree",
-                    serde_json::to_string(&lane).unwrap_or_default(),
-                );
-            }
-        }
-        let _ = core.store.save_message(&s.id, o);
-    }
-    match failures.len() {
-        2 => Err(failures.remove(0)),
-        _ => Ok(()),
-    }
-}
-
 pub(crate) fn lane_of(m: &Message) -> Option<Lane> {
     m.activity
         .iter()
         .find(|a| a.kind == "worktree")
         .and_then(|a| serde_json::from_str(&a.text).ok())
-}
-
-/// Applies one provider's version from its worktree, then removes both lanes of that turn.
-#[crate::command]
-pub async fn resolve_lanes(
-    core: crate::CoreRef<'_>,
-    session: String,
-    message: String,
-    apply: bool,
-) -> Result<(), String> {
-    let mut messages = core.store.messages(&session)?;
-    let target = messages
-        .iter()
-        .find(|m| m.id == message)
-        .and_then(lane_of)
-        .ok_or("This version is no longer available")?;
-    if apply {
-        let s = core.store.session(&session)?;
-        let other_sessions = conversations_on_workspace(&core, &s);
-        if !other_sessions.is_empty() {
-            return Err(format!(
-                "Cannot apply this version while another conversation is active on the project: {}",
-                other_sessions.join(", ")
-            ));
-        }
-        let lock = workspace_lock(&core, &s)?;
-        let _guard = lock.lock().await;
-        let other_sessions = conversations_on_workspace(&core, &s);
-        if !other_sessions.is_empty() {
-            return Err(format!(
-                "Cannot apply this version while another conversation is active on the project: {}",
-                other_sessions.join(", ")
-            ));
-        }
-        let patch = gitops::lane_patch(Path::new(&target.path), &target.base).await?;
-        gitops::apply_patch(Path::new(&target.top), &patch).await?;
-    }
-    let group = Path::new(&target.path).parent().map(Path::to_path_buf);
-    for m in messages.iter_mut() {
-        if let Some(l) = lane_of(m) {
-            if Path::new(&l.path).parent().map(Path::to_path_buf) == group {
-                gitops::remove_lane(Path::new(&l.top), Path::new(&l.path), &l.branch).await;
-                for a in m.activity.iter_mut().filter(|a| a.kind == "worktree") {
-                    a.kind = if apply && m.id == message {
-                        "applied"
-                    } else {
-                        "discarded"
-                    }
-                    .into();
-                    a.text = format!("{} files", l.files);
-                }
-                core.store.save_message(&session, m)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -2578,16 +2325,6 @@ pub async fn rewind(
         return Ok(String::new());
     }
     Ok(messages[pos].text.clone())
-}
-
-/// Uncommitted changes in the session's project, for a commit-message draft. Empty when none.
-#[crate::command]
-pub async fn working_diff(core: crate::CoreRef<'_>, id: String) -> Result<String, String> {
-    let s = core.store.session(&id)?;
-    match gitops::toplevel(Path::new(&s.workspace)).await {
-        Some(top) => gitops::diff_head(&top, 20_000).await,
-        None => Ok(String::new()),
-    }
 }
 
 /// Handoff & Compact: a new conversation seeded with goal, decisions, diff and next step.
@@ -2810,7 +2547,6 @@ mod resume_tests {
                 account: account.into(),
                 session: "sid".into(),
                 workspace: workspace.into(),
-                layout_revision: None,
                 context_revision: None,
             })
             .unwrap(),
@@ -3100,57 +2836,6 @@ mod resume_tests {
         assert!(!resumed.prompt.contains("Old build: passed"));
         assert!(resumed.prompt.contains("Read-only"));
     }
-    #[tokio::test]
-    async fn native_resume_sends_only_changed_or_removed_layout_constraints() {
-        use crate::test_support::Fixture;
-        let f = Fixture::new();
-        let folder = dunce::canonicalize(&f.root)
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-        let s = f.core.store.create(folder.clone()).unwrap();
-        let request = msg("u2", "user", vec![]);
-        let save = |revision: Option<String>| {
-            let mut reply = msg("a1", "assistant", vec![]);
-            reply.activity.push(Activity {
-                kind: "native".into(),
-                text: serde_json::to_string(&Native {
-                    account: "acc".into(),
-                    session: "sid".into(),
-                    workspace: folder.clone(),
-                    layout_revision: revision,
-                    context_revision: None,
-                })
-                .unwrap(),
-            });
-            f.core.store.save_message(&s.id, &reply).unwrap();
-            f.core.store.save_message(&s.id, &request).unwrap();
-        };
-        let options = Fixture::options(AccessMode::Autopilot);
-        save(None);
-        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
-            .await
-            .unwrap();
-        assert!(!p.prompt.contains("layout constraint"));
-        let spec=serde_json::from_value(serde_json::json!({"version":1,"width":800,"height":600,"blocks":[{"id":"nav","label":"Navigation","role":"navigation","x":0,"y":0,"width":200,"height":600,"notes":"Keep visible"}]})).unwrap();
-        crate::layout::save_layout(folder.clone(), spec).unwrap();
-        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
-            .await
-            .unwrap();
-        assert!(p.prompt.contains("Keep visible"));
-        assert!(!p.prompt.contains("text a1"));
-        save(crate::layout::context(&f.root).0);
-        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
-            .await
-            .unwrap();
-        assert!(!p.prompt.contains("Keep visible"));
-        std::fs::remove_file(f.root.join(".lumen/layout.json")).unwrap();
-        let p = resume_prompt(&f.core, &s, &[], &claude(), &options)
-            .await
-            .unwrap();
-        assert!(p.prompt.contains("removed the saved layout"));
-    }
-
     #[test]
     fn replays_when_the_previous_reply_has_no_session() {
         let chat = vec![

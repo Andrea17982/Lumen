@@ -13,7 +13,7 @@ for (const [label, arm] of [
   for (let launch = 0; launch < 20; launch++) {
     console.log(`Fresh process ${label} ${launch + 1}/20`);
     await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, ['tests/performance-native.mjs', arm], {
+      const child = spawn(process.execPath, ['tests/manual/performance-native.mjs', arm], {
         windowsHide: true,
         stdio: 'inherit',
         env: {

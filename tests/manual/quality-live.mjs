@@ -121,7 +121,6 @@ try {
         orchestra: false,
         closeToTray: false,
         repoContext: false,
-        localAssistant: { ...settings.localAssistant, enabled: false },
       },
     });
   }

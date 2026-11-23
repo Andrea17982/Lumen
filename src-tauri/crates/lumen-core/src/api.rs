@@ -521,15 +521,23 @@ pub async fn execute(
     };
     let mut hub = tokio::sync::Mutex::new(crate::shared_tools::Hub::default());
     let prefs = AppSettings::load(data);
-    let mode = prefs.code_mode;
+    let mut policy = code_mode::CodePolicy::new(
+        prefs.code_mode == CodeMode::On,
+        prefs.code_mode == CodeMode::Auto,
+    );
     let effort = crate::rlm::Effort::for_turn(input.effort, prefs.rlm_effort);
     let endpoint = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://127.0.0.1:11434".into());
+    // One turn context, so documents retained from classic results stay readable after Auto
+    // switches to scripts.
+    let rlm = std::sync::Arc::new(crate::rlm::Turn::from_invocation(
+        &input, data, &endpoint, effort,
+    ));
     let mut sandbox = None;
     let code_cancel = cancel.clone();
     let run = async {
         hub.get_mut().connect(&input, browser, &mut emit).await?;
         let mut prompt = input.prompt.to_owned();
-        if mode == CodeMode::On {
+        if policy.active {
             if let Some(sources) = input.rlm {
                 prompt.push_str(&sources.hint());
             }
@@ -541,6 +549,7 @@ pub async fn execute(
             hub.get_mut()
                 .refresh(input.access, browser, &mut emit)
                 .await;
+            let code = policy.active;
             let mut tools = crate::browser::tools().as_array().unwrap().clone();
             tools.extend(hub.get_mut().tools.clone());
             tools.extend(crate::api_tools::definitions(input.access));
@@ -550,7 +559,7 @@ pub async fn execute(
                     .as_str()
                     .ok_or("Shared tool has no name")?
                     .to_owned();
-                if mode != CodeMode::On
+                if !code
                     && (name.len() > 64
                         || !name
                             .chars()
@@ -561,7 +570,7 @@ pub async fn execute(
                     tool["name"] = json!(alias);
                 }
             }
-            let advertised = if mode == CodeMode::On {
+            let advertised = if code {
                 vec![code_mode::definition_with_context(&tools, effort)]
             } else {
                 tools.clone()
@@ -597,18 +606,20 @@ pub async fn execute(
                 }
             }
             let mut results = vec![];
+            let mut retained = false;
+            let mut last_tool = String::new();
             for call in turn.calls {
                 let name = aliases.get(&call.name).unwrap_or(&call.name);
                 emit(Activity {
                     kind: "tool".into(),
                     text: name.clone(),
                 });
-                let result = if mode == CodeMode::On && name == code_mode::TOOL {
+                let mut result = if code && name == code_mode::TOOL {
                     if let Some(code) = call.args["code"].as_str() {
                         if sandbox.is_none() {
-                            sandbox = Some(code_mode::Session::new(code_cancel.clone())?.with_rlm(
-                                crate::rlm::Turn::from_invocation(&input, data, &endpoint, effort),
-                            ));
+                            sandbox = Some(
+                                code_mode::Session::new(code_cancel.clone())?.with_rlm(rlm.clone()),
+                            );
                         }
                         sandbox
                             .as_ref()
@@ -619,27 +630,37 @@ pub async fn execute(
                     } else {
                         code_mode::result("Code Mode requires a string in code", true)
                     }
-                } else if let Some(code) = (mode == CodeMode::On)
+                } else if let Some(script) = code
                     .then(|| code_mode::direct_script(name, &call.args, &tools))
                     .flatten()
                 {
                     if sandbox.is_none() {
-                        sandbox = Some(code_mode::Session::new(code_cancel.clone())?.with_rlm(
-                            crate::rlm::Turn::from_invocation(&input, data, &endpoint, effort),
-                        ));
+                        sandbox = Some(
+                            code_mode::Session::new(code_cancel.clone())?.with_rlm(rlm.clone()),
+                        );
                     }
                     sandbox
                         .as_ref()
                         .unwrap()
-                        .dispatch(&input, browser, &hub, &tools, &code, &mut emit)
+                        .dispatch(&input, browser, &hub, &tools, &script, &mut emit)
                         .await
                         .0
-                } else if mode == CodeMode::On || name == code_mode::TOOL {
+                } else if code || name == code_mode::TOOL {
                     code_mode::result("Tool was not advertised for this turn", true)
                 } else {
                     api_tools::dispatch(&input, browser, &hub, name, &call.args, &mut emit).await
                 };
+                if policy.retains() {
+                    retained |= rlm.retain_tool_text(name, &mut result);
+                }
+                last_tool.clone_from(name);
                 results.push((call, result));
+            }
+            if let Some(notice) = policy.after_round(retained, &last_tool) {
+                if let Some((_, result)) = results.last_mut() {
+                    code_mode::append_notice(result, &notice.text);
+                }
+                emit(notice);
             }
             crate::api_wire::append_results(&input.account.provider, &mut history, results);
         }

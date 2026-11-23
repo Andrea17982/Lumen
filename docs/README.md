@@ -4,7 +4,7 @@ Start with [installation and the first conversation](getting-started.md). For th
 
 | Guide | What it covers |
 | --- | --- |
-| [Features](features.md) | Direct sessions, Auto, Orchestra, Both, inspector and background work |
+| [Features](features.md) | Direct sessions, Auto, Orchestra, inspector and background work |
 | [Projects, models and permissions](workspace-models-permissions.md) | Working directories, model catalogs, access modes and native questions |
 | [Accounts](accounts.md) | Official login, per-account configuration and local Ollama |
 | [Auto policy](auto.md) | Classification, model selection, review and quota fallback |

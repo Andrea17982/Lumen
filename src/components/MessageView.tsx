@@ -25,11 +25,10 @@ import { useI18n } from '../lib/i18n';
 const MessageBody = lazy(() => import('./MessageBody'));
 const OrchestraCard = lazy(() => import('./OrchestraCard'));
 
-/** One transcript entry: author, actions, reasoning, activity, body and lane/Orchestra state.
+/** One transcript entry: author, actions, reasoning, activity, body and Orchestra state.
  * Memoized: a streamed token changes only the live message object, so other rows skip render. */
 export default memo(function MessageView({
   m,
-  inLane = false,
   latest,
   live,
   running,
@@ -39,14 +38,12 @@ export default memo(function MessageView({
   accounts,
   onRewind,
   onAudit,
-  onApplyLane,
   onOrchestra,
   onError,
   sessionId,
 }: {
   m: Message;
   sessionId?: string;
-  inLane?: boolean;
   latest: boolean;
   /** The reply that is streaming right now. */
   live: boolean;
@@ -58,7 +55,6 @@ export default memo(function MessageView({
   /** Absent outside a saved conversation. */
   onRewind?: (m: Message) => void;
   onAudit: (m: Message) => void;
-  onApplyLane: (m: Message) => void;
   onOrchestra: (command: string, args: Record<string, unknown>) => Promise<void>;
   onError: (text: string) => void;
 }) {
@@ -95,7 +91,6 @@ export default memo(function MessageView({
   const attachments = m.activity.find((a) => a.kind === 'attachments')?.text.split('\n');
   const messageFolder = m.activity.find((a) => a.kind === 'workspace-root')?.text || workspace;
   const references = m.activity.find((a) => a.kind === 'references')?.text.split('\n');
-  const lane = m.activity.find((a) => ['worktree', 'applied', 'discarded'].includes(a.kind));
   const from = providerOf(m);
   const automatic = m.activity.some((a) => a.kind === 'auto-assignment');
   const assigned = m.activity.filter((a) => a.kind === 'model').at(-1)?.text;
@@ -108,7 +103,7 @@ export default memo(function MessageView({
         {m.role === 'assistant' ? (
           <>
             <Mark small />
-            <span>{inLane && from ? nameOf(from) : 'Lumen'}</span>
+            <span>Lumen</span>
           </>
         ) : (
           <span className="user-mark">You</span>
@@ -391,16 +386,6 @@ export default memo(function MessageView({
             </span>
           ))}
         </div>
-      )}
-      {lane?.kind === 'worktree' && !running && (
-        <button className="primary-button lane-apply" onClick={() => onApplyLane(m)}>
-          Apply {from ? nameOf(from) : 'this'} version
-        </button>
-      )}
-      {lane && lane.kind !== 'worktree' && (
-        <small className="lane-state">
-          {lane.kind === 'applied' ? 'Applied to your project' : 'Discarded'}
-        </small>
       )}
     </article>
   );

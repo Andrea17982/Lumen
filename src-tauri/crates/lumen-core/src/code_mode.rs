@@ -164,6 +164,12 @@ pub(crate) fn direct_script(name: &str, args: &Value, tools: &[Value]) -> Option
     })
 }
 
+/// Appends a notice to a tool result's first text block.
+pub(crate) fn append_notice(result: &mut Value, notice: &str) {
+    let text = result["content"][0]["text"].as_str().unwrap_or_default();
+    result["content"][0]["text"] = json!(format!("{text}\n{notice}"));
+}
+
 pub(crate) fn result(text: &str, error: bool) -> Value {
     let mut value = json!({"content": [{"type": "text", "text": text}]});
     if error {
@@ -351,17 +357,65 @@ impl std::fmt::Display for ScriptError {
     }
 }
 
-pub(crate) struct OllamaMode {
+/// Auto escalates to scripts after this many rounds of classic tool calls.
+pub(crate) const ESCALATE_AFTER: usize = 5;
+
+/// Per-turn choice between classic calls and `lumen_code`. `On` scripts from the first request.
+/// Auto starts classic, so short turns pay nothing, and switches for the rest of the turn once
+/// the turn shows it needs many calls or a result too large for the prompt: the cases where
+/// scripts measurably saved tokens and round-trips (reports/bench/2026-11-22).
+pub(crate) struct CodePolicy {
     pub(crate) active: bool,
+    auto: bool,
+    rounds: usize,
     consecutive_syntax_errors: u8,
 }
 
-impl OllamaMode {
-    pub(crate) fn new(active: bool) -> Self {
+impl CodePolicy {
+    pub(crate) fn new(on: bool, auto: bool) -> Self {
         Self {
-            active,
+            active: on,
+            auto: auto && !on,
+            rounds: 0,
             consecutive_syntax_errors: 0,
         }
+    }
+
+    /// Whether classic results should be retained as context documents for a later script.
+    pub(crate) fn retains(&self) -> bool {
+        self.auto && !self.active
+    }
+
+    /// Call after each round of classic tool results; returns the notice when Auto switches.
+    /// `last_tool` is the round's last classic call, used for a concrete example.
+    pub(crate) fn after_round(&mut self, retained: bool, last_tool: &str) -> Option<Activity> {
+        if !self.retains() {
+            return None;
+        }
+        self.rounds += 1;
+        let reason = if retained {
+            "a tool result was too large for the prompt"
+        } else if self.rounds >= ESCALATE_AFTER {
+            "this turn needs many tool calls"
+        } else {
+            return None;
+        };
+        self.active = true;
+        let call = if last_tool
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !last_tool.is_empty()
+        {
+            format!("tools.{last_tool}(args)")
+        } else {
+            format!("tools[{}](args)", json!(last_tool))
+        };
+        Some(Activity {
+            kind: "code-escalate".into(),
+            text: format!(
+                "Code Mode is on for the rest of this turn because {reason}. Do the remaining work in one lumen_code script that calls the tools in a loop, for example (async () => {{ for (const args of [/* one object per call */]) await {call}; return 'done'; }})(). Tools are the only way to reach files and pages: there is no fs, require or process."
+            ),
+        })
     }
 
     pub(crate) fn observe(&mut self, syntax_error: bool, result: &mut Value) -> Option<Activity> {
@@ -374,9 +428,9 @@ impl OllamaMode {
             return None;
         }
         self.active = false;
+        self.auto = false;
         let notice = "Code Mode disabled for this turn after two consecutive JavaScript syntax errors. Continue using classic tool calls.";
-        let text = result["content"][0]["text"].as_str().unwrap_or_default();
-        result["content"][0]["text"] = json!(format!("{text}\n{notice}"));
+        append_notice(result, notice);
         Some(Activity {
             kind: "code-fallback".into(),
             text: notice.into(),
@@ -1016,6 +1070,34 @@ mod tests {
             next.run("typeof number", &[], no_host).await.unwrap(),
             "undefined"
         );
+    }
+
+    #[test]
+    fn auto_escalates_on_many_rounds_or_retained_output_only() {
+        let mut short = CodePolicy::new(false, true);
+        for _ in 1..ESCALATE_AFTER {
+            assert!(short.after_round(false, "t").is_none());
+        }
+        assert!(!short.active && short.retains());
+        assert_eq!(short.after_round(false, "t").unwrap().kind, "code-escalate");
+        assert!(short.active && !short.retains());
+        assert!(short.after_round(true, "t").is_none());
+
+        let mut large = CodePolicy::new(false, true);
+        assert!(large.after_round(true, "t").is_some() && large.active);
+
+        let mut off = CodePolicy::new(false, false);
+        assert!(!off.retains() && off.after_round(true, "t").is_none() && !off.active);
+        let on = CodePolicy::new(true, true);
+        assert!(on.active && !on.retains());
+
+        // A syntax fallback ends Auto for the turn instead of re-escalating.
+        let mut fallback = CodePolicy::new(false, true);
+        fallback.after_round(true, "t");
+        let mut result = super::result("x", true);
+        fallback.observe(true, &mut result);
+        assert!(fallback.observe(true, &mut result).is_some());
+        assert!(!fallback.active && fallback.after_round(true, "t").is_none());
     }
 
     #[test]

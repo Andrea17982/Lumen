@@ -45,57 +45,6 @@ test('Moli image activity renders its path and browser activity stays readable',
   await expect(page.getByRole('button', { name: 'Load image: moli-shot.png' })).toBeVisible();
   await expect(page.locator('.prose')).not.toContainText('"folder"');
 });
-test('layout constraints support keyboard editing, persistence and removal', async ({ page }) => {
-  await page.addInitScript(
-    () =>
-      localStorage.getItem('lumen-preview-v1') ||
-      localStorage.setItem(
-        'lumen-preview-v1',
-        JSON.stringify({
-          accounts: [],
-          sessions: [
-            {
-              id: 'layout',
-              title: 'Canvas test',
-              status: 'completed',
-              workspace: 'C:/Canvas',
-              updatedAt: 1,
-            },
-          ],
-          messages: {},
-        }),
-      ),
-  );
-  await page.goto('/');
-  await page.getByRole('button', { name: /^(?!Actions for).*Canvas test/ }).click();
-  await page.getByRole('button', { name: 'Project inspector', exact: true }).click();
-  const inspector = page.getByRole('complementary', { name: 'Project inspector' });
-  await inspector.getByRole('button', { name: 'Layout canvas', exact: true }).click();
-  await inspector.getByRole('button', { name: 'Add block' }).click();
-  await inspector.getByLabel('Block label').fill('Navigation');
-  const block = inspector.getByRole('button', { name: /^Navigation, content/ });
-  await block.focus();
-  await page.keyboard.press('Shift+ArrowRight');
-  await expect(inspector.getByLabel('x', { exact: true })).toHaveValue('30');
-  await inspector.getByLabel('Constraints').fill('Keep the navigation visible');
-  await inspector.getByRole('button', { name: 'Save layout' }).click();
-  await expect(inspector.getByRole('status')).toContainText('Layout saved');
-  await page.reload();
-  await page.getByRole('button', { name: /^(?!Actions for).*Canvas test/ }).click();
-  await page.getByRole('button', { name: 'Project inspector', exact: true }).click();
-  await inspector.getByRole('button', { name: 'Layout canvas', exact: true }).click();
-  await inspector.getByRole('button', { name: /^Navigation, content/ }).click();
-  await expect(inspector.getByLabel('Constraints')).toHaveValue('Keep the navigation visible');
-  await inspector.getByRole('button', { name: 'Remove block' }).click();
-  await inspector.getByRole('button', { name: 'Save layout' }).click();
-  await expect(inspector.locator('.layout-block')).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      () =>
-        JSON.parse(localStorage.getItem('lumen-preview-v1') || '{}').layouts['C:/Canvas'].blocks,
-    ),
-  ).toEqual([]);
-});
 test('response images load on request, enlarge and return keyboard focus', async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem(

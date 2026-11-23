@@ -1,6 +1,5 @@
-//! Auto routing verdict from a small model instead of keywords. The local helper (Ollama) is
-//! used when the user enabled it; otherwise the cheapest Claude model at low effort rates the
-//! request. Any failure or timeout falls back to the keyword profile, so routing never blocks.
+//! Auto routing verdict from a small model instead of keywords. The cheapest Claude model at
+//! low effort rates the request. Any failure or timeout falls back to the keyword profile, so routing never blocks.
 //! Recognized short continuations ("procedi", "fix it") reuse the latest request's verdict.
 //! Unrelated short tasks and newer unrated manual requests do not inherit an old route.
 use crate::models::{Account, Activity, Message, Provider};
@@ -232,30 +231,10 @@ pub fn parse(text: &str) -> Option<(TaskProfile, bool)> {
     ))
 }
 
-/// Rates `request` with a small model. `accounts` and `data` locate a Claude login; `local`
-/// is the enabled local helper model, if any.
-pub async fn classify(
-    data: &Path,
-    accounts: &[Account],
-    local: Option<(String, u64)>,
-    request: &str,
-    context: &str,
-) -> Verdict {
+/// Rates `request` with a small model. `accounts` and `data` locate a Claude login.
+pub async fn classify(data: &Path, accounts: &[Account], request: &str, context: &str) -> Verdict {
     let fallback = heuristic(request);
     let ask = prompt(request, context);
-    if let Some((model, timeout_ms)) = local.filter(|(m, _)| !m.is_empty()) {
-        let wait = timeout_ms.min(TIMEOUT.as_millis() as u64);
-        if let Ok(text) = crate::ollama::generate(&model, &ask, wait).await {
-            if let Some((mut task, complex)) = parse(&text) {
-                task.audit = crate::router::audit_intent(request);
-                return Verdict {
-                    task,
-                    complex,
-                    source: "ollama",
-                };
-            }
-        }
-    }
     let Some(account) = accounts.iter().find(|a| a.provider == Provider::Claude) else {
         return fallback;
     };

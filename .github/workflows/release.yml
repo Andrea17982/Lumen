@@ -5,6 +5,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+# Tests already ran in CI on this commit; release jobs only build and smoke-test packages.
+# Thin LTO keeps CI release builds fast; local `npm run build:release` keeps full LTO.
+env:
+  CARGO_PROFILE_RELEASE_LTO: thin
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
 jobs:
   windows:
     runs-on: windows-latest
@@ -19,9 +24,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - run: npm run check
-      - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --bundles nsis
       - name: Clean Windows installer smoke test
         shell: pwsh
@@ -66,9 +68,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - run: node scripts/prepare-moli.mjs
-      - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --target universal-apple-darwin --bundles dmg
       - name: Mounted universal DMG helper smoke
         shell: bash
@@ -105,9 +104,6 @@ jobs:
       - name: System dependencies
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libpipewire-0.3-dev libspa-0.2-dev libclang-dev libxcb1-dev libxrandr-dev libdbus-1-dev libgbm-dev libegl-dev libwayland-dev
       - run: npm ci
-      - run: npm run check
-      - run: node scripts/prepare-daemon.mjs --debug
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: npm run tauri build -- --bundles deb,appimage
       - name: Extracted Linux package helper smoke
         shell: bash
@@ -167,11 +163,11 @@ jobs:
           cd release-assets
           sha256sum -- * > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      # Keep the assembled release reviewable until its assets/checks are verified.
+      # Every package passed its smoke test above, so publish directly.
       - uses: softprops/action-gh-release@v3
         with:
           name: Lumen ${{ steps.release.outputs.version }}
           body_path: ${{ steps.release.outputs.notes }}
-          draft: true
+          make_latest: true
           fail_on_unmatched_files: true
           files: release-assets/*

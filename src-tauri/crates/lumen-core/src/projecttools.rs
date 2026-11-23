@@ -211,54 +211,6 @@ pub struct CheckEntry {
     pub layers: Vec<String>,
 }
 
-#[derive(Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct GodotDiagnostics {
-    /// Executable on PATH or in the usual install folders; nothing is started by the scan.
-    pub executable: Option<String>,
-    /// Godot project files nested in this selected folder.
-    pub projects: Vec<String>,
-    /// MCP declaration names/providers only. Arguments, environment and headers are never returned.
-    pub mcp_servers: Vec<String>,
-    /// Godot server names a connection test can start.
-    pub servers: Vec<String>,
-    /// The scan itself never contacts the editor; see `godot::godot_connection_test`.
-    pub editor_connection: String,
-}
-
-pub fn godot_diagnostics(root: &Path) -> GodotDiagnostics {
-    let mut dirs = Vec::new();
-    find_dirs(root, root, 0, &mut dirs);
-    let mut projects: Vec<String> = dirs
-        .into_iter()
-        .filter(|dir| dir.join("project.godot").is_file())
-        .map(|dir| rel(root, &dir.join("project.godot")))
-        .collect();
-    projects.sort();
-    let mcp_servers = discover_tools(root)
-        .into_iter()
-        .filter(|entry| entry.kind == "mcp" && entry.name.to_lowercase().contains("godot"))
-        .map(|entry| format!("{} ({})", entry.name, entry.provider))
-        .collect();
-    GodotDiagnostics {
-        executable: crate::godot::find_executable(),
-        projects,
-        mcp_servers,
-        servers: crate::godot::godot_servers(root),
-        editor_connection:
-            "Not checked yet. Test connection starts the declared server and asks the editor for its project info.".into(),
-    }
-}
-
-#[crate::command]
-pub async fn project_godot_diagnostics(folder: String) -> Result<GodotDiagnostics, String> {
-    let root = dunce::canonicalize(&folder).map_err(|_| "Choose an existing folder")?;
-    if !root.is_dir() {
-        return Err("Choose an existing folder".into());
-    }
-    Ok(godot_diagnostics(&root))
-}
-
 fn script_name_ok(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -912,26 +864,6 @@ mod tests {
             .any(|l| l.contains("bad name") || l.contains("nope")));
         let sim = checks.iter().find(|c| c.label == "npm run sim").unwrap();
         assert_eq!(sim.cwd, "backend");
-    }
-
-    #[test]
-    fn godot_diagnostics_are_project_scoped_and_do_not_expose_server_arguments() {
-        let root = fixture("godot diagnostics");
-        write(&root, "game/project.godot", "config_version=5");
-        write(
-            &root,
-            ".mcp.json",
-            r#"{"mcpServers":{"godot":{"command":"node","args":["--token","PRIVATE"]}}}"#,
-        );
-        let report = godot_diagnostics(&root);
-        assert_eq!(report.projects, vec!["game/project.godot"]);
-        assert_eq!(report.mcp_servers, vec!["godot (claude)"]);
-        assert!(report.editor_connection.contains("Not checked"));
-        let json = serde_json::to_string(&report).unwrap();
-        assert!(!json.contains("PRIVATE"));
-        let other = fixture("unrelated");
-        assert!(godot_diagnostics(&other).projects.is_empty());
-        assert!(godot_diagnostics(&other).mcp_servers.is_empty());
     }
 
     #[test]

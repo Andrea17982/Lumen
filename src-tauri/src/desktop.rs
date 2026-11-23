@@ -194,24 +194,6 @@ pub async fn call(
             open_login(PathBuf::from(value.as_str().ok_or("Invalid login script")?))?;
             return Ok(Value::Null);
         }
-        "open_godot_editor" => {
-            std::process::Command::new(
-                value["program"]
-                    .as_str()
-                    .ok_or("Invalid Godot executable")?,
-            )
-            .args([
-                "--editor",
-                "--path",
-                value["directory"].as_str().ok_or("Invalid Godot project")?,
-            ])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-            return Ok(Value::Null);
-        }
         _ => {}
     }
     Ok(value)

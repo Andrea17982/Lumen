@@ -10,7 +10,6 @@ const compactTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : 
 /** The row under the message box: mode, project, permissions, attachments and send/stop. */
 export function ComposerToolbar(p: {
   mode: Mode;
-  bothAvailable: boolean;
   providers?: Provider[];
   onMode: (mode: Mode) => void;
   /** Auto mode with Orchestra turned on. */
@@ -33,15 +32,10 @@ export function ComposerToolbar(p: {
   onSend: () => void;
 }) {
   const { t } = useI18n();
-  const direct = p.mode !== 'auto' && p.mode !== 'both';
+  const direct = p.mode !== 'auto';
   return (
     <div className="composer-toolbar">
-      <ModeControl
-        mode={p.mode}
-        bothAvailable={p.bothAvailable}
-        providers={p.providers}
-        onChange={p.onMode}
-      />
+      <ModeControl mode={p.mode} providers={p.providers} onChange={p.onMode} />
       {p.mode === 'cursor' && p.accessMode !== 'autopilot' && (
         <span className="catalog-status">
           {p.mode === 'cursor' ? 'Cursor' : 'OpenCode'} requires Autopilot

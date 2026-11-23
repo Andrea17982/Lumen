@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import { chromium } from '@playwright/test';
 import { tmpdir } from 'node:os';
 
-export const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const fixtureRoot = path.join(repo, 'tests/fixtures/quality');
 export const godotDefault = path.join(
   process.env.LOCALAPPDATA || '',

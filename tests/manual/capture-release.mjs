@@ -313,9 +313,8 @@ try {
   await page.screenshot({ path: path.join(output, 'moli-browser.png') });
   await select(labels[0]);
   await page.getByRole('button', { name: 'Project inspector', exact: true }).click();
-  await page.getByRole('button', { name: 'Layout canvas', exact: true }).click();
-  await page.getByText('Main view', { exact: true }).first().waitFor();
-  await page.screenshot({ path: path.join(output, 'inspector-canvas.png') });
+  await page.getByRole('button', { name: 'Changes', exact: true }).click();
+  await page.screenshot({ path: path.join(output, 'inspector.png') });
   await page.getByRole('button', { name: 'Close inspector', exact: true }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
   await page.screenshot({ path: path.join(output, 'settings-simple.png') });

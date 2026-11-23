@@ -2,8 +2,6 @@ import { useSettingsEditor } from '../lib/busy';
 import type { Account, Provider } from '../lib/types';
 import { NO_LIMITS, OrchestraLimitsSettings } from '../features/orchestra/scheduling';
 import { Switch } from './controls';
-import LocalAssistantSettings from '../features/local-assistant/LocalAssistantSettings';
-import { localAssistant } from '../features/local-assistant/instance';
 import { useI18n } from '../lib/i18n';
 
 /** Settings → Teamwork: how the providers help each other. */
@@ -121,11 +119,34 @@ export default function TeamworkSettings({
         disabled={busy}
         onChange={(v) => save({ ...s, repoContext: v })}
       />
-      <LocalAssistantSettings
-        assistant={localAssistant}
-        config={s.localAssistant}
-        onChange={(next) => save({ ...s, localAssistant: next })}
-      />
+      <div className="switch-row">
+        <span>
+          <strong>{t('Code Mode')}</strong>
+          <small>
+            {t(
+              'One script calls several tools and returns only what matters. Automatic uses it when a turn needs many calls or a large result. Claude Code, Codex and OpenCode use it only with Always.',
+            )}
+          </small>
+        </span>
+        <div className="auto-policy" role="group" aria-label={t('Code Mode')}>
+          {(
+            [
+              ['auto', t('Automatic')],
+              ['on', t('Always')],
+              ['off', t('Off')],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              aria-pressed={(s.codeMode ?? 'auto') === mode}
+              disabled={busy}
+              onClick={() => save({ ...s, codeMode: mode, codeModeChosen: true })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

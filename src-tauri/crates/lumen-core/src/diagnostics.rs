@@ -770,10 +770,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         drop(listener);
-        let exe = std::env::var("LUMEN_GODOT_EXE")
-            .ok()
-            .or_else(crate::godot::find_executable)
-            .expect("Install Godot or set LUMEN_GODOT_EXE");
+        let exe = std::env::var("LUMEN_GODOT_EXE").expect("set LUMEN_GODOT_EXE");
         let mut child = crate::proc::command(exe)
             .args(["--headless", "--editor", "--path"])
             .arg(&fixture.root)

@@ -1,7 +1,7 @@
 {
   "name": "lumen-desktop",
   "private": true,
-  "version": "0.12.1",
+  "version": "0.12.2",
   "type": "module",
   "scripts": {
     "format": "prettier --write src tests vite.config.ts playwright.config.ts",
@@ -13,7 +13,7 @@
     "tauri": "tauri",
     "test": "vitest run --dir src",
     "test:e2e": "playwright test",
-    "test:native": "node tests/native-smoke.mjs",
+    "test:native": "node tests/manual/native-smoke.mjs",
     "check": "npm run build && npm test && npm run docs:check",
     "docs:check": "node tests/docs-check.mjs"
   },
