@@ -1,10 +1,10 @@
 # Validation and known limits
 
-What has actually been verified for the current source (0.12.1), and which limits remain. Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
+What has actually been verified for the current source (0.12.2), and which limits remain. Evidence for earlier versions is in their Git tags and [GitHub Releases](https://github.com/Andrea17982/Lumen/releases).
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
-## Unreleased
+## 0.12.2
 
 - **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Claude Code, Codex and OpenCode keep direct tools in Automatic; paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)
 - **Simplification:** Both mode with manual merge and worktree variants, the inspector's layout canvas and screenshot library, the separate Ollama helper (titles, commit and handoff drafts, local Auto classification) and the built-in Godot controls were removed. Godot is now the [plugin](../plugins/godot/README.md) in `plugins/godot`, checked by the manifest validator and a stdio smoke run. Manual and live harnesses moved to `tests/manual`. 293 Rust tests (17 opt-in ignored), 63 frontend tests and 51 production-browser tests pass.
