@@ -8,9 +8,9 @@ Fixtures, builds, small real-account checks and owner observations are different
 
 - **Task worktree and Publish:** large Auto tasks that write files run in the conversation's own worktree, Lumen commits after turns without failing checks, and Publish pushes, opens the pull request with `gh` and turns on automatic merge.
   - An end-to-end Rust test covers a temporary repository, a local bare remote and a fake `gh`. It checks branch creation, the commit of uncommitted work, copying `.env` but not `node_modules`, the automatic commit, the push, the `gh pr create` and `gh pr merge --auto` arguments, Apply and Discard. Browser tests cover the topbar chip, the Publish preview and a disabled Publish without `gh`.
+  - After Publish, Lumen follows the pull request and corrects failed checks and trusted change requests, up to three rounds. A test with a fake `gh` checks that failed logs and owner reviews reach the correction request, that untrusted reviewers are ignored, and that a correction without a commit stops the loop.
   - Not yet run against GitHub itself.
   - Dependency install runs only in Autopilot.
-  - Fixing CI failures and review comments after Publish is not implemented yet.
 
 ## 0.12.2
 

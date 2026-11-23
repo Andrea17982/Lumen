@@ -51,8 +51,13 @@ test('a task worktree shows its branch and publishes after a preview', async ({ 
   await expect(dialog.getByLabel('Title')).toHaveValue('Add the login page');
   await dialog.getByRole('button', { name: 'Publish' }).click();
   await expect(page.getByRole('status')).toContainText('example/project/pull/1');
-  await expect(bar).toHaveCount(0);
-  await expect(page.locator('.worktree-chip')).toHaveCount(0);
+  // Lumen keeps the worktree and follows the pull request.
+  await expect(bar).toContainText('Waiting for checks');
+  await expect(bar.getByRole('button', { name: 'Publish' })).toHaveCount(0);
+  await expect(page.locator('.worktree-chip')).toContainText('lumen/add-the-login-page-a1b2c3');
+  await bar.getByRole('button', { name: 'Stop following' }).click();
+  await expect(bar).toContainText('Not watched');
+  await expect(bar.getByRole('button', { name: 'Stop following' })).toHaveCount(0);
 });
 
 test('Publish stays disabled with the reason when GitHub CLI is unavailable', async ({ page }) => {

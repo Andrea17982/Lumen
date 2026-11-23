@@ -488,8 +488,20 @@ const it: Record<string, string> = {
   'Base branch': 'Branch di base',
   Title: 'Titolo',
   Description: 'Descrizione',
-  'Lumen pushes the branch, opens the pull request and turns on automatic merge when CI and review pass.':
-    'Lumen fa il push del branch, apre la pull request e attiva il merge automatico quando CI e review passano.',
+  'Lumen pushes the branch, opens the pull request and turns on automatic merge. It then follows checks and reviews and corrects failures, up to three times.':
+    'Lumen fa il push del branch, apre la pull request e attiva il merge automatico. Poi segue check e review e corregge i fallimenti, fino a tre volte.',
+  'Pull request': 'Pull request',
+  corrections: 'correzioni',
+  'Stop following': 'Smetti di seguire',
+  'Delete the worktree?': 'Eliminare il worktree?',
+  'The branch stays for its pull request.': 'Il branch resta per la sua pull request.',
+  'Waiting for checks': 'In attesa dei check',
+  'Checks running': 'Check in corso',
+  'Checks passed · waiting for review and merge': 'Check superati · in attesa di review e merge',
+  'Pushing the correction': 'Push della correzione',
+  'Not watched': 'Non seguita',
+  'Closed without merging': 'Chiusa senza merge',
+  'Over to you': 'Tocca a te',
   'Publishing…': 'Pubblicazione…',
   Worktree: 'Worktree',
 };

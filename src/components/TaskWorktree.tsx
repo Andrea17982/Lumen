@@ -20,6 +20,13 @@ export function useTaskWorktree(session: Session | undefined, running: boolean) 
     if (running) return;
     refresh().catch(() => setStatus(null));
   }, [refresh, running, workspace]);
+  // While Lumen follows a pull request, its state changes without a turn.
+  const watching = !!status?.pr?.watching;
+  useEffect(() => {
+    if (!watching || running) return;
+    const timer = setInterval(() => refresh().catch(() => undefined), 60_000);
+    return () => clearInterval(timer);
+  }, [watching, running, refresh]);
   const [published, setPublished] = useState<Published | null>(null);
   return {
     status,
@@ -111,6 +118,11 @@ export default function TaskWorktreeBar({
     });
   const apply = () =>
     run(async () => onSession(await call<Session>('apply_task', { id: session.id })));
+  const stopWatching = () =>
+    run(async () => {
+      await call('stop_watching_task', { id: session.id });
+      onSession(session);
+    });
   const discard = () =>
     run(async () => {
       setConfirmDiscard(false);
@@ -128,16 +140,42 @@ export default function TaskWorktreeBar({
             {status.dirty ? ` · ${t('uncommitted changes')}` : ''}
           </span>
         </span>
-        <button
-          className="primary"
-          disabled={busy || running || empty}
-          onClick={() => void openPublish()}
-        >
-          {t('Publish')}
-        </button>
-        <button disabled={busy || running || empty} onClick={() => void apply()}>
-          {t('Apply to folder')}
-        </button>
+        {status.pr ? (
+          <>
+            <a
+              className="task-worktree-pr"
+              href={status.pr.url}
+              onClick={(e) => {
+                e.preventDefault();
+                void external(status.pr!.url);
+              }}
+            >
+              {t('Pull request')}
+            </a>
+            <span className="task-worktree-count">
+              {t(status.pr.last)}
+              {status.pr.rounds > 0 ? ` · ${t('corrections')} ${status.pr.rounds}/3` : ''}
+            </span>
+            {status.pr.watching && (
+              <button disabled={busy} onClick={() => void stopWatching()}>
+                {t('Stop following')}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              className="primary"
+              disabled={busy || running || empty}
+              onClick={() => void openPublish()}
+            >
+              {t('Publish')}
+            </button>
+            <button disabled={busy || running || empty} onClick={() => void apply()}>
+              {t('Apply to folder')}
+            </button>
+          </>
+        )}
         <button disabled={busy || running} onClick={() => setConfirmDiscard(true)}>
           {t('Discard')}
         </button>
@@ -146,8 +184,16 @@ export default function TaskWorktreeBar({
         <div className="dialog-scrim">
           <div className="popup conversation-dialog" role="dialog" aria-label={t('Discard')}>
             <p>
-              {t('Delete the worktree and branch')} <code>{status.branch}</code>?{' '}
-              {t('The project folder is not changed.')}
+              {status.pr ? (
+                <>
+                  {t('Delete the worktree?')} {t('The branch stays for its pull request.')}
+                </>
+              ) : (
+                <>
+                  {t('Delete the worktree and branch')} <code>{status.branch}</code>?{' '}
+                  {t('The project folder is not changed.')}
+                </>
+              )}
             </p>
             <button onClick={() => void discard()} disabled={busy}>
               {t('Discard')}
@@ -187,7 +233,7 @@ export default function TaskWorktreeBar({
             <p className="publish-note">
               {publishing.blocked ||
                 t(
-                  'Lumen pushes the branch, opens the pull request and turns on automatic merge when CI and review pass.',
+                  'Lumen pushes the branch, opens the pull request and turns on automatic merge. It then follows checks and reviews and corrects failures, up to three times.',
                 )}
             </p>
             <button

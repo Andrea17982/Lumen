@@ -219,7 +219,23 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       result = task ? { ...task, blocked: args.preview ? task.blocked : null } : null;
       break;
     }
-    case 'publish_task':
+    case 'publish_task': {
+      const task = data.tasks?.[String(args.id)];
+      if (!task) throw new Error('This conversation has no task worktree');
+      const url = 'https://github.com/example/project/pull/1';
+      task.pr = { url, watching: true, rounds: 0, last: 'Waiting for checks' };
+      result = {
+        session: data.sessions.find((s) => s.id === args.id),
+        url,
+        autoMergeError: null,
+      };
+      break;
+    }
+    case 'stop_watching_task': {
+      const pr = data.tasks?.[String(args.id)]?.pr;
+      if (pr) Object.assign(pr, { watching: false, last: 'Not watched' });
+      break;
+    }
     case 'apply_task':
     case 'discard_task': {
       const task = data.tasks?.[String(args.id)];
@@ -229,10 +245,7 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
         s.id === args.id ? { ...s, workspace: task.origin } : s,
       );
       const session = data.sessions.find((s) => s.id === args.id);
-      result =
-        command === 'publish_task'
-          ? { session, url: 'https://github.com/example/project/pull/1', autoMergeError: null }
-          : session;
+      result = session;
       break;
     }
     default:

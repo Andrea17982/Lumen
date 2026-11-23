@@ -42,9 +42,13 @@ A large Auto task that writes files (rated complex or top tier) runs in the conv
   - **Apply to folder** copies the task's changes into the project folder.
   - **Discard** deletes the worktree and its branch.
 
-  After any of the three, the conversation returns to the project folder.
+  After Apply or Discard, the conversation returns to the project folder.
+- **Corrections after Publish.** The worktree stays, and Lumen's service checks the pull request every minute.
+  - **When it sends a correction:** when a check fails or someone with write access to the repository requests changes. Lumen then sends this conversation a correction request with the failed CI log or the review comments, presented as data to fix rather than instructions. The fix is committed after Lumen's checks and pushed to the same branch.
+  - **When it stops:** after three correction rounds, or when a correction ends without a commit, Lumen stops and hands over. You can also stop it with **Stop following**.
+  - **When the pull request is merged:** the conversation returns to the project folder and the worktree is removed.
 
-Publish needs an `origin` remote and a signed-in GitHub CLI; without them the button says why. Fixing failed CI or review comments after publishing comes in a later release.
+Publish needs an `origin` remote and a signed-in GitHub CLI; without them the button says why.
 
 ## Context and project location
 

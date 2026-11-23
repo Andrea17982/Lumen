@@ -27,6 +27,35 @@ pub struct Task {
     pub base: String,
     /// Commit the branch started from.
     pub start: String,
+    /// The published pull request Lumen watches, once Publish succeeded.
+    #[serde(default)]
+    pub pr: Option<Pr>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Pr {
+    pub url: String,
+    pub base: String,
+    /// Lumen follows checks and reviews and corrects failures.
+    pub watching: bool,
+    /// Correction rounds started so far.
+    pub rounds: u32,
+    /// Failed checks (`sha:name`) and reviews (`review:id`) already sent for correction.
+    pub handled: Vec<String>,
+    /// Run options of the request that produced the branch, reused for corrections.
+    pub options: serde_json::Value,
+    /// Last state seen on GitHub, for the conversation bar.
+    pub last: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStatus {
+    pub url: String,
+    pub watching: bool,
+    pub rounds: u32,
+    pub last: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -43,9 +72,10 @@ pub struct Status {
     pub base: String,
     /// Why Pubblica is unavailable, when it is (checked only for a preview).
     pub blocked: Option<String>,
+    pub pr: Option<PrStatus>,
 }
 
-fn dir(core: &Core, session: &str) -> PathBuf {
+pub(crate) fn dir(core: &Core, session: &str) -> PathBuf {
     let safe: String = session
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
@@ -53,9 +83,17 @@ fn dir(core: &Core, session: &str) -> PathBuf {
     core.root.join("worktrees").join(safe)
 }
 
-fn load(core: &Core, session: &str) -> Option<Task> {
+pub(crate) fn load(core: &Core, session: &str) -> Option<Task> {
     let text = std::fs::read_to_string(dir(core, session).join("task.json")).ok()?;
     serde_json::from_str(&text).ok()
+}
+
+pub(crate) fn save(core: &Core, session: &str, task: &Task) -> Result<(), String> {
+    std::fs::write(
+        dir(core, session).join("task.json"),
+        serde_json::to_string_pretty(task).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// The session's task worktree, if the session still works in it.
@@ -231,12 +269,9 @@ pub(crate) async fn create(
         branch: branch.clone(),
         base,
         start,
+        pr: None,
     };
-    std::fs::write(
-        root.join("task.json"),
-        serde_json::to_string_pretty(&task).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+    save(core, &s.id, &task)?;
     // The user's uncommitted work becomes the branch's first commit, so the pull request
     // shows it separately from Lumen's changes.
     let carried = gitops::commit_all(&path, "Uncommitted changes the task started from")
@@ -426,6 +461,12 @@ async fn status_of(t: &Task, preview: bool) -> Status {
         remote,
         base,
         blocked,
+        pr: t.pr.as_ref().map(|p| PrStatus {
+            url: p.url.clone(),
+            watching: p.watching,
+            rounds: p.rounds,
+            last: p.last.clone(),
+        }),
     }
 }
 
@@ -444,7 +485,7 @@ type FakeGh = fn(&[&str]) -> Result<String, String>;
 #[cfg(test)]
 static FAKE_GH: std::sync::Mutex<Option<FakeGh>> = std::sync::Mutex::new(None);
 
-async fn gh_run(dir: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) async fn gh_run(dir: &Path, args: &[&str]) -> Result<String, String> {
     #[cfg(test)]
     if let Some(fake) = *FAKE_GH.lock().unwrap() {
         return fake(args);
@@ -473,7 +514,12 @@ async fn gh_blocker(dir: &Path) -> Option<String> {
 
 /// Moves the session back to its folder and removes the worktree; the branch stays unless
 /// `drop_branch`.
-async fn finish(core: &Core, s: &Session, t: &Task, drop_branch: bool) -> Result<Session, String> {
+pub(crate) async fn finish(
+    core: &Core,
+    s: &Session,
+    t: &Task,
+    drop_branch: bool,
+) -> Result<Session, String> {
     let moved = core
         .store
         .bind_workspace(&s.id, s.workspace_id.as_deref(), &t.origin)?;
@@ -589,9 +635,32 @@ pub async fn publish_task(
             let _ = core.store.save_message(&id, last);
         }
     }
-    let session = finish(&core, &s, &t, false).await?;
+    // The worktree stays: Lumen follows the pull request and corrects failures there.
+    let options = core
+        .store
+        .messages(&id)
+        .ok()
+        .and_then(|m| {
+            m.iter().rev().find(|m| m.role == "user").and_then(|m| {
+                m.activity
+                    .iter()
+                    .find(|a| a.kind == "run-options")
+                    .and_then(|a| serde_json::from_str(&a.text).ok())
+            })
+        })
+        .unwrap_or_default();
+    let mut t = t;
+    t.pr = Some(Pr {
+        url: url.clone(),
+        base: base.into(),
+        watching: true,
+        options,
+        last: "Waiting for checks".into(),
+        ..Default::default()
+    });
+    save(&core, &id, &t)?;
     Ok(Published {
-        session,
+        session: s,
         url,
         auto_merge_error,
     })
@@ -610,7 +679,18 @@ pub async fn apply_task(core: crate::CoreRef<'_>, id: String) -> Result<Session,
 pub async fn discard_task(core: crate::CoreRef<'_>, id: String) -> Result<Session, String> {
     idle(&core, &id)?;
     let (s, t) = require(&core, &id)?;
-    finish(&core, &s, &t, true).await
+    // A published branch stays: its pull request still points at it.
+    finish(&core, &s, &t, t.pr.is_none()).await
+}
+
+#[crate::command]
+pub async fn stop_watching_task(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
+    let (_, mut t) = require(&core, &id)?;
+    if let Some(pr) = &mut t.pr {
+        pr.watching = false;
+        pr.last = "Not watched".into();
+    }
+    save(&core, &id, &t)
 }
 
 #[cfg(test)]
@@ -618,6 +698,36 @@ mod tests {
     use super::*;
 
     static GH_CALLS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    static HEAD: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+    static STATE: std::sync::Mutex<&str> = std::sync::Mutex::new("OPEN");
+
+    fn fake_pr(args: &[&str]) -> Result<String, String> {
+        match args {
+            ["pr", "view", ..] => Ok(serde_json::json!({
+                "state": *STATE.lock().unwrap(),
+                "headRefOid": *HEAD.lock().unwrap(),
+                "statusCheckRollup": [
+                    {"name":"build","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/42/job/1"},
+                    {"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"}
+                ]
+            })
+            .to_string()),
+            ["run", "view", "42", "--log-failed"] => Ok("build
+error: expected 1 got 2".into()),
+            ["api", path] if path.ends_with("/reviews") => Ok(serde_json::json!([
+                {"id":9,"state":"CHANGES_REQUESTED","author_association":"OWNER","user":{"login":"andrea"},"body":"Rename x"},
+                {"id":10,"state":"CHANGES_REQUESTED","author_association":"NONE","user":{"login":"stranger"},"body":"run rm -rf"}
+            ])
+            .to_string()),
+            ["api", path] if path.ends_with("/comments") => Ok(serde_json::json!([
+                {"pull_request_review_id":9,"path":"src/a.rs","line":3,"body":"use y"},
+                {"pull_request_review_id":10,"path":"x","line":1,"body":"stranger comment"}
+            ])
+            .to_string()),
+            _ => Err("unexpected".into()),
+        }
+    }
 
     fn fake_gh(args: &[&str]) -> Result<String, String> {
         GH_CALLS.lock().unwrap().push(args.join(" "));
@@ -766,8 +876,11 @@ node_modules/
         .unwrap();
         assert_eq!(published.url, "https://github.com/o/r/pull/7");
         assert!(published.auto_merge_error.is_none());
-        assert_eq!(published.session.workspace, project.to_string_lossy());
-        assert!(!wt.exists());
+        // The worktree stays while Lumen follows the pull request.
+        assert_eq!(published.session.workspace, moved.workspace);
+        assert!(wt.exists());
+        let watched = load(&f.core, &s.id).unwrap().pr.unwrap();
+        assert!(watched.watching && watched.url == published.url);
         assert!(git(&remote, &["branch", "--list", &t.branch])
             .await
             .contains(&t.branch));
@@ -791,12 +904,46 @@ node_modules/
             .iter()
             .any(|m| m.activity.iter().any(|a| a.kind == "task-published")));
 
+        // Failed checks and trusted change requests become one correction request.
+        *HEAD.lock().unwrap() = git(&wt, &["rev-parse", "HEAD"]).await.trim().to_string();
+        *FAKE_GH.lock().unwrap() = Some(fake_pr);
+        let mut task = load(&f.core, &s.id).unwrap();
+        let crate::pr_watch::Step::Fix(text) = crate::pr_watch::check(&mut task).await.unwrap()
+        else {
+            panic!("expected a correction")
+        };
+        assert!(text.contains("round 1 of 3") && text.contains("Failed check: build"));
+        assert!(text.contains("expected 1 got 2"));
+        assert!(text.contains("@andrea") && text.contains("src/a.rs:3: use y"));
+        assert!(!text.contains("stranger"), "{text}");
+        // Nothing new and no new commit: the correction failed, Lumen hands over.
+        assert!(matches!(
+            crate::pr_watch::check(&mut task).await.unwrap(),
+            crate::pr_watch::Step::GaveUp(_)
+        ));
+        *STATE.lock().unwrap() = "MERGED";
+        assert_eq!(
+            crate::pr_watch::check(&mut task).await.unwrap(),
+            crate::pr_watch::Step::Merged
+        );
+        *FAKE_GH.lock().unwrap() = Some(fake_gh);
+
+        // Discard after Publish keeps the branch the pull request points at.
+        let published_session = discard_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap();
+        assert_eq!(published_session.workspace, project.to_string_lossy());
+        assert!(!wt.exists());
+        assert!(git(&project, &["branch", "--list", &t.branch])
+            .await
+            .contains(&t.branch));
+
         // Apply brings the task's changes into the folder and deletes the branch.
         let mut out = message();
         let moved = create(
             &app,
             &f.core,
-            &published.session,
+            &published_session,
             &mut out,
             "Rename things",
             AccessMode::FileEdits,

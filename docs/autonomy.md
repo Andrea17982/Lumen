@@ -12,7 +12,7 @@ Lumen lets assistants work on their own while keeping their work recoverable. It
 
 Lumen classifies actions in `lumen-core/src/autonomy.rs` by matching command words and tool names, conservatively and in a documented way. This classification is **not a sandbox**. An unusual spelling, a script that runs a destructive command internally, or an alias can still get through. Native CLIs (Claude Code, Codex, Antigravity, OpenCode, Cursor) in Autopilot run their own tools: Lumen classifies and logs those actions from the turn's activity but does not block them beforehand. Use **Ask first** or **File edits** when an action must be stopped before it runs.
 
-A task worktree is recorded as a Reversible decision. **Publish** is External: it pushes, opens a pull request and enables automatic merge only after the user confirms the preview, and it is appended to the audit log. [Task worktree and Publish](features.md#task-worktree-and-publish)
+A task worktree is recorded as a Reversible decision. **Publish** is External: it pushes, opens a pull request and enables automatic merge only after the user confirms the preview, and it is appended to the audit log. The corrections Lumen pushes afterwards to the same branch are External too and are logged one by one. Only reviews from the owner, members and collaborators trigger them. [Task worktree and Publish](features.md#task-worktree-and-publish)
 
 ## Audit log
 

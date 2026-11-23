@@ -31,6 +31,8 @@ export interface TaskWorktreeStatus {
   base: string;
   /** Why Publish is unavailable (checked only for a preview). */
   blocked?: string | null;
+  /** The published pull request Lumen follows. */
+  pr?: { url: string; watching: boolean; rounds: number; last: string } | null;
 }
 export interface Published {
   session: Session;
