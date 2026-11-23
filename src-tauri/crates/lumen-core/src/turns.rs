@@ -1109,6 +1109,7 @@ impl ResumeReplayGuard {
                 | "code-metrics"
                 | "quota"
                 | "usage"
+                | "native-usage"
                 | "window"
                 | "connector-status"
                 | "api-cost"

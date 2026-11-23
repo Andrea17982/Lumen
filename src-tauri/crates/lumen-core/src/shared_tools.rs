@@ -372,6 +372,31 @@ impl Hub {
                 .is_none_or(|name| !names.contains(name))
         });
     }
+    /// `<integration>_<tool>` names for the exposed aliases, as models read them, e.g.
+    /// `acme_filesystem_read_file`. Aliases whose readable name would collide are left out.
+    pub(crate) fn readable_names(&self) -> std::collections::HashMap<String, String> {
+        let mut seen = std::collections::HashMap::<String, Option<String>>::new();
+        for (alias, (server, original)) in &self.routes {
+            let label = self.labels.get(server).unwrap_or(server);
+            let name: String = format!("{label}_{original}")
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .take(64)
+                .collect();
+            seen.entry(name)
+                .and_modify(|a| *a = None)
+                .or_insert(Some(alias.clone()));
+        }
+        seen.into_iter()
+            .filter_map(|(name, alias)| Some((alias?, name)))
+            .collect()
+    }
     fn install_tools(&mut self, name: &str, tools: Vec<Value>, access: AccessMode) {
         self.remove_tools(name);
         for mut tool in tools {

@@ -299,6 +299,18 @@ impl Turn {
 
     /// Moves oversized text blocks into context documents; true when any block was moved.
     pub(crate) fn retain_tool_text(&self, name: &str, result: &mut Value) -> bool {
+        self.retain_tool_text_with(name, result, RESULT_LIMIT, None)
+    }
+
+    /// As `retain_tool_text`, for text over `limit` bytes; with `head`, the model sees only
+    /// that many leading bytes instead of the bounded preview.
+    pub(crate) fn retain_tool_text_with(
+        &self,
+        name: &str,
+        result: &mut Value,
+        limit: usize,
+        head: Option<usize>,
+    ) -> bool {
         let mut retained = false;
         let Some(blocks) = result["content"].as_array_mut() else {
             return false;
@@ -307,7 +319,7 @@ impl Turn {
             if block["type"] != "text" {
                 continue;
             }
-            let Some(text) = block["text"].as_str().filter(|s| s.len() > RESULT_LIMIT) else {
+            let Some(text) = block["text"].as_str().filter(|s| s.len() > limit) else {
                 continue;
             };
             let mut docs = self.docs.lock().unwrap();
@@ -315,7 +327,20 @@ impl Turn {
                 continue;
             };
             let mut preview = text.to_owned();
-            crate::wire::bound("code-output", &mut preview);
+            if let Some(head) = head {
+                let mut cut = head.min(text.len());
+                while !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                preview = format!(
+                    "{}\n… ({} bytes, {} lines in all)",
+                    &text[..cut],
+                    text.len(),
+                    text.lines().count()
+                );
+            } else {
+                crate::wire::bound("code-output", &mut preview);
+            }
             block["text"] = json!(format!(
                 "Context document {id}, read with context.get({id}).\n{preview}"
             ));
