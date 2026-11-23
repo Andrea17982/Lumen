@@ -469,6 +469,29 @@ const it: Record<string, string> = {
   initialized: 'inizializzazione',
   'provider-event': 'evento del provider',
   error: 'errore',
+  'Prepared with Lumen.': 'Preparata con Lumen.',
+  '1 commit': '1 commit',
+  commits: 'commit',
+  'uncommitted changes': 'modifiche non committate',
+  Publish: 'Pubblica',
+  'Apply to folder': 'Applica alla cartella',
+  Discard: 'Scarta',
+  'Automatic merge is not active:': 'Merge automatico non attivo:',
+  'Merges automatically when CI and review pass.':
+    'Viene unita automaticamente quando CI e review passano.',
+  Close: 'Chiudi',
+  'Delete the worktree and branch': 'Eliminare il worktree e il branch',
+  'The project folder is not changed.': 'La cartella del progetto non cambia.',
+  'Publish as a pull request': 'Pubblica come pull request',
+  Remote: 'Remote',
+  Branch: 'Branch',
+  'Base branch': 'Branch di base',
+  Title: 'Titolo',
+  Description: 'Descrizione',
+  'Lumen pushes the branch, opens the pull request and turns on automatic merge when CI and review pass.':
+    'Lumen fa il push del branch, apre la pull request e attiva il merge automatico quando CI e review passano.',
+  'Publishing…': 'Pubblicazione…',
+  Worktree: 'Worktree',
 };
 
 interface I18nValue {

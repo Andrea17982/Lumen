@@ -96,6 +96,7 @@ mod settings;
 mod shared_http;
 mod shared_tools;
 mod store;
+mod task_worktree;
 #[cfg(test)]
 mod test_support;
 mod turns;
@@ -1264,6 +1265,10 @@ pub async fn dispatch(
         "rename_workspace" => __ipc_rename_workspace(app, core, args).await,
         "delete_workspace" => __ipc_delete_workspace(app, core, args).await,
         "set_session_workspace" => __ipc_set_session_workspace(app, core, args).await,
+        "task_worktree_status" => task_worktree::__ipc_task_worktree_status(app, core, args).await,
+        "publish_task" => task_worktree::__ipc_publish_task(app, core, args).await,
+        "apply_task" => task_worktree::__ipc_apply_task(app, core, args).await,
+        "discard_task" => task_worktree::__ipc_discard_task(app, core, args).await,
         "get_usage" => __ipc_get_usage(app, core, args).await,
         "refresh_usage" => __ipc_refresh_usage(app, core, args).await,
         "integration_status" => __ipc_integration_status(app, core, args).await,

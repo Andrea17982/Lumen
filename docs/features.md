@@ -31,6 +31,21 @@ Workers receive the team manifest, relevant prior decisions, impact/contracts an
 
 Closing the GUI keeps work running in the local service, including native questions and Orchestra. After a service crash/restart, unfinished execution requires explicit Resume; a turn is not silently replayed. Explicitly scheduled quota intentions persist and are revalidated separately. [Service lifecycle](local-service.md). [Recovery and limitations](validation.md).
 
+## Task worktree and Publish
+
+A large Auto task that writes files (rated complex or top tier) runs in the conversation's own Git worktree, so the project folder stays as it was. Small tasks, Read only conversations and Orchestra runs keep working in the folder.
+
+- **Ready to work.** The branch is named after the request (`lumen/<first words>-<id>`). Uncommitted changes in the folder become the branch's first commit. Ignored local files that a fresh checkout needs (`.env*` and `*.local*`, up to 1 MB each) are copied. In Autopilot, Lumen installs dependencies from the lockfile (npm, pnpm, yarn, bun or uv). In other profiles the agent installs them only if it needs them.
+- **Commit after checks.** After each turn that finishes without failing checks, Lumen commits the changes on the branch. The message is drafted by a short Claude call, with a plain fallback, and ends with `Generated-by: Lumen`. Follow-ups continue in the same worktree.
+- **Publish, Apply or Discard.** The topbar shows the branch, and three actions sit above the composer.
+  - **Publish** first shows the remote, base and branch, with an editable title and description. It then pushes the branch, opens a ready pull request with `gh` and turns on GitHub's automatic merge when CI and review pass. If the repository does not allow automatic merge, Lumen says so and leaves the pull request open. Publishing twice reuses the open pull request.
+  - **Apply to folder** copies the task's changes into the project folder.
+  - **Discard** deletes the worktree and its branch.
+
+  After any of the three, the conversation returns to the project folder.
+
+Publish needs an `origin` remote and a signed-in GitHub CLI; without them the button says why. Fixing failed CI or review comments after publishing comes in a later release.
+
 ## Context and project location
 
 Projects group conversations independently of their working folders. `/workspace <absolute path>` changes the selected conversation's folder explicitly; ambiguous references or quoted instructions do not move it. `/compact` and the context popover support a fresh continuation with retained decisions. Folder changes are refused while work is active.

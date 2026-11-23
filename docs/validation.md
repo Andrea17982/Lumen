@@ -4,6 +4,14 @@ What has actually been verified for the current source (0.12.2), and which limit
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
+## Unreleased
+
+- **Task worktree and Publish:** large Auto tasks that write files run in the conversation's own worktree, Lumen commits after turns without failing checks, and Publish pushes, opens the pull request with `gh` and turns on automatic merge.
+  - An end-to-end Rust test covers a temporary repository, a local bare remote and a fake `gh`. It checks branch creation, the commit of uncommitted work, copying `.env` but not `node_modules`, the automatic commit, the push, the `gh pr create` and `gh pr merge --auto` arguments, Apply and Discard. Browser tests cover the topbar chip, the Publish preview and a disabled Publish without `gh`.
+  - Not yet run against GitHub itself.
+  - Dependency install runs only in Autopilot.
+  - Fixing CI failures and review comments after Publish is not implemented yet.
+
 ## 0.12.2
 
 - **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Claude Code, Codex and OpenCode keep direct tools in Automatic; paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)

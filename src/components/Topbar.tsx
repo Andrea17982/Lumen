@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, Settings2, PanelRight } from 'lucide-react';
+import { ChevronDown, Folder, GitBranch, Settings2, PanelRight } from 'lucide-react';
 import { IconButton } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
@@ -6,6 +6,8 @@ export interface TopbarProps {
   desktop: boolean;
   workspaceLabel: string;
   workspaceTitle?: string;
+  /** The conversation's task worktree branch, when it works in one. */
+  branch?: string;
   conversationTitle: string;
   /** Given for a conversation that has not started: the folder name becomes a picker. */
   onChooseFolder?: () => void;
@@ -19,6 +21,7 @@ export default function Topbar({
   desktop,
   workspaceLabel,
   workspaceTitle,
+  branch,
   conversationTitle,
   onChooseFolder,
   folderBusy,
@@ -46,6 +49,12 @@ export default function Topbar({
           <span className="workspace-name" title={workspaceTitle}>
             <Folder size={15} />
             {workspaceLabel}
+          </span>
+        )}
+        {branch && (
+          <span className="worktree-chip" title={`${t('Worktree')} · ${branch}`}>
+            <GitBranch size={12} />
+            {branch}
           </span>
         )}
         <span className="topbar-divider" />

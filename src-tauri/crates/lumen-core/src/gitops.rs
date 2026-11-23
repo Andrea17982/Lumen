@@ -471,14 +471,80 @@ pub async fn apply_patch(top: &Path, patch: &str) -> Result<(), String> {
 }
 
 pub async fn remove_lane(top: &Path, path: &Path, branch: &str) {
+    remove_worktree(top, path).await;
+    let _ = run(top, &["branch", "-D", branch], None).await;
+    let _ = run(top, &["worktree", "prune"], None).await;
+}
+
+/// Removes a worktree folder and keeps its branch.
+pub async fn remove_worktree(top: &Path, path: &Path) {
     let _ = run(
         top,
         &["worktree", "remove", "--force", &path.to_string_lossy()],
         None,
     )
     .await;
-    let _ = run(top, &["branch", "-D", branch], None).await;
+    if path.exists() {
+        let _ = std::fs::remove_dir_all(path);
+    }
     let _ = run(top, &["worktree", "prune"], None).await;
+}
+
+/// Commits everything in `dir` with the user's git identity (Lumen's when none is set).
+/// Returns the new commit hash, or None when there is nothing to commit.
+pub async fn commit_all(dir: &Path, message: &str) -> Result<Option<String>, String> {
+    if changed_paths(dir).await?.is_empty() {
+        return Ok(None);
+    }
+    let identity = run(dir, &["config", "user.email"], None)
+        .await
+        .is_ok_and(|e| !e.trim().is_empty());
+    let mut c = crate::proc::command("git");
+    c.current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    if !identity {
+        c.args(["-c", "user.name=Lumen", "-c", "user.email=lumen@localhost"]);
+    }
+    run(dir, &["add", "-A"], None).await?;
+    let file = std::env::temp_dir().join(format!("lumen-commit-{}.txt", crate::models::id()));
+    std::fs::write(&file, message).map_err(|e| e.to_string())?;
+    let out = c
+        .args(["commit", "-q", "--no-verify", "-F"])
+        .arg(&file)
+        .output()
+        .await;
+    let _ = std::fs::remove_file(&file);
+    let out = out.map_err(|e| format!("git is not available: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(Some(
+        run(dir, &["rev-parse", "HEAD"], None)
+            .await?
+            .trim()
+            .to_string(),
+    ))
+}
+
+/// The remote's default branch (`origin/HEAD`), else the current branch, else `main`.
+pub async fn default_base(top: &Path) -> String {
+    if let Ok(r) = run(
+        top,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        None,
+    )
+    .await
+    {
+        if let Some(b) = r.trim().strip_prefix("origin/") {
+            return b.to_string();
+        }
+    }
+    match run(top, &["branch", "--show-current"], None).await {
+        Ok(b) if !b.trim().is_empty() => b.trim().to_string(),
+        _ => "main".into(),
+    }
 }
 
 #[cfg(test)]
