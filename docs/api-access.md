@@ -28,9 +28,15 @@ OpenAI Responses, Anthropic Messages and Google generateContent retain native ca
 
 There is **no native API session resume**. Continuation uses Lumen’s bounded conversation/task context; it does not reconstruct a private provider session or replay tool effects. Responses are buffered JSON, not token streaming. Native image input, native skill/subagent/hook runtimes and arbitrary provider-specific reasoning controls are not integrated. Images produced by tools can still be shown in Lumen. Subscription quota displays and API budgets are separate.
 
-### Experimental Code Mode
+### Code Mode
 
-Set `"codeMode": "on"` in the daemon data directory's `settings.json` to expose `lumen_code` to official API turns and to Claude Code, Codex and OpenCode. `off` is the default, and `auto` currently uses classic calls pending model validation. Ollama has a separate per-model opt-in. The JavaScript environment and its variables last one turn. Each host call follows Lumen's normal permission and approval path. A script can queue up to 200 calls with eight in flight, within 120 seconds and a 256 MiB JavaScript heap. Actions that can prompt or change shared state run in order. Output over 24 KiB has a head/tail preview and **Show full output** in activity.
+**Settings → Teamwork → Code Mode** (`codeMode` in the daemon's `settings.json`) has three values:
+
+- **Automatic** (`auto`, the default): official API turns start with classic tool calls, so short turns cost nothing extra. After five rounds of tool calls, or when a tool result exceeds 24 KiB, the rest of the turn uses `lumen_code`. The oversized result is kept as a context document that the next script reads with `context.get(id)`. Claude Code, Codex and OpenCode keep their direct tools in Automatic.
+- **Always** (`on`): `lumen_code` from the first request for API turns, and for Claude Code, Codex and OpenCode.
+- **Off** (`off`): classic tool calls only.
+
+A setting file written before this version that says `off` is read as Automatic, because `off` was only the saved default; choosing Off in Settings keeps it off. Ollama follows its own per-model rules ([Moli](moli.md)). The JavaScript environment and its variables last one turn. Each host call follows Lumen's normal permission and approval path. A script can queue up to 200 calls with eight in flight, within 120 seconds and a 256 MiB JavaScript heap. Actions that can prompt or change shared state run in order. Output over 24 KiB has a head/tail preview and **Show full output** in activity.
 
 Inside a script, tools resolve to MCP results; `r.text` joins their text blocks. `console.log` is an alias of `log`. A runtime error quotes the failing script line with a hint, and an unknown tool name suggests the closest one. With more than 40 tools the description lists names only; `searchTools(query)` and `describeTool(name)` return descriptions and parameters without a host call. When a model calls a listed tool directly instead of `lumen_code`, Lumen runs it as a one-line script through the same dispatch and permissions.
 

@@ -39,8 +39,9 @@ impl Default for LocalAssistantSettings {
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeMode {
-    #[default]
     Off,
+    /// Classic calls first; scripts once a turn needs many calls or large results.
+    #[default]
     Auto,
     On,
 }
@@ -72,6 +73,8 @@ pub struct AppSettings {
     /// Add repository-map locations of identifiers a request mentions to its prompt.
     pub repo_context: bool,
     pub code_mode: CodeMode,
+    /// The user picked `code_mode` in Settings. Before 0.13 `off` was only the saved default.
+    pub code_mode_chosen: bool,
     /// Exact local Ollama model IDs explicitly enabled for Code Mode.
     pub ollama_code_models: Vec<String>,
     /// RLM effort for provider models without a mapped native reasoning effort.
@@ -93,7 +96,8 @@ impl Default for AppSettings {
             orchestra_limits: OrchestraLimits::default(),
             local_assistant: LocalAssistantSettings::default(),
             repo_context: true,
-            code_mode: CodeMode::Off,
+            code_mode: CodeMode::Auto,
+            code_mode_chosen: false,
             ollama_code_models: Vec::new(),
             rlm_effort: crate::rlm::Effort::Medium,
         }
@@ -101,10 +105,14 @@ impl Default for AppSettings {
 }
 impl AppSettings {
     pub fn load(root: &Path) -> Self {
-        std::fs::read(root.join("settings.json"))
+        let mut settings: Self = std::fs::read(root.join("settings.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if settings.code_mode == CodeMode::Off && !settings.code_mode_chosen {
+            settings.code_mode = CodeMode::Auto;
+        }
+        settings
     }
     pub fn save(&self, root: &Path) -> Result<(), String> {
         std::fs::write(
@@ -142,5 +150,17 @@ mod tests {
         assert!(s.ollama_model.is_empty() && s.self_heal);
         assert!(!s.local_assistant.enabled && s.local_assistant.auto_titles);
         assert!(s.ollama_code_models.is_empty());
+    }
+    #[test]
+    fn saved_off_becomes_auto_unless_chosen() {
+        let f = crate::test_support::Fixture::new();
+        let write = |text: &str| std::fs::write(f.root.join("settings.json"), text).unwrap();
+        write(r#"{"codeMode":"off"}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::Auto);
+        write(r#"{"codeMode":"off","codeModeChosen":true}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::Off);
+        write(r#"{"codeMode":"on"}"#);
+        assert_eq!(AppSettings::load(&f.root).code_mode, CodeMode::On);
+        assert_eq!(AppSettings::default().code_mode, CodeMode::Auto);
     }
 }

@@ -297,9 +297,11 @@ impl Turn {
         self.docs.lock().unwrap().call(args)
     }
 
-    pub(crate) fn retain_tool_text(&self, name: &str, result: &mut Value) {
+    /// Moves oversized text blocks into context documents; true when any block was moved.
+    pub(crate) fn retain_tool_text(&self, name: &str, result: &mut Value) -> bool {
+        let mut retained = false;
         let Some(blocks) = result["content"].as_array_mut() else {
-            return;
+            return false;
         };
         for block in blocks {
             if block["type"] != "text" {
@@ -318,7 +320,9 @@ impl Turn {
                 "Context document {id}, read with context.get({id}).\n{preview}"
             ));
             block["contextId"] = json!(id);
+            retained = true;
         }
+        retained
     }
 
     pub(crate) fn inference_enabled(&self) -> bool {

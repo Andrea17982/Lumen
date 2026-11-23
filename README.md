@@ -46,7 +46,7 @@ I use several AI subscriptions and I was tired of choosing which one to open, co
 
 Where Lumen is behind today: no mobile app yet, unsigned packages, and Windows is the only platform with full desktop testing.
 
-**Code Mode measurements.** With Code Mode on, Moli and MCP tools are reachable only from a script. On Claude Code, reading twelve large files cost about 357k uncached tokens with direct tools and 37k from a script (−90%), with more correct answers (1/3 → 2/3). With small tool results scripts add a few requests, and Codex saved nothing. Local models through Ollama did not meet the bar for a default, so Code Mode stays opt-in. Subscription quota only; no API spend. [Results](reports/bench/2026-11-22/summary.md)
+**Code Mode measurements.** With Code Mode on, Moli and MCP tools are reachable only from a script. On Claude Code, reading twelve large files cost about 357k uncached tokens with direct tools and 37k from a script (−90%), with more correct answers (1/3 → 2/3). With small tool results scripts add a few requests, and Codex saved nothing. Code Mode is now **Automatic** by default: turns start with classic calls and switch to a script only after five tool rounds or a result over 24 KiB. On gpt-oss 20B it went from 45/50 to 50/50 with no task lost, and used 45% fewer tokens on many-call edits; elsewhere it is identical to classic calls. Claude Code, Codex and OpenCode use scripts only when Code Mode is set to Always. Subscription quota and local models only; no API spend. [Results](reports/bench/2026-11-22/summary.md) · [Automatic](reports/bench/2026-11-23/summary.md)
 
 ## Also inside
 

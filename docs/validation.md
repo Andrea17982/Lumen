@@ -4,6 +4,10 @@ What has actually been verified for the current source (0.12.1), and which limit
 
 Fixtures, builds, small real-account checks and owner observations are different kinds of evidence and are reported separately. Lumen is an alpha without an independent security audit.
 
+## Unreleased
+
+- **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Claude Code, Codex and OpenCode keep direct tools in Automatic; paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)
+
 ## 0.12.1
 
 - **Automated:** 299 Rust tests (19 opt-in ignored), 81 frontend tests, Clippy with warnings denied and formatting. A permission matrix checks every access profile against read, write, command, destructive command and `git push`, for classic and Code Mode calls.

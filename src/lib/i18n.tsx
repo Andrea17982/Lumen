@@ -384,6 +384,11 @@ const it: Record<string, string> = {
   'If one provider hits its limit, another continues the same message.':
     'Se un provider raggiunge il limite, un altro continua lo stesso messaggio.',
   'Code graph': 'Grafo del codice',
+  'Code Mode': 'Code Mode',
+  'One script calls several tools and returns only what matters. Automatic uses it when a turn needs many calls or a large result. Claude Code, Codex and OpenCode use it only with Always.':
+    'Un solo script chiama più strumenti e restituisce solo ciò che serve. Automatico lo usa quando un turno richiede molte chiamate o un risultato grande. Claude Code, Codex e OpenCode lo usano solo con Sempre.',
+  Automatic: 'Automatico',
+  Always: 'Sempre',
   "Claude and Codex get Lumen's code graph as tools: definitions with exact line ranges, callers, file outlines, related files and the impact of a change. They read only the lines they need instead of searching whole files.":
     'Claude e Codex ricevono il grafo del codice di Lumen come strumenti: definizioni con righe esatte, chiamanti, struttura dei file, file correlati e impatto di una modifica. Leggono solo le righe che servono invece di cercare in file interi.',
   'Self-healing': 'Correzione automatica',

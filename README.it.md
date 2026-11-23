@@ -41,7 +41,7 @@ Uso più abbonamenti AI ed ero stanco di scegliere quale aprire, copiare il cont
 
 Dove Lumen oggi è indietro: niente app mobile per ora, pacchetti non firmati, e Windows è l'unica piattaforma provata a fondo sul desktop.
 
-**Misure di Code Mode.** Con Code Mode attivo, Moli e i tool MCP sono raggiungibili solo da uno script. Su Claude Code, leggere dodici file grandi è costato circa 357k token non in cache con i tool diretti e 37k con uno script (−90%), con più risposte corrette (da 1/3 a 2/3). Con risultati piccoli lo script aggiunge qualche richiesta, e Codex non ha risparmiato nulla. I modelli locali con Ollama non hanno raggiunto la soglia per diventare predefiniti, quindi Code Mode resta opt-in. Solo quota degli abbonamenti, nessuna spesa API. [Risultati](reports/bench/2026-11-22/summary.md)
+**Misure di Code Mode.** Con Code Mode attivo, Moli e i tool MCP sono raggiungibili solo da uno script. Su Claude Code, leggere dodici file grandi è costato circa 357k token non in cache con i tool diretti e 37k con uno script (−90%), con più risposte corrette (da 1/3 a 2/3). Con risultati piccoli lo script aggiunge qualche richiesta, e Codex non ha risparmiato nulla. Ora Code Mode è **Automatico** di default: il turno parte con le chiamate classiche e passa a uno script solo dopo cinque round di tool o un risultato oltre 24 KiB. Su gpt-oss 20B è passato da 45/50 a 50/50 senza perdere alcun task, con il 45% di token in meno sulle modifiche ripetute; altrove è identico alle chiamate classiche. Claude Code, Codex e OpenCode usano gli script solo con Code Mode su Sempre. Solo quota degli abbonamenti e modelli locali, nessuna spesa API. [Risultati](reports/bench/2026-11-22/summary.md) · [Automatico](reports/bench/2026-11-23/summary.md)
 
 ## C'è anche
 

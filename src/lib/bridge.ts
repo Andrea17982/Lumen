@@ -78,6 +78,7 @@ function previewSettings(): AppSettings {
     },
     localAssistant: { enabled: false, model: '', autoTitles: true, timeoutMs: 60_000 },
     repoContext: true,
+    codeMode: 'auto',
   };
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(settingsKey) || '{}') };

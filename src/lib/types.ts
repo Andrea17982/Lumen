@@ -186,6 +186,8 @@ export interface AppSettings {
   orchestraLimits: OrchestraLimits;
   localAssistant: LocalAssistantConfig;
   repoContext: boolean;
+  codeMode?: 'off' | 'auto' | 'on';
+  codeModeChosen?: boolean;
 }
 export interface Health {
   accountId: string;
