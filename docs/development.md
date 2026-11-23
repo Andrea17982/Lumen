@@ -92,14 +92,13 @@ Protocol changes need metadata from the installed official binary, initialize/sc
 
 1. Synchronize `package.json`, root package-lock entries, the Lumen Cargo package/lock entry and `tauri.conf.json`. Keep dependency versions intact.
 2. Update current docs, the release notes for this version and the gallery; remove superseded material (earlier changelogs live in GitHub Releases) and fix local links.
-3. Run local checks and branch CI on Windows/macOS/Linux. Inspect the exact tracked diff and keep account data, artifacts, debug folders and purchased addons out of Git.
+3. Run local checks and wait for branch CI (`ci.yml`) on Windows/macOS/Linux; it carries all source tests. Do not run the release workflow on the branch as well. Inspect the exact tracked diff and keep account data, artifacts, debug folders and purchased addons out of Git.
 4. Fast-forward the default branch after verification. Create the annotated `v<version>` tag and push it.
-5. The tag workflow builds all platforms, tests clean Windows installation and prepares a **draft** release with the matching Markdown changelog and SHA-256 manifest.
-6. Verify all jobs, asset names, containers/checksums and portable resources, then publish the draft and mark it latest. A manual workflow run creates artifacts without publishing.
+5. The tag workflow only builds and smoke-tests packages (clean Windows install, portable ZIP, mounted DMG, extracted deb/AppImage), then publishes the release as latest with the matching Markdown changelog and SHA-256 manifest. Any failed job blocks publishing. A manual workflow run creates artifacts without publishing.
 
 [Release history](release-notes/README.md) · [Architecture](architecture.md) · [Security](../SECURITY.md)
 
-Local Windows `npm run build:release` uses release optimization level 3, LTO, one codegen unit, stripping and `target-cpu=native` (including AVX2 when supported). Its binaries require a CPU compatible with the build machine. CI continues to build portable target baselines with `npm run tauri build`; it does not inherit local CPU flags.
+Local Windows `npm run build:release` uses release optimization level 3, LTO, one codegen unit, stripping and `target-cpu=native` (including AVX2 when supported). Its binaries require a CPU compatible with the build machine. CI continues to build portable target baselines with `npm run tauri build`, using thin LTO and 16 codegen units to keep release jobs short; it does not inherit local CPU flags.
 
 ## Service checks
 
