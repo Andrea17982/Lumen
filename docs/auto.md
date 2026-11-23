@@ -20,7 +20,7 @@ In released 0.7, independent review needs another configured provider. Writer/re
 
 ### Calibration
 
-Review now permits another primary account on the same provider, preferring a different provider when available; Both still requires Claude plus ChatGPT. Budget preserves requested or risk-driven review. Quality adds optional review for tier-two work rather than every ordinary coding task, and explicit opt-out suppresses review. A qualified `APPROVED` response cannot accept an audit. Quota/cooldown routing cannot silently drop an explicitly requested review: it reports unavailability before work begins; optional review loss is visible in the route reason.
+Review now permits another primary account on the same provider, preferring a different provider when available. Budget preserves requested or risk-driven review. Quality adds optional review for tier-two work rather than every ordinary coding task, and explicit opt-out suppresses review. A qualified `APPROVED` response cannot accept an audit. Quota/cooldown routing cannot silently drop an explicitly requested review: it reports unavailability before work begins; optional review loss is visible in the route reason.
 
 Only recognized short continuations reuse the latest request's rating; unrelated short requests and newer unrated manual tasks do not inherit an older verdict. Fresh Balance quota usage selection takes precedence over native-account affinity. The fallback distinguishes difficult single tasks from implementation across multiple areas or concrete parallel deliverables. The model classifier remains heuristic and native child-agent behavior remains provider-specific; these changes are not a new universal delegation engine.
 
@@ -32,7 +32,7 @@ The final reply ends with **Team result by Lumen**, written by Lumen rather than
 
 The scheduler enforces concurrency, admitted-subtask totals, a run time limit (120 minutes by default, configurable up to 24 hours; after it no new subtask starts, running ones finish and the rest are reported as not run) and optional quota thresholds. Finished work frees concurrency, not the total-admission budget. Workers use separate worktrees for writes, and integration/final checks operate on their combined result. A live run can be stopped; crash recovery requires explicit Resume. Autopilot and already approved execution do not ask for the same plan approval again.
 
-Auto's choice is deterministic in two steps. The router picks Single or Review (and Both picks broadcast); with Orchestra on, a complex request becomes an Orchestra run, and the approved plan's shape then picks Parallel or Collaborative (a dependency chain, or two writers on one file). Collaborative turns run in plan order, apply every earlier turn's patch and see every earlier result; they never bypass the run's limits. Tests: `auto_team_mode_rules_are_deterministic` and the `collaborative_*` tests in `orchestra.rs`.
+Auto's choice is deterministic in two steps. The router picks Single or Review; with Orchestra on, a complex request becomes an Orchestra run, and the approved plan's shape then picks Parallel or Collaborative (a dependency chain, or two writers on one file). Collaborative turns run in plan order, apply every earlier turn's patch and see every earlier result; they never bypass the run's limits. Tests: `auto_team_mode_rules_are_deterministic` and the `collaborative_*` tests in `orchestra.rs`.
 
 ### Compete
 

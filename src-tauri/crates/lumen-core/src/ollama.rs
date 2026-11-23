@@ -3,7 +3,7 @@
 use crate::models::{ModelInfo, Provider};
 use crate::providers;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -192,49 +192,10 @@ pub fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// A short local text helper. HTTP bodies keep prompts out of process arguments; never pulls.
-pub async fn generate(model: &str, prompt: &str, timeout_ms: u64) -> Result<String, String> {
-    if !valid_model(model) {
-        return Err("unavailable: Choose a valid local model in Settings.".into());
-    }
-    let installed = list().await.map_err(|e| format!("unavailable: {e}"))?;
-    if !installed
-        .iter()
-        .any(|m| m.name == model || m.name == format!("{model}:latest"))
-    {
-        return Err("model-missing: The selected model is not installed.".into());
-    }
-    let (http, base) = local_http()?;
-    let run = async {
-        let show = http
-            .post(base.join("api/show").unwrap())
-            .json(&json!({"model":model}))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?
-            .json::<Value>()
-            .await
-            .map_err(|e| e.to_string())?;
-        crate::ollama_agent::local_model(model, &show)?;
-        let value = http.post(base.join("api/chat").unwrap()).json(&json!({"model":model,"stream":false,"messages":[{"role":"user","content":prompt}]}))
-            .send().await.map_err(|e|e.to_string())?.error_for_status().map_err(|e|e.to_string())?.json::<Value>().await.map_err(|e|e.to_string())?;
-        crate::ollama_agent::local_model(model, &value)?;
-        value["message"]["content"]
-            .as_str()
-            .map(|s| s.trim().to_owned())
-            .ok_or_else(|| "Ollama returned no text".to_string())
-    };
-    tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), run)
-        .await
-        .map_err(|_| "unavailable: Ollama took too long.".to_string())?
-        .map_err(|e| format!("unavailable: {e}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     #[test]
     fn local_catalog_excludes_cloud_aliases_and_embedding_only_models() {
         let rows = models_from_tags(&json!({"models":[
@@ -271,19 +232,6 @@ tinyllama:latest   2644915ede35    637 MB    5 months ago\n";
         assert!(!valid_model("--insecure"));
         assert!(!valid_model("llama 3; rm"));
         assert!(!valid_model(""));
-    }
-    /// Needs a running Ollama with an installed model: `cargo test ollama -- --ignored`.
-    #[tokio::test]
-    #[ignore]
-    async fn answers_from_the_local_daemon_and_never_pulls() {
-        let models = list().await.expect("Ollama is running");
-        let model = models.first().expect("one model installed").name.clone();
-        let answer = generate(&model, "Reply with the single word: pong", 120_000)
-            .await
-            .expect("local answer");
-        assert!(!answer.is_empty());
-        let missing = generate("lumen-test-missing-model", "hi", 5_000).await;
-        assert!(missing.unwrap_err().starts_with("model-missing:"));
     }
     #[test]
     fn strips_terminal_sequences() {

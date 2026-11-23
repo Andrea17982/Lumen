@@ -53,8 +53,6 @@ export function appCommands(c: {
   newProject: () => void;
   search: () => void;
   compact: () => void;
-  handoff: () => void;
-  commit: () => void;
   usage: () => void;
   inspector?: () => void;
   settings: (tab: SettingsTab) => void;
@@ -106,21 +104,6 @@ export function appCommands(c: {
       keywords: 'handoff summary shrink',
       available: c.canAct && c.hasMessages,
       run: c.compact,
-    },
-    {
-      id: 'handoff',
-      label: 'Draft a handoff summary',
-      group: 'Conversation',
-      available: c.canAct && c.hasMessages,
-      run: c.handoff,
-    },
-    {
-      id: 'commit',
-      label: 'Draft a commit message',
-      group: 'Project',
-      keywords: 'git diff',
-      available: c.canAct,
-      run: c.commit,
     },
     {
       id: 'usage',

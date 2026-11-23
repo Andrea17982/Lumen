@@ -1,26 +1,18 @@
-import { Columns2, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { Mode, Provider } from '../lib/types';
 import { nameOf } from '../lib/util';
 import { useI18n } from '../lib/i18n';
 
 export interface ModeControlProps {
   mode: Mode;
-  /** Read-only sessions can also compare both providers side by side. */
-  bothAvailable: boolean;
   providers?: Provider[];
   onChange: (mode: Mode) => void;
 }
 
-/** Segmented AI provider picker: Auto, Claude, GPT (and Both in read-only mode). */
-export default function ModeControl({
-  mode,
-  bothAvailable,
-  providers = [],
-  onChange,
-}: ModeControlProps) {
+/** Segmented AI provider picker: Auto, Claude, GPT and the other connected providers. */
+export default function ModeControl({ mode, providers = [], onChange }: ModeControlProps) {
   const { t } = useI18n();
   const options: Mode[] = ['auto', ...providers];
-  if (bothAvailable) options.push('both');
   return (
     <div className="mode-control" role="group" aria-label={t('AI provider')}>
       {options.map((p) => (
@@ -31,8 +23,7 @@ export default function ModeControl({
           onClick={() => onChange(p)}
         >
           {p === 'auto' && <Sparkles size={13} />}
-          {p === 'both' && <Columns2 size={13} />}
-          <span>{p === 'auto' ? t('Auto') : p === 'both' ? t('Both') : nameOf(p)}</span>
+          <span>{p === 'auto' ? t('Auto') : nameOf(p)}</span>
         </button>
       ))}
     </div>

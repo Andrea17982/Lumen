@@ -52,7 +52,6 @@ mod context;
 mod diagnostics;
 mod execution;
 mod gitops;
-mod godot;
 mod graph_mcp;
 mod impact;
 mod inspector;
@@ -61,10 +60,8 @@ mod interactions;
 #[cfg(test)]
 mod latency_probe;
 mod layers;
-mod layout;
 mod limits;
 mod media;
-mod merge;
 #[cfg(windows)]
 mod metadata_windows;
 mod migrations;
@@ -104,7 +101,6 @@ mod test_support;
 mod turns;
 mod usage;
 mod validation;
-mod variant_preview;
 mod wire;
 mod workspace;
 mod workstate;
@@ -923,38 +919,6 @@ async fn ollama_status(core: crate::CoreRef<'_>) -> Result<ollama::OllamaStatus,
         .unwrap_or_default();
     Ok(ollama::status(&pinned).await)
 }
-/// Local helper: refused unless the user turned it on, so the backend never runs it unasked.
-#[crate::command]
-async fn ollama_models(core: crate::CoreRef<'_>) -> Result<Vec<String>, String> {
-    let on = core
-        .settings
-        .lock()
-        .map(|s| s.local_assistant.enabled)
-        .unwrap_or(false);
-    if !on {
-        return Err("disabled: The local assistant is turned off.".into());
-    }
-    let models = ollama::list()
-        .await
-        .map_err(|e| format!("unavailable: {e}"))?;
-    Ok(models.into_iter().map(|m| m.name).collect())
-}
-#[crate::command]
-async fn ollama_generate(
-    core: crate::CoreRef<'_>,
-    model: String,
-    prompt: String,
-) -> Result<String, String> {
-    let (on, timeout_ms) = core
-        .settings
-        .lock()
-        .map(|s| (s.local_assistant.enabled, s.local_assistant.timeout_ms))
-        .unwrap_or((false, 60_000));
-    if !on {
-        return Err("disabled: The local assistant is turned off.".into());
-    }
-    ollama::generate(&model, &prompt, timeout_ms).await
-}
 #[crate::command]
 fn save_recipe(core: crate::CoreRef<'_>, id: String, message: String) -> Result<String, String> {
     let history = core.store.messages(&id)?;
@@ -1218,22 +1182,6 @@ pub async fn dispatch(
 ) -> Result<serde_json::Value, String> {
     match command {
         "acknowledge_tray_hint" => __ipc_acknowledge_tray_hint(app, core, args).await,
-        "godot_visual_settings" => godot::__ipc_godot_visual_settings(app, core, args).await,
-        "set_godot_visual_settings" => {
-            godot::__ipc_set_godot_visual_settings(app, core, args).await
-        }
-        "godot_visual_action" => godot::__ipc_godot_visual_action(app, core, args).await,
-        "preview_manual_merge" => merge::__ipc_preview_manual_merge(app, core, args).await,
-        "visual_variants" => variant_preview::__ipc_visual_variants(app, core, args).await,
-        "start_variant_preview" => {
-            variant_preview::__ipc_start_variant_preview(app, core, args).await
-        }
-        "stop_variant_preview" => {
-            variant_preview::__ipc_stop_variant_preview(app, core, args).await
-        }
-        "apply_manual_merge" => merge::__ipc_apply_manual_merge(app, core, args).await,
-        "load_layout" => layout::__ipc_load_layout(app, core, args).await,
-        "save_layout" => layout::__ipc_save_layout(app, core, args).await,
         "inspect_json" => inspector::__ipc_inspect_json(app, core, args).await,
         "inspect_sqlite" => inspector::__ipc_inspect_sqlite(app, core, args).await,
         "file_change_diff" => review::__ipc_file_change_diff(app, core, args).await,
@@ -1269,11 +1217,9 @@ pub async fn dispatch(
         "account_status" => __ipc_account_status(app, core, args).await,
         "login_account" => __ipc_login_account(app, core, args).await,
         "send_message" => turns::__ipc_send_message(app, core, args).await,
-        "resolve_lanes" => turns::__ipc_resolve_lanes(app, core, args).await,
         "rewind_preview" => turns::__ipc_rewind_preview(app, core, args).await,
         "rewind" => turns::__ipc_rewind(app, core, args).await,
         "compact_session" => turns::__ipc_compact_session(app, core, args).await,
-        "working_diff" => turns::__ipc_working_diff(app, core, args).await,
         "prompt_estimate" => turns::__ipc_prompt_estimate(app, core, args).await,
         "session_work_state" => workstate::__ipc_session_work_state(app, core, args).await,
         "gatekeeper_snapshot" => __ipc_gatekeeper_snapshot(app, core, args).await,
@@ -1282,11 +1228,6 @@ pub async fn dispatch(
         "project_context" => __ipc_project_context(app, core, args).await,
         "project_tools" => projecttools::__ipc_project_tools(app, core, args).await,
         "project_checks" => projecttools::__ipc_project_checks(app, core, args).await,
-        "project_godot_diagnostics" => {
-            projecttools::__ipc_project_godot_diagnostics(app, core, args).await
-        }
-        "godot_connection_test" => godot::__ipc_godot_connection_test(app, core, args).await,
-        "open_godot_editor" => godot::__ipc_open_godot_editor(app, core, args).await,
         "change_layers" => layers::__ipc_change_layers(app, core, args).await,
         "repo_map_search" => repomap::__ipc_repo_map_search(app, core, args).await,
         "repo_map_references" => repomap::__ipc_repo_map_references(app, core, args).await,
@@ -1296,11 +1237,7 @@ pub async fn dispatch(
         "attachment_image_data" => screens::__ipc_attachment_image_data(app, core, args).await,
         "response_image_data" => media::__ipc_response_image_data(app, core, args).await,
         "open_response_link" => media::__ipc_open_response_link(app, core, args).await,
-        "import_screenshot" => screens::__ipc_import_screenshot(app, core, args).await,
         "list_screenshots" => screens::__ipc_list_screenshots(app, core, args).await,
-        "rename_screenshot" => screens::__ipc_rename_screenshot(app, core, args).await,
-        "delete_screenshot" => screens::__ipc_delete_screenshot(app, core, args).await,
-        "screenshot_data" => screens::__ipc_screenshot_data(app, core, args).await,
         "run_project_check" => projecttools::__ipc_run_project_check(app, core, args).await,
         "open_source_location" => projecttools::__ipc_open_source_location(app, core, args).await,
         "save_project_context" => __ipc_save_project_context(app, core, args).await,
@@ -1308,8 +1245,6 @@ pub async fn dispatch(
         "save_settings" => __ipc_save_settings(app, core, args).await,
         "reset_settings" => __ipc_reset_settings(app, core, args).await,
         "ollama_status" => __ipc_ollama_status(app, core, args).await,
-        "ollama_models" => __ipc_ollama_models(app, core, args).await,
-        "ollama_generate" => __ipc_ollama_generate(app, core, args).await,
         "orchestra_answer" => orchestra::__ipc_orchestra_answer(app, core, args).await,
         "orchestra_approve" => orchestra::__ipc_orchestra_approve(app, core, args).await,
         "orchestra_cancel" => orchestra::__ipc_orchestra_cancel(app, core, args).await,

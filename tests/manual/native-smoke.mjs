@@ -350,136 +350,6 @@ try {
   assert.equal((await invoke('get_messages', { id: rw.id })).length, 0);
   assert.equal(git('status', '--porcelain').trim(), '', 'rewind leaves the repo clean');
 
-  const both = await invoke('create_session', { workspace: repo });
-  const bothPlan = await invoke('send_message', {
-    id: both.id,
-    text: 'WRITE_FIXTURE in both lanes',
-    options: { ...edits, mode: 'both' },
-  });
-  assert.equal(bothPlan.strategy, 'broadcast');
-  await waitSession(both.id, 'completed');
-  const lanes = (await invoke('get_messages', { id: both.id })).filter(
-    (m) => m.role === 'assistant',
-  );
-  assert.equal(lanes.length, 2);
-  assert(lanes.every((m) => m.activity.some((a) => a.kind === 'worktree')));
-  const variants = await invoke('visual_variants', { session: both.id });
-  assert.equal(variants.length, 3);
-  const rendered = [];
-  for (const variant of variants.filter((v) => v.id !== 'project')) {
-    await mkdir(path.join(variant.path, 'dist'), { recursive: true });
-    await writeFile(path.join(variant.path, 'dist/index.html'), `<h1>${variant.id}</h1>`);
-    const preview = await invoke('start_variant_preview', {
-      session: both.id,
-      variant: variant.id,
-      directory: 'dist',
-    });
-    assert((await (await fetch(preview.url)).text()).includes(variant.id));
-    rendered.push(preview);
-    assert.equal((await fetch(preview.url + '.env')).status, 404);
-  }
-  for (const preview of rendered) {
-    await invoke('stop_variant_preview', { id: preview.id });
-    await assert.rejects(fetch(preview.url));
-  }
-  await assert.rejects(
-    invoke('start_variant_preview', { session: both.id, variant: 'project', directory: '../' }),
-  );
-  assert.equal(await readFile(path.join(repo, 'shared.txt'), 'utf8'), 'original\n');
-  const gptLane = lanes.find((m) =>
-    m.activity.some((a) => a.kind === 'lane' && a.text === 'codex'),
-  );
-  await invoke('resolve_lanes', { session: both.id, message: gptLane.id, apply: true });
-  assert.match(await readFile(path.join(repo, 'shared.txt'), 'utf8'), /edited by gpt/);
-  assert.equal(git('worktree', 'list').trim().split('\n').length, 1, 'lanes are removed');
-  const merged = await invoke('create_session', { workspace: repo });
-  await invoke('send_message', {
-    id: merged.id,
-    text: 'WRITE_FIXTURE manual merge probe',
-    options: { ...edits, mode: 'both' },
-  });
-  await waitSession(merged.id, 'completed');
-  const mergeMessage = (await invoke('get_messages', { id: merged.id })).find((m) =>
-    m.activity.some((a) => a.kind === 'worktree'),
-  );
-  const mergePreview = await invoke('preview_manual_merge', {
-    session: merged.id,
-    message: mergeMessage.id,
-  });
-  const indexBefore = git('diff', '--cached');
-  await invoke('apply_manual_merge', {
-    session: merged.id,
-    preview: mergePreview.id,
-    edits: mergePreview.files.map((f) => ({
-      path: f.path,
-      side: f.path === 'shared.txt' ? 'manual' : 'left',
-      text: f.path === 'shared.txt' ? 'reviewed manual result\n' : null,
-    })),
-  });
-  assert.equal(
-    (await readFile(path.join(repo, 'shared.txt'), 'utf8')).trim(),
-    'reviewed manual result',
-  );
-  assert.equal(git('diff', '--cached'), indexBefore, 'manual merge preserves the user index');
-  await assert.rejects(
-    invoke('apply_manual_merge', { session: merged.id, preview: mergePreview.id, edits: [] }),
-  );
-
-  const game = path.join(testData, 'game-controls');
-  await mkdir(game);
-  const server = { command: 'python', args: [path.join(root, 'tests/fixtures/godot-mcp.py')] };
-  await writeFile(
-    path.join(game, '.mcp.json'),
-    JSON.stringify({ mcpServers: { 'godot-fixture': server } }),
-  );
-  await assert.rejects(invoke('godot_visual_action', { folder: game, action: 'play', scene: '' }));
-  await invoke('set_godot_visual_settings', {
-    folder: game,
-    value: { enabled: true, server: 'godot-fixture' },
-  });
-  const connected = await invoke('godot_visual_action', {
-    folder: game,
-    action: 'discover',
-    scene: '',
-  });
-  assert(connected.available.includes('play'));
-  await invoke('godot_visual_action', { folder: game, action: 'play', scene: '' });
-  await writeFile(
-    path.join(game, 'probe.tscn'),
-    '[gd_scene format=3]\n[node name="Probe" type="Node"]\n',
-  );
-  await invoke('godot_visual_action', { folder: game, action: 'play', scene: 'res://probe.tscn' });
-  await invoke('godot_visual_action', { folder: game, action: 'reload', scene: '' });
-  await invoke('godot_visual_action', { folder: game, action: 'stop', scene: '' });
-  const captured = await invoke('godot_visual_action', {
-    folder: game,
-    action: 'capture',
-    scene: '',
-  });
-  assert.equal(captured.screenshot.width, 1);
-  assert(
-    (
-      await invoke('response_image_data', { folder: game, href: captured.screenshot.path })
-    ).startsWith('data:image/'),
-  );
-  const log = await readFile(path.join(game, 'visual-action-log.txt'), 'utf8');
-  assert(
-    log.includes('"mode": "res://probe.tscn"'),
-    'Specific scenes must use the actual advertised Godot mode schema',
-  );
-  await writeFile(
-    path.join(game, '.mcp.json'),
-    JSON.stringify({
-      mcpServers: { 'godot-fixture': { ...server, env: { LUMEN_TEST_EDITOR_ROOT: workspace } } },
-    }),
-  );
-  await assert.rejects(invoke('godot_visual_action', { folder: game, action: 'play', scene: '' }));
-  assert.equal(
-    await readFile(path.join(game, 'visual-action-log.txt'), 'utf8'),
-    log,
-    'a different connected editor must receive no action',
-  );
-
   const limited = await invoke('create_session', { workspace });
   await invoke('send_message', {
     id: limited.id,
@@ -757,9 +627,8 @@ try {
     return intervals;
   });
   await page.getByRole('button', { name: 'Project inspector', exact: true }).click();
-  await page.getByRole('button', { name: 'Layout canvas', exact: true }).click();
-  await page.getByRole('button', { name: 'Add block' }).click();
-  await page.screenshot({ path: '.impeccable/review/native-inspector-canvas.png' });
+  await page.getByRole('button', { name: 'Changes', exact: true }).click();
+  await page.screenshot({ path: '.impeccable/review/native-inspector.png' });
   await writeFile(
     '.impeccable/review/native-performance.json',
     JSON.stringify(

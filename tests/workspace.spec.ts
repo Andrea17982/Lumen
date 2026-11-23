@@ -202,12 +202,10 @@ test('first run, provider controls and honest browser boundary', async ({ page }
     'The right model, thoughtfully chosen.',
   ])
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Both', exact: true })).toBeVisible();
   const permissions = page.getByRole('button', { name: /^Permissions:/ });
   await permissions.click();
   await page.getByRole('menuitemradio', { name: /^Autopilot/ }).click();
   await expect(permissions).toHaveAttribute('aria-label', 'Permissions: Autopilot');
-  await expect(page.getByRole('button', { name: 'Both', exact: true })).toHaveCount(0);
 });
 
 test('moving between projects preserves the conversation folder across reloads', async ({

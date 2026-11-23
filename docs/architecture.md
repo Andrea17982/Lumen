@@ -11,7 +11,7 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 | Module | Responsibility |
 | --- | --- |
 | `lumen-core/lib.rs`, `lumen-daemon/main.rs` | Domain commands/state and headless service/MCP helper entry points |
-| `turns.rs`, `router.rs`, `classify.rs` | Direct/Auto/review/Both lifecycle, routing and bounded classification |
+| `turns.rs`, `router.rs`, `classify.rs` | Direct/Auto/review lifecycle, routing and bounded classification |
 | `native_claude.rs` | Bidirectional native Claude initialize/control/input/output stream |
 | `approvals_codex.rs` | Codex app-server, thread start/resume, questions and native events |
 | `approvals.rs`, `interactions.rs`, `activity.rs` | Scoped approvals/questions and bounded activity/child streams |
@@ -20,15 +20,15 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 | `execution.rs` | Bounded content-free invocation observations, phase/timing snapshots and internal-stage handoff |
 | `providers.rs`, `catalog.rs`, `proc.rs` | CLI launch, isolation, metadata, normalization and process-tree cancellation |
 | `orchestra.rs`, `scheduling.rs` | Task graph, worker worktrees, caps, integration and recovery |
-| `browser.rs`, `ollama_agent.rs`, `ollama.rs` | Shared Moli broker/MCP proxy, local API tool loop, model discovery/helpers |
+| `browser.rs`, `ollama_agent.rs`, `ollama.rs` | Shared Moli broker/MCP proxy, local API tool loop and model discovery |
 | `shared_tools.rs` | Turn-owned stdio MCP client for Ollama, scoped shared skills, host consent and process cleanup |
 | `store.rs`, `migrations.rs`, `workstate.rs` | SQLite persistence, atomic schema upgrades and durable decisions |
 | `context.rs`, `codegraph.rs`, `graph_mcp.rs`, `impact.rs` | Context, pattern-based graph tools and pre/post-edit impact |
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |
 | `autonomy.rs` | Action classes, audit log, restore safety and untrusted-content gating |
-| `gitops.rs`, `merge.rs`, `workspace.rs` | Private-index checkpoints, immutable manual merges and explicit cwd changes |
-| `inspector.rs`, `media.rs`, `review.rs`, `layout.rs`, `variant_preview.rs` | Local preview, images/data, source diffs, layout constraints and static variants |
-| `godot.rs`, `screens.rs` | Validated editor targets and capture/import; desktop launch/hiding/shortcut remain in the GUI |
+| `gitops.rs`, `workspace.rs` | Private-index checkpoints and explicit cwd changes |
+| `inspector.rs`, `media.rs`, `review.rs` | Local preview, images/data and source diffs |
+| `screens.rs` | Screen/window capture; desktop launch/hiding/shortcut remain in the GUI |
 | `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal/login startup and observed provider availability |
 
 Domain modules are under `src-tauri/crates/lumen-core/src/`; `lumen-daemon` is the service entry point, `lumen-ipc` owns local transport/authentication and `lumen-commands` generates typed JSON boundaries. Only desktop setup, tray, hotkeys and launch actions remain under `src-tauri/src/`. Frontend components live under `src/components/`, settings under `src/settings/`, shared types/IPC under `src/lib/`. The native Gatekeeper crate and React review surface live in `src/features/gatekeeper/`; local-helper code is in `src/features/local-assistant/`.
@@ -84,7 +84,7 @@ Lumen isolates the full transcript in memoized `Transcript`, reuses unchanged me
 
 `lumen:run` events carry session/message identities. Questions are separate from approvals. Secret answers do not enter public durable decision text. Markdown excludes raw HTML; remote images require user loading, local image paths are project-scoped, and links use validated backend open commands.
 
-The inspector's static preview server owns only explicit built outputs and does not execute project commands. JSON/SQLite exploration is read-only. The layout canvas writes the project constraint spec. No general OpenAI-compatible inference server is implemented in this release.
+The inspector's static preview server owns only explicit built outputs and does not execute project commands. JSON/SQLite exploration is read-only. No general OpenAI-compatible inference server is implemented in this release.
 
 [Security](../SECURITY.md) · [Validation](validation.md) · [Development](development.md)
 

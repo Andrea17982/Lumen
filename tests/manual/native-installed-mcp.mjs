@@ -9,7 +9,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const root = await mkdtemp(path.join(os.tmpdir(), 'lumen-installed-mcp-'));
 const profile = path.join(root, 'profile');
 const workspace = path.join(root, 'workspace');

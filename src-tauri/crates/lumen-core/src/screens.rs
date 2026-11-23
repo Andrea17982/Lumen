@@ -63,15 +63,6 @@ fn sidecar(image: &Path) -> PathBuf {
     image.with_extension("json")
 }
 
-/// An image inside the screenshot folder, from a project-relative path.
-fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
-    let path = dunce::canonicalize(root.join(rel)).map_err(|_| "Screenshot not found")?;
-    if !path.starts_with(root.join(DIR)) || !is_image(rel) {
-        return Err("Choose a screenshot saved by Lumen".into());
-    }
-    Ok(path)
-}
-
 fn save(
     root: &Path,
     image: &xcap::image::RgbaImage,
@@ -278,67 +269,9 @@ pub fn attachment_image_data(folder: String, path: String) -> Result<String, Str
     Ok(data_url(&file, &bytes))
 }
 
-/// Copies an existing image (for example a device capture) into the project's screenshots.
-#[crate::command]
-pub async fn import_screenshot(
-    folder: String,
-    file: String,
-    label: String,
-) -> Result<Screenshot, String> {
-    let root = root_of(&folder)?;
-    if !is_image(&file) {
-        return Err("Choose a PNG, JPEG, WebP or GIF image".into());
-    }
-    let image = xcap::image::open(&file).map_err(|e| format!("Could not read the image: {e}"))?;
-    let name = Path::new(&file)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    save(
-        &root,
-        &image.to_rgba8(),
-        &label,
-        format!("Imported from {name}"),
-    )
-}
-
 #[crate::command]
 pub async fn list_screenshots(folder: String) -> Result<Vec<Screenshot>, String> {
     Ok(list(&root_of(&folder)?))
-}
-
-#[crate::command]
-pub async fn rename_screenshot(
-    folder: String,
-    path: String,
-    label: String,
-) -> Result<Screenshot, String> {
-    let root = root_of(&folder)?;
-    let file = resolve(&root, &path)?;
-    let mut shot: Screenshot = serde_json::from_str(
-        &std::fs::read_to_string(sidecar(&file)).map_err(|_| "Screenshot details not found")?,
-    )
-    .map_err(|e| e.to_string())?;
-    shot.label = label.trim().to_string();
-    write_sidecar(&file, &shot)?;
-    Ok(shot)
-}
-
-#[crate::command]
-pub async fn delete_screenshot(folder: String, path: String) -> Result<(), String> {
-    let root = root_of(&folder)?;
-    let file = resolve(&root, &path)?;
-    let _ = std::fs::remove_file(sidecar(&file));
-    std::fs::remove_file(file).map_err(|e| e.to_string())
-}
-
-/// The image as a data URL for display; the webview CSP allows `data:` images only.
-#[crate::command]
-pub async fn screenshot_data(folder: String, path: String) -> Result<String, String> {
-    let root = root_of(&folder)?;
-    let file = resolve(&root, &path)?;
-    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
-    Ok(data_url(&file, &bytes))
 }
 
 #[cfg(test)]
@@ -387,12 +320,6 @@ mod tests {
         );
         assert!(root.join(DIR).join(".gitignore").is_file());
         assert_eq!(list(&root), vec![shot.clone()]);
-        std::fs::write(root.join("notes.png"), b"x").unwrap();
-        assert!(
-            resolve(&root, "notes.png").is_err(),
-            "only Lumen's own folder"
-        );
-        assert!(resolve(&root, &shot.path).is_ok());
         let _ = std::fs::remove_dir_all(&root);
     }
 

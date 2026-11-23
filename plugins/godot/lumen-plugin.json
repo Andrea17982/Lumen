@@ -1,0 +1,29 @@
+{
+  "id": "godot",
+  "name": "Godot",
+  "version": "1.0.0",
+  "description": "Finds Godot projects and the Godot editor, opens the editor on a project, and teaches agents to run, stop, reload and capture scenes through the project's own Godot MCP server.",
+  "lumen": ">=0.12.0 <1.0.0",
+  "contributes": {
+    "mcpServers": {
+      "godot": { "command": "node", "args": ["server.mjs"] }
+    },
+    "skills": ["skills/godot"],
+    "slashCommands": [
+      {
+        "name": "godot-play",
+        "description": "Run the Godot project and check the result",
+        "prompt": "Run this Godot project with the project's Godot MCP server (play_scene), wait for it to start, take a screenshot with get_game_screenshot and tell me what you see and any errors in the debug output. Stop the scene when you are done."
+      },
+      {
+        "name": "godot-editor",
+        "description": "Open this project in the Godot editor",
+        "prompt": "Use godot_info to find this project's Godot project and editor, then open it with godot_open_editor."
+      }
+    ]
+  },
+  "permissions": {
+    "fsProject": "read",
+    "shell": true
+  }
+}

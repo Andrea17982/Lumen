@@ -4,10 +4,6 @@ import { call } from '../lib/bridge';
 import { useI18n } from '../lib/i18n';
 import { errorText } from '../lib/util';
 import ProjectTools from './ProjectTools';
-import VisualReview from './VisualReview';
-import LayoutCanvas from './LayoutCanvas';
-import GameControls from './GameControls';
-import VariantComparison from './VariantComparison';
 interface Table {
   columns: string[];
   rows: unknown[][];
@@ -15,18 +11,15 @@ interface Table {
 }
 export default function ProjectInspector({
   folder,
-  session,
   onClose,
   onError,
 }: {
   folder: string;
-  session?: string;
   onClose: () => void;
   onError: (s: string) => void;
 }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('web');
-  const [imageFile, setImageFile] = useState('');
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement;
@@ -35,16 +28,7 @@ export default function ProjectInspector({
       if (opener?.isConnected) opener.focus();
     };
   }, []);
-  const tabs = [
-    'web',
-    'image',
-    'data',
-    'changes',
-    'visual',
-    'layout',
-    'game',
-    ...(session ? ['variants'] : []),
-  ];
+  const tabs = ['web', 'image', 'data', 'changes'];
   return (
     <aside
       className="project-inspector popup"
@@ -76,10 +60,6 @@ export default function ProjectInspector({
                 image: 'Image',
                 data: 'Data',
                 changes: 'Changes',
-                visual: 'Visual review',
-                layout: 'Layout canvas',
-                game: 'Game controls',
-                variants: 'Compare versions',
               }[id] || id,
             )}
           </button>
@@ -87,21 +67,9 @@ export default function ProjectInspector({
       </nav>
       <div className="inspector-content" key={folder}>
         {tab === 'web' && <WebPreview />}
-        {tab === 'image' && <ImageInspector folder={folder} initialFile={imageFile} />}
+        {tab === 'image' && <ImageInspector folder={folder} />}
         {tab === 'data' && <DataInspector folder={folder} />}
         {tab === 'changes' && <ProjectTools folder={folder} onError={onError} />}
-        {tab === 'visual' && <VisualReview folder={folder} onError={onError} />}
-        {tab === 'layout' && <LayoutCanvas folder={folder} />}
-        {tab === 'game' && (
-          <GameControls
-            folder={folder}
-            onInspect={(file) => {
-              setImageFile(file);
-              setTab('image');
-            }}
-          />
-        )}
-        {tab === 'variants' && session && <VariantComparison key={session} session={session} />}
       </div>
     </aside>
   );
@@ -156,28 +124,14 @@ function WebPreview() {
     </>
   );
 }
-function ImageInspector({ folder, initialFile = '' }: { folder: string; initialFile?: string }) {
+function ImageInspector({ folder }: { folder: string }) {
   const { t } = useI18n();
-  const [file, setFile] = useState(initialFile);
+  const [file, setFile] = useState('');
   const [src, setSrc] = useState('');
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState(4);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
-    if (!initialFile) return;
-    let active = true;
-    void call<string>('response_image_data', { folder, href: initialFile })
-      .then((data) => {
-        if (active) setSrc(data);
-      })
-      .catch((e) => {
-        if (active) setError(errorText(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [folder, initialFile]);
   return (
     <>
       <form

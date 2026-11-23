@@ -4,7 +4,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nativeHarness } from './native-harness.mjs';
-import { daemonClient, sleep } from './daemon-harness.mjs';
+import { daemonClient, sleep } from '../daemon-harness.mjs';
 
 let h = await nativeHarness('daemon-lifetime');
 const data = h.data,

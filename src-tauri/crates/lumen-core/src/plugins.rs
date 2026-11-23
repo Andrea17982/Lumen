@@ -1014,6 +1014,10 @@ mod tests {
                 "{id} should need no permissions"
             );
         }
+        let godot = examples.join("../godot");
+        let m = validate(&godot).unwrap_or_else(|e| panic!("godot: {e}"));
+        assert_eq!(m.id, "godot");
+        assert!(!grants(&m.permissions).is_empty());
         let dir = examples.join("word-count");
         let m = validate(&dir).unwrap();
         let plan = launch(&dir, &m, "words", &std::env::temp_dir(), &|_| None).unwrap();

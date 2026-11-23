@@ -220,7 +220,6 @@ pub fn route_with(
         "openaiapi",
         "anthropicapi",
         "googleapi",
-        "both",
     ]
     .contains(&options.mode.as_str())
     {
@@ -239,7 +238,7 @@ pub fn route_with(
         }
     }
     let preferred = match options.mode.as_str() {
-        "claude" | "both" => Provider::Claude,
+        "claude" => Provider::Claude,
         "gpt" => Provider::Gpt,
         "antigravity" => Provider::Antigravity,
         "ollama" => Provider::Ollama,
@@ -251,9 +250,7 @@ pub fn route_with(
         _ if task.tier == 2 => Provider::Claude,
         _ => Provider::Gpt,
     };
-    let selected = if options.mode == "both" {
-        accounts.iter().find(|a| a.provider == Provider::Claude)
-    } else if options.mode != "auto" {
+    let selected = if options.mode != "auto" {
         options
             .account_id
             .as_ref()
@@ -283,21 +280,8 @@ pub fn route_with(
     let a = selected.ok_or(
         "Add an account for this provider in Settings, then complete the official CLI login.",
     )?;
-    let partner = if options.mode == "both" {
-        accounts.iter().find(|b| {
-            b.provider != a.provider && matches!(b.provider, Provider::Claude | Provider::Gpt)
-        })
-    } else {
-        review_partner(accounts, a)
-    };
-    if options.mode == "both" && partner.is_none() {
-        return Err(
-            "Both needs a Claude and a ChatGPT account. Add the missing one in Settings.".into(),
-        );
-    }
-    let strategy = if options.mode == "both" {
-        "broadcast"
-    } else if options.mode == "auto" && partner.is_some() {
+    let partner = review_partner(accounts, a);
+    let strategy = if options.mode == "auto" && partner.is_some() {
         if task.audit != AuditIntent::Forbidden
             && (task.audit == AuditIntent::Requested
                 || task.review
@@ -321,7 +305,7 @@ pub fn route_with(
             "Independent review requires another available Claude or ChatGPT account.".into(),
         );
     }
-    let automatic = options.mode == "auto" || options.mode == "both";
+    let automatic = options.mode == "auto";
     let mut plan = Plan {
         provider: a.provider.clone(),
         account_id: a.id.clone(),
@@ -338,8 +322,6 @@ pub fn route_with(
         strategy: strategy.into(),
         reason: if !automatic && strategy == "single" {
             "Native session with the selected model and reasoning"
-        } else if options.mode == "both" {
-            "Same prompt to Claude and ChatGPT, side by side"
         } else if strategy == "review" && options.mode != "auto" {
             "Answer, then cross-audit by another account"
         } else if task.tier == 2 {
@@ -497,6 +479,7 @@ pub fn select_tier(models: &[ModelInfo], target: i32) -> Option<&ModelInfo> {
         .min_by_key(|m| ((model_tier(m) - target).abs(), is_alias(m), !m.is_default))
 }
 /// Use catalog IDs, never manufacture a model name unavailable to the account.
+#[cfg(test)]
 pub fn select_model<'a>(
     models: &'a [ModelInfo],
     prompt: &str,
@@ -707,8 +690,6 @@ mod tests {
         same[1].provider = Provider::Claude;
         let plan = route("Fai un cross-audit di questo fix", &options, &same).unwrap();
         assert_ne!(plan.account_id, plan.partner_account.unwrap());
-        options.mode = "both".into();
-        assert!(route("Compare", &options, &same).is_err());
         options.mode = "auto".into();
         assert!(route("Fai un cross-audit di questo fix", &options, &same[..1]).is_err());
     }

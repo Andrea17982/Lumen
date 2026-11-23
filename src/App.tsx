@@ -22,10 +22,6 @@ import {
   subscribe,
   type ApprovalSnapshot,
 } from './lib/bridge';
-import { localAssistant } from './features/local-assistant/instance';
-import { nameNewChat } from './features/local-assistant/autoTitle';
-import { Draft } from './features/local-assistant/draft';
-import DraftSheet from './components/DraftSheet';
 import Transcript from './components/Transcript';
 import { useLatestCallback } from './lib/useLatestCallback';
 import ExecutionSummary from './components/ExecutionSummary';
@@ -150,7 +146,6 @@ export default function App() {
       'anthropicapi',
       'googleapi',
       'auto',
-      'both',
     ].includes(saved || '')
       ? (saved as Mode)
       : 'auto';
@@ -234,12 +229,8 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'system');
   const [workspace, setWorkspace] = useState(() => localStorage.getItem('lumen-workspace') || '');
-  const [sheet, setSheet] = useState<{ kind: 'commit' | 'handoff'; draft: Draft } | null>(null);
   const [autoReview] = useState(() => localStorage.getItem('lumen-auto-review') === 'true');
   const appSettings = useAppSettings();
-  useEffect(() => {
-    if (appSettings) localAssistant.configure(appSettings.localAssistant);
-  }, [appSettings]);
   const [rewindTarget, setRewindTarget] = useState<{ id: string; preview: RewindPreview } | null>(
     null,
   );
@@ -368,12 +359,7 @@ export default function App() {
   }, [mode]);
   useEffect(() => {
     if (!accountsReady || mode === 'auto') return;
-    const available =
-      mode === 'both'
-        ? accounts.some((a) => a.provider === 'claude') &&
-          accounts.some((a) => a.provider === 'gpt')
-        : accounts.some((a) => a.provider === mode);
-    if (!available) setMode('auto');
+    if (!accounts.some((a) => a.provider === mode)) setMode('auto');
   }, [accounts, accountsReady, mode]);
   const loadUsage = useCallback(async () => {
     const saved = await call<AccountUsage[]>('get_usage');
@@ -513,19 +499,6 @@ export default function App() {
             })
             .catch((e) => setError(errorText(e)));
         void refreshRef.current().catch((e) => setError(errorText(e)));
-        const chat = activeSession.current;
-        if (chat?.id === event.sessionId)
-          void call<Message[]>('get_messages', { id: chat.id })
-            .then((m) => nameNewChat(localAssistant, chat, m, () => activeSession.current?.title))
-            .then((title) => {
-              if (!title) return;
-              if (activeSession.current?.id === chat.id)
-                activeSession.current = { ...activeSession.current, title };
-              return refreshRef.current();
-            })
-            .catch(() => {
-              // The helper is optional: a failed title keeps the derived one.
-            });
       }
     }).then((fn) => {
       if (gone) fn();
@@ -739,7 +712,7 @@ export default function App() {
   }
   /** Options shared by a new turn and by Orchestra's follow-up steps. */
   function runOptions(override?: { mode: Mode; auditOf: string }) {
-    const manual = !override && mode !== 'auto' && mode !== 'both';
+    const manual = !override && mode !== 'auto';
     return {
       mode: override?.mode ?? mode,
       accountId: manual && accountId ? accountId : null,
@@ -869,7 +842,7 @@ export default function App() {
       }
       return;
     }
-    if (desktop && !override && mode !== 'auto' && mode !== 'both' && !catalogReady) {
+    if (desktop && !override && mode !== 'auto' && !catalogReady) {
       setError('Load the official model catalog before sending.');
       return;
     }
@@ -972,7 +945,6 @@ export default function App() {
       localStorage.getItem('lumen-agy-file-edits-notice') !== 'hidden'
     )
       setAgyNotice(true);
-    if (next !== 'read-only' && mode === 'both') setMode('auto');
     if (!session) return;
     try {
       const updated = await call<Session>('set_session_access_mode', {
@@ -1049,23 +1021,13 @@ export default function App() {
       setError(errorText(e));
     }
   }
-  async function resolveLanes(m: Message, apply: boolean) {
-    if (!session) return;
-    try {
-      await call('resolve_lanes', { session: session.id, message: m.id, apply });
-      setMessages(await call<Message[]>('get_messages', { id: session.id }));
-    } catch (e) {
-      setError(errorText(e));
-    }
-  }
-  async function compact(summary?: string) {
+  async function compact() {
     if (!session) return false;
     try {
-      const next = await call<Session>('compact_session', { id: session.id, summary });
+      const next = await call<Session>('compact_session', { id: session.id });
       await refresh();
       if (selectedRef.current === session.id) {
         setSelected(next.id);
-        setSheet(null);
       }
       return true;
     } catch (e) {
@@ -1088,10 +1050,6 @@ export default function App() {
     window.addEventListener(INSERT_PROMPT, insert);
     return () => window.removeEventListener(INSERT_PROMPT, insert);
   }, [setDraft]);
-  // A draft belongs to the chat it was opened in.
-  useEffect(() => {
-    setSheet(null);
-  }, [session?.id]);
   // Approvals are per chat; the native journal pushes every change, so reload on each one.
   const [approvals, setApprovals] = useState<ApprovalSnapshot>({ requests: [], sessions: [] });
   useEffect(() => {
@@ -1117,34 +1075,13 @@ export default function App() {
       stop?.();
     };
   }, [session?.id]);
-  /** Opens the handoff draft; the conversation text is captured now, generation stays on request. */
-  function openHandoff() {
-    const transcript = messages
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
-      .join('\n\n')
-      .slice(-30_000);
-    setSheet({ kind: 'handoff', draft: Draft.handoff(localAssistant, () => transcript) });
-  }
-  async function openCommit() {
-    if (!session) return;
-    try {
-      const diff = await call<string>('working_diff', { id: session.id });
-      if (!diff.trim()) {
-        setError('There are no uncommitted changes to describe.');
-        return;
-      }
-      setSheet({ kind: 'commit', draft: Draft.commit(localAssistant, () => diff) });
-    } catch (e) {
-      setError(errorText(e));
-    }
-  }
   const historyTokens = useMemo(() => messages.reduce((n, m) => n + tokens(m.text), 0), [messages]);
   const attachedTokens = 0; // Arbitrary external files are not read merely to estimate context.
   const draftTokens =
     (draftEstimate?.text === draft ? draftEstimate.tokens : tokens(draft)) + attachedTokens;
   const measurement = useMemo(() => lastMeasurement(messages), [messages]);
   const contextProvider =
-    mode !== 'auto' && mode !== 'both'
+    mode !== 'auto'
       ? mode
       : (measurement?.provider ??
         plan?.provider ??
@@ -1183,16 +1120,7 @@ export default function App() {
   }, [messages, currentSubmissions]);
   const onRewindMessage = useLatestCallback((m: Message) => void askRewind(m));
   const onAuditMessage = useLatestCallback(audit);
-  const onApplyLane = useLatestCallback((m: Message) => void resolveLanes(m, true));
-  const onDiscardLane = useLatestCallback((m: Message) => void resolveLanes(m, false));
   const onOrchestra = useLatestCallback(orchestra);
-  const onMerged = useLatestCallback(async () => {
-    if (!session) return;
-    const id = session.id;
-    const result = await call<Message[]>('get_messages', { id });
-    if (selectedRef.current === id) setMessages(result);
-    await refresh();
-  });
   const newChat = () => {
     setSelected(null);
     setMessages([]);
@@ -1254,8 +1182,6 @@ export default function App() {
       requestAnimationFrame(() => searchInput.current?.focus());
     },
     compact: () => void compact(),
-    handoff: openHandoff,
-    commit: () => void openCommit(),
     usage: () => setUsageOpen(true),
     settings: openSettings,
     inspector: currentWorkspace ? () => setInspector((v) => !v) : undefined,
@@ -1666,7 +1592,6 @@ export default function App() {
           <Suspense fallback={null}>
             <ProjectInspector
               folder={currentWorkspace}
-              session={session?.id}
               onClose={() => setInspector(false)}
               onError={setError}
             />
@@ -1741,10 +1666,7 @@ export default function App() {
               accounts={accounts}
               onRewind={session ? onRewindMessage : undefined}
               onAudit={onAuditMessage}
-              onApplyLane={onApplyLane}
-              onDiscardLane={onDiscardLane}
               onOrchestra={onOrchestra}
-              onMerged={onMerged}
               onError={setError}
             />
           )}
@@ -1770,9 +1692,9 @@ export default function App() {
               </button>
             ))}
           {session && historyTokens > 40_000 && !running && (
-            <button className="compact-chip" onClick={openHandoff}>
+            <button className="compact-chip" onClick={() => void compact()}>
               <Shrink size={13} />
-              Long conversation · Draft a handoff and continue in a fresh session
+              Long conversation · Continue in a fresh session with a summary
             </button>
           )}
 
@@ -1784,31 +1706,6 @@ export default function App() {
                 onDecide={decideApproval}
               />
             </Suspense>
-          )}
-          {session && sheet && (
-            <DraftSheet
-              key={sheet.kind}
-              title={sheet.kind === 'commit' ? 'Commit message draft' : 'Handoff draft'}
-              draft={sheet.draft}
-              label={sheet.kind === 'commit' ? 'Commit message' : 'Handoff summary'}
-              useLabel={sheet.kind === 'commit' ? 'Copy message' : 'Continue in a fresh session'}
-              onClose={() => setSheet(null)}
-              onUse={(text) => {
-                if (sheet.kind === 'commit') {
-                  void navigator.clipboard
-                    .writeText(text)
-                    .then(() => setSheet(null))
-                    .catch((e) => setError(errorText(e)));
-                } else void compact(text);
-              }}
-              footer={
-                sheet.kind === 'handoff' ? (
-                  <button className="text-button" onClick={() => void compact()}>
-                    Continue with the built-in summary
-                  </button>
-                ) : null
-              }
-            />
           )}
           <style>
             {themeCss(plugins.themes.find((th) => `${th.plugin}/${th.id}` === pluginTheme))}
@@ -1894,7 +1791,7 @@ export default function App() {
               paths={attached}
               onRemove={(path) => setAttached((current) => current.filter((p) => p !== path))}
             />
-            {mode !== 'auto' && mode !== 'both' && (
+            {mode !== 'auto' && (
               <ProviderOptions
                 provider={mode}
                 workspace={currentWorkspace}
@@ -1915,11 +1812,6 @@ export default function App() {
             )}
             <ComposerToolbar
               mode={mode}
-              bothAvailable={
-                accessMode === 'read-only' &&
-                accounts.some((a) => a.provider === 'claude') &&
-                accounts.some((a) => a.provider === 'gpt')
-              }
               providers={[...new Set(accounts.map((a) => a.provider))]}
               onMode={(next) => {
                 setMode(next);
@@ -1929,7 +1821,7 @@ export default function App() {
                 setCatalogReady(false);
                 setAdvanced(false);
               }}
-              orchestra={mode !== 'both' && !!appSettings?.orchestra}
+              orchestra={!!appSettings?.orchestra}
               onOrchestraOff={() =>
                 appSettings &&
                 void saveSettings({ ...appSettings, orchestra: false }).catch((e) =>
@@ -1953,7 +1845,7 @@ export default function App() {
                 currentSubmissions.length === 0 &&
                 !folderBusy &&
                 (draft.trim().toLowerCase() === '/compact' ||
-                  !(desktop && mode !== 'auto' && mode !== 'both' && !catalogReady))
+                  !(desktop && mode !== 'auto' && !catalogReady))
               }
               onSend={() => {
                 if (running && selected)

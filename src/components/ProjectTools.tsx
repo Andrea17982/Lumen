@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Play, PlugZap, RefreshCw, SquareArrowOutUpRight } from 'lucide-react';
+import { Play, RefreshCw } from 'lucide-react';
 import { call } from '../lib/bridge';
 import FileDiff from './FileDiff';
 import { errorText, IconButton, nameOf } from '../lib/util';
-import type {
-  ChangeLayer,
-  CheckResult,
-  GodotConnection,
-  GodotDiagnostics,
-  ProjectCheck,
-  ProjectTool,
-} from '../lib/types';
+import type { ChangeLayer, CheckResult, ProjectCheck, ProjectTool } from '../lib/types';
 
 /** Project-local skills and MCP declarations (read-only) and checks that run only on request. */
 export default function ProjectTools({
@@ -22,10 +15,8 @@ export default function ProjectTools({
 }) {
   const [tools, setTools] = useState<ProjectTool[]>([]);
   const [checks, setChecks] = useState<ProjectCheck[]>([]);
-  const [godot, setGodot] = useState<GodotDiagnostics | null>(null);
   const [running, setRunning] = useState('');
   const [results, setResults] = useState<Record<string, CheckResult>>({});
-  const [connection, setConnection] = useState<GodotConnection | null>(null);
   const [layers, setLayers] = useState<ChangeLayer[] | null>(null);
   const loadLayers = useCallback(
     () =>
@@ -37,18 +28,15 @@ export default function ProjectTools({
   useEffect(() => {
     let gone = false;
     setResults({});
-    setConnection(null);
     void loadLayers();
     void Promise.all([
       call<ProjectTool[]>('project_tools', { folder }),
       call<ProjectCheck[]>('project_checks', { folder }),
-      call<GodotDiagnostics>('project_godot_diagnostics', { folder }),
     ])
-      .then(([t, c, g]) => {
+      .then(([t, c]) => {
         if (gone) return;
         setTools(t);
         setChecks(c);
-        setGodot(g);
       })
       .catch((e) => onError(errorText(e)));
     return () => {
@@ -73,25 +61,6 @@ export default function ProjectTools({
     }
   }
 
-  async function testGodot(server: string) {
-    setRunning(`godot:${server}`);
-    try {
-      setConnection(await call<GodotConnection>('godot_connection_test', { folder, server }));
-    } catch (e) {
-      onError(errorText(e));
-    } finally {
-      setRunning('');
-    }
-  }
-
-  async function openEditor(project: string) {
-    try {
-      await call('open_godot_editor', { folder, project });
-    } catch (e) {
-      onError(errorText(e));
-    }
-  }
-
   async function open(file: string, line: number) {
     try {
       await call<boolean>('open_source_location', { folder, file, line });
@@ -102,75 +71,6 @@ export default function ProjectTools({
 
   return (
     <>
-      {godot && (godot.projects.length > 0 || godot.mcpServers.length > 0 || godot.executable) && (
-        <section className="tools-section" aria-label="Godot diagnostics">
-          <div className="panel-label">
-            Godot <small>Project-scoped, read-only diagnostics</small>
-          </div>
-          <div className="tool-row">
-            <strong>
-              {godot.projects.length
-                ? `${godot.projects.length} project file(s)`
-                : 'No project.godot found'}
-            </strong>
-            {godot.projects.map((project) => (
-              <div key={project} className="panel-row">
-                <small>{project}</small>
-                {godot.executable && (
-                  <button
-                    className="text-button"
-                    aria-label={`Open ${project} in the Godot editor`}
-                    onClick={() => void openEditor(project)}
-                  >
-                    <SquareArrowOutUpRight size={12} /> Open editor
-                  </button>
-                )}
-              </div>
-            ))}
-            <small>
-              {godot.executable
-                ? `Executable: ${godot.executable}`
-                : 'Godot executable not found on PATH or in the usual install folders'}
-            </small>
-            <small>
-              {godot.mcpServers.length
-                ? `Declared MCP: ${godot.mcpServers.join(', ')}`
-                : 'No Godot-named MCP declaration found'}
-            </small>
-            {godot.servers.map((server) => (
-              <div key={server} className="panel-row">
-                <small>{server}</small>
-                <button
-                  className="text-button"
-                  disabled={!!running}
-                  title="Starts this declared server, asks the editor for its project info (read-only) and stops the server"
-                  onClick={() => void testGodot(server)}
-                >
-                  <PlugZap size={12} />{' '}
-                  {running === `godot:${server}` ? 'Testing…' : 'Test connection'}
-                </button>
-              </div>
-            ))}
-            {connection ? (
-              <>
-                <small
-                  role="status"
-                  className={connection.editorConnected ? 'check-ok' : 'tool-conflict'}
-                >
-                  {connection.editorConnected
-                    ? `Editor connected · ${connection.serverInfo} · ${connection.toolCount} tools`
-                    : connection.started
-                      ? `Server ${connection.serverInfo} started (${connection.toolCount} tools); editor not connected`
-                      : 'Server did not start'}
-                </small>
-                <pre className="check-output">{connection.detail}</pre>
-              </>
-            ) : (
-              <small>{godot.editorConnection}</small>
-            )}
-          </div>
-        </section>
-      )}
       {layers && (
         <section className="tools-section" aria-label="Change review">
           <div className="panel-row">

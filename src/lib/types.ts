@@ -1,5 +1,4 @@
 import type { OrchestraLimits } from '../features/orchestra/scheduling/limits';
-import type { LocalAssistantConfig } from '../features/local-assistant/types';
 export type Provider =
   | 'claude'
   | 'gpt'
@@ -10,7 +9,7 @@ export type Provider =
   | 'openaiapi'
   | 'anthropicapi'
   | 'googleapi';
-export type Mode = Provider | 'auto' | 'both';
+export type Mode = Provider | 'auto';
 export type Status = 'idle' | 'waiting' | 'running' | 'completed' | 'interrupted' | 'error';
 export interface Session {
   id: string;
@@ -184,7 +183,6 @@ export interface AppSettings {
   openAtLogin: boolean;
   ollamaModel: string;
   orchestraLimits: OrchestraLimits;
-  localAssistant: LocalAssistantConfig;
   repoContext: boolean;
   codeMode?: 'off' | 'auto' | 'on';
   codeModeChosen?: boolean;
@@ -227,13 +225,6 @@ export interface ProjectTool {
   trust: string;
   conflict: boolean;
 }
-export interface GodotDiagnostics {
-  executable: string | null;
-  projects: string[];
-  mcpServers: string[];
-  editorConnection: string;
-  servers: string[];
-}
 export interface ProjectCheck {
   id: string;
   label: string;
@@ -250,15 +241,6 @@ export interface CheckResult {
   truncated: boolean;
   millis: number;
   links: { file: string; line: number }[];
-}
-
-export interface GodotConnection {
-  server: string;
-  started: boolean;
-  serverInfo: string;
-  toolCount: number;
-  editorConnected: boolean;
-  detail: string;
 }
 
 export interface Screenshot {

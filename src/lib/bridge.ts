@@ -50,7 +50,6 @@ function read(): {
   workspaces?: Workspace[];
   messages?: Record<string, Message[]>;
   usage?: AccountUsage[];
-  layouts?: Record<string, unknown>;
 } {
   try {
     return JSON.parse(localStorage.getItem(key) || '{"sessions":[],"accounts":[]}');
@@ -76,7 +75,6 @@ function previewSettings(): AppSettings {
       maxMinutes: null,
       quotaThresholds: {},
     },
-    localAssistant: { enabled: false, model: '', autoTitles: true, timeoutMs: 60_000 },
     repoContext: true,
     codeMode: 'auto',
   };
@@ -101,19 +99,6 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
   const data = read();
   let result: unknown;
   switch (command) {
-    case 'load_layout':
-      result = data.layouts?.[String(args.folder)] || {
-        version: 1,
-        width: 800,
-        height: 600,
-        blocks: [],
-      };
-      break;
-    case 'save_layout':
-      data.layouts = { ...data.layouts, [String(args.folder)]: args.spec };
-      localStorage.setItem(key, JSON.stringify(data));
-      result = args.spec;
-      break;
     case 'list_workspaces':
       result = data.workspaces || [];
       break;
@@ -204,9 +189,6 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'mcp_health':
     case 'project_tools':
     case 'project_checks':
-    case 'list_screenshots':
-    case 'visual_variants':
-    case 'capture_targets':
     case 'change_layers':
     case 'plugins_list':
       result = [];
@@ -222,9 +204,6 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
       break;
     case 'ollama_status':
       result = { installed: false, running: false, models: [], selected: null };
-      break;
-    case 'ollama_models':
-      result = [];
       break;
     case 'project_context':
       result = { notes: '', files: [], verify: null, git: false };

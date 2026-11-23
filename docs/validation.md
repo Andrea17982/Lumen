@@ -7,6 +7,7 @@ Fixtures, builds, small real-account checks and owner observations are different
 ## Unreleased
 
 - **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Claude Code, Codex and OpenCode keep direct tools in Automatic; paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)
+- **Simplification:** Both mode with manual merge and worktree variants, the inspector's layout canvas and screenshot library, the separate Ollama helper (titles, commit and handoff drafts, local Auto classification) and the built-in Godot controls were removed. Godot is now the [plugin](../plugins/godot/README.md) in `plugins/godot`, checked by the manifest validator and a stdio smoke run. Manual and live harnesses moved to `tests/manual`. 293 Rust tests (17 opt-in ignored), 63 frontend tests and 51 production-browser tests pass.
 
 ## 0.12.1
 
@@ -39,7 +40,7 @@ These checks were made on 0.10.0 and cover areas 0.11 and 0.12 did not redesign.
 - **Native Windows suites** (real WebView2, IPC and SQLite, offline CLI fixtures): service lifecycle and restarts during work, a native question and Orchestra; routing and quota replay; handoff sections and check evidence; execution traces, Stop and the duration line; memory, global-memory confirmation, recurring tasks and recipes through the real GUI and daemon; Orchestra continuation.
 - **Local service:** a hard service crash leaves unrelated processes untouched; ordinary model work is not resubmitted after a crash; a process whose identity cannot be confirmed blocks automatic cleanup. [Receipt](data/local-service-0.10.json).
 - **Command receipts:** eight concurrent create-session requests with the same command ID created one conversation and returned the same result eight times, also after a service restart; a changed payload was rejected. This covers dispatch, not exactly-once effects of external tools. [Receipt](data/command-receipts-0.10.json).
-- **Live recognition** (Claude Sonnet through the official CLI, using an isolated Lumen account slot): 6/6 recurring-task and memory requests, including Italian end dates, weekdays and daily times, a one-off request with no schedule and a project fact; 3/3 project-versus-global memory cases. Reproduce with `node tests/live-routine-recognition.mjs` (opt-in, uses real inference).
+- **Live recognition** (Claude Sonnet through the official CLI, using an isolated Lumen account slot): 6/6 recurring-task and memory requests, including Italian end dates, weekdays and daily times, a one-off request with no schedule and a project fact; 3/3 project-versus-global memory cases. Reproduce with `node tests/manual/live-routine-recognition.mjs` (opt-in, uses real inference).
 - **Earlier live observations:** Codex native questions, file writes and continuation, a two-worker Orchestra, Moli browsing on Codex and Antigravity, local Ollama tool calls, real language-server errors and an opt-in Godot loop. Each was a single configuration.
 
 ## Known limits

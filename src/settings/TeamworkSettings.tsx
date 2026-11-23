@@ -2,8 +2,6 @@ import { useSettingsEditor } from '../lib/busy';
 import type { Account, Provider } from '../lib/types';
 import { NO_LIMITS, OrchestraLimitsSettings } from '../features/orchestra/scheduling';
 import { Switch } from './controls';
-import LocalAssistantSettings from '../features/local-assistant/LocalAssistantSettings';
-import { localAssistant } from '../features/local-assistant/instance';
 import { useI18n } from '../lib/i18n';
 
 /** Settings → Teamwork: how the providers help each other. */
@@ -149,11 +147,6 @@ export default function TeamworkSettings({
           ))}
         </div>
       </div>
-      <LocalAssistantSettings
-        assistant={localAssistant}
-        config={s.localAssistant}
-        onChange={(next) => save({ ...s, localAssistant: next })}
-      />
     </section>
   );
 }
