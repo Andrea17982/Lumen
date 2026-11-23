@@ -24,6 +24,13 @@ const output = process.env.LUMEN_BENCH_OUTPUT || 'reports/bench/live-code-mode.j
 const seeds = Number(process.env.LUMEN_BENCH_SEEDS || 3);
 const providers = (process.env.LUMEN_LIVE_PROVIDERS || 'claude,gpt').split(',');
 const only = process.env.LUMEN_BENCH_CASES?.split(',');
+// TC classic, CM Code Mode always, AUTO Automatic (direct tools, large results held back).
+const modes = { TC: 'off', CM: 'on', AUTO: 'auto' };
+const arms = (process.env.LUMEN_BENCH_ARMS || 'TC,CM').split(',');
+assert(
+  arms.every((a) => modes[a]),
+  'LUMEN_BENCH_ARMS takes TC, CM and AUTO',
+);
 const original =
   process.env.LUMEN_LIVE_ACCOUNT_ROOT ||
   path.join(process.env.APPDATA, 'io.github.andrea17982.lumen');
@@ -395,10 +402,13 @@ try {
       for (const [key, c] of Object.entries(cases)) {
         if (only ? !only.includes(key) : c.probe) continue;
         // Alternate arm order within each pair.
-        for (const arm of (seed + key.charCodeAt(0)) % 2 ? ['CM', 'TC'] : ['TC', 'CM']) {
+        const pair = arms.slice();
+        if ((seed + key.charCodeAt(0)) % 2) pair.reverse();
+        for (const arm of pair) {
           const prefs = await invoke('get_settings');
+          // codeModeChosen keeps an explicit Off from being read as the Automatic default.
           await invoke('save_settings', {
-            value: { ...prefs, codeMode: arm === 'CM' ? 'on' : 'off' },
+            value: { ...prefs, codeMode: modes[arm], codeModeChosen: true },
           });
           const workspace = path.join(data, [provider, key, seed, arm].join('-'));
           await mkdir(workspace);
@@ -440,7 +450,7 @@ try {
               );
               if (
                 ['D', 'G', 'H'].includes(key) &&
-                /run tool \\"(github|filesystem)_[a-z_]+\\"\?/.test(text) &&
+                /run tool \\"(acme_)?(github|filesystem)_[a-z_]+\\"\?/.test(text) &&
                 allow
               )
                 await invoke('answer_question', {
@@ -463,12 +473,16 @@ try {
                   .replace(/[`*]/g, '')
                   .trim()
                   .match(/([A-Za-z0-9_]+)\.?$/)?.[1] ?? '') === c.answer);
-          const native = await nativeUsage(
-            provider,
-            path.join(original, 'accounts', actual.id),
-            workspace,
-            started - 1000,
-          );
+          // Claude Code reports turn totals in its result event; older runs read transcripts.
+          const reported = activity.find((x) => x.kind === 'native-usage')?.text;
+          const native = reported
+            ? JSON.parse(reported)
+            : await nativeUsage(
+                provider,
+                path.join(original, 'accounts', actual.id),
+                workspace,
+                started - 1000,
+              );
           const row = {
             native,
             tier: 'T3',

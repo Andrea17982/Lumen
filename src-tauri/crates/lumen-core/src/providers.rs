@@ -167,6 +167,25 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
                 push("thinking", t.into());
             }
         }
+        if v["type"] == "result" {
+            // Totals for the whole turn: every request, cached reads and cache writes included.
+            let usage = &v["usage"];
+            if let Some(input) = usage["input_tokens"].as_u64() {
+                let cached = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                push(
+                    "native-usage",
+                    serde_json::json!({
+                        "requests": v["num_turns"],
+                        "inputTokens": input
+                            + cached
+                            + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+                        "cachedTokens": cached,
+                        "outputTokens": usage["output_tokens"],
+                    })
+                    .to_string(),
+                );
+            }
+        }
         if v["type"] == "assistant" {
             // Input tokens of this API request, counting cached reads and cache writes.
             let usage = &v["message"]["usage"];
@@ -325,9 +344,10 @@ pub async fn execute(
     let prefs = crate::api::root(input.config)
         .map(crate::settings::AppSettings::load)
         .unwrap_or_default();
-    let (code_tx, code_rx) = if crate::code_mcp::enabled(&prefs, &input.account.provider) {
+    let code_auto = crate::code_mcp::kind(&prefs, &input.account.provider);
+    let (code_tx, code_rx) = if let Some(auto) = code_auto {
         let (tx, rx) = tokio::sync::mpsc::channel(8);
-        (Some(tx), Some(rx))
+        (Some((tx, auto)), Some(rx))
     } else {
         (None, None)
     };
@@ -354,9 +374,17 @@ pub async fn execute(
     let code_cancel = cancel.clone();
     let code = async {
         if let Some(rx) = code_rx {
-            crate::code_mcp::run(&input, &browser, rx, code_cancel, code_scope, |activity| {
-                let _ = send.send(activity);
-            })
+            crate::code_mcp::run(
+                &input,
+                &browser,
+                code_auto == Some(true),
+                rx,
+                code_cancel,
+                code_scope,
+                |activity| {
+                    let _ = send.send(activity);
+                },
+            )
             .await;
         }
     };
@@ -1196,6 +1224,17 @@ mod tests {
             &json!({"type":"thread.started","thread_id":"t1"}),
         );
         assert!(g.iter().any(|a| a.kind == "session" && a.text == "t1"));
+        let r = normalize(
+            &Provider::Claude,
+            &json!({"type":"result","num_turns":3,"usage":{"input_tokens":10,"cache_read_input_tokens":200,"cache_creation_input_tokens":30,"output_tokens":5}}),
+        );
+        let totals: Value =
+            serde_json::from_str(&r.iter().find(|a| a.kind == "native-usage").unwrap().text)
+                .unwrap();
+        assert_eq!(
+            totals,
+            json!({"requests":3,"inputTokens":240,"cachedTokens":200,"outputTokens":5})
+        );
     }
     #[test]
     fn restricted_claude_can_verify_but_not_run_anything() {

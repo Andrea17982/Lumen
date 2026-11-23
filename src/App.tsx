@@ -31,6 +31,7 @@ import { active, mergeUsage, providerOf } from './lib/messages';
 import Welcome from './components/Welcome';
 import GuidedTour, { TOUR_KEY } from './components/GuidedTour';
 import Topbar from './components/Topbar';
+import TaskWorktreeBar, { PublishedNotice, useTaskWorktree } from './components/TaskWorktree';
 import { ComposerToolbar, TokenCaption } from './components/Composer';
 import UsagePopover from './components/UsagePopover';
 import ContextMeter from './components/ContextMeter';
@@ -297,6 +298,7 @@ export default function App() {
     };
   }, [sessionId, sessionAccess, running]);
   const currentWorkspace = session?.workspace || workspace;
+  const task = useTaskWorktree(session, running);
   const attachCapture = useCallback(
     (path: string) => setAttached((previous) => [...new Set([...previous, path])]),
     [selected],
@@ -1577,10 +1579,12 @@ export default function App() {
           workspaceLabel={
             namedWorkspace?.name ||
             (currentWorkspace
-              ? currentWorkspace.split(/[\\/]/).filter(Boolean).at(-1) || ''
+              ? (task.status?.origin || currentWorkspace).split(/[\\/]/).filter(Boolean).at(-1) ||
+                ''
               : t('Personal workspace'))
           }
           workspaceTitle={currentWorkspace || undefined}
+          branch={task.status?.branch}
           conversationTitle={session?.title || t('New conversation')}
 
           onChooseFolder={!session ? () => void chooseFolder() : undefined}
@@ -1691,6 +1695,23 @@ export default function App() {
                 {t('Check message delivery')}
               </button>
             ))}
+          {session && task.status && (
+            <TaskWorktreeBar
+              session={session}
+              status={task.status}
+              running={running}
+              onSession={(updated) => {
+                if (activeSession.current?.id === updated.id) activeSession.current = updated;
+                setSessions((list) => list.map((s) => (s.id === updated.id ? updated : s)));
+                void task.refresh().catch(() => undefined);
+              }}
+              onPublished={task.setPublished}
+              onError={setError}
+            />
+          )}
+          {task.published && (
+            <PublishedNotice done={task.published} onClose={() => task.setPublished(null)} />
+          )}
           {session && historyTokens > 40_000 && !running && (
             <button className="compact-chip" onClick={() => void compact()}>
               <Shrink size={13} />

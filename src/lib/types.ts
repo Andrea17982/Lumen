@@ -21,6 +21,24 @@ export interface Session {
   workspaceId?: string | null;
   accessMode?: AccessMode;
 }
+export interface TaskWorktreeStatus {
+  branch: string;
+  origin: string;
+  path: string;
+  ahead: number;
+  dirty: boolean;
+  remote?: string | null;
+  base: string;
+  /** Why Publish is unavailable (checked only for a preview). */
+  blocked?: string | null;
+  /** The published pull request Lumen follows. */
+  pr?: { url: string; watching: boolean; rounds: number; last: string } | null;
+}
+export interface Published {
+  session: Session;
+  url: string;
+  autoMergeError?: string | null;
+}
 export interface Workspace {
   id: string;
   name: string;

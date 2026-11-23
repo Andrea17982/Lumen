@@ -145,6 +145,8 @@ struct Scope {
 struct CodeScope {
     token: String,
     queue: mpsc::Sender<code_mcp::Request>,
+    /// Automatic: direct tools beside lumen_code, large results kept as context documents.
+    auto: bool,
 }
 pub struct Registration {
     endpoint: String,
@@ -169,7 +171,7 @@ impl Registration {
     pub(crate) async fn with_code(
         input: &crate::providers::Invocation<'_>,
         events: mpsc::UnboundedSender<Activity>,
-        code: Option<mpsc::Sender<code_mcp::Request>>,
+        code: Option<(mpsc::Sender<code_mcp::Request>, bool)>,
     ) -> Result<Self, String> {
         let workspace = dunce::canonicalize(input.workspace)
             .map_err(|_| "The conversation folder is unavailable")?;
@@ -229,9 +231,10 @@ impl Registration {
             events,
             stop: tokio::sync::watch::channel(false).0,
             pending: Default::default(),
-            code: code.map(|queue| CodeScope {
+            code: code.map(|(queue, auto)| CodeScope {
                 token: uuid::Uuid::new_v4().to_string(),
                 queue,
+                auto,
             }),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -268,12 +271,17 @@ impl Registration {
     pub(crate) fn code_only(&self) -> bool {
         self.scope.code.is_some()
     }
-    pub(crate) fn code_env(&self) -> Option<[(&'static str, String); 2]> {
+    /// Automatic Code Mode: the CLI also gets Lumen's tools directly.
+    pub(crate) fn code_auto(&self) -> bool {
+        self.scope.code.as_ref().is_some_and(|c| c.auto)
+    }
+    pub(crate) fn code_env(&self) -> Option<[(&'static str, String); 3]> {
         let code = self.scope.code.as_ref()?;
         let base = self.endpoint.strip_suffix("/call")?;
         Some([
             (code_mcp::URL_ENV, format!("{base}/code/call")),
             (code_mcp::CAP_ENV, code.token.clone()),
+            (code_mcp::AUTO_ENV, if code.auto { "1" } else { "0" }.into()),
         ])
     }
     pub fn args(&self, args: &mut Vec<String>, provider: &Provider) -> Result<(), String> {
@@ -283,7 +291,11 @@ impl Registration {
                 let (config, read) = if self.code_only() {
                     (
                         json!({"mcpServers":{code_mcp::SERVER:{"command":exe,"args":[code_mcp::FLAG]}}}),
-                        "mcp__lumen_code__lumen_code",
+                        if self.code_auto() {
+                            "mcp__lumen_code"
+                        } else {
+                            "mcp__lumen_code__lumen_code"
+                        },
                     )
                 } else {
                     (
@@ -336,7 +348,7 @@ impl Registration {
                         "-c".into(),
                         format!(
                             "mcp_servers.{name}.env_vars={}",
-                            json!([code_mcp::URL_ENV, code_mcp::CAP_ENV])
+                            json!([code_mcp::URL_ENV, code_mcp::CAP_ENV, code_mcp::AUTO_ENV])
                         ),
                         "-c".into(),
                         format!(
@@ -344,6 +356,17 @@ impl Registration {
                             crate::code_mode::TOOL
                         ),
                     ]);
+                    if self.code_auto() {
+                        for tool in tools().as_array().unwrap() {
+                            extra.extend([
+                                "-c".into(),
+                                format!(
+                                    "mcp_servers.{name}.tools.{}.approval_mode=\"approve\"",
+                                    tool["name"].as_str().unwrap()
+                                ),
+                            ]);
+                        }
+                    }
                 }
                 let at = args
                     .iter()
@@ -1009,7 +1032,14 @@ async fn proxy(
     let http = client();
     let mut lines = BufReader::new(input).lines();
     let (server, instructions) = if code {
-        (code_mcp::SERVER, code_mcp::INSTRUCTIONS)
+        (
+            code_mcp::SERVER,
+            if std::env::var(code_mcp::AUTO_ENV).as_deref() == Ok("1") {
+                code_mcp::AUTO_INSTRUCTIONS
+            } else {
+                code_mcp::INSTRUCTIONS
+            },
+        )
     } else {
         (SERVER, INSTRUCTIONS)
     };
@@ -1182,19 +1212,24 @@ pub(crate) mod tests {
                     code_mode: mode,
                     ..AppSettings::default()
                 };
+                let cli = matches!(
+                    provider,
+                    Provider::Claude | Provider::Gpt | Provider::Opencode
+                );
                 assert_eq!(
-                    code_mcp::enabled(&prefs, &provider),
-                    mode == CodeMode::On
-                        && matches!(
-                            provider,
-                            Provider::Claude | Provider::Gpt | Provider::Opencode
-                        )
+                    code_mcp::kind(&prefs, &provider),
+                    match mode {
+                        _ if !cli => None,
+                        CodeMode::Off => None,
+                        CodeMode::Auto => (provider == Provider::Claude).then_some(true),
+                        CodeMode::On => Some(false),
+                    }
                 );
             }
         }
 
         let (tx, rx) = mpsc::channel(8);
-        let browser = Registration::with_code(&input, events.clone(), Some(tx))
+        let browser = Registration::with_code(&input, events.clone(), Some((tx, false)))
             .await
             .unwrap();
         let input = Invocation {
@@ -1231,7 +1266,7 @@ pub(crate) mod tests {
             .iter()
             .any(|arg| arg.contains("mcp_servers.lumen_browser")));
 
-        let [(_, endpoint), (_, cap)] = browser.code_env().unwrap();
+        let [(_, endpoint), (_, cap), _] = browser.code_env().unwrap();
         let http = client();
         let params = json!({"requestId":"wrong-capability","list":true});
         for (url, token) in [(&endpoint, &browser.scope.token), (&browser.endpoint, &cap)] {
@@ -1253,7 +1288,7 @@ pub(crate) mod tests {
         let mut lines = BufReader::new(read).lines();
         let (stop, cancel) = watch::channel(false);
         let (_lifetime, lifetime) = watch::channel(false);
-        let worker = code_mcp::run(&input, &browser, rx, cancel, lifetime, |a| {
+        let worker = code_mcp::run(&input, &browser, false, rx, cancel, lifetime, |a| {
             let _ = events.send(a);
         });
         let serve = proxy(true, &endpoint, &cap, input_io, output_io);
@@ -1350,6 +1385,138 @@ pub(crate) mod tests {
         .await
         .expect("offline Code Mode MCP completion");
         served.unwrap();
+    }
+
+    #[tokio::test]
+    async fn automatic_code_mode_offers_direct_tools_and_holds_large_results() {
+        use crate::{providers::Invocation, test_support::Fixture};
+        use tokio::sync::watch;
+        if which::which("node").is_err() {
+            return;
+        }
+        let f = Fixture::new();
+        let config = f.directory("accounts/local");
+        let project = f.directory("project");
+        crate::integrations::save_mcp(
+            &f.root,
+            &json!({"mcpServers":{"fixture":crate::shared_tools::tests::server("auto-fixture")}})
+                .to_string(),
+        )
+        .unwrap();
+        let a = crate::models::Account {
+            id: "local".into(),
+            name: "fixture".into(),
+            provider: Provider::Claude,
+        };
+        let input = Invocation {
+            rlm: None,
+            automatic: false,
+            browser_scope: None,
+            browser_artifacts: None,
+            browser: None,
+            account: &a,
+            config: &config,
+            workspace: &project,
+            prompt: "",
+            model: None,
+            effort: "low",
+            access: AccessMode::ReadOnly,
+            approvals: None,
+            resume: None,
+        };
+        let (events, mut activity) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(8);
+        let browser = Registration::with_code(&input, events.clone(), Some((tx.clone(), true)))
+            .await
+            .unwrap();
+        assert!(browser.code_auto());
+        let mut claude = vec![];
+        browser.args(&mut claude, &Provider::Claude).unwrap();
+        assert!(claude.iter().any(|arg| arg == "mcp__lumen_code"));
+        let [_, _, (_, auto)] = browser.code_env().unwrap();
+        assert_eq!(auto, "1");
+        let input = Invocation {
+            browser: Some(&browser),
+            ..input
+        };
+        let (stop, cancel) = watch::channel(false);
+        let (_lifetime, lifetime) = watch::channel(false);
+        let worker = code_mcp::run(&input, &browser, true, rx, cancel.clone(), lifetime, |a| {
+            let _ = events.send(a);
+        });
+        let drive = async {
+            let listed = code_mcp::relay(&tx, &json!({"list":true}), cancel.clone()).await;
+            let names: Vec<&str> = listed["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| t["name"].as_str().unwrap())
+                .collect();
+            assert_eq!(names.last(), Some(&crate::code_mode::TOOL));
+            assert!(names.contains(&"browser_navigate"));
+            assert!(!names.contains(&"lumen_read_file"));
+            // Shared tools carry readable names in Automatic.
+            assert!(names.contains(&"fixture_echo"), "{names:?}");
+            let echo = "fixture_echo".to_string();
+            // The CLI's own file tools are not proxied.
+            let refused = code_mcp::relay(
+                &tx,
+                &json!({"name":"lumen_read_file","arguments":{"path":"x"}}),
+                cancel.clone(),
+            )
+            .await;
+            assert_eq!(refused["isError"], true);
+            let small = code_mcp::relay(
+                &tx,
+                &json!({"name":echo,"arguments":{"n":1}}),
+                cancel.clone(),
+            )
+            .await;
+            assert!(small["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("auto-fixture"));
+            let big = code_mcp::relay(
+                &tx,
+                &json!({"name":echo,"arguments":{"pad":"x".repeat(30_000)}}),
+                cancel.clone(),
+            )
+            .await;
+            let text = big["content"][0]["text"].as_str().unwrap();
+            assert!(text.starts_with("Context document 0"), "{text}");
+            assert!(
+                text.contains("lumen_code") && text.len() < 4_000,
+                "{}",
+                text.len()
+            );
+            let read = code_mcp::relay(
+                &tx,
+                &json!({"name":"lumen_code","arguments":{"code":"(async () => (await context.get(0)).length > 30000)()"}}),
+                cancel.clone(),
+            )
+            .await;
+            assert_eq!(read["content"][0]["text"], "true");
+            // The example in the notice runs as written.
+            let example = text
+                .split("such as: ")
+                .nth(1)
+                .and_then(|t| t.split(". For several").next())
+                .unwrap();
+            let ran = code_mcp::relay(
+                &tx,
+                &json!({"name":"lumen_code","arguments":{"code":example}}),
+                cancel.clone(),
+            )
+            .await;
+            assert_ne!(ran["isError"], true, "{ran}");
+            stop.send_replace(true);
+        };
+        tokio::time::timeout(Duration::from_secs(30), async {
+            tokio::join!(Box::pin(worker), Box::pin(drive))
+        })
+        .await
+        .expect("offline Automatic Code Mode completion");
+        assert!(std::iter::from_fn(|| activity.try_recv().ok()).any(|e| e.kind == "code-escalate"));
     }
     #[test]
     fn antigravity_transport_preserves_the_image_path_and_bounds_escaped_text() {

@@ -9,6 +9,7 @@ import type {
   RunEvent,
   Session,
   Workspace,
+  TaskWorktreeStatus,
 } from './types';
 import type { ApprovalRequest, Decision, SessionView } from '../features/gatekeeper/contracts';
 
@@ -49,6 +50,8 @@ function read(): {
   accounts: Account[];
   workspaces?: Workspace[];
   messages?: Record<string, Message[]>;
+  /** Task worktrees by session, for the preview of Publish, Apply and Discard. */
+  tasks?: Record<string, TaskWorktreeStatus>;
   usage?: AccountUsage[];
 } {
   try {
@@ -211,6 +214,40 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     case 'diagnostics':
       result = { claude: false, gpt: false, dataDir: 'Desktop app required' };
       break;
+    case 'task_worktree_status': {
+      const task = data.tasks?.[String(args.id)];
+      result = task ? { ...task, blocked: args.preview ? task.blocked : null } : null;
+      break;
+    }
+    case 'publish_task': {
+      const task = data.tasks?.[String(args.id)];
+      if (!task) throw new Error('This conversation has no task worktree');
+      const url = 'https://github.com/example/project/pull/1';
+      task.pr = { url, watching: true, rounds: 0, last: 'Waiting for checks' };
+      result = {
+        session: data.sessions.find((s) => s.id === args.id),
+        url,
+        autoMergeError: null,
+      };
+      break;
+    }
+    case 'stop_watching_task': {
+      const pr = data.tasks?.[String(args.id)]?.pr;
+      if (pr) Object.assign(pr, { watching: false, last: 'Not watched' });
+      break;
+    }
+    case 'apply_task':
+    case 'discard_task': {
+      const task = data.tasks?.[String(args.id)];
+      if (!task) throw new Error('This conversation has no task worktree');
+      delete data.tasks![String(args.id)];
+      data.sessions = data.sessions.map((s) =>
+        s.id === args.id ? { ...s, workspace: task.origin } : s,
+      );
+      const session = data.sessions.find((s) => s.id === args.id);
+      result = session;
+      break;
+    }
     default:
       throw new Error(
         'Open the Lumen desktop app to connect accounts and run AI sessions. This browser is a UI preview.',

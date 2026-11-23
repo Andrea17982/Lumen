@@ -31,6 +31,25 @@ Workers receive the team manifest, relevant prior decisions, impact/contracts an
 
 Closing the GUI keeps work running in the local service, including native questions and Orchestra. After a service crash/restart, unfinished execution requires explicit Resume; a turn is not silently replayed. Explicitly scheduled quota intentions persist and are revalidated separately. [Service lifecycle](local-service.md). [Recovery and limitations](validation.md).
 
+## Task worktree and Publish
+
+A large Auto task that writes files (rated complex or top tier) runs in the conversation's own Git worktree, so the project folder stays as it was. Small tasks, Read only conversations and Orchestra runs keep working in the folder.
+
+- **Ready to work.** The branch is named after the request (`lumen/<first words>-<id>`). Uncommitted changes in the folder become the branch's first commit. Ignored local files that a fresh checkout needs (`.env*` and `*.local*`, up to 1 MB each) are copied. In Autopilot, Lumen installs dependencies from the lockfile (npm, pnpm, yarn, bun or uv). In other profiles the agent installs them only if it needs them.
+- **Commit after checks.** After each turn that finishes without failing checks, Lumen commits the changes on the branch. The message is drafted by a short Claude call, with a plain fallback, and ends with `Generated-by: Lumen`. Follow-ups continue in the same worktree.
+- **Publish, Apply or Discard.** The topbar shows the branch, and three actions sit above the composer.
+  - **Publish** first shows the remote, base and branch, with an editable title and description. It then pushes the branch, opens a ready pull request with `gh` and turns on GitHub's automatic merge when CI and review pass. If the repository does not allow automatic merge, Lumen says so and leaves the pull request open. Publishing twice reuses the open pull request.
+  - **Apply to folder** copies the task's changes into the project folder.
+  - **Discard** deletes the worktree and its branch.
+
+  After Apply or Discard, the conversation returns to the project folder.
+- **Corrections after Publish.** The worktree stays, and Lumen's service checks the pull request every minute.
+  - **When it sends a correction:** when a check fails or someone with write access to the repository requests changes. Lumen then sends this conversation a correction request with the failed CI log or the review comments, presented as data to fix rather than instructions. The fix is committed after Lumen's checks and pushed to the same branch.
+  - **When it stops:** after three correction rounds, or when a correction ends without a commit, Lumen stops and hands over. You can also stop it with **Stop following**.
+  - **When the pull request is merged:** the conversation returns to the project folder and the worktree is removed.
+
+Publish needs an `origin` remote and a signed-in GitHub CLI; without them the button says why.
+
 ## Context and project location
 
 Projects group conversations independently of their working folders. `/workspace <absolute path>` changes the selected conversation's folder explicitly; ambiguous references or quoted instructions do not move it. `/compact` and the context popover support a fresh continuation with retained decisions. Folder changes are refused while work is active.

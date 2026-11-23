@@ -218,6 +218,12 @@ pub(crate) async fn submit(
             plan.reason = "Complex task: Orchestra plans, splits and integrates the work".into();
         }
     }
+    // Large Auto tasks that write files run in the conversation's own worktree.
+    let task_worktree = options.mode == "auto"
+        && options.audit_of.is_none()
+        && requested.is_none()
+        && plan.strategy != "orchestra"
+        && crate::task_worktree::wanted(verdict.complex, verdict.task.tier, options.access());
     let (tx, rx) = watch::channel(false);
     let reserved = reservation.is_some();
     let rx = reservation.unwrap_or(rx);
@@ -340,7 +346,44 @@ pub(crate) async fn submit(
                             "Orchestra needs a git repository in this folder.".into(),
                         );
                     }
-                    run_plan(&app, &core, &session, &mut output, &plan, &options, rx).await
+                    let mut current = session.clone();
+                    let mut prepared = Ok(());
+                    if task_worktree {
+                        match crate::task_worktree::create(
+                            &app,
+                            &core,
+                            &session,
+                            &mut output,
+                            &text,
+                            options.access(),
+                            rx.clone(),
+                        )
+                        .await
+                        {
+                            Ok(Some(moved)) => current = moved,
+                            Ok(None) => {}
+                            Err(e) if e == "Cancelled" => prepared = Err(e),
+                            Err(e) => note(
+                                &app,
+                                &id,
+                                &mut output,
+                                "error",
+                                format!("Task worktree not created; working in the project folder: {e}"),
+                            ),
+                        }
+                    }
+                    match prepared {
+                        Err(e) => Err(e),
+                        Ok(()) => {
+                            let r = run_plan(&app, &core, &current, &mut output, &plan, &options, rx)
+                                .await;
+                            if r.is_ok() && options.access() != AccessMode::ReadOnly {
+                                crate::task_worktree::commit_turn(&app, &core, &id, &mut output, &text)
+                                    .await;
+                            }
+                            r
+                        }
+                    }
                 }
             };
             if let Err(e) = &r {
@@ -1066,6 +1109,7 @@ impl ResumeReplayGuard {
                 | "code-metrics"
                 | "quota"
                 | "usage"
+                | "native-usage"
                 | "window"
                 | "connector-status"
                 | "api-cost"

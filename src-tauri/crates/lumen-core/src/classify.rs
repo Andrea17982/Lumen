@@ -255,6 +255,16 @@ pub async fn classify(data: &Path, accounts: &[Account], request: &str, context:
     }
 }
 
+/// A short Haiku answer from the first Claude login, or None within `TIMEOUT`.
+pub(crate) async fn quick(data: &Path, accounts: &[Account], ask: &str) -> Option<String> {
+    let account = accounts.iter().find(|a| a.provider == Provider::Claude)?;
+    let config = data.join("accounts").join(&account.id);
+    tokio::time::timeout(TIMEOUT, claude(&config, ask))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// One tool-less, unsaved Haiku answer at low effort.
 async fn claude(config: &Path, ask: &str) -> Option<String> {
     let mut c = crate::providers::command(&Provider::Claude).ok()?;

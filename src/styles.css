@@ -3021,6 +3021,103 @@ footer.about .version {
 .health-dot.cooldown {
   background: var(--error);
 }
+.worktree-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--accent);
+  font-size: calc(11px * var(--text-scale, 1));
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.task-worktree {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 auto 8px;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+.task-worktree-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.task-worktree-count {
+  color: var(--muted);
+}
+.task-worktree button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hover);
+  font-size: inherit;
+}
+.task-worktree-done {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+.publish-dialog {
+  width: min(440px, 92vw);
+}
+.publish-dialog dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 8px 0;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+.publish-dialog dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.publish-dialog label {
+  display: block;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+.publish-dialog input,
+.publish-dialog textarea {
+  display: block;
+  width: 100%;
+  margin: 4px 0 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--input);
+  font: inherit;
+}
+.task-worktree .primary,
+.publish-dialog .primary {
+  background: var(--accent);
+  color: var(--panel);
+}
+.task-worktree .primary:disabled,
+.publish-dialog .primary:disabled {
+  opacity: 0.5;
+}
+.publish-dialog button {
+  margin-right: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+}
+.publish-note {
+  color: var(--muted);
+  font-size: calc(11px * var(--text-scale, 1));
+}
 .compact-chip {
   display: flex;
   align-items: center;
