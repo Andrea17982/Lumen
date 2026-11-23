@@ -450,7 +450,7 @@ try {
               );
               if (
                 ['D', 'G', 'H'].includes(key) &&
-                /run tool \\"(github|filesystem)_[a-z_]+\\"\?/.test(text) &&
+                /run tool \\"(acme_)?(github|filesystem)_[a-z_]+\\"\?/.test(text) &&
                 allow
               )
                 await invoke('answer_question', {

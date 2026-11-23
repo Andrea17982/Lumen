@@ -32,7 +32,10 @@ There is **no native API session resume**. Continuation uses Lumen’s bounded c
 
 **Settings → Teamwork → Code Mode** (`codeMode` in the daemon's `settings.json`) has three values:
 
-- **Automatic** (`auto`, the default): official API turns start with classic tool calls, so short turns cost nothing extra. After five rounds of tool calls, or when a tool result exceeds 24 KiB, the rest of the turn uses `lumen_code`. The oversized result is kept as a context document that the next script reads with `context.get(id)`. Claude Code, Codex and OpenCode keep their direct tools in Automatic.
+- **Automatic** (`auto`, the default): official API turns start with classic tool calls, so short turns cost nothing extra. After five rounds of tool calls, or when a tool result exceeds 24 KiB, the rest of the turn uses `lumen_code`. The oversized result is kept as a context document that the next script reads with `context.get(id)`.
+  - **Claude Code:** Lumen proxies Moli and the shared and project MCP servers. Claude calls them as ordinary tools with readable names (`acme_filesystem_read_file`), and `lumen_code` is offered next to them. A result over 8 KiB stays with Lumen as a context document: Claude sees its first 2 KiB and a ready `lumen_code` expression to read only what it needs.
+  - **Measured result:** in T3, Claude Code went from 14 to 16 correct answers out of 18, with 56% fewer uncached tokens overall and 81% fewer on large results. [Results](../reports/bench/2026-11-23/summary.md#t3--cli-in-automatico)
+  - **Codex and OpenCode:** they keep their direct tools in Automatic. Codex already trims large MCP results and did not gain from the proxy; OpenCode is not measured yet.
 - **Always** (`on`): `lumen_code` from the first request for API turns, and for Claude Code, Codex and OpenCode.
 - **Off** (`off`): classic tool calls only.
 

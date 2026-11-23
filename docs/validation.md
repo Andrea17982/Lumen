@@ -6,6 +6,8 @@ Fixtures, builds, small real-account checks and owner observations are different
 
 ## Unreleased
 
+- **Automatic Code Mode on Claude Code:** Lumen proxies Moli and the shared and project MCP servers, under readable names, and holds back results over 8 KiB as context documents. T3 on the subscription, Haiku, 3 seeds per suite, 18 paired runs per arm: 14 → 16 correct, with uncached tokens −56% over the sum of suite medians and −81% on large reads. Small-result suites stay within ±4%. Codex measured 18/18 → 14/18 with more tokens, so Codex and OpenCode keep direct tools in Automatic. Claude Code no longer writes session transcripts, so Lumen now records its own turn totals. [Results](../reports/bench/2026-11-23/summary.md#t3--cli-in-automatico)
+
 - **Task worktree and Publish:** large Auto tasks that write files run in the conversation's own worktree, Lumen commits after turns without failing checks, and Publish pushes, opens the pull request with `gh` and turns on automatic merge.
   - An end-to-end Rust test covers a temporary repository, a local bare remote and a fake `gh`. It checks branch creation, the commit of uncommitted work, copying `.env` but not `node_modules`, the automatic commit, the push, the `gh pr create` and `gh pr merge --auto` arguments, Apply and Discard. Browser tests cover the topbar chip, the Publish preview and a disabled Publish without `gh`.
   - After Publish, Lumen follows the pull request and corrects failed checks and trusted change requests, up to three rounds. A test with a fake `gh` checks that failed logs and owner reviews reach the correction request, that untrusted reviewers are ignored, and that a correction without a commit stops the loop.
@@ -14,7 +16,7 @@ Fixtures, builds, small real-account checks and owner observations are different
 
 ## 0.12.2
 
-- **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Claude Code, Codex and OpenCode keep direct tools in Automatic; paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)
+- **Code Mode Automatico (default):** classic calls first, scripts after five tool rounds or a result over 24 KiB. Local T1 on gpt-oss 20B (low), 50 paired runs: 45 → 50 successes with no pair lost, 45% fewer tokens and 42% fewer round-trips on many-call edits, identical on the other suites. Settings that said `off` only because it was the default migrate to Automatic. Paid APIs were not measured. [Results](../reports/bench/2026-11-23/summary.md)
 - **Simplification:** Both mode with manual merge and worktree variants, the inspector's layout canvas and screenshot library, the separate Ollama helper (titles, commit and handoff drafts, local Auto classification) and the built-in Godot controls were removed. Godot is now the [plugin](../plugins/godot/README.md) in `plugins/godot`, checked by the manifest validator and a stdio smoke run. Manual and live harnesses moved to `tests/manual`. 293 Rust tests (17 opt-in ignored), 63 frontend tests and 51 production-browser tests pass.
 
 ## 0.12.1

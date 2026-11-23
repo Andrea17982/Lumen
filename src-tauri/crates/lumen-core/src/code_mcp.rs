@@ -24,6 +24,10 @@ pub(crate) const AUTO_INSTRUCTIONS: &str =
 /// How the CLI reaches Lumen's tools this turn: `Some(false)` scripts only (Always),
 /// `Some(true)` direct tools beside lumen_code with large results kept out of the context
 /// (Automatic), `None` classic tools.
+///
+/// Automatic covers Claude Code only. In T3 (23 November) it kept Claude's quality and cut
+/// uncached tokens by 56%. Codex already trims large MCP results and gained nothing; it
+/// chose scripts for every call and spent more. OpenCode is not measured.
 pub(crate) fn kind(prefs: &AppSettings, provider: &Provider) -> Option<bool> {
     if !matches!(
         provider,
@@ -33,7 +37,7 @@ pub(crate) fn kind(prefs: &AppSettings, provider: &Provider) -> Option<bool> {
     }
     match prefs.code_mode {
         CodeMode::On => Some(false),
-        CodeMode::Auto => Some(true),
+        CodeMode::Auto => (*provider == Provider::Claude).then_some(true),
         CodeMode::Off => None,
     }
 }

@@ -1221,7 +1221,7 @@ pub(crate) mod tests {
                     match mode {
                         _ if !cli => None,
                         CodeMode::Off => None,
-                        CodeMode::Auto => Some(true),
+                        CodeMode::Auto => (provider == Provider::Claude).then_some(true),
                         CodeMode::On => Some(false),
                     }
                 );
