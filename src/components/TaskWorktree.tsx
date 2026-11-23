@@ -51,9 +51,7 @@ export function PublishedNotice({ done, onClose }: { done: Published; onClose: (
         {done.url}
       </a>
       <span>
-        {done.autoMergeError
-          ? `${t('Automatic merge is not active:')} ${done.autoMergeError}`
-          : t('Merges automatically when CI and review pass.')}
+        {t('Lumen merges it once the checks pass and no reviewer is waiting on changes.')}
       </span>
       <button className="text-button" onClick={onClose}>
         {t('Close')}
@@ -233,7 +231,7 @@ export default function TaskWorktreeBar({
             <p className="publish-note">
               {publishing.blocked ||
                 t(
-                  'Lumen pushes the branch, opens the pull request and turns on automatic merge. It then follows checks and reviews and corrects failures, up to three times.',
+                  'Lumen pushes the branch and opens the pull request. It then follows checks and reviews, corrects failures up to three times and merges once the checks pass.',
                 )}
             </p>
             <button

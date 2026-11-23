@@ -37,7 +37,6 @@ export interface TaskWorktreeStatus {
 export interface Published {
   session: Session;
   url: string;
-  autoMergeError?: string | null;
 }
 export interface Workspace {
   id: string;
