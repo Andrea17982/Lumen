@@ -40,6 +40,12 @@ node tests/docs-check.mjs                          # after any doc or version ch
 
 CI (`.github/workflows/ci.yml`) runs all of these on Windows, macOS and Linux. Before calling work done, run the subset that covers what you touched. For Rust changes that is at least `cargo test` and `clippy` on the affected crate (`-p <crate>`).
 
+## Claude tooling (`.claude/`)
+
+- **Hook:** `rustfmt` runs on every `.rs` file after Edit/Write; a syntax error is reported back.
+- **Review agents** (adapted from ECC, MIT, see `.claude/ECC-LICENSE`): use `rust-reviewer` after non-trivial Rust changes, `security-reviewer` for the security-sensitive areas below, and `silent-failure-hunter` for error handling and recovery paths. Their findings are input: verify them before acting.
+- **Skills:** `verification-loop` before declaring a feature done or opening a PR, `rust-testing` when writing tests, `security-review` for input, auth and secrets. Do not add the dependencies they suggest (rstest, mockall, proptest, criterion) without the owner's approval.
+
 ## Rules
 
 - **Daemon is the source of truth.** Clients render state and send commands through `lumen-ipc`. They never own execution, approvals or protocol decisions.
