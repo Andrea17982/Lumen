@@ -6,8 +6,8 @@ Claude Code is the only agent developing this repository. Product code that inte
 
 ## State (Nov 2026)
 
-- The backend is complete and released: the Rust workspace in `src-tauri/`, v0.12.5.
-- The old frontend has been deleted. A new client is being written from scratch on branch `refactor/clean-slate`: `src/` (React) and `src-tauri/desktop/` (Tauri shell). So far it holds the design system, the EN/IT catalog, a brand gallery, the daemon link (M2: the shell starts or joins the daemon and relays its events; the client keeps a synced cache) the conversation (M3: streaming Markdown, activity steps, composer, Stop) and attention and recovery (M4: Gatekeeper approvals, native questions with secret answers, resume at quota reset, rewind with preview, continue in a new conversation) and projects and sessions (M5: one open project, conversations by day, search, pin, reorder, move, project panel with LUMEN.md) and accounts in Settings (M6: sign-in through the official CLI, quota per window with its source, write-only API keys with budget) and Orchestra (M7: one switch in Settings, questions, plan with edits, live lanes, resume after a crash). settings, extensions and the desktop (M8: General with few switches, MCP, skills, plugins with sandboxed panels, `/every`, tray and notifications) and the task branch bar (M10: Publish, Apply, Discard). The release build comes next (M9).
+- Released as v0.12.5 (Windows x64 installer): the Rust workspace in `src-tauri/` and the new desktop client.
+- The client was rewritten from scratch (milestones M0 to M10, all merged): `src/` (React) and `src-tauri/desktop/` (Tauri shell). It covers the design system, EN/IT, the daemon link with a synced cache, the conversation, attention and recovery, projects and sessions, accounts and quota, Orchestra as one switch, settings and extensions (sandboxed plugin panels), tray and notifications, the task branch bar, and the NSIS installer with the service as a sidecar.
 - Roadmap, decisions and frontend research are in `notes/ROADMAP.md`. That file is private: read it before planning product work, never commit it and never link it from tracked files.
 
 ## Layout
@@ -66,7 +66,7 @@ CI (`.github/workflows/ci.yml`) runs the Rust and docs commands on Windows, macO
 - **Minimal and measured.** Reuse existing modules. Measure before optimizing. Add no speculative abstractions or dependencies.
 - **Security-sensitive areas:** `autonomy.rs`, `approvals*.rs`, `lumen-gatekeeper`, `lumen-ipc`, and anything remote or network-facing. Review these changes for permission bypass and prompt injection.
 
-## Frontend (to be built)
+## Frontend
 
 The planned stack is Tauri 2 + React 19 + TypeScript. Styling uses CSS Modules with semantic tokens and headless primitives. Animation uses CSS/WAAPI; add Motion only if it proves necessary.
 
