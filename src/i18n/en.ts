@@ -54,6 +54,38 @@ export const en = {
   accountNameError: 'Use 1–80 characters.',
   theme: { system: 'System', light: 'Light', dark: 'Dark' },
   language: { en: 'English', it: 'Italiano' },
+  connection: {
+    connecting: 'Connecting to Lumen…',
+    connected: 'Connected',
+    reconnecting: 'Reconnecting…',
+    mismatch: 'Different service version',
+    failed: 'Service unavailable',
+  },
+  banner: {
+    stale: 'Reconnecting to the Lumen service. What you see may be out of date.',
+    mismatch: 'Another version of the Lumen service is running. Close it and Lumen reconnects by itself.',
+    failed: 'Lumen could not reach its service.',
+    stopping: 'The Lumen service is stopping. Lumen reconnects when it restarts.',
+    unconfirmed: 'Lumen could not confirm your last action. Check its result before sending more work.',
+    checked: 'I’ve checked',
+  },
+  status: {
+    idle: 'Idle',
+    queued: 'Queued',
+    running: 'Running',
+    waiting: 'Waiting',
+    partial: 'Partial',
+    interrupted: 'Interrupted',
+    completed: 'Done',
+    cancelled: 'Stopped',
+    failed: 'Failed',
+    error: 'Error',
+  } as Record<string, string>,
+  noSessions: 'No conversations yet',
+  chooseSession: 'Choose a conversation',
+  emptyTranscript: 'No messages yet',
+  untitled: 'New conversation',
+  loading: 'Loading…',
 };
 
 type Widen<T> = T extends string ? string : T extends (...args: infer A) => string ? (...args: A) => string : { [K in keyof T]: Widen<T[K]> };

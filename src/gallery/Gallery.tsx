@@ -12,7 +12,7 @@ const views: View[] = ['app', 'board', 'components'];
 const query = new URLSearchParams(location.search);
 
 /**
- * Development gallery for M1: the app and the style board in the real window.
+ * Development gallery: the app mock, the style board and the components.
  * Keys: 1 Ink, 2 Satin, L/D/S theme, E/I language, V next view, H hide toolbar.
  */
 export function Gallery() {
@@ -31,34 +31,6 @@ export function Gallery() {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
-
-  useEffect(() => {
-    if (import.meta.env.VITE_GALLERY_TOUR !== '1') return;
-    // Screenshot build: step through every style × theme × view, naming each state in the
-    // window title so a capture script can follow without sending keystrokes.
-    let stop = false;
-    (async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const win = getCurrentWindow();
-      await win.setAlwaysOnTop(true);
-      setToolbar(false);
-      await new Promise((r) => setTimeout(r, 1500));
-      for (const style of ['ink', 'satin'] as const)
-        for (const theme of ['light', 'dark'] as const)
-          for (const v of views) {
-            if (stop) return;
-            setAppearance({ style, theme });
-            setView(v);
-            await new Promise((r) => setTimeout(r, 1200));
-            await win.setTitle(`tour:${style}-${v}-${theme}`);
-            await new Promise((r) => setTimeout(r, 1300));
-          }
-      await win.setTitle('tour:done');
-    })();
-    return () => {
-      stop = true;
-    };
-  }, []);
 
   useEffect(() => {
     const keys: Record<string, () => void> = {

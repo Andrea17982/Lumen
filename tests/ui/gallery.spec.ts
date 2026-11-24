@@ -6,7 +6,7 @@ const themes = ['light', 'dark'] as const;
 const views = ['app', 'board', 'components'] as const;
 
 async function open(page: Page, query: Record<string, string>) {
-  await page.goto('/?' + new URLSearchParams({ toolbar: '0', locale: 'en', ...query }));
+  await page.goto('/gallery.html?' + new URLSearchParams({ toolbar: '0', locale: 'en', ...query }));
   await expect(page.locator('html')).toHaveAttribute('data-style', query.style ?? 'ink');
 }
 
@@ -49,7 +49,7 @@ test('appearance controls change the style and theme, and the choice persists', 
   await page.getByRole('button', { name: /Theme/ }).click();
   await page.getByRole('option', { name: 'Dark' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.goto('/?toolbar=0&view=components&locale=en');
+  await page.goto('/gallery.html?toolbar=0&view=components&locale=en');
   await expect(page.locator('html')).toHaveAttribute('data-style', 'satin');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

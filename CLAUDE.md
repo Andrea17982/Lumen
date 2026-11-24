@@ -7,7 +7,7 @@ Claude Code is the only agent developing this repository. Product code that inte
 ## State (Nov 2026)
 
 - The backend is complete and released: the Rust workspace in `src-tauri/`, v0.12.2.
-- The old frontend has been deleted. A new client is being written from scratch on branch `refactor/clean-slate`: `src/` (React) and `src-tauri/desktop/` (Tauri shell, outside the Cargo workspace until it is wired to the daemon). So far it holds the design tokens, the EN/IT catalog and a brand gallery.
+- The old frontend has been deleted. A new client is being written from scratch on branch `refactor/clean-slate`: `src/` (React) and `src-tauri/desktop/` (Tauri shell). So far it holds the design system, the EN/IT catalog, a brand gallery, and the daemon link: the shell starts or joins the daemon and relays its events, and the client keeps a synced cache of sessions and transcripts (M2). The conversation view and composer come next (M3).
 - Roadmap, decisions and frontend research are in `notes/ROADMAP.md`. That file is private: read it before planning product work, never commit it and never link it from tracked files.
 
 ## Layout
@@ -19,9 +19,9 @@ Claude Code is the only agent developing this repository. Product code that inte
 | `src-tauri/crates/lumen-ipc` | Authenticated local transport. Every client talks to the daemon only through this. |
 | `src-tauri/crates/lumen-commands` | Typed command boundary. |
 | `src-tauri/crates/lumen-gatekeeper` | Native approval broker for Claude and Codex, with protocol fixtures. |
-| `src/` | New React client: `design/` (tokens, primitives on React Aria), `i18n/` (EN/IT catalog), `brand/`, `gallery/` (dev-only), `surfaces/`. Unit tests sit next to the code. |
-| `src-tauri/desktop` | Tauri shell, outside the Cargo workspace until M2. |
-| `tests/` | Node 24 headless harness: `daemon-smoke.mjs` (offline CLI fixtures, isolated data dir) and `docs-check.mjs`. `tests/manual/` is opt-in only. |
+| `src/` | New React client: `protocol/` (daemon types), `transport/` (Tauri, test bridge), `sync/` (snapshot + event cache), `design/` (tokens, primitives on React Aria), `i18n/` (EN/IT catalog), `brand/`, `gallery/` (dev-only, `gallery.html`), `surfaces/`. Unit tests sit next to the code. |
+| `src-tauri/desktop` | Tauri shell: `bridge.rs` starts or joins the daemon, relays `__events` on `lumen:event` and passes commands through `lumen_ipc::Client::call`. Kept outside the Cargo workspace so the Rust CI needs no WebView or `dist/`; CI checks it in the Windows client job. The `webdriver` feature embeds a WebDriver server for tests and refuses to compile in release. |
+| `tests/` | Node 24 headless harness: `daemon-smoke.mjs` (offline CLI fixtures, isolated data dir) and `docs-check.mjs`. `ui/` holds the Playwright specs, `app/desktop.mjs` drives the real app over WebDriver, `support/` has the test-only HTTP bridge to a real daemon and a minimal W3C WebDriver client. `tests/manual/` is opt-in only. |
 | `plugins/` | Lumen plugins (Godot, examples). |
 | `scripts/` | `prepare-moli.mjs` (bundled browser) and `prepare-daemon.mjs`. |
 | `docs/` | Public user docs. Keep them describing the shipped product. |
@@ -40,8 +40,11 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 node tests/docs-check.mjs                          # after any doc or version change
 npm ci                                             # client dependencies
 npm run typecheck && npm test                      # client typecheck and unit tests (Vitest)
-npx playwright test                                # gallery: axe, keyboard, 150% text, screenshots (Edge)
-npx tauri build --no-bundle                        # desktop shell with the built client
+npx playwright test                                # gallery (axe, keyboard, 150% text, screenshots) and the daemon crash test; needs the debug daemon built
+cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings   # shell; also cargo test and fmt
+npx tauri build --no-bundle --config src-tauri/desktop/tauri.conf.json   # release shell with the built client
+npx tauri build --debug --no-bundle --features webdriver --config src-tauri/desktop/tauri.conf.json
+npm run test:app                                   # real app over WebDriver; opens a window for ~30 s (Windows)
 ```
 
 CI (`.github/workflows/ci.yml`) runs the Rust and docs commands on Windows, macOS and Linux, and the client commands on Windows. Before calling work done, run the subset that covers what you touched. For Rust changes that is at least `cargo test` and `clippy` on the affected crate (`-p <crate>`).

@@ -36,10 +36,29 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            src-tauri/desktop
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # The daemon UI test drives the real service with the offline CLI fixtures.
+      - run: node scripts/prepare-moli.mjs
+      - run: cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
       - run: npx playwright test
+      # The desktop shell sits outside the Cargo workspace (WebView and dist/ dependencies).
+      - run: cargo fmt --manifest-path src-tauri/desktop/Cargo.toml --check
+      - run: cargo test --manifest-path src-tauri/desktop/Cargo.toml --locked
+      - run: cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked --features webdriver -- -D warnings
+      # The real app over its embedded WebDriver server (test build only): sidecar start and crash recovery.
+      - run: npx tauri build --debug --no-bundle --features webdriver --config src-tauri/desktop/tauri.conf.json
+      - run: node tests/app/desktop.mjs
   unix:
     strategy:
       fail-fast: false

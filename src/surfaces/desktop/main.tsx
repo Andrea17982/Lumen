@@ -2,11 +2,17 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../design/tokens.css';
 import '../../design/reset.css';
-import { Gallery } from '../../gallery/Gallery';
+import { Sync } from '../../sync/sync';
+import { SyncProvider } from '../../sync/react';
+import { selectTransport, unavailable } from '../../transport/select';
+import { App } from './App';
 
-// M1: the desktop surface shows the brand gallery until the real shell lands in M2.
+const sync = new Sync((await selectTransport()) ?? unavailable);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Gallery />
+    <SyncProvider sync={sync}>
+      <App />
+    </SyncProvider>
   </StrictMode>,
 );
