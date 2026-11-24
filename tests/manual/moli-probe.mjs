@@ -62,8 +62,8 @@ try {
         assert.equal(await page.locator('h1').textContent(), 'Clicked');
         times.push(performance.now() - t);
         if (i === 0 && engine !== 'moli-dom') {
-          await mkdir('.impeccable/review', { recursive: true });
-          await page.screenshot({ path: `.impeccable/review/${engine}-probe.png` });
+          await mkdir('test-results/review', { recursive: true });
+          await page.screenshot({ path: `test-results/review/${engine}-probe.png` });
         }
         await page.close();
       }
@@ -84,9 +84,9 @@ try {
 } finally {
   fixture.close();
 }
-await mkdir('.impeccable/review', { recursive: true });
+await mkdir('test-results/review', { recursive: true });
 await writeFile(
-  '.impeccable/review/moli-performance.json',
+  'test-results/review/moli-performance.json',
   JSON.stringify(
     {
       note: 'Local synthetic DOM/form workload, single startup sample per engine; no claim of web-wide compatibility or inference speedup.',
