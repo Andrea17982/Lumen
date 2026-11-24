@@ -16,8 +16,9 @@ tauri = { version = "=2.12.7", features = [] }
 lumen-ipc = { path = "../crates/lumen-ipc" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "sync"] }
 tauri-plugin-opener = "=2.7.2"
+tauri-plugin-dialog = "=2.8.4"
 # Test builds only: an embedded W3C WebDriver server on 127.0.0.1. Never in release.
 tauri-plugin-wdio-webdriver = { version = "=1.5.1", optional = true }
 

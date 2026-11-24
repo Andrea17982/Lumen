@@ -9,5 +9,6 @@ export function tauriTransport(): Transport {
     call: (command, args = {}) => invoke('daemon_call', { command, args }),
     subscribe: (listener) => listen<Frame>('lumen:event', (e) => listener(e.payload)),
     connection: () => invoke<Connection>('daemon_connection'),
+    pickFolder: () => invoke<string | null>('pick_folder'),
   };
 }

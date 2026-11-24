@@ -17,6 +17,8 @@ export async function startDaemon(origin: string) {
   const client = await daemonClient(data, executable);
   let daemon = client.start();
   await client.ready();
+  // Conversations are listed by project: the workspace is the project the UI opens.
+  await client.call('add_workspace', { name: 'Fixture', folder: workspace });
   const bridge = await startBridge(client, { origin });
   const stopped = () => new Promise((resolve) => (daemon.exitCode !== null || daemon.signalCode !== null ? resolve(null) : daemon.once('exit', resolve)));
   return {

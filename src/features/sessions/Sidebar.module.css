@@ -1,0 +1,205 @@
+/* Translucent navigation; the conversation surface is opaque. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  background: var(--surface-chrome);
+  border-right: 1px solid var(--separator);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 0 var(--space-1) var(--space-2);
+}
+.spacer {
+  flex: 1;
+}
+.sessions {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: var(--space-1);
+}
+.group {
+  margin: var(--space-3) var(--space-3) var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-s);
+}
+.row:hover,
+.row:focus-within {
+  background: var(--surface-hover);
+}
+.row[data-current] {
+  background: var(--surface-selected);
+}
+.session {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--row-height);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  outline: none;
+}
+.session:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+@media (forced-colors: active) {
+  .session[aria-current='page'] {
+    color: HighlightText;
+    background: Highlight;
+  }
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.more {
+  flex: none;
+  opacity: 0;
+}
+.row:hover .more,
+.row:focus-within .more,
+.more:has([aria-expanded='true']) {
+  opacity: 1;
+}
+.rename {
+  flex: 1;
+  min-width: 0;
+  height: var(--row-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.status {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.5;
+}
+.status[data-tone='running'] {
+  width: 10px;
+  height: 10px;
+  opacity: 1;
+  background: none;
+  border: 1.5px solid var(--accent);
+  border-right-color: transparent;
+  animation: spin 900ms linear infinite;
+}
+.status[data-tone='needsYou'] {
+  opacity: 1;
+  background: var(--accent);
+}
+.status[data-tone='warning'] {
+  opacity: 1;
+  background: var(--status-warning);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status[data-tone='running'] {
+    animation: none;
+  }
+}
+.badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-4) var(--space-3);
+  color: var(--text-secondary);
+}
+.empty p,
+.quiet {
+  margin: 0;
+}
+.quiet {
+  margin: var(--space-3);
+  color: var(--text-secondary);
+}
+.error {
+  margin: 0 var(--space-2);
+  color: var(--status-danger);
+  font-size: var(--text-s);
+}
+.project {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3);
+  border-top: 1px solid var(--separator);
+  color: var(--text-secondary);
+}
+.projectText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.projectText strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.projectText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

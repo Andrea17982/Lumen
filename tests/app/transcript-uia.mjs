@@ -25,6 +25,7 @@ await mkdir(workspace);
 const client = await daemonClient(data, daemonPath);
 const daemon = client.start();
 await client.ready();
+await client.call('add_workspace', { name: 'Fixture', folder: workspace });
 const chat = await client.call('create_session', { workspace });
 await client.call('__shutdown');
 await new Promise((resolve) => (daemon.exitCode !== null ? resolve() : daemon.once('exit', resolve)));
@@ -54,7 +55,7 @@ try {
   app = await launchApp(data);
   const { browser } = app;
   await browser.until("return document.querySelector('[role=status]')?.textContent", (s) => s === 'Connected' || s === 'Connesso', 'connection');
-  await browser.click('nav button');
+  await browser.click('nav li button');
   await browser.until("return document.querySelectorAll('[role=log] article').length", (n) => n === COUNT, 'all messages mounted', 60_000);
   await sleep(1000);
   const result = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', probe(app.pid)], { encoding: 'utf8', windowsHide: true }));

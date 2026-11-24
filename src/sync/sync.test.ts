@@ -3,6 +3,8 @@ import type { ApprovalRequest, Connection, Frame, Message, RunEvent } from '../p
 import type { Transport } from '../transport/types';
 import { apply, FIRST_PAGE, PAGE, Sync } from './sync';
 
+const defaults: Record<string, () => unknown> = { list_workspaces: () => [], pending_questions: () => [], gatekeeper_snapshot: () => ({ requests: [], sessions: [] }) };
+
 /** A daemon stand-in: replies come from `handlers`, frames are pushed with `emit`. */
 function fakeDaemon(handlers: Record<string, (args: Record<string, unknown>) => unknown>, connection: Connection = { state: 'connected' }) {
   let listener: (frame: Frame) => void = () => {};
@@ -10,7 +12,8 @@ function fakeDaemon(handlers: Record<string, (args: Record<string, unknown>) => 
   const transport: Transport = {
     async call(command, args = {}) {
       calls.push(command);
-      const handler = handlers[command];
+      // Commands a test does not care about answer as an empty daemon would.
+      const handler = handlers[command] ?? defaults[command];
       if (!handler) throw `Unknown command ${command}`;
       return handler(args);
     },
@@ -19,6 +22,7 @@ function fakeDaemon(handlers: Record<string, (args: Record<string, unknown>) => 
       return () => {};
     },
     connection: async () => connection,
+    pickFolder: async () => null,
   };
   return { transport, calls, emit: (frame: Frame) => listener(frame) };
 }
@@ -118,7 +122,7 @@ describe('Sync', () => {
     daemon.calls.length = 0;
     daemon.emit({ event: 'lumen:resync', payload: {} });
     await settle();
-    expect(daemon.calls.sort()).toEqual(['gatekeeper_snapshot', 'get_messages', 'list_sessions', 'pending_questions']);
+    expect(daemon.calls.sort()).toEqual(['gatekeeper_snapshot', 'get_messages', 'list_sessions', 'list_workspaces', 'pending_questions']);
   });
 
   it('reads the session list again when a turn starts or ends', async () => {

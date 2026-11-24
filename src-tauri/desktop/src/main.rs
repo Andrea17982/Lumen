@@ -52,6 +52,18 @@ async fn daemon_call(
     }
 }
 
+/// The folder picker for adding a project. The page gets the chosen path, or nothing.
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = tx.send(folder);
+    });
+    let folder = rx.await.ok().flatten()?.into_path().ok()?;
+    Some(folder.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn daemon_connection(bridge: State<'_, Arc<Bridge>>) -> Connection {
     bridge.connection()
@@ -88,12 +100,18 @@ fn locations(app: &tauri::App) -> Result<(PathBuf, PathBuf, PathBuf), String> {
 }
 
 fn main() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init());
     // Test builds: W3C WebDriver on 127.0.0.1 on TAURI_WEBDRIVER_PORT (tests/app/desktop.mjs).
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     builder
-        .invoke_handler(tauri::generate_handler![daemon_call, daemon_connection])
+        .invoke_handler(tauri::generate_handler![
+            daemon_call,
+            daemon_connection,
+            pick_folder
+        ])
         .setup(|app| {
             #[cfg(feature = "webdriver")]
             app.add_capability(

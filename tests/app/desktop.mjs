@@ -31,6 +31,7 @@ try {
   checks.push('the shell started the bundled service and connected to it');
 
   const account = await client.call('add_account', { name: 'App fixture', provider: 'claude' });
+  await client.call('add_workspace', { name: 'Fixture', folder: workspace });
   const chat = await client.call('create_session', { workspace });
   await client.call('send_message', {
     id: chat.id,
@@ -38,8 +39,8 @@ try {
     options: { mode: 'claude', accountId: account.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: false },
   });
   // create_session emits no event: the session appears when its turn starts.
-  await browser.until("return document.querySelectorAll('nav button').length", (n) => n === 1, 'session in the sidebar');
-  await browser.click('nav button');
+  await browser.until("return document.querySelectorAll('nav li').length", (n) => n === 1, 'session in the sidebar');
+  await browser.click('nav li button');
   const log = "return document.querySelector('[role=log]')?.innerText ?? ''";
   await browser.until(log, (t) => t.includes('DAEMON_PARTIAL'), 'streamed partial reply');
   checks.push('daemon events reach the window through the shell relay');

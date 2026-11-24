@@ -16,6 +16,7 @@ await mkdir(workspace);
 const client = await daemonClient(data, daemonPath);
 const daemon = client.start();
 await client.ready();
+await client.call('add_workspace', { name: 'Fixture', folder: workspace });
 const chat = await client.call('create_session', { workspace });
 await client.call('__shutdown');
 await new Promise((resolve) => (daemon.exitCode !== null ? resolve() : daemon.once('exit', resolve)));

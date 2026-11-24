@@ -9,6 +9,8 @@ export interface Transport {
   /** Frames arrive in daemon order. Resolves once listening, so read `connection()` after it. */
   subscribe(listener: (frame: Frame) => void): Promise<() => void>;
   connection(): Promise<Connection>;
+  /** The system folder picker; null when the user cancels or the window has none. */
+  pickFolder(): Promise<string | null>;
 }
 
 export function errorText(error: unknown): string {

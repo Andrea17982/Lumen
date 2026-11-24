@@ -1,4 +1,4 @@
-import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session } from '../protocol/types';
+import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
 
 /**
@@ -38,6 +38,11 @@ export interface SyncState {
   /** The daemon refused work because it is shutting down. Cleared by the next connection. */
   stopping: boolean;
   sessions: Session[];
+  /** False while more sessions match than were read; `showMore` reads the next page. */
+  sessionsComplete: boolean;
+  /** The search the session list was read with. */
+  search: string;
+  workspaces: Workspace[];
   transcripts: Readonly<Record<string, Transcript>>;
   unconfirmed: Unconfirmed[];
   outgoing: Outgoing[];
@@ -57,6 +62,7 @@ const LIVE_LIMIT = 20_000;
 // Kinds the daemon folds only once when replaying, because the saved message may already hold them.
 const SAVED_ONCE = new Set(['interaction', 'interaction-result', 'quota-scheduled', 'browser', 'image']);
 const SESSION_REFRESH_MS = 120;
+const SESSION_PAGE = 100;
 const QUESTION_REFRESH_MS = 60;
 // A question appears or closes with one of these; the daemon's list says which are still open.
 const QUESTION_KINDS = new Set(['interaction', 'interaction-result', 'start', 'done']);
@@ -67,7 +73,7 @@ export const PAGE = 1000;
 const TAIL = 2;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -75,6 +81,7 @@ export class Sync {
   private open = new Set<string>();
   private generation = 0;
   private refresh?: ReturnType<typeof setTimeout>;
+  private pages = 1;
   private questionRefresh?: ReturnType<typeof setTimeout>;
   /** Approval snapshots being read; true when a change arrived meanwhile and it must be read again. */
   private approvalLoads = new Map<string, boolean>();
@@ -306,8 +313,50 @@ export class Sync {
 
   private async loadSessions() {
     // M5 adds paging and search; the first page is enough for the shell.
-    const sessions = await this.transport.call('list_sessions', { search: '', offset: 0 });
-    this.set({ sessions: sessions as Session[] });
+    const search = this.state.search;
+    const pages = this.pages;
+    const read: Session[] = [];
+    let complete = true;
+    for (let page = 0; page < pages; page++) {
+      const chunk = (await this.transport.call('list_sessions', { search, offset: page * SESSION_PAGE })) as Session[];
+      read.push(...chunk);
+      complete = chunk.length < SESSION_PAGE;
+      if (complete) break;
+    }
+    // A newer search may have started meanwhile: its own read wins.
+    if (search !== this.state.search) return;
+    const workspaces = (await this.transport.call('list_workspaces', {})) as Workspace[];
+    this.set({ sessions: read, sessionsComplete: complete, workspaces });
+  }
+
+  /** The system folder picker, through the shell. */
+  pickFolder() {
+    return this.transport.pickFolder();
+  }
+
+  /** Reads the session list for a search, from its first page. */
+  searchSessions(search: string) {
+    this.pages = 1;
+    this.set({ search });
+    return this.loadSessions();
+  }
+
+  showMore() {
+    this.pages++;
+    return this.loadSessions();
+  }
+
+  /**
+   * Changes a session or project and reads the list again: the daemon sends no event for these.
+   * `optimistic` updates the list at once; a refusal puts the daemon's list back.
+   */
+  async mutate<T>(command: string, args: Record<string, unknown>, optimistic?: (sessions: Session[]) => Session[]): Promise<T> {
+    if (optimistic) this.set({ sessions: optimistic(this.state.sessions) });
+    try {
+      return await this.call<T>(command, args);
+    } finally {
+      await this.loadSessions().catch((error) => this.set({ error: errorText(error) }));
+    }
   }
 
   private async load(id: string) {

@@ -20,4 +20,5 @@ export const unavailable: Transport = {
   call: () => Promise.reject('No Lumen service in this window'),
   subscribe: async () => () => {},
   connection: async () => ({ state: 'failed', detail: 'No Lumen service in this window' }),
+  pickFolder: async () => null,
 };

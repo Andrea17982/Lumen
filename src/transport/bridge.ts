@@ -21,6 +21,8 @@ export function bridgeTransport(url: string, token: string): Transport {
         source.onopen = () => resolve(() => source.close());
       });
     },
+    // Tests answer the browser's prompt with a folder path.
+    pickFolder: async () => prompt('Folder') || null,
     connection: async () => (await (await fetch(`${url}/connection`, { headers })).json()) as Connection,
   };
 }

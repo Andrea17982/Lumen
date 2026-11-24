@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Mark, Wordmark } from '../../brand/Logo';
-import { Badge, Button, Menu, type Tone } from '../../design/components';
+import { Badge, Button, IconButton, Menu, type Tone } from '../../design/components';
 import { useAppearance } from '../../design/appearance';
 import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
 import { Conversation } from '../../features/conversation/Conversation';
+import { ProjectPanel } from '../../features/sessions/ProjectPanel';
+import { currentProject } from '../../features/sessions/sessions';
+import { Sidebar } from '../../features/sessions/Sidebar';
 import type { Connection, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
@@ -12,7 +14,7 @@ const tones: Record<string, Tone> = { running: 'accent', queued: 'neutral', wait
 
 /**
  * Desktop surface: the daemon's sessions and the selected conversation, kept in sync across
- * reconnections. Projects and session management arrive in M5.
+ * reconnections.
  */
 export function App() {
   useAppearance();
@@ -28,27 +30,73 @@ export function App() {
   );
 }
 
+// Per-viewer conveniences only: the daemon owns everything that matters.
+function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function remember(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable; the choice then lasts for this window only.
+  }
+}
+
 function Shell() {
   const t = useT();
   const sync = useSyncClient();
   const sessions = useSyncState((st) => st.sessions);
+  const workspaces = useSyncState((st) => st.workspaces);
   const [selected, setSelected] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(() => remembered('lumen.project'));
+  const [hidden, setHidden] = useState(() => remembered('lumen.sidebar') === 'hidden');
+  const [details, setDetails] = useState(false);
   useEffect(() => {
     if (!selected) return;
     sync.watch(selected);
     return () => sync.unwatch(selected);
   }, [sync, selected]);
   const session = sessions.find((x) => x.id === selected);
+  const project = currentProject(workspaces, sessions, projectId);
+  // Once chosen, the open project stays put: moving or updating a conversation never switches it.
+  useEffect(() => {
+    if (project && project.id !== projectId) setProjectId(project.id);
+  }, [project, projectId]);
   const connected = useSyncState((st) => st.connection.state === 'connected');
   const [error, setError] = useState<string | null>(null);
   const busy = !!session && ['running', 'queued', 'waiting'].includes(session.status);
+
+  const hide = (value: boolean) => {
+    setHidden(value);
+    remember('lumen.sidebar', value ? 'hidden' : null);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        hide(!hidden);
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  });
+
+  function openProject(id: string | null) {
+    setProjectId(id);
+    remember('lumen.project', id);
+    if (id !== project?.id) setSelected(null);
+  }
 
   // Handoff: the daemon writes a new conversation seeded with this one's goal and changes.
   async function compact(id: string) {
     setError(null);
     try {
-      const next = await sync.call<Session>('compact_session', { id });
-      await sync.resync();
+      const next = await sync.mutate<Session>('compact_session', { id });
       setSelected(next.id);
     } catch (e) {
       setError(String(e));
@@ -56,31 +104,18 @@ function Shell() {
   }
 
   return (
-    <div className={s.window}>
-      <aside className={s.sidebar} aria-label={t.sessions}>
-        <div className={s.brand}>
-          <Mark size={24} />
-          <Wordmark />
-        </div>
-        <nav className={s.sessions} aria-label={t.sessions}>
-          {sessions.length === 0 && <p className={s.quiet}>{t.noSessions}</p>}
-          {sessions.map((x) => (
-            <button key={x.id} className={s.session} aria-current={x.id === selected ? 'page' : undefined} onClick={() => setSelected(x.id)}>
-              <span className={s.title}>{x.title || t.untitled}</span>
-              {x.status !== 'idle' && <StatusBadge status={x.status} />}
-            </button>
-          ))}
-        </nav>
-        <ConnectionStatus />
-      </aside>
+    <div className={s.window} data-sidebar={hidden ? 'hidden' : undefined}>
+      {!hidden && <Sidebar project={project} selected={selected} onSelect={setSelected} onProject={openProject} onHide={() => hide(true)} footer={<ConnectionStatus />} />}
       <main className={s.main}>
         <Banners />
         {session ? (
           <>
             <header className={s.header}>
+              {hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />}
               <h1>{session.title || t.untitled}</h1>
               <StatusBadge status={session.status} />
               <span className={s.spacer} />
+              <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(!details)} />
               <Menu label={t.moreActions} items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }]} onAction={() => void compact(session.id)} />
             </header>
             {error && (
@@ -88,10 +123,22 @@ function Shell() {
                 {error}
               </p>
             )}
-            <Conversation key={session.id} session={session} />
+            <div className={s.body}>
+              <div className={s.column}>
+                <Conversation key={session.id} session={session} />
+              </div>
+              {details && <ProjectPanel key={session.id} session={session} onClose={() => setDetails(false)} />}
+            </div>
           </>
         ) : (
-          <p className={s.empty}>{t.chooseSession}</p>
+          <>
+            {hidden && (
+              <header className={s.header}>
+                <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />
+              </header>
+            )}
+            <p className={s.empty}>{project ? t.chooseSession : t.sidebar.noProjects}</p>
+          </>
         )}
       </main>
     </div>

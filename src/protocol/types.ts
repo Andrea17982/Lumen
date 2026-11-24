@@ -2,6 +2,13 @@
 
 export type AccessMode = 'read-only' | 'file-edits' | 'autopilot' | 'ask';
 
+/** A project: a named folder the user added. */
+export interface Workspace {
+  id: string;
+  name: string;
+  folder: string;
+}
+
 export interface Session {
   id: string;
   title: string;
