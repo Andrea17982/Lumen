@@ -66,6 +66,22 @@ export interface Account {
   provider: Provider;
 }
 
+/** One quota window as the official CLI reports it. */
+export interface UsageWindow {
+  group?: string;
+  usedPercent: number;
+  resetsAt: number;
+  windowMinutes: number;
+}
+
+export interface AccountUsage {
+  accountId: string;
+  windows: UsageWindow[];
+  updatedAt: number;
+  /** Which official CLI reported it, such as "claude-cli". */
+  source: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

@@ -1,4 +1,4 @@
-import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace } from '../protocol/types';
+import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace, type Account, type AccountUsage } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
 
 /**
@@ -43,6 +43,9 @@ export interface SyncState {
   /** The search the session list was read with. */
   search: string;
   workspaces: Workspace[];
+  accounts: Account[];
+  /** Quota as the official CLIs report it, by account. Absent means not reported, never zero. */
+  usage: AccountUsage[];
   transcripts: Readonly<Record<string, Transcript>>;
   unconfirmed: Unconfirmed[];
   outgoing: Outgoing[];
@@ -73,7 +76,7 @@ export const PAGE = 1000;
 const TAIL = 2;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], accounts: [], usage: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -205,7 +208,7 @@ export class Sync {
     const generation = ++this.generation;
     this.set({ synced: false });
     try {
-      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), ...[...this.open].map((id) => this.load(id))]);
+      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), ...[...this.open].map((id) => this.load(id))]);
       if (generation === this.generation) this.set({ synced: true, error: undefined });
     } catch (error) {
       if (generation === this.generation) this.set({ error: errorText(error) });
@@ -222,8 +225,17 @@ export class Sync {
         return this.onRun(frame.payload as RunEvent);
       case 'lumen:gatekeeper':
         return this.onGatekeeper(frame.payload as GatekeeperEvent);
+      case 'lumen:usage': {
+        const usage = frame.payload as AccountUsage;
+        return this.set({ usage: [...this.state.usage.filter((u) => u.accountId !== usage.accountId), usage] });
+      }
     }
-    // lumen:usage (M6) has no store yet.
+  }
+
+  /** Accounts and their reported quota; read on every connection and after account changes. */
+  async loadAccounts() {
+    const [accounts, usage] = await Promise.all([this.transport.call('list_accounts', {}), this.transport.call('get_usage', {})]);
+    this.set({ accounts: accounts as Account[], usage: usage as AccountUsage[] });
   }
 
   private onGatekeeper(event: GatekeeperEvent) {

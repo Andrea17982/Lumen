@@ -14,7 +14,7 @@ type Dialog = { kind: 'delete' | 'move'; session: Session } | { kind: 'renamePro
  * Projects and their conversations. One project is open at a time, as in the gallery mock: its
  * conversations are listed by day, and the project itself is switched at the bottom.
  */
-export function Sidebar({ project, selected, onSelect, onProject, onHide, footer }: { project: Workspace | null; selected: string | null; onSelect: (id: string | null) => void; onProject: (id: string | null) => void; onHide: () => void; footer: ReactNode }) {
+export function Sidebar({ project, selected, onSelect, onProject, onHide, onSettings, footer }: { project: Workspace | null; selected: string | null; onSelect: (id: string | null) => void; onProject: (id: string | null) => void; onHide: () => void; onSettings: () => void; footer: ReactNode }) {
   const t = useT();
   const sync = useSyncClient();
   const all = useSyncState((st) => st.sessions);
@@ -95,6 +95,7 @@ export function Sidebar({ project, selected, onSelect, onProject, onHide, footer
         <Mark size={24} />
         <Wordmark />
         <span className={s.spacer} />
+        <IconButton icon="gear" label={t.settings.open} onPress={onSettings} />
         <IconButton icon="sidebar" label={t.sidebar.hide} onPress={onHide} />
       </div>
       <Button variant="secondary" icon="plus" isDisabled={!project || !connected} onPress={() => void newTask()}>

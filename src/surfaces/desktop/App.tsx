@@ -6,6 +6,7 @@ import { Conversation } from '../../features/conversation/Conversation';
 import { ProjectPanel } from '../../features/sessions/ProjectPanel';
 import { currentProject } from '../../features/sessions/sessions';
 import { Sidebar } from '../../features/sessions/Sidebar';
+import { Settings } from '../../features/settings/Settings';
 import type { Connection, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
@@ -56,6 +57,7 @@ function Shell() {
   const [projectId, setProjectId] = useState<string | null>(() => remembered('lumen.project'));
   const [hidden, setHidden] = useState(() => remembered('lumen.sidebar') === 'hidden');
   const [details, setDetails] = useState(false);
+  const [settings, setSettings] = useState(false);
   useEffect(() => {
     if (!selected) return;
     sync.watch(selected);
@@ -86,6 +88,11 @@ function Shell() {
     return () => removeEventListener('keydown', onKey);
   });
 
+  function choose(id: string | null) {
+    setSettings(false);
+    setSelected(id);
+  }
+
   function openProject(id: string | null) {
     setProjectId(id);
     remember('lumen.project', id);
@@ -105,10 +112,12 @@ function Shell() {
 
   return (
     <div className={s.window} data-sidebar={hidden ? 'hidden' : undefined}>
-      {!hidden && <Sidebar project={project} selected={selected} onSelect={setSelected} onProject={openProject} onHide={() => hide(true)} footer={<ConnectionStatus />} />}
+      {!hidden && <Sidebar project={project} selected={selected} onSelect={choose} onProject={openProject} onHide={() => hide(true)} onSettings={() => setSettings(!settings)} footer={<ConnectionStatus />} />}
       <main className={s.main}>
         <Banners />
-        {session ? (
+        {settings ? (
+          <Settings onClose={() => setSettings(false)} leading={hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />} />
+        ) : session ? (
           <>
             <header className={s.header}>
               {hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />}

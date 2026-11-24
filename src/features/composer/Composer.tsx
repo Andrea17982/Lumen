@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } 
 import { Button, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
-import type { AccessMode, Account, AutoPolicy, ModelInfo, RunOptions, Session } from '../../protocol/types';
+import type { AccessMode, AutoPolicy, ModelInfo, RunOptions, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Composer.module.css';
 
@@ -25,7 +25,7 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [text, setText] = useState('');
   const [route, setRoute] = useState<string>(AUTO);
   const [policy, setPolicy] = useState<AutoPolicy>('default');
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const accounts = useSyncState((st) => st.accounts);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState('');
@@ -42,10 +42,6 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
     setText(draft.text);
     input.current?.focus();
   }, [draft]);
-
-  useEffect(() => {
-    sync.call<Account[]>('list_accounts').then(setAccounts, () => setAccounts([]));
-  }, [sync]);
 
   const account = accounts.find((a) => a.id === route);
   useEffect(() => {

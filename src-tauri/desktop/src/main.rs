@@ -48,8 +48,66 @@ async fn daemon_call(
                 .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
+        // The daemon writes a script that runs the official CLI's own sign-in against the
+        // account's profile; the shell opens it in a terminal. Lumen never sees credentials.
+        "login_account" => {
+            open_login(PathBuf::from(
+                value.as_str().ok_or("Invalid sign-in script")?,
+            ))?;
+            Ok(Value::Null)
+        }
         _ => Ok(value),
     }
+}
+
+fn open_login(path: PathBuf) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(path)
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let p = path.to_string_lossy();
+        let terminals: [(&str, &[&str]); 4] = [
+            ("x-terminal-emulator", &["-e", "sh"]),
+            ("gnome-terminal", &["--", "sh"]),
+            ("konsole", &["-e", "sh"]),
+            ("xterm", &["-e", "sh"]),
+        ];
+        if !terminals.iter().any(|(c, a)| {
+            std::process::Command::new(c)
+                .args(*a)
+                .arg(p.as_ref())
+                .spawn()
+                .is_ok()
+        }) {
+            return Err(format!(
+                "No terminal found. Run sh {p} in a terminal to sign in."
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The folder picker for adding a project. The page gets the chosen path, or nothing.
