@@ -8,3 +8,5 @@ opt-level = 3
 members = ["crates/lumen-core", "crates/lumen-commands", "crates/lumen-ipc", "crates/lumen-daemon", "crates/lumen-gatekeeper"]
 resolver = "2"
 default-members = ["crates/lumen-daemon"]
+# The desktop shell joins the workspace in M2, together with its CI dependencies.
+exclude = ["desktop"]

@@ -21,3 +21,6 @@ SHA256SUMS.txt
 .DS_Store
 
 builds/
+src-tauri/desktop/target/
+src-tauri/desktop/gen/
+playwright-report/

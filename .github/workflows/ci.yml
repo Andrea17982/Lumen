@@ -27,6 +27,19 @@ jobs:
       - run: node tests/docs-check.mjs
       - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
+  web:
+    # Client checks. Screenshot baselines are recorded on Windows, and Edge is preinstalled there.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright test
   unix:
     strategy:
       fail-fast: false

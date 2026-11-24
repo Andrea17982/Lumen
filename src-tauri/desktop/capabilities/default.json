@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Main window. M1: theme sync, plus title and always-on-top for the gallery's screenshot tour. Revisit in M2.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-set-theme", "core:window:allow-set-title", "core:window:allow-set-always-on-top"]
+}
