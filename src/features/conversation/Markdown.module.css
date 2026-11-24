@@ -15,7 +15,8 @@
 .markdown h6 {
   margin-bottom: 0;
 }
-.markdown p {
+/* Zero specificity: the sibling rule above still spaces top-level paragraphs. */
+:where(.markdown p) {
   margin-top: 0;
 }
 .markdown h3,

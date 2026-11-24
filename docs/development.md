@@ -12,6 +12,18 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 node tests/docs-check.mjs            # local links, anchors, crate versions, current release notes
 ```
 
+The desktop client (React, in `src/`) and its shell (Tauri, in `src-tauri/desktop/`):
+
+```sh
+npm ci
+npm run typecheck && npm test        # Vitest
+npx playwright test                  # the client against the real debug daemon and offline fixtures
+cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings
+npx tauri build --debug --no-bundle --features webdriver --config src-tauri/desktop/tauri.conf.json
+npm run test:app                     # the real app over WebDriver; opens a window for about a minute (Windows)
+npx tauri dev --config src-tauri/desktop/tauri.conf.json   # the app with hot reload
+```
+
 CI runs all of these on every push to `main` and on every pull request.
 
 ## Manual harnesses
@@ -33,3 +45,4 @@ Use synthetic data. Any test that contacts a real provider must be deliberate an
 1. Bump the version in every crate's `Cargo.toml` and in `Cargo.lock`.
 2. Write `docs/release-notes/<version>.md` and delete the previous one; GitHub Releases keeps the history.
 3. Run `node tests/docs-check.mjs`. It fails if the crate versions disagree or the release notes are missing.
+4. Build the Windows installer with `npx tauri build --config src-tauri/desktop/tauri.conf.json`. It builds the release daemon (`scripts/prepare-daemon.mjs`) and bundles it next to `Lumen.exe` with the Moli browser. The setup is in `src-tauri/desktop/target/release/bundle/nsis/`.

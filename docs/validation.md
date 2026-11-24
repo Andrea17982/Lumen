@@ -1,6 +1,6 @@
 # Validation and known limits
 
-What has been verified for the current source (0.12.2), and what remains open. Fixtures, small real-account checks and observations are different kinds of evidence and are reported separately. Lumen is an alpha with no independent security audit. Evidence for earlier versions is in their Git tags.
+What has been verified for the current source (0.12.5), and what remains open. Fixtures, small real-account checks and observations are different kinds of evidence and are reported separately. Lumen is an alpha with no independent security audit. Evidence for earlier versions is in their Git tags.
 
 ## Automated
 
@@ -9,9 +9,17 @@ What has been verified for the current source (0.12.2), and what remains open. F
 - **Auto.** Deterministic rule tests for Parallel, Collaborative and Compete.
 - **Autonomy.** Fixtures for CRLF and Git filters, concurrent checkpoints, exact and undoable restore, Rewind refusals, and memory held after untrusted content.
 - **Handoff.** Constraints and decisions survive two compactions on all core agents and APIs.
-- **Plugins.** Manifest validation, refusal of undeclared capabilities, and re-approval when permissions grow.
+- **Plugins.** Manifest validation, refusal of undeclared capabilities, re-approval when permissions grow, and panel fetches refused for IP addresses and `localhost` names.
 
-## Unreleased: worktree and Publish
+## Desktop client
+
+- **Unit tests** (Vitest) for the sync cache (snapshots, event order, deduplication, reconnection), the transcript model, attention and recovery rules, sidebar ordering, Orchestra plan edits, plugin theme filtering and both language catalogs.
+- **Browser tests** (Playwright) drive the client against the real debug service with offline CLI fixtures: streaming and Stop, approvals and native questions (a secret answer is kept nowhere), quota resume, rewind, projects and conversations, accounts (an API key never reaches the page or any file of the service), Orchestra from questions to the team result and resume after a crash, settings, MCP, skills, a plugin panel confined to its sandbox, `/every`, task branches with Apply and Discard. Axe accessibility checks run on each surface; the gallery has keyboard, 150 % text and screenshot checks.
+- **Long transcripts.** 5,000 messages: first messages in about 0.3 s, all mounted in 4 to 5 s, 95th-percentile frame and typing gaps under 25 ms on the owner's machine. Native search and UI Automation reach the whole transcript.
+- **Real app** over WebDriver: the shell starts the bundled service, relays its events, restarts it after a crash without repeating the partial reply, and a sandboxed plugin panel cannot call the shell.
+- **Security review** of the panels, the plugin protocol and the shell by a review agent; findings fixed before release. Not an independent audit.
+
+## Worktree and Publish
 
 - **Rust end-to-end test** with a temporary repository, a bare remote and a fake `gh`. It covers branch creation, the commit of uncommitted work, copying `.env` but not `node_modules`, the automatic commit, the push, `gh pr create`, Apply and Discard.
 - **Correction loop.** Failed logs and owner reviews reach the correction request, untrusted reviewers are ignored, green checks lead to the merge, and a correction without a commit stops the loop.
@@ -42,7 +50,8 @@ These are single configurations, not certified:
 
 ## Known limits
 
-- **Platforms.** Only Windows x64 has had interactive desktop acceptance. macOS and Linux pass CI only.
+- **Platforms.** Only Windows x64 has had interactive desktop acceptance, and 0.12.5 ships only the Windows installer. macOS and Linux pass CI only.
+- **Screen readers.** The transcript is checked through UI Automation; a full NVDA and Narrator pass by a person is still to do.
 - **Live coverage.** There is no live quality benchmark. The multi-account, CLI-version, quota and restart matrix is not certified.
 - **Integrations.** Portability is limited to the documented subset ([Providers](providers.md#shared-integrations)). Cursor runs in Autopilot only. API adapters buffer responses and are not Orchestra workers.
 - **Memory and schedules.** Facts come from model replies and can echo untrusted content. Routine end dates use UTC. The Orchestra time limit counts active time only.

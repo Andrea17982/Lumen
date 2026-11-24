@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { webdriver } from './webdriver.mjs';
 
-export const appPath = path.resolve('src-tauri/desktop/target/debug/lumen-desktop.exe');
+export const appPath = path.resolve('src-tauri/desktop/target/debug/Lumen.exe');
 export const daemonPath = path.resolve('src-tauri/target/debug/lumen-daemon.exe');
 
 export function requireBuilds() {

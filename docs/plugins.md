@@ -6,14 +6,15 @@ Three examples ship in [plugins/examples](../plugins/examples/README.md).
 
 ## Install, enable, update
 
-Open **Settings → Plugins**.
+Open **Settings → Extensions → Add a plugin folder…**.
 
-1. Choose a folder, or paste an `https://` git URL. Lumen clones it with your `git`.
-2. **Review** shows the name, the version and what the plugin asks to do, for example "Connect to api.example.com". Nothing runs during the review.
-3. **Install (off)** copies the plugin into Lumen's data folder. A new plugin is always off.
-4. Turning the switch on shows the permissions once more. Turning it on approves exactly those permissions.
-5. **Reload** reads the plugin again from where you installed it, so you can edit a plugin without restarting Lumen. If the new version asks for nothing new, it applies at once. If it asks for more, Lumen shows only the new permissions, and the plugin stays off until you turn it on again.
-6. **Remove** deletes the copy, its state and its stored secrets.
+1. Choose the plugin's folder. It must be outside Lumen's data folder.
+2. Lumen copies it aside and checks it; nothing in it runs. A dialog shows the name, the version, what the plugin asks to do (for example "Connect to api.example.com") and what it adds: a program it bundles for an MCP server, skills, commands, panels, themes.
+3. **Install** copies the plugin into Lumen's data folder and turns it on. Installing is the approval of exactly what the dialog showed. An update of a plugin you had turned off stays off.
+4. **Reload** (in the plugin's menu) reads the plugin again from where you installed it, so you can edit a plugin without restarting Lumen. If the new version asks for nothing new, it applies at once. If it asks for more, it stays off, and turning it on shows the new permissions for you to confirm.
+5. **Remove** deletes the copy, its state and its stored secrets.
+
+Declared secrets get a field on the plugin's card. They go to the system keychain and are never shown again. Panels open on the card, and themes have a switch there.
 
 A plugin whose files change on disk to ask for more than you approved stops working until you approve it again.
 
@@ -59,7 +60,7 @@ All four permissions default to none.
 
 ## Contributions
 
-**Themes** are CSS files that only set custom properties (`--accent: #b5562f;`) under `:root`, `:root[data-theme='light']` or `:root[data-theme='dark']`. Selectors, `url()`, `@import` and anything that is not a token are rejected, so a theme cannot run code or load anything. Pick a theme under its plugin in Settings.
+**Themes** are CSS files that only set custom properties (`--accent: #b5562f;`) under `:root`, `:root[data-theme='light']` or `:root[data-theme='dark']`. Selectors, `url()`, `@import` and anything that is not a token are rejected, so a theme cannot run code or load anything. Status colours and the focus ring stay Lumen's, so a theme cannot make Reject look like Approve. Turn a theme on under its plugin in Settings.
 
 **Slash commands** add entries to the `/` menu. Choosing one puts its prompt in the composer, where you can still edit it before you send. Commands never run on their own, and the names `workspace` and `compact` are reserved.
 
@@ -83,7 +84,7 @@ parent.postMessage(
 // Replies arrive as { lumen: 1, id, result } or { lumen: 1, id, error }.
 ```
 
-`prompt.insert` puts text in the composer. `net.fetch` makes a GET request to a declared HTTPS host and returns the status, the content type and up to 1 MB of the body as text. Any other method is refused.
+`prompt.insert` puts text in the composer; invisible characters are shown escaped, so you read what an agent would get. `net.fetch` makes a GET request to a declared HTTPS host and returns the status, the content type and up to 1 MB of the body as text. IP addresses and `localhost` names are refused. Any other method is refused.
 
 ## What is enforced, and what is not
 

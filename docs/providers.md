@@ -90,7 +90,7 @@ The API adapters do not support native session resume, streaming (responses are 
 
 ## Code Mode
 
-`codeMode` in the daemon's `settings.json`:
+In **Settings → General**, Code Mode is one switch: on means `auto`, off means `off`. Underneath it is `codeMode` in the daemon's `settings.json`:
 
 - **`auto`** (the default). The turn starts with classic tool calls and switches to `lumen_code` scripts after 5 tool rounds or a result over 24 KiB.
   - On Claude Code, Lumen proxies Moli and MCP. Results over 8 KiB become context documents, and Claude sees only their first 2 KiB.

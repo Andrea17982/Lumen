@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
-  <p><strong>Connect your AI accounts once. Write what you want. Auto does the rest.</strong></p>
+  <p><strong>The AI coding subscriptions you already pay for, in one quiet window.</strong></p>
   <p>
     <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download</a> ·
     <a href="docs/README.md">Docs</a> ·
@@ -14,37 +14,31 @@
   </p>
 </div>
 
-Lumen is a desktop app for coding with AI. You sign in to the subscriptions you already pay for (Claude Code, Codex, Antigravity, OpenCode, Cursor, local Ollama or an API key), and Lumen uses them together, as one team, on your project. It's free, open source (MIT) and in alpha.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversation-dark.png">
+  <img src="docs/images/conversation.png" alt="Lumen with a finished task: the request, the steps folded into one line, and the answer with what changed and what was checked">
+</picture>
 
-> **Status:** the desktop interface is being rewritten from scratch. This branch contains the daemon and backend; the published releases still ship the previous interface.
+I pay for Claude, ChatGPT and a couple of other things, and I got tired of deciding which one to open, pasting context between them and checking their work by hand. Lumen is what I wanted instead: you sign in once with each official CLI (Claude Code, Codex, Antigravity, OpenCode, Cursor, local Ollama, or an API key), write what you need, and it picks who does the work.
 
-## Auto
+It's free, MIT licensed and still in alpha.
 
-You don't pick a model, split the task or babysit agents. Auto decides:
+## What it does
 
-- **who works on it**: the best agent available now, and another one when a quota runs out, without repeating finished work;
-- **how**: one agent, one agent plus a reviewer from another provider, or a team working in isolated worktrees;
-- **whether to compete**: in the Quality profile, two providers solve an important task independently and the solution that passes your checks wins;
-- **what to answer**: clarifying questions are answered from the code and project memory, with the assumptions listed at the end. Risky, irreversible and external actions still stop and ask you.
+- **Picks the agent for you.** The best one available right now; when a quota runs out, another one carries on without redoing what was finished.
+- **Tells you what happened.** One answer at the end: what changed, what was checked, what failed, what's still open.
+- **Stops when it should.** Risky or irreversible actions wait for you. Everything else doesn't.
+- **Big tasks get a branch.** A bar above the conversation lets you publish it as a PR, apply it to your folder or throw it away.
+- **Remembers the project.** Decisions go into `LUMEN.md`, which every agent reads.
+- **Keeps running.** Close the window and the work goes on in the background.
 
-You get one answer, written by Lumen from what it observed: what was done, what was checked, what failed and what is still open. [How Lumen works](docs/product.md)
+Two things are just switches in Settings, each with one line of explanation: **Orchestra**, which splits a large task between your agents after you approve the plan, and **Code Mode**, which turns many tool calls into one script to save tokens.
 
-## Also inside
-
-- **From task to merged PR.** A large task runs in its own worktree. Lumen commits after the checks pass; **Publish** opens the PR, and Lumen then fixes failing CI and review comments and merges.
-- **Memory.** Project decisions go into `LUMEN.md`, which every agent reads. Cross-project preferences are saved only after you confirm.
-- **Undo.** Checkpoints before every write, an audit log, and a rollback that refuses to run when it would be unsafe.
-- **Moli.** A bundled browser shared by every agent.
-- **Code Mode.** Many tool calls turn into a single script, saving tokens on large results. [Measurements](docs/validation.md#code-mode-measurements)
-- **Background service.** Work keeps running after you close the window.
-
-## Why
-
-I pay for several AI subscriptions and was tired of choosing which one to open, copying context between them and checking their work by hand. Cursor, the Codex app and Claude Code are polished, but each keeps you inside one vendor. Conductor and Claude Squad run agents in parallel, but you still drive them. Lumen makes them work together and verifies the result against your project's checks.
+<img src="docs/images/settings.png" alt="Lumen settings: language, style, theme, and the Orchestra and Code Mode switches">
 
 ## Download
 
-Get the latest release from [Releases](https://github.com/Andrea17982/Lumen/releases/latest): Windows setup or portable ZIP, universal macOS `.dmg`, Linux `.deb` or `.AppImage`. Packages are unsigned; verify them against `SHA256SUMS.txt`. Only Windows has full desktop testing.
+Windows x64: the setup is on the [latest release](https://github.com/Andrea17982/Lumen/releases/latest). It isn't signed yet, so Windows will warn you; check it against `SHA256SUMS.txt`. macOS and Linux build from source for now.
 
 ## Build from source
 
@@ -52,21 +46,22 @@ Get the latest release from [Releases](https://github.com/Andrea17982/Lumen/rele
 git clone https://github.com/Andrea17982/Lumen.git
 cd Lumen
 node scripts/prepare-moli.mjs
-cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
+npm ci
+npx tauri build --config src-tauri/desktop/tauri.conf.json
 ```
 
-See [development](docs/development.md) for tests.
+Tests and the rest are in [development](docs/development.md).
 
 ## Good to know
 
-Autopilot gives agents broad access to your machine and is not an OS sandbox. Lumen never copies your provider credentials: each CLI logs in on its own. [Validation](docs/validation.md) · [Security](SECURITY.md)
+Autopilot gives agents broad access to your machine and is not a sandbox. Lumen never touches your provider credentials: each CLI signs in on its own, and API keys go to the system keychain. [Validation](docs/validation.md) · [Security](SECURITY.md)
 
 ## How it's made
 
-Lumen's code, tests and docs are written by AI (Claude Code) under my direction. The product decisions are mine. This is a disclosure, not a security audit.
+The code, tests and docs are written by Claude Code under my direction; the product decisions are mine. That's a disclosure, not a security audit.
 
 Thanks to **Theo / pingdotgg, T3 Tools Inc. and the T3 Code contributors**: Lumen adapts parts of T3 Code's design. [Sources and changes](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [Licenses](THIRD_PARTY_NOTICES.md). No endorsement is implied.
 
-Feedback in [Issues](https://github.com/Andrea17982/Lumen/issues) helps a lot. To support the project there's [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen); it unlocks nothing extra. — Andrea
+Bugs and ideas go in [Issues](https://github.com/Andrea17982/Lumen/issues). If you want to support it there's [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen); it doesn't unlock anything. — Andrea
 
-MIT © 2026 Andrea17982. Not affiliated with Anthropic, OpenAI, Google or the other named providers.
+MIT © 2026 Andrea17982. Not affiliated with Anthropic, OpenAI, Google or the other providers named here.

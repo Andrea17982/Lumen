@@ -2265,7 +2265,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "lumen-desktop"
-version = "0.12.2"
+version = "0.12.5"
 dependencies = [
  "lumen-ipc",
  "serde",
@@ -2281,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-ipc"
-version = "0.12.2"
+version = "0.12.5"
 dependencies = [
  "dunce",
  "libc",

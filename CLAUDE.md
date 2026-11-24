@@ -6,7 +6,7 @@ Claude Code is the only agent developing this repository. Product code that inte
 
 ## State (Nov 2026)
 
-- The backend is complete and released: the Rust workspace in `src-tauri/`, v0.12.2.
+- The backend is complete and released: the Rust workspace in `src-tauri/`, v0.12.5.
 - The old frontend has been deleted. A new client is being written from scratch on branch `refactor/clean-slate`: `src/` (React) and `src-tauri/desktop/` (Tauri shell). So far it holds the design system, the EN/IT catalog, a brand gallery, the daemon link (M2: the shell starts or joins the daemon and relays its events; the client keeps a synced cache) the conversation (M3: streaming Markdown, activity steps, composer, Stop) and attention and recovery (M4: Gatekeeper approvals, native questions with secret answers, resume at quota reset, rewind with preview, continue in a new conversation) and projects and sessions (M5: one open project, conversations by day, search, pin, reorder, move, project panel with LUMEN.md) and accounts in Settings (M6: sign-in through the official CLI, quota per window with its source, write-only API keys with budget) and Orchestra (M7: one switch in Settings, questions, plan with edits, live lanes, resume after a crash). settings, extensions and the desktop (M8: General with few switches, MCP, skills, plugins with sandboxed panels, `/every`, tray and notifications) and the task branch bar (M10: Publish, Apply, Discard). The release build comes next (M9).
 - Roadmap, decisions and frontend research are in `notes/ROADMAP.md`. That file is private: read it before planning product work, never commit it and never link it from tracked files.
 

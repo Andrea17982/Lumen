@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/lumen.png" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
-  <p><strong>Collega i tuoi account AI una volta. Scrivi cosa ti serve. Auto fa il resto.</strong></p>
+  <p><strong>Gli abbonamenti AI per programmare che paghi già, in una finestra tranquilla.</strong></p>
   <p>
     <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download</a> ·
     <a href="docs/README.md">Documentazione (EN)</a> ·
@@ -9,44 +9,40 @@
   </p>
 </div>
 
-Lumen è un'app desktop per programmare con l'AI. Accedi con gli abbonamenti che paghi già (Claude Code, Codex, Antigravity, OpenCode, Cursor, Ollama in locale o una chiave API) e Lumen li fa lavorare insieme, come una squadra, sul tuo progetto. È gratuito, open source (MIT) e in alpha.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversation-dark.png">
+  <img src="docs/images/conversation.png" alt="Lumen con un task concluso: la richiesta, i passaggi raccolti in una riga e la risposta con cosa è cambiato e cosa è stato verificato">
+</picture>
 
-> **Stato:** l'interfaccia desktop è in riscrittura da zero. Questo branch contiene il daemon e il backend; le release pubblicate usano ancora l'interfaccia precedente.
+Pago Claude, ChatGPT e un paio di altre cose, e mi ero stancato di decidere quale aprire, copiare il contesto dall'uno all'altro e ricontrollare il loro lavoro a mano. Lumen è quello che volevo al posto di tutto questo: accedi una volta con la CLI ufficiale di ciascuno (Claude Code, Codex, Antigravity, OpenCode, Cursor, Ollama in locale o una chiave API), scrivi cosa ti serve e decide lui chi fa il lavoro.
 
-## Auto
+È gratuito, con licenza MIT, ed è ancora in alpha.
 
-Non scegli il modello, non dividi il lavoro e non controlli gli agenti a mano. Auto decide:
+## Cosa fa
 
-- **chi lavora**: il miglior agente disponibile in quel momento, e un altro quando una quota finisce, senza ripetere il lavoro già fatto;
-- **come**: un agente, un agente più un revisore di un altro provider, oppure un team in worktree isolati;
-- **se far competere**: nel profilo Qualità due provider risolvono lo stesso compito importante in modo indipendente, e vince la soluzione che passa i tuoi check;
-- **cosa rispondere**: alle domande di chiarimento risponde a partire dal codice e dalla memoria del progetto, ed elenca le ipotesi alla fine. Per le azioni rischiose, irreversibili o esterne si ferma e chiede a te.
+- **Sceglie l'agente al posto tuo.** Il migliore disponibile in quel momento; se una quota finisce, ne continua un altro senza rifare quello che era già finito.
+- **Ti dice cosa è successo.** Una sola risposta alla fine: cosa è cambiato, cosa è stato verificato, cosa è fallito, cosa resta aperto.
+- **Si ferma quando deve.** Le azioni rischiose o irreversibili aspettano te. Il resto no.
+- **I task grandi hanno un branch.** Una barra sopra la conversazione ti fa pubblicarlo come PR, applicarlo alla cartella o buttarlo via.
+- **Si ricorda del progetto.** Le decisioni finiscono in `LUMEN.md`, che ogni agente legge.
+- **Continua a lavorare.** Chiudi la finestra e il lavoro va avanti in background.
 
-Ricevi una sola risposta, scritta da Lumen in base a ciò che ha osservato: cosa è stato fatto, cosa è stato verificato, cosa è fallito e cosa resta aperto. [Come funziona](docs/product.md)
+Due cose sono semplici interruttori nelle Impostazioni, ognuno con una riga di spiegazione: **Orchestra**, che divide un task grande tra i tuoi agenti dopo che hai approvato il piano, e **Code Mode**, che trasforma molte chiamate ai tool in un solo script per risparmiare token.
 
-## Dentro c'è anche
+## Download
 
-- **Dal task alla PR unita.** Un task grande lavora nel suo worktree. Lumen fa il commit quando i check passano; **Pubblica** apre la PR, poi Lumen corregge CI e review e fa il merge.
-- **Memoria.** Le decisioni del progetto finiscono in `LUMEN.md`, che ogni agente legge. Le preferenze valide per tutti i progetti si salvano solo dopo la tua conferma.
-- **Annulla.** Checkpoint prima di ogni scrittura, un audit log e un rollback che si rifiuta di partire quando non sarebbe sicuro.
-- **Moli.** Un browser incluso, condiviso da tutti gli agenti.
-- **Code Mode.** Molte chiamate ai tool diventano un solo script, e con risultati grandi si risparmiano token. [Misure](docs/validation.md#code-mode-measurements)
-- **Servizio in background.** Il lavoro continua anche dopo aver chiuso la finestra.
-
-## Download e build
-
-Scarica l'ultima release da [Releases](https://github.com/Andrea17982/Lumen/releases/latest). I pacchetti non sono firmati: verificali con `SHA256SUMS.txt`. Solo Windows ha test desktop completi. Per compilare da sorgente vedi il [README inglese](README.md#build-from-source).
+Windows x64: il setup è nell'[ultima release](https://github.com/Andrea17982/Lumen/releases/latest). Non è ancora firmato, quindi Windows ti avviserà; verificalo con `SHA256SUMS.txt`. Per ora macOS e Linux si compilano da sorgente: vedi il [README inglese](README.md#build-from-source).
 
 ## Da sapere
 
-Autopilot dà agli agenti un accesso ampio al computer e non è una sandbox del sistema operativo. Lumen non copia mai le credenziali dei provider: ogni CLI fa il login da sé. [Validazione](docs/validation.md) · [Sicurezza](SECURITY.md)
+Autopilota dà agli agenti un accesso ampio al computer e non è una sandbox. Lumen non tocca le credenziali dei provider: ogni CLI fa il login da sé, e le chiavi API finiscono nel portachiavi di sistema. [Validazione](docs/validation.md) · [Sicurezza](SECURITY.md)
 
 ## Come è fatto
 
-Codice, test e documentazione di Lumen sono scritti dall'AI (Claude Code) sotto la mia direzione. Le decisioni di prodotto sono mie. È una dichiarazione, non un audit di sicurezza.
+Codice, test e documentazione li scrive Claude Code sotto la mia direzione; le decisioni di prodotto sono mie. È una dichiarazione, non un audit di sicurezza.
 
 Grazie a **Theo / pingdotgg, T3 Tools Inc. e ai contributor di T3 Code**: Lumen adatta parti del design di T3 Code. [Fonti e modifiche](src-tauri/resources/legal/t3code/ADAPTATIONS.md) · [Licenze](THIRD_PARTY_NOTICES.md). Ciò non implica alcun endorsement.
 
-Feedback e segnalazioni nelle [Issues](https://github.com/Andrea17982/Lumen/issues) aiutano molto. Per sostenere il progetto c'è [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen); non sblocca nulla in più. — Andrea
+Bug e idee nelle [Issues](https://github.com/Andrea17982/Lumen/issues). Se vuoi sostenerlo c'è [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=andreanastrobusiness1999%40gmail.com&currency_code=EUR&item_name=Support%20Lumen); non sblocca nulla. — Andrea
 
 MIT © 2026 Andrea17982. Non affiliato con Anthropic, OpenAI, Google o con gli altri provider citati.
