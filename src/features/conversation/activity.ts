@@ -1,7 +1,7 @@
-import type { Activity, Message } from '../../protocol/types';
+import type { Activity, Interaction, InteractionResult, Message } from '../../protocol/types';
 
 /** How one activity kind appears in a message. Unknown kinds become generic steps. */
-export type Role = 'step' | 'reasoning' | 'error' | 'image' | 'attachments' | 'model' | 'plan' | 'hidden' | 'later';
+export type Role = 'step' | 'reasoning' | 'error' | 'image' | 'attachments' | 'model' | 'plan' | 'question' | 'hidden' | 'later';
 
 // Telemetry and state the client reads elsewhere (or not at all), never listed as steps.
 const HIDDEN = new Set([
@@ -9,12 +9,14 @@ const HIDDEN = new Set([
   'references', 'native', 'native-hooks', 'resume', 'run-options', 'execution', 'execution-phase',
   'latency', 'provider-event', 'pid', 'session', 'auto-assignment', 'tool-end', 'class', 'route',
   'code-metrics', 'start', 'done', 'status', 'workspace', 'task-worktree', 'tool-start', 'window',
+  // Shown with the question it answers; quota rows feed the recovery card above the composer.
+  'interaction-result', 'quota-reset', 'quota-scheduled',
 ]);
-// Rendered by later milestones: questions and approvals (M4), Orchestra (M7), quota and cost (M6),
+// Rendered by later milestones: Orchestra (M7), quota and cost (M6),
 // memory and recipes (M8). Until then they stay out of the step list rather than show raw JSON.
 const LATER = new Set([
-  'interaction', 'interaction-result', 'connector-status', 'orchestra', 'orchestra-nogit', 'child',
-  'quota', 'quota-scheduled', 'quota-reset', 'api-cost', 'memory-saved', 'memory-global',
+  'connector-status', 'orchestra', 'orchestra-nogit', 'child',
+  'quota', 'api-cost', 'memory-saved', 'memory-global',
   'memory-proposed', 'memory-held', 'recipe-saved', 'routine-created', 'audit', 'validation',
   'adapter-error',
 ]);
@@ -26,6 +28,7 @@ export function roleOf(kind: string): Role {
   if (kind === 'attachments') return 'attachments';
   if (kind === 'model') return 'model';
   if (kind === 'plan') return 'plan';
+  if (kind === 'interaction') return 'question';
   if (HIDDEN.has(kind)) return 'hidden';
   if (LATER.has(kind)) return 'later';
   return 'step';
@@ -41,6 +44,8 @@ export interface MessageParts {
   model?: string;
   /** Why the daemon chose this agent for the reply. */
   why?: string;
+  /** Questions the agent asked in this reply, with what was answered (secret answers are not kept). */
+  asked: { request: Interaction; result?: InteractionResult }[];
 }
 
 const THINK = /<(think|thinking)>/i;
@@ -67,7 +72,7 @@ const DIRECTIVES = /<lumen-(remember|routine)[\s\S]*?(<\/lumen-(remember|routine
 
 export function partsOf(message: Message): MessageParts {
   const split = message.role === 'assistant' ? splitReasoning(message.text.replace(DIRECTIVES, '')) : { reasoning: '', answer: message.text };
-  const parts: MessageParts = { answer: split.answer, reasoning: '', steps: [], errors: [], images: [], attachments: [] };
+  const parts: MessageParts = { answer: split.answer, reasoning: '', steps: [], errors: [], images: [], attachments: [], asked: [] };
   const reasoning: string[] = [];
   for (const activity of message.activity) {
     switch (roleOf(activity.kind)) {
@@ -93,6 +98,16 @@ export function partsOf(message: Message): MessageParts {
       case 'step':
         parts.steps.push(activity);
         break;
+      case 'question': {
+        const request = parse(activity.text) as Interaction | undefined;
+        if (!request?.id || !Array.isArray(request.questions)) break;
+        const result = message.activity
+          .filter((a) => a.kind === 'interaction-result')
+          .map((a) => parse(a.text) as InteractionResult | undefined)
+          .find((r) => r?.id === request.id);
+        parts.asked.push({ request, result });
+        break;
+      }
     }
   }
   parts.reasoning = [...reasoning, split.reasoning].filter((r) => r.trim()).join('\n\n').trim();

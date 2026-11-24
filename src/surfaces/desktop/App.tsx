@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Mark, Wordmark } from '../../brand/Logo';
-import { Badge, Button, type Tone } from '../../design/components';
+import { Badge, Button, Menu, type Tone } from '../../design/components';
 import { useAppearance } from '../../design/appearance';
 import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
 import { Conversation } from '../../features/conversation/Conversation';
-import type { Connection } from '../../protocol/types';
+import type { Connection, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
 
@@ -39,6 +39,21 @@ function Shell() {
     return () => sync.unwatch(selected);
   }, [sync, selected]);
   const session = sessions.find((x) => x.id === selected);
+  const connected = useSyncState((st) => st.connection.state === 'connected');
+  const [error, setError] = useState<string | null>(null);
+  const busy = !!session && ['running', 'queued', 'waiting'].includes(session.status);
+
+  // Handoff: the daemon writes a new conversation seeded with this one's goal and changes.
+  async function compact(id: string) {
+    setError(null);
+    try {
+      const next = await sync.call<Session>('compact_session', { id });
+      await sync.resync();
+      setSelected(next.id);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   return (
     <div className={s.window}>
@@ -65,7 +80,14 @@ function Shell() {
             <header className={s.header}>
               <h1>{session.title || t.untitled}</h1>
               <StatusBadge status={session.status} />
+              <span className={s.spacer} />
+              <Menu label={t.moreActions} items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }]} onAction={() => void compact(session.id)} />
             </header>
+            {error && (
+              <p className={s.headerError} role="alert">
+                {error}
+              </p>
+            )}
             <Conversation key={session.id} session={session} />
           </>
         ) : (

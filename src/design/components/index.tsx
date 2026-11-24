@@ -2,6 +2,8 @@
 import type { ReactNode } from 'react';
 import {
   Button as AriaButton,
+  Checkbox,
+  CheckboxGroup,
   Dialog as AriaDialog,
   DialogTrigger,
   FieldError,
@@ -16,6 +18,8 @@ import {
   Modal,
   ModalOverlay,
   Popover,
+  Radio,
+  RadioGroup,
   SearchField as AriaSearchField,
   Select as AriaSelect,
   SelectValue,
@@ -72,6 +76,7 @@ interface FieldProps {
   isInvalid?: boolean;
   multiline?: boolean;
   type?: 'text' | 'password';
+  autoComplete?: string;
 }
 
 export function TextField({ label, description, errorMessage, placeholder, multiline, ...props }: FieldProps) {
@@ -196,9 +201,14 @@ export function Menu({ label, icon = 'more', items, onAction }: { label: string;
   );
 }
 
-/** Confirmation dialog: the trigger opens it; the confirm action runs and closes it. */
+/**
+ * Confirmation dialog: the trigger opens it, or the caller does with `isOpen` (for example once
+ * what it describes has loaded). The confirm action runs and closes it.
+ */
 export function ConfirmDialog({
   trigger,
+  isOpen,
+  onOpenChange,
   title,
   body,
   confirmLabel,
@@ -206,7 +216,9 @@ export function ConfirmDialog({
   danger,
   onConfirm,
 }: {
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   body: ReactNode;
   confirmLabel: string;
@@ -214,16 +226,14 @@ export function ConfirmDialog({
   danger?: boolean;
   onConfirm: () => void;
 }) {
-  return (
-    <DialogTrigger>
-      {trigger}
-      <ModalOverlay className={s.overlay} isDismissable>
+  const overlay = (
+      <ModalOverlay className={s.overlay} isDismissable isOpen={isOpen} onOpenChange={onOpenChange}>
         <Modal className={s.modal}>
           <AriaDialog className={s.dialog} role="alertdialog">
             {({ close }) => (
               <>
                 <Heading slot="title">{title}</Heading>
-                <p>{body}</p>
+                {typeof body === 'string' ? <p>{body}</p> : body}
                 <div className={s.dialogActions}>
                   <Button variant="secondary" onPress={close} autoFocus>
                     {cancelLabel}
@@ -243,7 +253,14 @@ export function ConfirmDialog({
           </AriaDialog>
         </Modal>
       </ModalOverlay>
+  );
+  return trigger ? (
+    <DialogTrigger>
+      {trigger}
+      {overlay}
     </DialogTrigger>
+  ) : (
+    overlay
   );
 }
 
@@ -254,5 +271,48 @@ export function Badge({ tone = 'neutral', icon, children }: { tone?: Tone; icon?
       {icon && <Icon name={icon} size={12} />}
       {children}
     </span>
+  );
+}
+
+export interface Choice {
+  id: string;
+  label: string;
+  description?: string;
+}
+/** One answer (radio buttons) or several (check boxes) from a short list, with descriptions. */
+export function Choices({ label, choices, multiple, value, onChange, isDisabled }: { label: ReactNode; choices: Choice[]; multiple?: boolean; value: string[]; onChange: (v: string[]) => void; isDisabled?: boolean }) {
+  const body = (
+    <>
+      <Label className={s.choicesLabel}>{label}</Label>
+      {choices.map((c) => {
+        const content = (
+          <>
+            <span className={s.mark} aria-hidden />
+            <span className={s.choiceText}>
+              <span>{c.label}</span>
+              {c.description && <span className={s.description}>{c.description}</span>}
+            </span>
+          </>
+        );
+        return multiple ? (
+          <Checkbox key={c.id} value={c.id} className={s.choice} data-multiple>
+            {content}
+          </Checkbox>
+        ) : (
+          <Radio key={c.id} value={c.id} className={s.choice}>
+            {content}
+          </Radio>
+        );
+      })}
+    </>
+  );
+  return multiple ? (
+    <CheckboxGroup className={s.choices} value={value} onChange={onChange} isDisabled={isDisabled}>
+      {body}
+    </CheckboxGroup>
+  ) : (
+    <RadioGroup className={s.choices} value={value[0] ?? null} onChange={(v) => onChange(v ? [v] : [])} isDisabled={isDisabled}>
+      {body}
+    </RadioGroup>
   );
 }

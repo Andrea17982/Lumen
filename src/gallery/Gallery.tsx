@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { I18nProvider, systemLocale, type Locale } from '../i18n';
 import { useAppearance, type Style } from '../design/appearance';
 import { AppMock } from './AppMock';
+import { AttentionStates } from './AttentionStates';
 import { Board } from './Board';
 import { Components } from './Components';
 import s from './Gallery.module.css';
 
-type View = 'app' | 'board' | 'components';
-const views: View[] = ['app', 'board', 'components'];
+type View = 'app' | 'board' | 'components' | 'attention';
+const views: View[] = ['app', 'board', 'components', 'attention'];
 // Tests and links can open a given state: ?view=components&style=satin&theme=dark&locale=it
 const query = new URLSearchParams(location.search);
 
@@ -54,13 +55,13 @@ export function Gallery() {
 
   return (
     <I18nProvider locale={locale}>
-      {view === 'app' ? <AppMock /> : view === 'board' ? <Board style={appearance.style} /> : <Components appearance={appearance} setAppearance={setAppearance} setLocale={setLocale} />}
+      {view === 'app' ? <AppMock /> : view === 'board' ? <Board style={appearance.style} /> : view === 'attention' ? <AttentionStates /> : <Components appearance={appearance} setAppearance={setAppearance} setLocale={setLocale} />}
       {toolbar && (
         <div className={s.toolbar} role="toolbar" aria-label="Gallery">
           <Segment<Style> value={appearance.style} options={[['ink', 'Ink'], ['satin', 'Satin']]} onChange={(style) => setAppearance({ style })} />
           <Segment value={appearance.theme} options={[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]} onChange={(theme) => setAppearance({ theme })} />
           <Segment value={locale} options={[['en', 'EN'], ['it', 'IT']]} onChange={setLocale} />
-          <Segment value={view} options={[['app', 'App'], ['board', 'Board'], ['components', 'Components']]} onChange={setView} />
+          <Segment value={view} options={[['app', 'App'], ['board', 'Board'], ['components', 'Components'], ['attention', 'Attention']]} onChange={setView} />
         </div>
       )}
     </I18nProvider>

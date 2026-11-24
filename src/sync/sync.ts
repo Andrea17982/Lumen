@@ -1,4 +1,4 @@
-import { unconfirmedId, type Connection, type Frame, type Message, type RunOptions, type RunEvent, type Session } from '../protocol/types';
+import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
 
 /**
@@ -41,6 +41,15 @@ export interface SyncState {
   transcripts: Readonly<Record<string, Transcript>>;
   unconfirmed: Unconfirmed[];
   outgoing: Outgoing[];
+  /** Gatekeeper requests and provider connections of each watched session. */
+  approvals: Readonly<Record<string, Approvals>>;
+  /** Ids of native questions the daemon is still waiting on, across sessions; null until read. */
+  questions: readonly string[] | null;
+  error?: string;
+}
+
+export interface Approvals extends ApprovalSnapshot {
+  /** The journal could not be read: approvals cannot be shown, so they must not look empty. */
   error?: string;
 }
 
@@ -48,12 +57,17 @@ const LIVE_LIMIT = 20_000;
 // Kinds the daemon folds only once when replaying, because the saved message may already hold them.
 const SAVED_ONCE = new Set(['interaction', 'interaction-result', 'quota-scheduled', 'browser', 'image']);
 const SESSION_REFRESH_MS = 120;
+const QUESTION_REFRESH_MS = 60;
+// A question appears or closes with one of these; the daemon's list says which are still open.
+const QUESTION_KINDS = new Set(['interaction', 'interaction-result', 'start', 'done']);
 /** The newest page shows at once; earlier pages follow in the background (M0 strategy). */
 export const FIRST_PAGE = 100;
 export const PAGE = 1000;
+/** Messages read again when a turn ends: the reply and the prompt it answers. */
+const TAIL = 2;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], transcripts: {}, unconfirmed: [], outgoing: [] };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -61,6 +75,9 @@ export class Sync {
   private open = new Set<string>();
   private generation = 0;
   private refresh?: ReturnType<typeof setTimeout>;
+  private questionRefresh?: ReturnType<typeof setTimeout>;
+  /** Approval snapshots being read; true when a change arrived meanwhile and it must be read again. */
+  private approvalLoads = new Map<string, boolean>();
   private unsubscribe?: () => void;
 
   constructor(private transport: Transport) {}
@@ -73,6 +90,7 @@ export class Sync {
   stop() {
     this.unsubscribe?.();
     clearTimeout(this.refresh);
+    clearTimeout(this.questionRefresh);
   }
 
   getState = () => this.state;
@@ -93,18 +111,21 @@ export class Sync {
     this.buffers.delete(id);
     this.loads.delete(id);
     const { [id]: _, ...rest } = this.state.transcripts;
-    this.set({ transcripts: rest });
+    const { [id]: __, ...approvals } = this.state.approvals;
+    this.set({ transcripts: rest, approvals });
   }
 
-  /** Sends a command. Failures reject with the daemon's text; an unknown outcome is recorded. */
-  async call<T = unknown>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  /**
+   * Sends a command. Failures reject with the daemon's text; an unknown outcome is recorded and
+   * blocks new work in `sessionId` (by default the command's `id` argument) until acknowledged.
+   */
+  async call<T = unknown>(command: string, args: Record<string, unknown> = {}, sessionId = typeof args.id === 'string' ? args.id : undefined): Promise<T> {
     try {
       return (await this.transport.call(command, args)) as T;
     } catch (cause) {
       const error = errorText(cause);
       const id = unconfirmedId(error);
       if (id) {
-        const sessionId = typeof args.id === 'string' ? args.id : undefined;
         this.set({ unconfirmed: [...this.state.unconfirmed, { id, command, sessionId }] });
       } else if (error.includes('different build')) {
         this.set({ connection: { state: 'mismatch', detail: error }, synced: false });
@@ -136,6 +157,23 @@ export class Sync {
     }
   }
 
+  /**
+   * Answers a native question. Secret answers pass straight to the daemon: nothing here keeps
+   * them, and the daemon leaves them out of the saved result.
+   */
+  async answer(sessionId: string, id: string, answers: Answers): Promise<void> {
+    try {
+      await this.call('answer_question', { id, answers }, sessionId);
+    } finally {
+      this.scheduleQuestions();
+    }
+  }
+
+  /** Sends one Gatekeeper decision. The broker keeps the request; only its id and scope go back. */
+  async decide(decision: ApprovalDecision): Promise<void> {
+    await this.call('gatekeeper_decide', { decision }, decision.scope.sessionId);
+  }
+
   /** Removes a failed message the user has dismissed. */
   dismiss(id: string) {
     this.set({ outgoing: this.state.outgoing.filter((o) => o.id !== id) });
@@ -160,7 +198,7 @@ export class Sync {
     const generation = ++this.generation;
     this.set({ synced: false });
     try {
-      await Promise.all([this.loadSessions(), ...[...this.open].map((id) => this.load(id))]);
+      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), ...[...this.open].map((id) => this.load(id))]);
       if (generation === this.generation) this.set({ synced: true, error: undefined });
     } catch (error) {
       if (generation === this.generation) this.set({ error: errorText(error) });
@@ -175,8 +213,33 @@ export class Sync {
         return void this.resync();
       case 'lumen:run':
         return this.onRun(frame.payload as RunEvent);
+      case 'lumen:gatekeeper':
+        return this.onGatekeeper(frame.payload as GatekeeperEvent);
     }
-    // lumen:gatekeeper (M4) and lumen:usage (M6) have no store yet.
+    // lumen:usage (M6) has no store yet.
+  }
+
+  private onGatekeeper(event: GatekeeperEvent) {
+    if ('resync' in event) return void Promise.all([...this.open].map((id) => this.loadApprovals(id)));
+    const sessionId = 'changed' in event ? event.changed.scope.sessionId : event.session.scope.sessionId;
+    // The snapshot in flight may be older than this change: read it once more afterwards.
+    if (this.approvalLoads.has(sessionId)) return void this.approvalLoads.set(sessionId, true);
+    if ('changed' in event) {
+      const request = event.changed;
+      const current = this.state.approvals[request.scope.sessionId];
+      if (!current) return;
+      const index = current.requests.findIndex((r) => r.id === request.id);
+      const requests = index >= 0 ? current.requests.with(index, request) : [...current.requests, request];
+      return this.set({ approvals: { ...this.state.approvals, [request.scope.sessionId]: { ...current, requests } } });
+    }
+    if ('session' in event) {
+      const session = event.session;
+      const current = this.state.approvals[session.scope.sessionId];
+      if (!current) return;
+      const index = current.sessions.findIndex((s) => s.scope.connectionId === session.scope.connectionId);
+      const sessions = index >= 0 ? current.sessions.with(index, session) : [...current.sessions, session];
+      this.set({ approvals: { ...this.state.approvals, [session.scope.sessionId]: { ...current, sessions } } });
+    }
   }
 
   private onConnection(connection: Connection) {
@@ -188,6 +251,7 @@ export class Sync {
   private onRun(event: RunEvent) {
     // Session status is not persisted per event: the list is the truth, so read it again.
     if (!event.messageId || event.kind === 'start' || event.kind === 'done') this.scheduleSessions();
+    if (QUESTION_KINDS.has(event.kind)) this.scheduleQuestions();
     if (!event.messageId || !this.open.has(event.sessionId)) return;
     const buffer = this.buffers.get(event.sessionId);
     if (buffer) return void buffer.push(event);
@@ -197,6 +261,8 @@ export class Sync {
     }
     const transcript = this.state.transcripts[event.sessionId];
     if (!transcript) return;
+    // The saved reply can hold rows that were never streamed (resume and recovery state).
+    if (event.kind === 'done') void this.refreshTail(event.sessionId);
     const next = apply(transcript, event);
     if (next === transcript) return;
     this.set({ transcripts: { ...this.state.transcripts, [event.sessionId]: next } });
@@ -210,6 +276,34 @@ export class Sync {
     }, SESSION_REFRESH_MS);
   }
 
+  private scheduleQuestions() {
+    clearTimeout(this.questionRefresh);
+    this.questionRefresh = setTimeout(() => {
+      // Unknown is not "none": the cards say the status could not be read.
+      this.loadQuestions().catch(() => this.set({ questions: null }));
+    }, QUESTION_REFRESH_MS);
+  }
+
+  private async loadQuestions() {
+    this.set({ questions: (await this.transport.call('pending_questions', {})) as string[] });
+  }
+
+  private async loadApprovals(id: string): Promise<void> {
+    if (this.approvalLoads.has(id)) return void this.approvalLoads.set(id, true);
+    this.approvalLoads.set(id, false);
+    let approvals: Approvals;
+    try {
+      approvals = (await this.transport.call('gatekeeper_snapshot', { chat: id })) as ApprovalSnapshot;
+    } catch (error) {
+      approvals = { requests: [], sessions: [], error: errorText(error) };
+    }
+    const again = this.approvalLoads.get(id);
+    this.approvalLoads.delete(id);
+    if (!this.open.has(id)) return;
+    this.set({ approvals: { ...this.state.approvals, [id]: approvals } });
+    if (again) return this.loadApprovals(id);
+  }
+
   private async loadSessions() {
     // M5 adds paging and search; the first page is enough for the shell.
     const sessions = await this.transport.call('list_sessions', { search: '', offset: 0 });
@@ -217,6 +311,8 @@ export class Sync {
   }
 
   private async load(id: string) {
+    // Approvals load beside the transcript; a journal error shows on its own.
+    void this.loadApprovals(id);
     const token = (this.loads.get(id) ?? 0) + 1;
     this.loads.set(id, token);
     if (!this.buffers.has(id)) this.buffers.set(id, []);
@@ -251,6 +347,25 @@ export class Sync {
         },
       });
     }
+  }
+
+  /** Reads the newest messages again and puts the saved copies in place of the folded ones. */
+  private async refreshTail(id: string) {
+    let tail: Message[];
+    try {
+      tail = (await this.transport.call('get_messages', { id, limit: TAIL })) as Message[];
+    } catch {
+      return; // The folded copy stays; the next resync reads everything again.
+    }
+    const transcript = this.state.transcripts[id];
+    if (!transcript || !this.open.has(id) || this.buffers.has(id)) return;
+    let messages = transcript.messages;
+    for (const saved of tail) {
+      const index = messages.findIndex((m) => m.id === saved.id);
+      messages = index >= 0 ? messages.with(index, saved) : [...messages, saved];
+    }
+    this.set({ transcripts: { ...this.state.transcripts, [id]: { ...transcript, messages } } });
+    this.prune(id);
   }
 
   private set(patch: Partial<SyncState>) {

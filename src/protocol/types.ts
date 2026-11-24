@@ -127,3 +127,114 @@ export const receipted = new Set([
 export function unconfirmedId(error: string): string | null {
   return /^Cannot confirm command ([0-9a-f-]{36}):/.exec(error)?.[1] ?? null;
 }
+
+// Attention (M4): native questions and Gatekeeper approvals.
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface Question {
+  id: string;
+  header: string;
+  question: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+  /** The answer goes to the CLI only: never into the store, the DOM after sending, or logs. */
+  secret: boolean;
+  optional: boolean;
+}
+
+/** The `interaction` activity: what the agent is waiting for. */
+export interface Interaction {
+  id: string;
+  questions: Question[];
+  kind?: 'connector' | 'permission';
+  /** For connectors: the question whose answer is Accept, Decline or Cancel. */
+  actionId?: string;
+  /** For a connector's sign-in page: its origin, shown before opening it. */
+  urlOrigin?: string;
+  worker?: Worker | null;
+}
+
+/** The `interaction-result` activity. Secret answers and connector answers are left out. */
+export interface InteractionResult {
+  id: string;
+  answers: Record<string, string[]>;
+  cancelled?: boolean;
+  kind?: string;
+}
+
+export type Answers = Record<string, string[]>;
+
+export interface Scope {
+  sessionId: string;
+  connectionId: string;
+  provider: 'codex' | 'claude';
+  providerSessionId: string;
+  turnId: string;
+}
+
+export interface Worker {
+  agent: string;
+  taskId: string;
+  task: string;
+}
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'timedOut' | 'stale' | 'resolved';
+export type ApprovalAction = 'approve' | 'reject' | 'cancel';
+
+export interface ApprovalRequest {
+  id: string;
+  scope: Scope;
+  providerItemId: string | null;
+  kind: 'command' | 'fileChange' | 'tool' | 'unsupported';
+  tool: string;
+  command: string | null;
+  cwd: string;
+  reason: string | null;
+  diffs: { path: string; diff: string }[];
+  /** The provider's exact payload, shown as text only. */
+  input: unknown;
+  canApprove: boolean;
+  unavailableReason: string | null;
+  whitelistEligible: boolean;
+  createdAtMs: number;
+  expiresAtMs: number;
+  status: ApprovalStatus;
+  delivery: 'none' | 'ready' | 'sent' | 'uncertain';
+  decision: ApprovalAction | null;
+  decisionSource: string | null;
+  note: string | null;
+  worker?: Worker | null;
+}
+
+export interface ApprovalSession {
+  scope: Scope;
+  cwd: string;
+  availability: { state: 'available'; version: string; evidence: string } | { state: 'unavailable'; reason: string };
+  worker?: Worker | null;
+}
+
+export interface ApprovalSnapshot {
+  requests: ApprovalRequest[];
+  sessions: ApprovalSession[];
+}
+
+/** `lumen:gatekeeper` payloads. */
+export type GatekeeperEvent = { changed: ApprovalRequest } | { session: ApprovalSession } | { resync: true };
+
+export interface RewindPreview {
+  files: string[];
+  restorable: boolean;
+  laterMessages: number;
+}
+
+/** What `gatekeeper_decide` accepts: the request's id and scope, never its content. */
+export interface ApprovalDecision {
+  requestId: string;
+  scope: Scope;
+  action: ApprovalAction;
+  note: string | null;
+}

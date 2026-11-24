@@ -37,6 +37,8 @@ test('a daemon crash mid-stream keeps the partial reply once and shows the turn 
 
     await expect(page.getByRole('status')).toHaveText('Connected', { timeout: 15_000 });
     await expect(page.locator('main header')).toContainText('Interrupted');
+    // Kept, said so, and not continued: the next step is the user's.
+    await expect(page.getByText('This reply was interrupted. Lumen kept what it had written and did not continue by itself.')).toBeVisible();
     await expect(page.getByText('What you see may be out of date')).toBeHidden();
     const text = await log.innerText();
     expect(text.split('DAEMON_PARTIAL').length - 1, text).toBe(1);

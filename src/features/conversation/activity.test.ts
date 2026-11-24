@@ -20,7 +20,26 @@ describe('activity', () => {
     expect(stepTitle({ kind: 'command', text: 'npm test\nmore output' }).detail).toBe('npm test');
     expect(roleOf('kind-from-the-future')).toBe('step');
     expect(roleOf('tool-start')).toBe('hidden');
-    expect(roleOf('interaction')).toBe('later');
+    expect(roleOf('interaction')).toBe('question');
+    expect(roleOf('interaction-result')).toBe('hidden');
+    expect(roleOf('orchestra')).toBe('later');
+  });
+
+  it('pairs each question with its answer, and has no answer for a secret one', () => {
+    const request = { id: 'q', questions: [{ id: 'a', header: '', question: 'Which?', options: [], multiSelect: false, secret: false, optional: false }, { id: 'k', header: '', question: 'Key?', options: [], multiSelect: false, secret: true, optional: false }] };
+    const parts = partsOf({
+      id: 'm',
+      role: 'assistant',
+      text: '',
+      eventSeq: 0,
+      activity: [
+        { kind: 'interaction', text: JSON.stringify(request) },
+        { kind: 'interaction-result', text: JSON.stringify({ id: 'q', answers: { a: ['Native'] } }) },
+      ],
+    });
+    expect(parts.asked).toHaveLength(1);
+    expect(parts.asked[0].result?.answers).toEqual({ a: ['Native'] });
+    expect(parts.steps).toEqual([]);
   });
 
   it('separates reasoning, errors, the model line and steps', () => {

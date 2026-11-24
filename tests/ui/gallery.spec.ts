@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const styles = ['ink', 'satin'] as const;
 const themes = ['light', 'dark'] as const;
-const views = ['app', 'board', 'components'] as const;
+const views = ['app', 'board', 'components', 'attention'] as const;
 
 async function open(page: Page, query: Record<string, string>) {
   await page.goto('/gallery.html?' + new URLSearchParams({ toolbar: '0', locale: 'en', ...query }));
@@ -100,4 +100,41 @@ test.describe('screenshots', () => {
           await open(page, { style, theme, view });
           await expect(page).toHaveScreenshot(`${view}-${style}-${theme}.png`, { fullPage: false });
         });
+});
+
+test('attention states say why a request cannot be decided, and show hidden characters', async ({ page }) => {
+  await open(page, { view: 'attention' });
+  const card = (name: string) => page.getByRole('region', { name }).filter({ has: page.getByLabel('Command') });
+  const command = page.getByRole('region', { name: 'Claude wants to run a command' });
+  await expect(command.first().getByText('Expires in 4:32')).toBeVisible();
+  await expect(page.getByText('This request has expired.')).toBeVisible();
+  await expect(page.getByText(/The agent working on “Write the tests” has stopped/)).toBeVisible();
+  await expect(page.getByText(/Lumen cannot approve this: This tool requires an adapter/)).toBeVisible();
+  await expect(page.getByRole('region', { name: /cannot approve/ }).getByRole('button', { name: 'Approve once' })).toBeDisabled();
+  await expect(page.getByRole('alert').filter({ hasText: 'could not confirm that the agent received' })).toBeVisible();
+  await expect(page.getByText('Expired', { exact: true })).toBeVisible();
+  // The right-to-left override in the command shows as an escape, not as reversed text.
+  await expect(card('Claude wants to run a command').getByLabel('Command').filter({ hasText: 'echo safe' })).toHaveText(String.raw`echo safe\u202e && del *.txt`);
+  // Only Codex can be stopped from its card; its diff is shown.
+  await expect(page.getByRole('button', { name: 'Stop the turn' })).toHaveCount(1);
+  await expect(page.getByRole('region', { name: 'Codex wants to change files' })).toContainText('LIVE_LIMIT');
+  await expect(page.getByLabel('Your answer (not saved)')).toHaveAttribute('type', 'password');
+  await expect(page.getByText('Lumen could not check whether the agent is still waiting.')).toBeVisible();
+});
+
+test('a question card works from the keyboard', async ({ page }) => {
+  await open(page, { view: 'attention' });
+  const form = page.getByRole('form', { name: 'The agent has questions' });
+  const send = form.getByRole('button', { name: 'Send answers' });
+  await expect(send).toBeDisabled();
+  await form.getByRole('radio', { name: /Native/ }).focus();
+  await page.keyboard.press('Space');
+  await expect(form.getByRole('radio', { name: /Native/ })).toBeChecked();
+  await page.keyboard.press('ArrowDown');
+  await expect(form.getByRole('radio', { name: /Custom/ })).toBeChecked();
+  await form.getByLabel('Your answer (not saved)').fill('token');
+  await expect(send).toBeEnabled();
+  // A typed answer replaces the chosen option of a single-answer question.
+  await form.getByLabel('A different answer').first().fill('Something else');
+  await expect(form.getByRole('radio', { name: /Custom/ })).not.toBeChecked();
 });

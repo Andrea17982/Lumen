@@ -38,6 +38,16 @@ async fn daemon_call(
             }
             Ok(Value::Null)
         }
+        // A connector's sign-in URL (validated by the daemon: HTTPS or loopback HTTP, no
+        // credentials) can carry a secret in its query: the shell opens it, the page never sees it.
+        "open_connector_url" => {
+            use tauri_plugin_opener::OpenerExt;
+            let url = value.as_str().ok_or("Invalid connector sign-in URL")?;
+            app.opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| e.to_string())?;
+            Ok(Value::Null)
+        }
         _ => Ok(value),
     }
 }

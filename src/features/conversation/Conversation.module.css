@@ -244,3 +244,49 @@
   color: var(--text-tertiary);
   font-size: var(--text-s);
 }
+.messageActions {
+  display: flex;
+  justify-content: flex-end;
+  min-height: var(--control-height);
+  margin-top: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.message:hover .messageActions,
+.messageActions:focus-within {
+  opacity: 1;
+}
+.messageActions:empty {
+  display: none;
+}
+.asked {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--separator);
+  font-size: var(--text-m);
+}
+.asked dt {
+  color: var(--text-secondary);
+}
+.asked dd {
+  margin: 0 0 var(--space-2);
+}
+.asked div:last-child dd {
+  margin-bottom: 0;
+}
+.rewindError {
+  max-width: var(--conversation-width);
+  margin: 0 auto var(--space-2);
+  padding: 0 var(--space-6);
+  color: var(--status-danger);
+  font-size: var(--text-s);
+}
+.rewindBody p {
+  margin: 0 0 var(--space-2);
+}
+.rewindBody ul {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-5);
+}

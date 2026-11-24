@@ -16,7 +16,7 @@ const MAX_IMAGE = 24 * 1024 * 1024;
  * the session and is saved at once. Stop asks the daemon to cancel; "stopped" shows only when
  * the daemon reports it.
  */
-export function Composer({ session }: { session: Session }) {
+export function Composer({ session, draft }: { session: Session; draft?: { text: string } | null }) {
   const t = useT();
   const locale = useLocale();
   const sync = useSyncClient();
@@ -35,6 +35,13 @@ export function Composer({ session }: { session: Session }) {
   const [sending, setSending] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const running = session.status === 'running' || session.status === 'queued' || session.status === 'waiting';
+
+  // Text handed back by the conversation (after a rewind) replaces what is typed.
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    input.current?.focus();
+  }, [draft]);
 
   useEffect(() => {
     sync.call<Account[]>('list_accounts').then(setAccounts, () => setAccounts([]));

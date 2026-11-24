@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n';
 import type { Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
+import { Attention } from '../attention/Attention';
 import { Composer } from '../composer/Composer';
 import { MarkdownHostContext, type MarkdownHost } from './Markdown';
 import { ConversationContext, type ConversationHost } from './MessageView';
+import { RewindContext, useRewind, type RewindHost } from './Rewind';
 import { Transcript } from './Transcript';
 import s from './Conversation.module.css';
 
@@ -18,6 +20,14 @@ export function Conversation({ session }: { session: Session }) {
   const allOutgoing = useSyncState((st) => st.outgoing);
   const outgoing = useMemo(() => allOutgoing.filter((o) => o.sessionId === session.id), [allOutgoing, session.id]);
   const running = ACTIVE.has(session.status);
+  const connected = useSyncState((st) => st.connection.state === 'connected');
+  // A rewind gives the original prompt back to the composer, to edit and send again.
+  const [draft, setDraft] = useState<{ text: string } | null>(null);
+  const rewind = useRewind(session.id, (command, args) => sync.call(command, args), (prompt) => {
+    setDraft({ text: prompt });
+    void sync.resync();
+  });
+  const rewindHost = useMemo<RewindHost>(() => ({ enabled: connected && !running, start: rewind.start }), [connected, running, rewind.start]);
 
   const host = useMemo<ConversationHost>(() => ({ sessionId: session.id, folder: session.workspace, call: (command, args) => sync.call(command, args) }), [sync, session.id, session.workspace]);
   const links = useMemo<MarkdownHost>(
@@ -31,6 +41,7 @@ export function Conversation({ session }: { session: Session }) {
 
   return (
     <ConversationContext value={host}>
+      <RewindContext value={rewindHost}>
       <MarkdownHostContext value={links}>
         <Announcer status={session.status} />
         {!transcript ? (
@@ -40,8 +51,11 @@ export function Conversation({ session }: { session: Session }) {
         ) : (
           <Transcript messages={transcript.messages} running={running} outgoing={outgoing} onDismiss={(id) => sync.dismiss(id)} />
         )}
-        <Composer session={session} />
+        {rewind.dialog}
+        <Attention session={session} />
+        <Composer session={session} draft={draft} />
       </MarkdownHostContext>
+      </RewindContext>
     </ConversationContext>
   );
 }

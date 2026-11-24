@@ -140,3 +140,12 @@
   margin: auto;
   color: var(--text-secondary);
 }
+.spacer {
+  flex: 1;
+}
+.headerError {
+  margin: 0;
+  padding: var(--space-2) var(--space-6);
+  color: var(--status-danger);
+  font-size: var(--text-s);
+}

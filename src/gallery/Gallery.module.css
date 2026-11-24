@@ -27,3 +27,13 @@
   color: var(--text-primary);
   font-weight: var(--weight-medium);
 }
+.states {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) 96px;
+  background: var(--surface-canvas);
+  --conversation-width: 720px;
+}

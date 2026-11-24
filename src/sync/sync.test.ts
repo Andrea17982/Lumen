@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Connection, Frame, Message, RunEvent } from '../protocol/types';
+import type { ApprovalRequest, Connection, Frame, Message, RunEvent } from '../protocol/types';
 import type { Transport } from '../transport/types';
 import { apply, FIRST_PAGE, PAGE, Sync } from './sync';
 
@@ -118,7 +118,7 @@ describe('Sync', () => {
     daemon.calls.length = 0;
     daemon.emit({ event: 'lumen:resync', payload: {} });
     await settle();
-    expect(daemon.calls.sort()).toEqual(['get_messages', 'list_sessions']);
+    expect(daemon.calls.sort()).toEqual(['gatekeeper_snapshot', 'get_messages', 'list_sessions', 'pending_questions']);
   });
 
   it('reads the session list again when a turn starts or ends', async () => {
@@ -221,5 +221,88 @@ describe('Sync', () => {
     expect(transcript.messages.map((m) => m.id)).toEqual(stored.map((m) => m.id));
     expect(pages).toEqual([{ before: undefined, limit: FIRST_PAGE }, { before: stored[7 + PAGE].id, limit: PAGE }, { before: 'm7', limit: PAGE }]);
     expect(transcript.messages.at(-1)!.text).toBe(`#${stored.length - 1}++`);
+  });
+
+  it('keeps approvals current from the snapshot and Gatekeeper events, reading again after a change mid-read', async () => {
+    const request = (id: string, status = 'pending', sessionId = 's1') => ({ id, scope: { sessionId, connectionId: 'c1', provider: 'claude', providerSessionId: 'p', turnId: 't' }, status }) as unknown as ApprovalRequest;
+    const reads: ReturnType<typeof deferred<unknown>>[] = [];
+    const daemon = fakeDaemon({
+      list_sessions: () => [session('running')],
+      get_messages: () => [user],
+      pending_questions: () => [],
+      gatekeeper_snapshot: () => {
+        const read = deferred<unknown>();
+        reads.push(read);
+        return read.promise;
+      },
+    });
+    const sync = new Sync(daemon.transport);
+    sync.watch('s1');
+    await sync.start();
+    await settle();
+    expect(reads).toHaveLength(1);
+    // A change while the snapshot is in flight: the snapshot may predate it.
+    daemon.emit({ event: 'lumen:gatekeeper', payload: { changed: request('a') } });
+    reads[0].resolve({ requests: [], sessions: [] });
+    await settle();
+    expect(reads).toHaveLength(2);
+    reads[1].resolve({ requests: [request('a')], sessions: [] });
+    await settle();
+    expect(sync.getState().approvals.s1.requests.map((r) => r.id)).toEqual(['a']);
+    daemon.emit({ event: 'lumen:gatekeeper', payload: { changed: request('a', 'approved') } });
+    daemon.emit({ event: 'lumen:gatekeeper', payload: { changed: request('b', 'pending', 'other') } });
+    expect(sync.getState().approvals.s1.requests.map((r) => [r.id, r.status])).toEqual([['a', 'approved']]);
+    expect(sync.getState().approvals.other).toBeUndefined();
+  });
+
+  it('shows an unreadable approval journal as an error, not as no approvals', async () => {
+    const daemon = fakeDaemon({ list_sessions: () => [], get_messages: () => [], pending_questions: () => [], gatekeeper_snapshot: () => Promise.reject('unavailable: The approval journal could not be opened.') });
+    const sync = new Sync(daemon.transport);
+    sync.watch('s1');
+    await sync.start();
+    await settle();
+    expect(sync.getState().approvals.s1.error).toMatch(/journal/);
+  });
+
+  it('reads the open questions again when one is asked or answered, and blocks the session on an unknown answer outcome', async () => {
+    vi.useFakeTimers();
+    let open = ['q1'];
+    const daemon = fakeDaemon({
+      list_sessions: () => [session('waiting')],
+      get_messages: () => [user],
+      gatekeeper_snapshot: () => ({ requests: [], sessions: [] }),
+      pending_questions: () => open,
+      answer_question: () => Promise.reject('Cannot confirm command 0b7c4a7e-1f43-4d2b-9a40-3f6a1c2d9e10: transport closed. Review its result before submitting new work.'),
+    });
+    const sync = new Sync(daemon.transport);
+    sync.watch('s1');
+    await sync.start();
+    await vi.runAllTimersAsync();
+    expect(sync.getState().questions).toEqual(['q1']);
+    open = [];
+    await expect(sync.answer('s1', 'q1', { a: ['secret value'] })).rejects.toMatch(/Cannot confirm/);
+    await vi.runAllTimersAsync();
+    expect(sync.getState().questions).toEqual([]);
+    expect(sync.blocked('s1')).toBe(true);
+    // Nothing the client keeps holds the answer.
+    expect(JSON.stringify(sync.getState())).not.toContain('secret value');
+    vi.useRealTimers();
+  });
+
+  it('puts the saved reply in place of the folded one when a turn ends', async () => {
+    let saved: Message[] = [user, partial('Hi', 11)];
+    const daemon = fakeDaemon({ list_sessions: () => [session('running')], get_messages: () => saved, gatekeeper_snapshot: () => ({ requests: [], sessions: [] }), pending_questions: () => [] });
+    const sync = new Sync(daemon.transport);
+    sync.watch('s1');
+    await sync.start();
+    await settle();
+    // Saved but never streamed: the native session a quota resume needs.
+    saved = [user, { ...partial('Hi', 12), activity: [{ kind: 'native', text: '{}' }] }];
+    daemon.emit(run(12, 'done', 'completed'));
+    await settle();
+    await settle();
+    const messages = sync.getState().transcripts.s1.messages;
+    expect(messages.map((m) => m.id)).toEqual(['m1', 'm2']);
+    expect(messages[1].activity.map((a) => a.kind)).toEqual(['native']);
   });
 });

@@ -2,9 +2,10 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef, useState }
 import { useT } from '../../i18n';
 import type { Catalog } from '../../i18n/en';
 import type { Activity, Message } from '../../protocol/types';
-import { filesOf, opening, partsOf, stepBody, stepTitle } from './activity';
+import { filesOf, opening, partsOf, stepBody, stepTitle, type MessageParts } from './activity';
 import { blocks, StreamingBlocks } from './blocks';
 import { CodeBlock, Markdown } from './Markdown';
+import { RewindButton } from './Rewind';
 import s from './Conversation.module.css';
 
 /** What a message needs from its conversation: where it lives and how to ask the daemon. */
@@ -45,7 +46,13 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
         </details>
       )}
       {parts.steps.length > 0 && <Steps message={message} steps={parts.steps} live={live} />}
+      {parts.asked.length > 0 && <Asked asked={parts.asked} />}
       {user ? <p className={s.userText}>{parts.answer}</p> : <Answer text={parts.answer} live={live} />}
+      {user && (
+        <div className={s.messageActions}>
+          <RewindButton messageId={message.id} />
+        </div>
+      )}
       {parts.images.map((path) => (
         <WorkspaceImage key={path} path={path} />
       ))}
@@ -57,6 +64,26 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
     </article>
   );
 });
+
+/** What the agent asked and what it was told. Open questions are answered above the composer. */
+function Asked({ asked }: { asked: MessageParts['asked'] }) {
+  const t = useT();
+  return (
+    <dl className={s.asked}>
+      {asked.flatMap(({ request, result }) =>
+        request.questions.map((q) => {
+          const answer = result?.cancelled ? t.attention.closed : result ? (result.answers[q.id]?.join(', ') ?? (q.secret ? t.attention.notSaved : '—')) : '…';
+          return (
+            <div key={`${request.id}:${q.id}`}>
+              <dt>{q.question}</dt>
+              <dd>{answer}</dd>
+            </div>
+          );
+        }),
+      )}
+    </dl>
+  );
+}
 
 function Answer({ text, live }: { text: string; live: boolean }) {
   const stream = useRef<StreamingBlocks | null>(null);
