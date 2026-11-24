@@ -356,3 +356,19 @@ textarea.input {
   background: var(--status-danger-subtle);
   color: var(--status-danger-text);
 }
+
+/* ---------- Toolbar select, hidden label ---------- */
+.compactSelect {
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-m);
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

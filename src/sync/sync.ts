@@ -1,4 +1,4 @@
-import { unconfirmedId, type Connection, type Frame, type Message, type RunEvent, type Session } from '../protocol/types';
+import { unconfirmedId, type Connection, type Frame, type Message, type RunOptions, type RunEvent, type Session } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
 
 /**
@@ -9,13 +9,26 @@ export interface Transcript {
   messages: Message[];
   /** Highest event already reflected; older or repeated events are dropped. */
   seq: number;
-  loaded: boolean;
+  /** False while earlier messages are still being read, newest first, in pages. */
+  complete: boolean;
 }
 
 export interface Unconfirmed {
   id: string;
   command: string;
   sessionId?: string;
+}
+
+/**
+ * The one optimistic state: the user's own message, from Send until the daemon's transcript
+ * holds it (same id). A failure stays visible with its error; nothing is resent by itself.
+ */
+export interface Outgoing {
+  id: string;
+  sessionId: string;
+  text: string;
+  state: 'sending' | 'sent' | 'failed' | 'unconfirmed';
+  error?: string;
 }
 
 export interface SyncState {
@@ -27,6 +40,7 @@ export interface SyncState {
   sessions: Session[];
   transcripts: Readonly<Record<string, Transcript>>;
   unconfirmed: Unconfirmed[];
+  outgoing: Outgoing[];
   error?: string;
 }
 
@@ -34,9 +48,12 @@ const LIVE_LIMIT = 20_000;
 // Kinds the daemon folds only once when replaying, because the saved message may already hold them.
 const SAVED_ONCE = new Set(['interaction', 'interaction-result', 'quota-scheduled', 'browser', 'image']);
 const SESSION_REFRESH_MS = 120;
+/** The newest page shows at once; earlier pages follow in the background (M0 strategy). */
+export const FIRST_PAGE = 100;
+export const PAGE = 1000;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], transcripts: {}, unconfirmed: [] };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], transcripts: {}, unconfirmed: [], outgoing: [] };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -98,6 +115,41 @@ export class Sync {
     }
   }
 
+  /** True while an earlier command in this session has an unknown outcome. */
+  blocked(sessionId: string) {
+    return this.state.unconfirmed.some((u) => u.sessionId === sessionId);
+  }
+
+  async send(sessionId: string, text: string, options: RunOptions): Promise<void> {
+    if (this.blocked(sessionId)) throw 'Check the result of the last action before sending more work';
+    const id = crypto.randomUUID();
+    const update = (patch: Partial<Outgoing>) => this.set({ outgoing: this.state.outgoing.map((o) => (o.id === id ? { ...o, ...patch } : o)) });
+    this.set({ outgoing: [...this.state.outgoing, { id, sessionId, text, state: 'sending' }] });
+    try {
+      // The reply's own `plan` activity says which agent was chosen and why.
+      await this.call('send_message', { id: sessionId, text, options, clientMessageId: id });
+      update({ state: 'sent' });
+      this.prune(sessionId);
+    } catch (error) {
+      update(unconfirmedId(String(error)) ? { state: 'unconfirmed', error: String(error) } : { state: 'failed', error: String(error) });
+      throw error;
+    }
+  }
+
+  /** Removes a failed message the user has dismissed. */
+  dismiss(id: string) {
+    this.set({ outgoing: this.state.outgoing.filter((o) => o.id !== id) });
+  }
+
+  /** Outgoing messages the transcript now holds are the daemon's, not ours. */
+  private prune(sessionId: string) {
+    const messages = this.state.transcripts[sessionId]?.messages;
+    if (!messages) return;
+    const known = new Set(messages.map((m) => m.id));
+    const outgoing = this.state.outgoing.filter((o) => o.sessionId !== sessionId || !known.has(o.id));
+    if (outgoing.length !== this.state.outgoing.length) this.set({ outgoing });
+  }
+
   /** The user has checked the result of a command Lumen could not confirm. */
   acknowledge(id: string) {
     this.set({ unconfirmed: this.state.unconfirmed.filter((u) => u.id !== id) });
@@ -146,7 +198,9 @@ export class Sync {
     const transcript = this.state.transcripts[event.sessionId];
     if (!transcript) return;
     const next = apply(transcript, event);
-    if (next !== transcript) this.set({ transcripts: { ...this.state.transcripts, [event.sessionId]: next } });
+    if (next === transcript) return;
+    this.set({ transcripts: { ...this.state.transcripts, [event.sessionId]: next } });
+    if (next.messages.length !== transcript.messages.length) this.prune(event.sessionId);
   }
 
   private scheduleSessions() {
@@ -168,24 +222,45 @@ export class Sync {
     if (!this.buffers.has(id)) this.buffers.set(id, []);
     let messages: Message[];
     try {
-      messages = (await this.transport.call('get_messages', { id })) as Message[];
+      messages = (await this.transport.call('get_messages', { id, limit: FIRST_PAGE })) as Message[];
     } catch (error) {
       if (this.loads.get(id) === token) this.buffers.delete(id);
       throw error;
     }
-    if (this.loads.get(id) !== token || !this.open.has(id)) return;
+    const current = () => this.loads.get(id) === token && this.open.has(id);
+    if (!current()) return;
     const buffered = this.buffers.get(id) ?? [];
     this.buffers.delete(id);
-    const seq = messages.reduce((max, m) => Math.max(max, m.snapshotSeq ?? 0, m.eventSeq ?? 0), 0);
-    let transcript: Transcript = { messages, seq, loaded: true };
+    let transcript: Transcript = { messages, seq: highest(messages), complete: messages.length < FIRST_PAGE };
     for (const event of buffered) transcript = apply(transcript, event);
     this.set({ transcripts: { ...this.state.transcripts, [id]: transcript } });
+    this.prune(id);
+    // Earlier pages: each one was read after anything already applied, so where an id is in both,
+    // the page's copy is the newer one and sits in the right place. A page never raises `seq`:
+    // its snapshotSeq covers events of newer messages that may still be on their way.
+    while (current() && !this.state.transcripts[id].complete) {
+      const loaded = this.state.transcripts[id];
+      const page = (await this.transport.call('get_messages', { id, before: loaded.messages[0].id, limit: PAGE })) as Message[];
+      if (!current()) return;
+      const latest = this.state.transcripts[id];
+      const ids = new Set(page.map((m) => m.id));
+      this.set({
+        transcripts: {
+          ...this.state.transcripts,
+          [id]: { messages: [...page, ...latest.messages.filter((m) => !ids.has(m.id))], seq: latest.seq, complete: page.length < PAGE },
+        },
+      });
+    }
   }
 
   private set(patch: Partial<SyncState>) {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
+}
+
+function highest(messages: Message[]) {
+  return messages.reduce((max, m) => Math.max(max, m.snapshotSeq ?? 0, m.eventSeq ?? 0), 0);
 }
 
 /** Folds one event into a transcript as the daemon's `replay_event` does. Returns the same object for a dropped event. */
@@ -199,7 +274,7 @@ export function apply(transcript: Transcript, event: RunEvent): Transcript {
   return { ...transcript, messages, seq };
 }
 
-function fold(message: Message, { kind, text, seq }: RunEvent): Message {
+function fold(message: Message, { kind, text, seq, detail }: RunEvent): Message {
   const eventSeq = seq ?? message.eventSeq;
   switch (kind) {
     case 'delta':
@@ -226,7 +301,7 @@ function fold(message: Message, { kind, text, seq }: RunEvent): Message {
     default: {
       // Unknown kinds are kept as generic activity rows; M3 renders and merges them.
       let activity = kind === 'orchestra' ? message.activity.filter((a) => a.kind !== 'orchestra') : message.activity;
-      if (!(SAVED_ONCE.has(kind) && activity.some((a) => a.kind === kind && a.text === text))) activity = [...activity, { kind, text }];
+      if (!(SAVED_ONCE.has(kind) && activity.some((a) => a.kind === kind && a.text === text))) activity = [...activity, detail ? { kind, text, detail } : { kind, text }];
       return { ...message, activity, eventSeq };
     }
   }

@@ -1,5 +1,17 @@
 //! Compact streamed activity without dropping metadata needed to resume or answer input.
 use crate::models::Activity;
+
+/// Whole tool output and diffs one message keeps; past it, new steps keep 16,000 characters,
+/// as before, so a message stays bounded however many large outputs a turn produces.
+const MESSAGE_KEPT: usize = 8 * 1024 * 1024;
+
+fn kept(rows: &[Activity]) -> usize {
+    rows.iter()
+        .filter(|a| crate::wire::BOUNDED.contains(&a.kind.as_str()) && a.kind != "code")
+        .map(|a| a.text.len())
+        .sum()
+}
+
 pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
     if activity.kind == "execution" {
         if let Ok(incoming) = serde_json::from_str::<serde_json::Value>(&activity.text) {
@@ -82,6 +94,12 @@ pub fn record(rows: &mut Vec<Activity>, mut activity: Activity) {
                 }
             }
         }
+    } else if crate::wire::BOUNDED.contains(&activity.kind.as_str())
+        && activity.kind != "code"
+        && kept(rows) + activity.text.len().min(crate::wire::KEPT) <= MESSAGE_KEPT
+    {
+        // Tool output and diffs stay whole up to the store cap: `activity_detail` serves them.
+        crate::wire::keep(&activity.kind, &mut activity.text);
     } else if ![
         "interaction",
         "interaction-result",
@@ -139,5 +157,25 @@ mod tests {
         assert_eq!(rows[0].text, "base");
         let child: serde_json::Value = serde_json::from_str(&rows[1].text).unwrap();
         assert_eq!(child["text"].as_str().unwrap().len(), 2000);
+    }
+
+    #[test]
+    fn one_message_keeps_whole_output_only_up_to_its_budget() {
+        let mut rows = vec![];
+        for _ in 0..10 {
+            record(
+                &mut rows,
+                Activity {
+                    kind: "tool".into(),
+                    text: "x".repeat(crate::wire::KEPT + 1),
+                },
+            );
+        }
+        assert_eq!(rows.iter().filter(|a| a.text.len() > 16000).count(), 8);
+        assert_eq!(
+            rows.last().unwrap().text.len(),
+            16000,
+            "past the budget, the old cut applies"
+        );
     }
 }

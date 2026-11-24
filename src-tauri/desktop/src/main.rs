@@ -14,11 +14,32 @@ use tauri::{Manager, State};
 
 #[tauri::command]
 async fn daemon_call(
+    app: tauri::AppHandle,
     bridge: State<'_, Arc<Bridge>>,
     command: String,
     args: Value,
 ) -> Result<Value, String> {
-    bridge.call(&command, args).await
+    let value = bridge.call(&command, args).await?;
+    match command.as_str() {
+        // The daemon validates the link (web URL without credentials, or a file inside the
+        // project) and the shell opens exactly what it returned. The page never opens anything.
+        // A project file is shown in its folder, never launched: agent text could otherwise
+        // link to a script and run it on one click.
+        "open_response_link" | "open_source_location" => {
+            use tauri_plugin_opener::OpenerExt;
+            if let Some(url) = value["url"].as_str() {
+                app.opener()
+                    .open_url(url, None::<&str>)
+                    .map_err(|e| e.to_string())?;
+            } else if let Some(path) = value["path"].as_str() {
+                app.opener()
+                    .reveal_item_in_dir(path)
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(Value::Null)
+        }
+        _ => Ok(value),
+    }
 }
 
 #[tauri::command]
@@ -57,7 +78,7 @@ fn locations(app: &tauri::App) -> Result<(PathBuf, PathBuf, PathBuf), String> {
 }
 
 fn main() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
     // Test builds: W3C WebDriver on 127.0.0.1 on TAURI_WEBDRIVER_PORT (tests/app/desktop.mjs).
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());

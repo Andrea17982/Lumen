@@ -152,6 +152,12 @@ if ($promptText.Contains('REPLAY_TOOL_FIXTURE') -or $promptText.Contains('REPLAY
     }
     exit 0
 }
+if ($promptText.Contains('LARGE_TOOL_FIXTURE') -and $Provider -eq 'claude') {
+    # A tool step over the 16 KiB wire limit: the client receives it shortened, with a detail digest.
+    Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='large-read';name='Read';input=@{file_path='large.txt';note=(('fixture line ' * 6) + "`n") * 600 + 'LARGE_TOOL_END'}})}}
+    Emit @{type='result';is_error=$false;result='Large tool fixture done.'}
+    exit 0
+}
 if ($promptText.Contains('OBS_PROMISE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$false;result='I will implement the requested changes.'}
     exit 0

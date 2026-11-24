@@ -386,9 +386,17 @@ fn delete_session(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
     workstate::remove_snapshot(&core, &id)?;
     core.store.delete(&id)
 }
+/// All messages, or with `limit` the last `limit` before message `before`: long sessions load
+/// newest first in replies far below the IPC frame limit.
 #[crate::command]
-fn get_messages(core: crate::CoreRef<'_>, id: String) -> Result<Vec<serde_json::Value>, String> {
+fn get_messages(
+    core: crate::CoreRef<'_>,
+    id: String,
+    before: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut messages = core.store.message_snapshots(&id)?;
+    wire::page(&mut messages, before.as_deref(), limit)?;
     wire::project_messages(&mut messages);
     Ok(messages)
 }

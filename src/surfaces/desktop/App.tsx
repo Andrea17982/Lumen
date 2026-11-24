@@ -3,15 +3,16 @@ import { Mark, Wordmark } from '../../brand/Logo';
 import { Badge, Button, type Tone } from '../../design/components';
 import { useAppearance } from '../../design/appearance';
 import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
-import type { Connection, Message } from '../../protocol/types';
+import { Conversation } from '../../features/conversation/Conversation';
+import type { Connection } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
 
 const tones: Record<string, Tone> = { running: 'accent', queued: 'neutral', waiting: 'warning', interrupted: 'warning', partial: 'warning', completed: 'success', failed: 'danger', error: 'danger' };
 
 /**
- * M2 desktop surface: the daemon's sessions and the selected transcript, kept in sync across
- * reconnections. The conversation view and composer arrive in M3.
+ * Desktop surface: the daemon's sessions and the selected conversation, kept in sync across
+ * reconnections. Projects and session management arrive in M5.
  */
 export function App() {
   useAppearance();
@@ -65,7 +66,7 @@ function Shell() {
               <h1>{session.title || t.untitled}</h1>
               <StatusBadge status={session.status} />
             </header>
-            <Transcript id={session.id} />
+            <Conversation key={session.id} session={session} />
           </>
         ) : (
           <p className={s.empty}>{t.chooseSession}</p>
@@ -126,28 +127,4 @@ function ConnectionBanner({ connection, stale }: { connection: Connection; stale
     );
   if (connection.state === 'reconnecting' || (connection.state === 'connected' && stale)) return <p className={s.banner}>{t.banner.stale}</p>;
   return null;
-}
-
-function Transcript({ id }: { id: string }) {
-  const t = useT();
-  const transcript = useSyncState((st) => st.transcripts[id]);
-  if (!transcript) return <p className={s.empty}>{t.loading}</p>;
-  if (transcript.messages.length === 0) return <p className={s.empty}>{t.emptyTranscript}</p>;
-  return (
-    <div className={s.transcript} role="log" aria-label={t.conversation}>
-      {transcript.messages.map((m) => (
-        <MessageView key={m.id} message={m} />
-      ))}
-    </div>
-  );
-}
-
-function MessageView({ message }: { message: Message }) {
-  const t = useT();
-  return (
-    <article className={s.message} data-role={message.role}>
-      <h2>{message.role === 'user' ? t.you : t.appName}</h2>
-      <p>{message.text}</p>
-    </article>
-  );
 }

@@ -3,57 +3,28 @@
 // relay its events, and recover on its own when the service dies mid-turn. Offline CLI fixtures;
 // opens a Lumen window on the desktop for about half a minute.
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { daemonClient, sleep } from '../daemon-harness.mjs';
-import { webdriver } from '../support/webdriver.mjs';
+import { alive, daemonPath, launchApp, requireBuilds } from '../support/app.mjs';
 
 if (process.platform !== 'win32') {
   console.log(JSON.stringify({ skipped: 'CLI fixtures are Windows-only' }));
   process.exit(0);
 }
-const app = path.resolve('src-tauri/desktop/target/debug/lumen-desktop.exe');
-const daemonExe = path.resolve('src-tauri/target/debug/lumen-daemon.exe');
-for (const file of [app, daemonExe]) assert(existsSync(file), `missing ${file}: see the commands in CLAUDE.md`);
-
-const freePort = () =>
-  new Promise((resolve) => {
-    const server = createServer().listen(0, '127.0.0.1', () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
+requireBuilds();
 
 const data = await mkdtemp(path.join(tmpdir(), 'lumen-app-'));
 const workspace = path.join(data, 'workspace');
 await mkdir(workspace);
-const client = await daemonClient(data, daemonExe);
-const port = await freePort();
-const shell = spawn(app, [], {
-  stdio: 'ignore',
-  env: {
-    ...process.env,
-    LUMEN_TEST_DATA_DIR: data,
-    TAURI_WEBDRIVER_PORT: String(port),
-    PATH: `${path.resolve('tests/fixtures/cli')};${process.env.PATH}`,
-  },
-});
+const client = await daemonClient(data, daemonPath);
 const checks = [];
-let browser;
+let app;
 try {
-  browser = await webdriver(port);
+  app = await launchApp(data);
+  const { browser } = app;
   const status = "return document.querySelector('[role=status]')?.textContent";
   await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'connection');
   const first = await client.call('__status');
@@ -85,9 +56,7 @@ try {
   checks.push('after a service crash the shell restarts it, and the window shows the partial reply once and the turn interrupted');
   console.log(JSON.stringify({ passed: true, checks }, null, 2));
 } finally {
-  await browser?.close();
-  shell.kill();
-  await new Promise((resolve) => (shell.exitCode !== null ? resolve() : shell.once('exit', resolve)));
+  await app?.close();
   // The service outlives the window by design; stop the one this test started.
   const pid = await client
     .call('__status')

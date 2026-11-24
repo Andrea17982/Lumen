@@ -1,0 +1,90 @@
+.composer {
+  padding: 0 var(--space-6) var(--space-4);
+  background: var(--surface-canvas);
+}
+.box,
+.notice,
+.error {
+  max-width: var(--conversation-width);
+  margin-left: auto;
+  margin-right: auto;
+}
+.box {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+.box:focus-within {
+  border-color: var(--accent);
+}
+.input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text-primary);
+  line-height: var(--leading-body);
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+.spacer {
+  flex: 1;
+}
+.tokens {
+  color: var(--text-tertiary);
+  font-size: var(--text-s);
+  white-space: nowrap;
+}
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3) 0;
+  list-style: none;
+}
+.attachments li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px 2px 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: var(--text-s);
+}
+.attachments button {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.attachments button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.notice {
+  margin-bottom: var(--space-2);
+  color: var(--status-warning-text);
+  font-size: var(--text-s);
+}
+.error {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+  color: var(--status-danger-text);
+  font-size: var(--text-s);
+}

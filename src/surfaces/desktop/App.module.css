@@ -140,24 +140,3 @@
   margin: auto;
   color: var(--text-secondary);
 }
-.transcript {
-  flex: 1;
-  overflow: auto;
-  padding: var(--space-6);
-}
-.message {
-  max-width: var(--conversation-width);
-  margin: 0 auto var(--space-6);
-}
-.message h2 {
-  margin: 0 0 var(--space-1);
-  color: var(--text-secondary);
-  font-size: var(--text-s);
-  font-weight: var(--weight-semibold);
-}
-.message p {
-  margin: 0;
-  line-height: var(--leading-body);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}

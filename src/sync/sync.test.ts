@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Connection, Frame, Message, RunEvent } from '../protocol/types';
 import type { Transport } from '../transport/types';
-import { apply, Sync } from './sync';
+import { apply, FIRST_PAGE, PAGE, Sync } from './sync';
 
 /** A daemon stand-in: replies come from `handlers`, frames are pushed with `emit`. */
 function fakeDaemon(handlers: Record<string, (args: Record<string, unknown>) => unknown>, connection: Connection = { state: 'connected' }) {
@@ -37,7 +37,7 @@ function deferred<T>() {
 }
 
 describe('apply', () => {
-  const base = { messages: [user], seq: 10, loaded: true };
+  const base = { messages: [user], seq: 10, complete: true };
 
   it('drops repeated and older events, and keeps the transcript object', () => {
     expect(apply(base, ev(10, 'delta', 'x'))).toBe(base);
@@ -189,5 +189,37 @@ describe('Sync', () => {
     first.resolve([user, partial('Old', 5)]);
     await settle();
     expect(sync.getState().transcripts.s1.messages[1].text).toBe('New');
+  });
+
+  it('reads a long session newest first, then earlier pages, without losing live events', async () => {
+    const stored: Message[] = Array.from({ length: FIRST_PAGE + PAGE + 7 }, (_, i) => ({ id: `m${i}`, role: i % 2 ? 'assistant' : 'user', text: `#${i}`, activity: [], eventSeq: 0, snapshotSeq: 50 }));
+    const latest = stored.at(-1)!.id;
+    const pages: unknown[] = [];
+    let daemon: ReturnType<typeof fakeDaemon>;
+    daemon = fakeDaemon({
+      list_sessions: () => [session('running')],
+      get_messages: ({ before, limit }) => {
+        pages.push({ before, limit });
+        const end = before ? stored.findIndex((m) => m.id === before) : stored.length;
+        const page = stored.slice(Math.max(0, end - (limit as number)), end);
+        // While an earlier page is read, a delta for the newest message is still in flight,
+        // with a seq below that page's snapshotSeq.
+        if (before) {
+          daemon.emit({ event: 'lumen:run', payload: { sessionId: 's1', messageId: latest, kind: 'delta', text: '+', seq: 40 + pages.length } });
+          return page.map((m) => ({ ...m, snapshotSeq: 60 }));
+        }
+        return page.map((m) => ({ ...m, snapshotSeq: 30 }));
+      },
+    });
+    const sync = new Sync(daemon.transport);
+    sync.watch('s1');
+    await sync.start();
+    await settle();
+    await settle();
+    const transcript = sync.getState().transcripts.s1;
+    expect(transcript.complete).toBe(true);
+    expect(transcript.messages.map((m) => m.id)).toEqual(stored.map((m) => m.id));
+    expect(pages).toEqual([{ before: undefined, limit: FIRST_PAGE }, { before: stored[7 + PAGE].id, limit: PAGE }, { before: 'm7', limit: PAGE }]);
+    expect(transcript.messages.at(-1)!.text).toBe(`#${stored.length - 1}++`);
   });
 });

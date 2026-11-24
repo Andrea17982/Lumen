@@ -135,11 +135,12 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
   );
 }
 
-export function Select<T extends string>({ label, value, options, onChange, isDisabled }: { label: string; value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; isDisabled?: boolean }) {
+/** `compact` hides the label visually (screen readers still get it) and drops the border, for toolbars. */
+export function Select<T extends string>({ label, value, options, onChange, isDisabled, compact }: { label: string; value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; isDisabled?: boolean; compact?: boolean }) {
   return (
     <AriaSelect selectedKey={value} onSelectionChange={(k) => k !== null && onChange(k as T)} isDisabled={isDisabled} className={s.field}>
-      <Label className={s.label}>{label}</Label>
-      <AriaButton className={`${s.button} ${s.selectButton}`} data-variant="secondary">
+      <Label className={compact ? s.visuallyHidden : s.label}>{label}</Label>
+      <AriaButton className={`${s.button} ${compact ? s.compactSelect : s.selectButton}`} data-variant={compact ? 'plain' : 'secondary'}>
         <SelectValue />
         <Icon name="chevronDown" size={14} />
       </AriaButton>

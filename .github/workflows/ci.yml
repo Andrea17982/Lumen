@@ -59,6 +59,7 @@ jobs:
       # The real app over its embedded WebDriver server (test build only): sidecar start and crash recovery.
       - run: npx tauri build --debug --no-bundle --features webdriver --config src-tauri/desktop/tauri.conf.json
       - run: node tests/app/desktop.mjs
+      - run: node tests/app/transcript-uia.mjs
   unix:
     strategy:
       fail-fast: false

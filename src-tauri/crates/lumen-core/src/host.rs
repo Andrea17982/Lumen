@@ -62,6 +62,18 @@ impl EventHub {
     }
     pub fn emit(&self, event: &str, payload: impl Serialize) -> Result<(), String> {
         let mut payload = serde_json::to_value(payload).map_err(|e| e.to_string())?;
+        // The same cap as the saved message, so the live digest matches the stored text. Cut
+        // before taking the store lock: the text can be up to a few MiB.
+        if event == "lumen:run" {
+            if let Some(text) = payload["text"]
+                .as_str()
+                .filter(|t| t.len() > crate::wire::KEPT)
+            {
+                let mut text = text.to_string();
+                crate::wire::keep(payload["kind"].as_str().unwrap_or(""), &mut text);
+                payload["text"] = serde_json::json!(text);
+            }
+        }
         // Persist before publishing: reconnects and a killed service can recover the same text.
         let store = self.store.lock().map_err(|_| "Event store lock failed")?;
         if event == "lumen:run" {
@@ -75,5 +87,33 @@ impl EventHub {
             payload,
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_output_over_the_store_cap_matches_what_the_store_serves() {
+        let store = Arc::new(crate::store::Store::open(std::path::Path::new(":memory:")).unwrap());
+        let session = store.create("/tmp".into()).unwrap();
+        let hub = EventHub::default();
+        hub.attach(store.clone());
+        let mut events = hub.subscribe();
+        let output = "fixture line\n".repeat(120_000); // about 1.5 MiB
+        hub.emit(
+            "lumen:run",
+            serde_json::json!({"sessionId": session.id, "messageId": "m", "kind": "tool", "text": output}),
+        )
+        .unwrap();
+        let live = events.try_recv().unwrap().payload;
+        assert!(live["text"].as_str().unwrap().len() <= crate::wire::LIMIT + 100);
+        let digest = live["detail"]["digest"].as_str().unwrap();
+        let saved = store.message_snapshots(&session.id).unwrap();
+        let whole =
+            crate::wire::detail(&saved, "m", digest).expect("the live digest finds the saved text");
+        assert!(whole.len() <= crate::wire::KEPT && whole.ends_with("bytes in total]"));
+        assert!(output.starts_with(whole.split("\n…").next().unwrap()));
     }
 }

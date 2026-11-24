@@ -14,9 +14,18 @@ export interface Session {
   accessMode: AccessMode;
 }
 
+/** A tool output or diff over the wire limit arrives shortened, with this reference to the rest. */
+export interface Detail {
+  digest: string;
+  totalBytes: number;
+  totalLines: number;
+  shownBytes: number;
+}
+
 export interface Activity {
   kind: string;
   text: string;
+  detail?: Detail;
 }
 
 export interface Message {
@@ -39,7 +48,49 @@ export interface RunEvent {
   kind: string;
   text: string;
   seq?: number;
-  detail?: { digest: string; totalBytes: number; totalLines: number; shownBytes: number };
+  detail?: Detail;
+}
+
+export type Provider = 'claude' | 'gpt' | 'antigravity' | 'ollama' | 'opencode' | 'cursor' | 'openaiapi' | 'anthropicapi' | 'googleapi';
+
+export interface Account {
+  id: string;
+  name: string;
+  provider: Provider;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  efforts: string[];
+  defaultEffort: string;
+  isDefault: boolean;
+}
+
+export type AutoPolicy = 'budget' | 'default' | 'quality';
+
+/** `send_message` options. `mode` is "auto", or Direct with an account. Orchestra is M7. */
+export interface RunOptions {
+  mode: string;
+  accountId?: string | null;
+  model?: string | null;
+  effort: string;
+  autoPolicy?: AutoPolicy;
+  accessMode?: AccessMode;
+  autoReview?: boolean;
+  attachments?: string[];
+}
+
+/** The daemon's routing decision, returned by `send_message` when the turn starts. */
+export interface Plan {
+  provider: Provider;
+  accountId: string;
+  model: string | null;
+  effort: string;
+  strategy: string;
+  reason: string;
+  partnerAccount: string | null;
 }
 
 /** How the client is linked to the daemon. Sent by the shell (or the test bridge). */
