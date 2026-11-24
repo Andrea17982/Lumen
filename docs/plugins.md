@@ -63,7 +63,7 @@ All four permissions default to none.
 
 **Slash commands** add entries to the `/` menu. Choosing one puts its prompt in the composer, where you can still edit it before you send. Commands never run on their own, and the names `workspace` and `compact` are reserved.
 
-**Skills** are folders with a `SKILL.md`. Enabled plugin skills join the [shared skills](integrations.md), so every assistant, including Auto, can list them and read them.
+**Skills** are folders with a `SKILL.md`. Enabled plugin skills join the [shared skills](providers.md#shared-integrations), so every assistant, including Auto, can list them and read them.
 
 **MCP servers** join the shared MCP list, so Claude, GPT, Antigravity, Ollama and Auto can use them under the conversation's normal permission mode. Each server starts through `lumen-daemon --lumen-plugin-mcp`. Before launching, the daemon re-checks that the plugin is enabled and still matches what you approved, then:
 
@@ -91,15 +91,4 @@ Lumen enforces the following in its own code, and tests cover each item: manifes
 
 An MCP server is still a normal program on your computer. Lumen controls what that program is given, but it does not put the process in an operating-system sandbox. So `fsProject` and `network` tell the server what it is allowed to do, but nothing stops a server that ignores them. Its tool calls still go through the conversation's approval mode. Install MCP plugins only from authors you trust, and prefer plugins that declare `shell: false`.
 
-## Compared with unsandboxed plugin models
-
-Some coding tools load plugins as trusted code that runs inside the app's own process, with the same access the app has: its files, its credentials and its UI. That gives plugins a lot of power, but installing one means trusting it completely.
-
-Lumen v1 makes a narrower trade:
-
-- **Declarative first.** Themes, commands and skills are data, not code.
-- **Visible, diffed permissions.** You see what a plugin asks for when you install it and again when you turn it on, and an update shows only what is new.
-- **Isolation where Lumen can enforce it.** Panels run outside the app's origin with no IPC. MCP tools run as separate processes with a scrubbed environment.
-- **Built for Auto.** Plugin tools and skills go through the same shared catalog and approval modes as every other integration, so Auto can use them without a separate trust path.
-
-The cost is reach. A v1 plugin cannot add new screens or change how Lumen itself behaves.
+The trade-off: a v1 plugin cannot add new screens or change how Lumen itself behaves.
