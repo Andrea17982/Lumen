@@ -23,16 +23,24 @@ export async function daemonClient(
     .digest('hex');
   async function open(command, args = {}, override = {}) {
     const io = net.createConnection(endpoint);
-    let buffered = Buffer.alloc(0);
+    // Chunks are joined once per complete frame: re-joining on every chunk is quadratic on large replies.
+    let chunks = [];
+    let size = 0;
     const messages = [],
       waiting = [];
     let ended;
     io.on('data', (chunk) => {
-      buffered = Buffer.concat([buffered, chunk]);
-      while (buffered.length >= 4 && buffered.length >= buffered.readUInt32BE(0) + 4) {
-        const length = buffered.readUInt32BE(0);
-        const value = JSON.parse(buffered.subarray(4, length + 4));
-        buffered = buffered.subarray(length + 4);
+      chunks.push(chunk);
+      size += chunk.length;
+      while (size >= 4) {
+        if (chunks[0].length < 4) chunks = [Buffer.concat(chunks, size)];
+        const length = chunks[0].readUInt32BE(0);
+        if (size < length + 4) break;
+        const frame = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, size);
+        const value = JSON.parse(frame.subarray(4, length + 4));
+        const rest = frame.subarray(length + 4);
+        chunks = rest.length ? [rest] : [];
+        size = rest.length;
         const waiter = waiting.shift();
         if (waiter) waiter.resolve(value);
         else messages.push(value);
