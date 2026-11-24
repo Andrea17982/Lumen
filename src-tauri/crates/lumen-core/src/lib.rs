@@ -86,7 +86,6 @@ mod pr_watch;
 mod proc;
 mod projecttools;
 mod providers;
-mod redgreen;
 mod repomap;
 mod review;
 mod rlm;
