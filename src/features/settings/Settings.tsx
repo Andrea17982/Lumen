@@ -2,13 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { IconButton, Segmented } from '../../design/components';
 import { useT } from '../../i18n';
 import { Accounts } from './Accounts';
+import { General } from './General';
 import s from './Settings.module.css';
 
-type Section = 'accounts';
-const SECTIONS: Section[] = ['accounts'];
-const VIEWS: Record<Section, () => ReactNode> = {
-  accounts: () => <Accounts />,
-};
+type Section = 'accounts' | 'general';
+const SECTIONS: Section[] = ['accounts', 'general'];
+const VIEWS: Record<Section, () => ReactNode> = { accounts: () => <Accounts />, general: () => <General /> };
 
 /** Settings replace the conversation in the main area: a few sections, few options each. */
 export function Settings({ onClose, leading }: { onClose: () => void; leading?: ReactNode }) {

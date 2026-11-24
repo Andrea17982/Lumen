@@ -5,6 +5,8 @@ import type { Activity, Message } from '../../protocol/types';
 import { filesOf, opening, partsOf, stepBody, stepTitle, type MessageParts } from './activity';
 import { blocks, StreamingBlocks } from './blocks';
 import { CodeBlock, Markdown } from './Markdown';
+import { NoGitCard, OrchestraCard } from '../orchestra/Orchestra';
+import { orchestraOf } from '../orchestra/state';
 import { RewindButton } from './Rewind';
 import s from './Conversation.module.css';
 
@@ -24,6 +26,8 @@ const useHost = () => useContext(ConversationContext)!;
 export const MessageView = memo(function MessageView({ message, live }: { message: Message; live: boolean }) {
   const t = useT();
   const parts = useMemo(() => partsOf(message), [message]);
+  const orchestra = useMemo(() => orchestraOf(message), [message.activity]);
+  const host = useHost();
   const user = message.role === 'user';
   return (
     <article className={s.message} data-role={message.role} aria-label={`${user ? t.you : t.appName}: ${opening(parts.answer)}`}>
@@ -45,6 +49,8 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
           <p>{parts.reasoning}</p>
         </details>
       )}
+      {orchestra && <OrchestraCard sessionId={host.sessionId} message={message} state={orchestra} />}
+      {message.activity.some((a) => a.kind === 'orchestra-nogit') && <NoGitCard sessionId={host.sessionId} />}
       {parts.steps.length > 0 && <Steps message={message} steps={parts.steps} live={live} />}
       {parts.asked.length > 0 && <Asked asked={parts.asked} />}
       {user ? <p className={s.userText}>{parts.answer}</p> : <Answer text={parts.answer} live={live} />}
