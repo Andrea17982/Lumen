@@ -54,7 +54,6 @@ mod execution;
 mod gitops;
 mod graph_mcp;
 mod impact;
-mod inspector;
 mod integrations;
 mod interactions;
 #[cfg(test)]
@@ -251,7 +250,13 @@ fn add_workspace(
     if name.is_empty() || name.len() > 100 {
         return Err("Choose a workspace name of 1–100 characters".into());
     }
-    core.store.add_workspace(name.into(), folder)
+    // The same form as a session's folder (see `create_session`), so the two always compare equal.
+    let path = dunce::canonicalize(&folder).map_err(|_| "Choose an existing folder")?;
+    if !path.is_dir() {
+        return Err("Choose a folder, not a file".into());
+    }
+    core.store
+        .add_workspace(name.into(), path.to_string_lossy().into_owned())
 }
 #[crate::command]
 fn rename_workspace(core: crate::CoreRef<'_>, id: String, name: String) -> Result<(), String> {
@@ -387,9 +392,17 @@ fn delete_session(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
     workstate::remove_snapshot(&core, &id)?;
     core.store.delete(&id)
 }
+/// All messages, or with `limit` the last `limit` before message `before`: long sessions load
+/// newest first in replies far below the IPC frame limit.
 #[crate::command]
-fn get_messages(core: crate::CoreRef<'_>, id: String) -> Result<Vec<serde_json::Value>, String> {
+fn get_messages(
+    core: crate::CoreRef<'_>,
+    id: String,
+    before: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut messages = core.store.message_snapshots(&id)?;
+    wire::page(&mut messages, before.as_deref(), limit)?;
     wire::project_messages(&mut messages);
     Ok(messages)
 }
@@ -1184,8 +1197,6 @@ pub async fn dispatch(
 ) -> Result<serde_json::Value, String> {
     match command {
         "acknowledge_tray_hint" => __ipc_acknowledge_tray_hint(app, core, args).await,
-        "inspect_json" => inspector::__ipc_inspect_json(app, core, args).await,
-        "inspect_sqlite" => inspector::__ipc_inspect_sqlite(app, core, args).await,
         "file_change_diff" => review::__ipc_file_change_diff(app, core, args).await,
         "count_tokens" => context::__ipc_count_tokens(app, core, args).await,
         "pending_questions" => interactions::__ipc_pending_questions(app, core, args).await,

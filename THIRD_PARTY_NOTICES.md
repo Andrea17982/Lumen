@@ -1,8 +1,8 @@
 # Third-party notices
 
-Lumen's original code/documentation is MIT licensed. Dependencies retain their own licenses. The committed JavaScript/Rust lockfiles and upstream license files are the authoritative version/license inventory.
+Lumen's original code/documentation is MIT licensed. Dependencies retain their own licenses. The committed Rust lockfile and upstream license files are the authoritative version/license inventory.
 
-The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, tiktoken-rs, React, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide, react-markdown, remark-gfm, Vitest and Playwright.
+The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, and tiktoken-rs. The desktop client is being rewritten; its dependencies will be listed here when it lands.
 
 ## T3 Code command receipts
 
@@ -39,5 +39,3 @@ Claude Code, Codex, Antigravity, OpenCode, Cursor CLI and Ollama are not redistr
 Apple, Liquid Glass, Anthropic, Claude, OpenAI, ChatGPT, Codex, Google, Gemini, Antigravity, Ollama, Moli, Microsoft, Windows and PayPal belong to their respective owners. Compatibility or design inspiration does not imply endorsement or affiliation.
 
 `public/lumen.png` is the owner-approved satin-glass Lm brand asset generated with AI assistance. Platform icons derive from that asset using Tauri’s icon tooling. System fonts are referenced rather than redistributed. No provider logos are shipped.
-
-The gallery under `docs/images/` consists of actual implemented Lumen UI captures with isolated demonstration data; the Moli page capture uses a local fixture. These are not testimonials, live-provider performance claims or screenshots of a private user project. Historical release screenshots can be recovered from earlier Git tags.

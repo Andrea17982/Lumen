@@ -1,0 +1,50 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+html {
+  background: var(--surface-window);
+  color: var(--text-primary);
+  font: var(--weight-regular) var(--text-m) / var(--leading-ui) var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color-scheme: light;
+}
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+/* In the desktop shell the window material (Mica, Liquid Glass) shows through the chrome. */
+html[data-host='tauri'] {
+  background: transparent;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: default;
+}
+/* Thin scrollbars that take their colour from the theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--text-tertiary) 45%, transparent) transparent;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

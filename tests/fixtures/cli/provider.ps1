@@ -152,6 +152,12 @@ if ($promptText.Contains('REPLAY_TOOL_FIXTURE') -or $promptText.Contains('REPLAY
     }
     exit 0
 }
+if ($promptText.Contains('LARGE_TOOL_FIXTURE') -and $Provider -eq 'claude') {
+    # A tool step over the 16 KiB wire limit: the client receives it shortened, with a detail digest.
+    Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='large-read';name='Read';input=@{file_path='large.txt';note=(('fixture line ' * 6) + "`n") * 600 + 'LARGE_TOOL_END'}})}}
+    Emit @{type='result';is_error=$false;result='Large tool fixture done.'}
+    exit 0
+}
 if ($promptText.Contains('OBS_PROMISE_FIXTURE') -and $Provider -eq 'claude') {
     Emit @{type='result';is_error=$false;result='I will implement the requested changes.'}
     exit 0
@@ -178,6 +184,31 @@ if ($promptText.Contains('QUESTION_FIXTURE')) {
         if ($answer.result.answers.implementation.answers[0] -ne 'Native') { throw 'Expected the real answer through Codex stdin' }
     }
     Set-Content -LiteralPath (Join-Path (Get-Location).Path "answer-$Provider.txt") -Value 'Native'
+}
+# Attention fixtures for the client (M4): one Gatekeeper request or one secret question, then a
+# reply that says what the CLI received. Nothing runs: the command text is only displayed.
+if ($Provider -eq 'claude' -and $promptText.Contains('APPROVAL_FIXTURE')) {
+    Emit @{type='control_request';request_id='fixture-approval';request=@{subtype='can_use_tool';tool_name='Bash';tool_use_id='toolu_fixture';input=@{command='fixture-only: git status --short';description='Show the working tree status'}}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    $behavior = "$($answer.response.response.behavior)".ToUpper()
+    Emit @{type='result';is_error=$false;result="APPROVAL_FIXTURE_$behavior"}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('APPROVAL_FIXTURE')) {
+    Emit @{id='fixture-approval';method='item/commandExecution/requestApproval';params=@{threadId='fixture-thread';turnId='fixture-turn';itemId='approval-item';command='fixture-only: git status --short';cwd=(Get-Location).Path;reason='Show the working tree status'}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    $decision = "$($answer.result.decision)".ToUpper()
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='approval-answer';type='agentMessage';text="APPROVAL_FIXTURE_$decision"}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status=$(if ($decision -eq 'CANCEL') {'interrupted'} else {'completed'})}}}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('SECRET_ASK_FIXTURE')) {
+    Emit @{id='fixture-secret';method='item/tool/requestUserInput';params=@{threadId='fixture-thread';turnId='fixture-turn';itemId='secret-item';isBlocking=$true;questions=@(@{id='token';header='Token';question='Paste the fixture token';isSecret=$true;options=$null})}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    $state = if ($answer.result.answers.token.answers[0] -eq 'fixture-secret-value') {'SECRET_QUESTION_RECEIVED'} else {'SECRET_QUESTION_WRONG'}
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='secret-answer';type='agentMessage';text=$state}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
 }
 $reply = "This is an **offline UI fixture**, not a live AI response.`n`n### A small, thoughtful plan`n`n- Keep the conversation clear.`n- Review the changes before applying them.`n- Make room for the next idea.`n`n| Step | State |`n| --- | --- |`n| Understand | Complete |`n| Review | Complete |`n`n" + '```typescript' + "`nconst clarity = true;`n" + '```'
 if ($promptText.Contains('QUALITY_CONTEXT_FIXTURE')) {

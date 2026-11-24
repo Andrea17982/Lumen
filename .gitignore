@@ -14,23 +14,13 @@ src-tauri/gen/
 *.db-shm
 *.db-wal
 auth.json
-.claude/
-.agents/
-.codex/
-.impeccable/
+.claude/settings.local.json
+.claude/worktrees/
 test-results/
-playwright-report/
-*.tsbuildinfo
 SHA256SUMS.txt
 .DS_Store
 
 builds/
-src/features/**/target/
-
-# Personal planning, not published
-docs/roadmap-1.0.md
-research_notes/
-reports/Lumen e T3 Code.md
-PRODUCT.md
-DESIGN.md
-reports/bench/**/*.jsonl
+src-tauri/desktop/target/
+src-tauri/desktop/gen/
+playwright-report/

@@ -1,29 +1,3 @@
-[package]
-name = "lumen"
-version = "0.12.2"
-description = "Native AI sessions, optional orchestration and Moli browsing"
-authors = ["Andrea17982"]
-edition = "2021"
-license = "MIT"
-rust-version = "1.90"
-
-[lib]
-name = "lumen_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[dependencies]
-lumen-ipc = {path="crates/lumen-ipc"}
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-dialog = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-notification = "2"
-tauri-plugin-global-shortcut = "2.3.2"
-serde_json = "1"
-tokio = {version="1",features= ["process", "sync", "time", "rt-multi-thread", "macros"] }
-
 [profile.release]
 lto = true
 codegen-units = 1
@@ -31,6 +5,8 @@ strip = true
 opt-level = 3
 
 [workspace]
-members = ["crates/lumen-core", "crates/lumen-commands", "crates/lumen-ipc", "crates/lumen-daemon"]
+members = ["crates/lumen-core", "crates/lumen-commands", "crates/lumen-ipc", "crates/lumen-daemon", "crates/lumen-gatekeeper"]
 resolver = "2"
-default-members = ["."]
+default-members = ["crates/lumen-daemon"]
+# The desktop shell joins the workspace in M2, together with its CI dependencies.
+exclude = ["desktop"]

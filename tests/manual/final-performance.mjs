@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-const root = '.impeccable/final-acceptance';
+const root = 'test-results/final-acceptance';
 for (const [label, arm] of [
   ['baseline-a', 'baseline'],
   ['candidate-a', 'candidate'],

@@ -1,13 +1,12 @@
 import { defineConfig } from '@playwright/test';
-// LUMEN_E2E_PORT lets parallel checkouts run e2e without reusing another checkout's server.
-const port = Number(process.env.LUMEN_E2E_PORT || 1420);
+
+// UI tests run against the Vite build of the client in Microsoft Edge (Chromium, like WebView2),
+// so no browser download is needed on Windows.
 export default defineConfig({
-  testDir: './tests',
+  testDir: 'tests/ui',
   fullyParallel: true,
-  use: { baseURL: `http://127.0.0.1:${port}`, browserName: 'chromium' },
-  webServer: {
-    command: `npm run dev -- --port ${port} --strictPort`,
-    url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: !process.env.CI,
-  },
+  reporter: [['list']],
+  use: { baseURL: 'http://127.0.0.1:4173', channel: 'msedge', viewport: { width: 1240, height: 820 } },
+  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.002 } },
+  webServer: { command: 'npx vite build && npx vite preview --port 4173 --strictPort', env: { VITE_TEST_BRIDGE: '1' }, url: 'http://127.0.0.1:4173', reuseExistingServer: !process.env.CI, timeout: 120_000 },
 });

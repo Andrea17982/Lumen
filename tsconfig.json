@@ -1,11 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2022", "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext",
-    "skipLibCheck": true, "moduleResolution": "bundler", "allowImportingTsExtensions": true,
-    "resolveJsonModule": true, "isolatedModules": true, "verbatimModuleSyntax": true,
-    "moduleDetection": "force", "noEmit": true, "jsx": "react-jsx", "strict": true,
-    "noUnusedLocals": true, "noUnusedParameters": true, "types": ["vite/client"]
+    "target": "es2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "types": ["vite/client"]
   },
   "include": ["src", "vite.config.ts"]
 }

@@ -56,11 +56,12 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
             .activity
             .iter()
             .find(|a| a.kind == "route")
-            .and_then(|a| parse(&a.text))
-            .map(|(task, complex)| Verdict {
-                task,
-                complex,
-                source: "previous request",
+            .and_then(|a| {
+                parse(&a.text).map(|(task, complex)| Verdict {
+                    task,
+                    complex,
+                    source: "previous request",
+                })
             })
             .unwrap_or_else(|| heuristic(&request.text));
         for activity in messages[index + 1..end]

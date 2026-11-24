@@ -1,0 +1,39 @@
+.toolbar {
+  position: fixed;
+  right: var(--space-4);
+  bottom: 96px;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-raised) 88%, transparent);
+  border: 1px solid var(--border-control);
+  box-shadow: var(--shadow-raised);
+  backdrop-filter: blur(16px);
+  font-size: var(--text-s);
+}
+.segment {
+  display: flex;
+}
+.segment button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.segment button[aria-pressed='true'] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.states {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) 96px;
+  background: var(--surface-canvas);
+  --conversation-width: 720px;
+}

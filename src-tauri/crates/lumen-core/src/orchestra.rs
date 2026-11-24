@@ -1690,7 +1690,7 @@ pub async fn execute(
                 }
                 let path = core.root.join("worktrees").join(&short).join(&t.id);
                 let branch = format!("lumen/orchestra-{short}-{}", t.id);
-                gitops::add_lane(top, &base, &path, &branch).await?;
+                gitops::add_lane(top, &base, &path, &branch, "HEAD").await?;
                 // A dependent subtask starts from all its dependencies' changes, in plan
                 // order: each patch was recorded on top of the ones before it.
                 for d in &ancestors(&st.subtasks, &t.id) {

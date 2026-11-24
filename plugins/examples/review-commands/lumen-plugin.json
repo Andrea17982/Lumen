@@ -2,7 +2,7 @@
   "id": "review-commands",
   "name": "Review commands",
   "version": "1.0.0",
-  "description": "Slash commands that expand to review prompts, a shared review skill and a picker panel.",
+  "description": "Slash commands that expand to review prompts and a shared review skill.",
   "lumen": ">=0.10.0 <1.0.0",
   "contributes": {
     "slashCommands": [
@@ -22,7 +22,6 @@
         "prompt": "Before fixing anything, write a test that reproduces the problem and show me that it fails. Then make the smallest fix that makes it pass."
       }
     ],
-    "skills": ["skills/careful-review"],
-    "panels": [{ "id": "picker", "title": "Review picker", "entry": "picker.html" }]
+    "skills": ["skills/careful-review"]
   }
 }

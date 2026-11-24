@@ -464,6 +464,14 @@ pub fn allowed_url(p: &Permissions, url: &str) -> Result<reqwest::Url, String> {
     if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
         return Err("Plugins may only fetch https:// URLs".into());
     }
+    // A panel must not reach this computer or the local network by address or by name.
+    if host.parse::<std::net::IpAddr>().is_ok()
+        || host.starts_with('[')
+        || host == "localhost"
+        || host.ends_with(".localhost")
+    {
+        return Err("Plugins may not fetch local addresses".into());
+    }
     if !declared {
         return Err(format!(
             "This plugin did not declare network access to {host}"
@@ -962,6 +970,18 @@ mod tests {
             .contains("did not declare"));
         assert!(allowed_url(&p, "http://api.example.com/").is_err());
         assert!(allowed_url(&Permissions::default(), "https://api.example.com/").is_err());
+        let local = Permissions {
+            network: vec!["127.0.0.1".into(), "localhost".into(), "*.localhost".into()],
+            ..Permissions::default()
+        };
+        for url in [
+            "https://127.0.0.1/",
+            "https://[::1]/",
+            "https://localhost/",
+            "https://a.localhost/",
+        ] {
+            assert!(allowed_url(&local, url).is_err(), "{url}");
+        }
     }
 
     #[tokio::test]
@@ -1006,7 +1026,7 @@ mod tests {
     fn shipped_examples_are_valid_and_the_mcp_example_runs_scrubbed() {
         use std::io::{BufRead, Write};
         let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../plugins/examples");
-        for id in ["dusk-theme", "review-commands", "word-count"] {
+        for id in ["review-commands", "word-count"] {
             let m = validate(&examples.join(id)).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert_eq!(m.id, id);
             assert!(

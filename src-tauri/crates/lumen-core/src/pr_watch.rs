@@ -306,13 +306,10 @@ fn tell(app: &crate::host::EventHub, core: &Core, session: &str, text: &str) {
 /// Pushes commits a correction turn left on the branch, recorded as an External action.
 async fn push(core: &Core, session: &str, task: &Task) -> Result<(), String> {
     let path = Path::new(&task.path);
+    let upstream = task.upstream();
     let ahead = gitops::run(
         path,
-        &[
-            "rev-list",
-            "--count",
-            &format!("origin/{}..HEAD", task.branch),
-        ],
+        &["rev-list", "--count", &format!("origin/{upstream}..HEAD")],
         None,
     )
     .await
@@ -320,14 +317,23 @@ async fn push(core: &Core, session: &str, task: &Task) -> Result<(), String> {
     .and_then(|n| n.trim().parse::<u32>().ok())
     .unwrap_or(0);
     if ahead > 0 {
-        gitops::run(path, &["push", "origin", &task.branch], None).await?;
+        gitops::run(
+            path,
+            &[
+                "push",
+                "origin",
+                &format!("{}:refs/heads/{upstream}", task.branch),
+            ],
+            None,
+        )
+        .await?;
         crate::autonomy::append_log(
             &core.root,
             session,
             &crate::autonomy::decision(
                 crate::autonomy::Class::External,
                 "push correction",
-                &format!("{} ({ahead} commits)", task.branch),
+                &format!("{upstream} ({ahead} commits)"),
             ),
         );
     }
@@ -362,6 +368,7 @@ async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> R
         }
         Step::Merge => {
             let path = Path::new(&task.path);
+            let upstream = task.upstream().to_string();
             let Some(pr) = &mut task.pr else {
                 return Ok(());
             };
@@ -384,7 +391,7 @@ async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> R
                         &crate::autonomy::decision(
                             crate::autonomy::Class::External,
                             action,
-                            &format!("{} → {}: {}", task.branch, pr.base, pr.url),
+                            &format!("{upstream} → {}: {}", pr.base, pr.url),
                         ),
                     );
                     pr.last = if merged.is_ok() {

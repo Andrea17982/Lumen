@@ -218,12 +218,18 @@ pub(crate) async fn submit(
             plan.reason = "Complex task: Orchestra plans, splits and integrates the work".into();
         }
     }
-    // Large Auto tasks that write files run in the conversation's own worktree.
+    // Large Auto tasks that write files run in the conversation's own worktree, and so does
+    // any task that names an existing branch or pull request to work on.
+    let big_task =
+        crate::task_worktree::wanted(verdict.complex, verdict.task.tier, options.access());
+    let named = (options.access() != AccessMode::ReadOnly)
+        .then(|| crate::task_worktree::reference(&text))
+        .flatten();
     let task_worktree = options.mode == "auto"
         && options.audit_of.is_none()
         && requested.is_none()
         && plan.strategy != "orchestra"
-        && crate::task_worktree::wanted(verdict.complex, verdict.task.tier, options.access());
+        && (big_task || named.is_some());
     let (tx, rx) = watch::channel(false);
     let reserved = reservation.is_some();
     let rx = reservation.unwrap_or(rx);
@@ -356,6 +362,8 @@ pub(crate) async fn submit(
                             &mut output,
                             &text,
                             options.access(),
+                            named.clone(),
+                            big_task,
                             rx.clone(),
                         )
                         .await

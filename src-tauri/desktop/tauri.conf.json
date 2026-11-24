@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lumen",
+  "version": "0.12.5",
+  "identifier": "io.github.andrea17982.lumen",
+  "build": {
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "node scripts/prepare-daemon.mjs --debug && npm run dev",
+    "frontendDist": "../../dist",
+    "beforeBuildCommand": "node scripts/prepare-daemon.mjs && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Lumen",
+        "width": 1240,
+        "height": 820,
+        "minWidth": 720,
+        "minHeight": 540,
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "mica"
+          ]
+        }
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; frame-src lumen-plugin: http://lumen-plugin.localhost; object-src 'none'; base-uri 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.icns",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "externalBin": [
+      "../binaries/lumen-daemon"
+    ],
+    "resources": {
+      "../resources/moli/": "resources/moli/",
+      "../resources/legal/": "resources/legal/"
+    },
+    "publisher": "Andrea17982",
+    "copyright": "MIT License",
+    "shortDescription": "Orchestrates the AI coding agents you already pay for",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "mainBinaryName": "Lumen"
+}

@@ -1,0 +1,230 @@
+/*
+ * Design tokens. Components use only the semantic layer (surface, text, accent, status, radius,
+ * space, type, motion). A visual style (Ink, the default, or the optional Satin) sets primitive
+ * values on [data-style]; the theme is
+ * resolved to [data-theme="light" | "dark"] on <html> by design/theme.ts.
+ */
+
+:root {
+  /* Type: system fonts only. */
+  --font-ui: system-ui, 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-display: 'Segoe UI Variable Display', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* The wordmark keeps the system serif in every style. */
+  --font-wordmark: 'Iowan Old Style', 'Charter', 'Sitka Text', 'Sitka', Georgia, serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --text-xs: 11px;
+  --text-s: 12px;
+  --text-m: 13px;
+  --text-body: 14px;
+  --text-l: 17px;
+  --text-xl: 22px;
+  --text-xxl: 34px;
+  --leading-ui: 1.35;
+  --leading-body: 1.6;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Space: 4 px grid. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Density: touch raises hit targets to 44 px (PWA). */
+  --control-height: 30px;
+  --row-height: 32px;
+
+  /* Motion. */
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --sidebar-width: 264px;
+  --conversation-width: 760px;
+}
+
+[data-density='touch'] {
+  --control-height: 44px;
+  --row-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+  }
+}
+
+/* ---------- Semantic layer, derived from primitives ---------- */
+[data-style] {
+  --surface-window: var(--p-window);
+  --surface-chrome: var(--p-chrome);
+  --surface-canvas: var(--p-canvas);
+  --surface-raised: var(--p-raised);
+  --surface-sunken: var(--p-sunken);
+  --surface-hover: var(--p-hover);
+  --surface-selected: var(--p-selected);
+  --text-primary: var(--p-text-1);
+  --text-secondary: var(--p-text-2);
+  --text-tertiary: var(--p-text-3);
+  --text-on-accent: var(--p-on-accent);
+  --accent: var(--p-accent);
+  --accent-hover: var(--p-accent-hover);
+  --accent-subtle: var(--p-accent-subtle);
+  --separator: var(--p-separator);
+  --border-control: var(--p-border);
+  --control-off: var(--p-switch-off);
+  --status-success: var(--p-success);
+  --status-warning: var(--p-warning);
+  --status-danger: var(--p-danger);
+  /* Status colours as text: pulled towards the primary text colour until they read at 4.5:1. */
+  --status-success-text: color-mix(in oklch, var(--p-success) 75%, var(--p-text-1));
+  --status-warning-text: color-mix(in oklch, var(--p-warning) 55%, var(--p-text-1));
+  --status-danger-text: color-mix(in oklch, var(--p-danger) 80%, var(--p-text-1));
+  --status-success-subtle: color-mix(in oklch, var(--p-success) 14%, transparent);
+  --status-warning-subtle: color-mix(in oklch, var(--p-warning) 16%, transparent);
+  --status-danger-subtle: color-mix(in oklch, var(--p-danger) 14%, transparent);
+  --focus-ring: 0 0 0 2px var(--p-canvas), 0 0 0 4px color-mix(in oklch, var(--p-accent) 70%, transparent);
+  --shadow-raised: var(--p-shadow);
+}
+
+/* ---------- Style: Satin (optional) ---------- */
+[data-style='satin'] {
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --radius-xl: 20px;
+  --brand-gradient: linear-gradient(140deg, oklch(0.86 0.06 240), oklch(0.78 0.1 268) 55%, oklch(0.8 0.09 300));
+}
+[data-style='satin'][data-theme='light'] {
+  --p-window: oklch(0.955 0.008 265);
+  --p-chrome: oklch(0.975 0.008 265 / 0.62);
+  --p-canvas: oklch(0.995 0.002 265);
+  --p-raised: oklch(1 0 0);
+  --p-sunken: oklch(0.967 0.007 265);
+  --p-hover: oklch(0.5 0.03 265 / 0.07);
+  --p-selected: oklch(0.56 0.12 272 / 0.12);
+  --p-text-1: oklch(0.22 0.02 265);
+  --p-text-2: oklch(0.46 0.02 265);
+  --p-text-3: oklch(0.52 0.016 265);
+  --p-on-accent: oklch(0.99 0 0);
+  --p-accent: oklch(0.54 0.19 272);
+  --p-accent-hover: oklch(0.49 0.19 272);
+  --p-accent-subtle: oklch(0.95 0.03 272);
+  --p-separator: oklch(0.91 0.01 265);
+  --p-border: oklch(0.86 0.012 265);
+  --p-success: oklch(0.58 0.14 152);
+  --p-warning: oklch(0.66 0.15 70);
+  --p-danger: oklch(0.56 0.2 25);
+  --p-shadow: 0 1px 2px oklch(0.3 0.03 265 / 0.06), 0 8px 24px oklch(0.3 0.03 265 / 0.08);
+  --p-switch-off: oklch(0.62 0.015 265);
+}
+[data-style='satin'][data-theme='dark'] {
+  --p-window: oklch(0.17 0.012 265);
+  --p-chrome: oklch(0.2 0.016 265 / 0.55);
+  --p-canvas: oklch(0.195 0.012 265);
+  --p-raised: oklch(0.24 0.014 265);
+  --p-sunken: oklch(0.165 0.012 265);
+  --p-hover: oklch(0.9 0.02 265 / 0.07);
+  --p-selected: oklch(0.72 0.12 272 / 0.18);
+  --p-text-1: oklch(0.95 0.006 265);
+  --p-text-2: oklch(0.74 0.014 265);
+  --p-text-3: oklch(0.62 0.014 265);
+  --p-on-accent: oklch(0.16 0.02 272);
+  --p-accent: oklch(0.74 0.13 272);
+  --p-accent-hover: oklch(0.79 0.11 272);
+  --p-accent-subtle: oklch(0.3 0.06 272);
+  --p-separator: oklch(0.3 0.014 265);
+  --p-border: oklch(0.36 0.016 265);
+  --p-success: oklch(0.74 0.14 152);
+  --p-warning: oklch(0.8 0.13 75);
+  --p-danger: oklch(0.7 0.17 25);
+  --p-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 8px 24px oklch(0 0 0 / 0.35);
+  --p-switch-off: oklch(0.56 0.014 265);
+}
+
+/* ---------- Style: Ink (default) ---------- */
+[data-style='ink'] {
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 12px;
+  --font-display: 'Iowan Old Style', 'Charter', 'Sitka Text', 'Sitka', Georgia, serif;
+  --brand-gradient: none;
+}
+[data-style='ink'][data-theme='light'] {
+  --p-window: oklch(0.95 0.006 80);
+  --p-chrome: oklch(0.96 0.007 80 / 0.7);
+  --p-canvas: oklch(0.988 0.004 85);
+  --p-raised: oklch(1 0 0);
+  --p-sunken: oklch(0.962 0.006 80);
+  --p-hover: oklch(0.4 0.02 60 / 0.06);
+  --p-selected: oklch(0.4 0.02 60 / 0.1);
+  --p-text-1: oklch(0.2 0.01 60);
+  --p-text-2: oklch(0.44 0.012 60);
+  --p-text-3: oklch(0.52 0.01 60);
+  --p-on-accent: oklch(0.99 0.005 80);
+  --p-accent: oklch(0.56 0.17 42);
+  --p-accent-hover: oklch(0.51 0.17 42);
+  --p-accent-subtle: oklch(0.95 0.03 55);
+  --p-separator: oklch(0.89 0.008 75);
+  --p-border: oklch(0.84 0.01 70);
+  --p-success: oklch(0.56 0.12 150);
+  --p-warning: oklch(0.65 0.14 75);
+  --p-danger: oklch(0.55 0.19 28);
+  --p-shadow: 0 1px 0 oklch(0.3 0.02 60 / 0.06), 0 4px 16px oklch(0.3 0.02 60 / 0.06);
+  --p-switch-off: oklch(0.62 0.01 70);
+}
+[data-style='ink'][data-theme='dark'] {
+  --p-window: oklch(0.155 0.005 60);
+  --p-chrome: oklch(0.17 0.006 60 / 0.62);
+  --p-canvas: oklch(0.175 0.005 60);
+  --p-raised: oklch(0.215 0.006 60);
+  --p-sunken: oklch(0.145 0.005 60);
+  --p-hover: oklch(0.9 0.01 80 / 0.06);
+  --p-selected: oklch(0.9 0.01 80 / 0.1);
+  --p-text-1: oklch(0.93 0.008 85);
+  --p-text-2: oklch(0.72 0.01 80);
+  --p-text-3: oklch(0.63 0.01 80);
+  --p-on-accent: oklch(0.16 0.02 45);
+  --p-accent: oklch(0.74 0.14 52);
+  --p-accent-hover: oklch(0.79 0.12 52);
+  --p-accent-subtle: oklch(0.28 0.05 52);
+  --p-separator: oklch(0.28 0.006 60);
+  --p-border: oklch(0.34 0.008 60);
+  --p-success: oklch(0.73 0.12 150);
+  --p-warning: oklch(0.8 0.12 78);
+  --p-danger: oklch(0.7 0.16 28);
+  --p-shadow: 0 1px 0 oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.3);
+  --p-switch-off: oklch(0.56 0.008 70);
+}
+
+/* Windows high contrast: system colors replace every semantic token. */
+@media (forced-colors: active) {
+  [data-style] {
+    --surface-window: Canvas;
+    --surface-chrome: Canvas;
+    --surface-canvas: Canvas;
+    --surface-raised: Canvas;
+    --surface-sunken: Canvas;
+    --surface-hover: Canvas;
+    --surface-selected: Highlight;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --text-tertiary: GrayText;
+    --text-on-accent: HighlightText;
+    --accent: Highlight;
+    --accent-hover: Highlight;
+    --accent-subtle: Canvas;
+    --separator: CanvasText;
+    --border-control: ButtonBorder;
+    --control-off: ButtonBorder;
+    --focus-ring: 0 0 0 2px Highlight;
+    --shadow-raised: none;
+  }
+}
