@@ -1,6 +1,6 @@
 # Architecture
 
-Tauri owns the native window and desktop actions. A separate local daemon owns storage, account configuration, process/API execution, permissions, routing and cancellation through `lumen-core`. The GUI is a client of authenticated local IPC. React renders normalized events. The webview does not read provider credentials or contact inference services directly.
+The local daemon owns storage, account configuration, process/API execution, permissions, routing and cancellation through `lumen-core`. Clients connect through authenticated local IPC. The previous desktop client and its renderer are archived during the interface rewrite.
 
 OpenCode and Cursor use one existing native profile each and remain explicitly selected. `opencode.rs` discovers project-scoped models; `opencode_acp.rs` creates or verifies native session policies before prompting, bridges official ACP approvals/events, and injects scoped Moli/graph/MCP servers. `cursor.rs` retains the headless runner and successful-terminal-result requirement; Cursor is Autopilot only and has no shared-tool bridge. Owned process trees are cancelled without touching unrelated CLIs.
 
@@ -27,11 +27,11 @@ OpenCode and Cursor use one existing native profile each and remain explicitly s
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | Bounded LSP/check execution and affected-project verification |
 | `autonomy.rs` | Action classes, audit log, restore safety and untrusted-content gating |
 | `gitops.rs`, `workspace.rs` | Private-index checkpoints and explicit cwd changes |
-| `inspector.rs`, `media.rs`, `review.rs` | Local preview, images/data and source diffs |
+| `media.rs`, `review.rs` | Conversation images and source diffs |
 | `screens.rs` | Screen/window capture; desktop launch/hiding/shortcut remain in the GUI |
 | `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal/login startup and observed provider availability |
 
-Domain modules are under `src-tauri/crates/lumen-core/src/`; `lumen-daemon` is the service entry point, `lumen-ipc` owns local transport/authentication and `lumen-commands` generates typed JSON boundaries. Only desktop setup, tray, hotkeys and launch actions remain under `src-tauri/src/`. Frontend components live under `src/components/`, settings under `src/settings/`, shared types/IPC under `src/lib/`. The native Gatekeeper crate and React review surface live in `src/features/gatekeeper/`; local-helper code is in `src/features/local-assistant/`.
+Run logic lives in `src-tauri/crates/lumen-core`. The service entry point is `lumen-daemon`, `lumen-ipc` owns local transport and authentication, and `lumen-commands` generates typed command boundaries. The native Gatekeeper crate and approval fixtures remain in `src-tauri/crates/lumen-gatekeeper/`.
 
 ## Turn lifecycle
 

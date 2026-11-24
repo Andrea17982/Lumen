@@ -7,7 +7,7 @@ license = "MIT"
 [dependencies]
 lumen-core = {path="../lumen-core"}
 lumen-ipc = {path="../lumen-ipc"}
-lumen-gatekeeper = {path="../../../src/features/gatekeeper"}
+lumen-gatekeeper = {path="../lumen-gatekeeper"}
 serde_json = "1"
 tokio = {version="1",features=["net","io-util","sync","time","rt-multi-thread","macros"]}
 dirs = "6"

@@ -30,6 +30,20 @@ pub struct Task {
     /// The published pull request Lumen watches, once Publish succeeded.
     #[serde(default)]
     pub pr: Option<Pr>,
+    /// Branch on origin that Publish pushes to, when the request named an existing branch
+    /// or pull request; otherwise `branch` itself.
+    #[serde(default)]
+    pub remote: Option<String>,
+    /// The open pull request the task continues: its URL and base branch.
+    #[serde(default)]
+    pub continues: Option<(String, String)>,
+}
+
+impl Task {
+    /// The branch name on origin.
+    pub(crate) fn upstream(&self) -> &str {
+        self.remote.as_deref().unwrap_or(&self.branch)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -74,6 +88,10 @@ pub struct Status {
     pub dirty: bool,
     pub remote: Option<String>,
     pub base: String,
+    /// Branch on origin that Publish pushes to.
+    pub upstream: String,
+    /// The open pull request Publish updates instead of opening a new one.
+    pub continues: Option<String>,
     /// Why Pubblica is unavailable, when it is (checked only for a preview).
     pub blocked: Option<String>,
     pub pr: Option<PrStatus>,
@@ -131,6 +149,204 @@ fn slug(text: &str) -> String {
 /// Large Auto tasks that write files get a worktree; everything else stays in the folder.
 pub(crate) fn wanted(complex: bool, tier: i32, access: AccessMode) -> bool {
     access != AccessMode::ReadOnly && (complex || tier >= 2)
+}
+
+/// An existing branch or pull request the request asks to work on.
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) enum Ref {
+    /// Number, and `owner/repo` when the request gave a URL.
+    Pr(u64, Option<String>),
+    Branch(String),
+}
+
+/// The branch or pull request a request names: a pull request URL, "PR 12" or
+/// "pull request #12", or "branch feat/x" (also "sul branch", "the `feat/x` branch").
+/// Only a guess: [`resolve`] checks it against the repository.
+pub(crate) fn reference(text: &str) -> Option<Ref> {
+    use std::sync::LazyLock;
+    static URL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)https?://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)").unwrap()
+    });
+    static PR: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\b(?:pr|pull[ -]request)\s*#?(\d+)\b").unwrap()
+    });
+    static AFTER: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?i)\bbranch\s+(?:(?:named|called|chiamato)\s+)?[`'\x22]?([\w][\w./-]*[\w])[`'\x22]?",
+        )
+        .unwrap()
+    });
+    static BEFORE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)(?:[`'\x22]([\w][\w./-]*[\w])[`'\x22]|\b([\w.-]+/[\w./-]*[\w]))\s+branch\b")
+            .unwrap()
+    });
+    if let Some(c) = URL.captures(text) {
+        return Some(Ref::Pr(c[2].parse().ok()?, Some(c[1].to_string())));
+    }
+    if let Some(c) = PR.captures(text) {
+        return Some(Ref::Pr(c[1].parse().ok()?, None));
+    }
+    let named = AFTER
+        .captures(text)
+        .map(|c| c[1].to_string())
+        .or_else(|| {
+            BEFORE
+                .captures(text)
+                .and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
+        })?;
+    // Words that follow "branch" in ordinary sentences are not branch names.
+    let common = [
+        "a", "an", "the", "this", "that", "new", "from", "to", "of", "and", "with", "for", "in",
+        "on", "is", "name", "di", "del", "della", "da", "dal", "il", "lo", "la", "un", "uno",
+        "nuovo", "e", "per", "con", "che", "su", "sul",
+    ];
+    (!common.contains(&named.to_lowercase().as_str())).then_some(Ref::Branch(named))
+}
+
+/// Where a task named in the request starts.
+#[derive(Debug, PartialEq)]
+struct Start {
+    commit: String,
+    /// Branch on origin.
+    remote: String,
+    /// The open pull request: URL and base branch.
+    pr: Option<(String, String)>,
+}
+
+/// Checks a named branch or pull request against the repository. `Ok(None)` when the name
+/// is not a branch here (the request only used the word); `Err` says why an existing one
+/// cannot be used.
+async fn resolve(top: &Path, r: &Ref) -> Result<Option<Start>, String> {
+    let fetch = |name: String| async move {
+        gitops::run(
+            top,
+            &[
+                "fetch",
+                "-q",
+                "origin",
+                &format!("+refs/heads/{name}:refs/remotes/origin/{name}"),
+            ],
+            None,
+        )
+        .await
+        .is_ok()
+    };
+    let commit = |rev: String| async move {
+        gitops::run(top, &["rev-parse", "--verify", "-q", &rev], None)
+            .await
+            .ok()
+            .map(|h| h.trim().to_string())
+            .filter(|h| !h.is_empty())
+    };
+    match r {
+        Ref::Pr(number, repo) => {
+            let n = number.to_string();
+            let view: serde_json::Value = serde_json::from_str(
+                &gh_run(
+                    top,
+                    &[
+                        "pr",
+                        "view",
+                        &n,
+                        "--json",
+                        "url,state,headRefName,baseRefName,isCrossRepository",
+                    ],
+                )
+                .await
+                .map_err(|e| format!("Pull request #{n} not found: {}", e.trim()))?,
+            )
+            .map_err(|e| e.to_string())?;
+            let url = view["url"].as_str().unwrap_or_default().to_string();
+            if let Some(repo) = repo {
+                if !url
+                    .to_lowercase()
+                    .contains(&format!("github.com/{}/pull/", repo.to_lowercase()))
+                {
+                    return Err(format!(
+                        "Pull request {repo}#{n} belongs to another repository"
+                    ));
+                }
+            }
+            if view["state"] != "OPEN" {
+                return Err(format!(
+                    "Pull request #{n} is {}",
+                    view["state"].as_str().unwrap_or("not open").to_lowercase()
+                ));
+            }
+            if view["isCrossRepository"] == true {
+                return Err(format!(
+                    "Pull request #{n} comes from a fork, and Lumen cannot push to it"
+                ));
+            }
+            let head = view["headRefName"].as_str().unwrap_or_default().to_string();
+            let base = view["baseRefName"].as_str().unwrap_or_default().to_string();
+            if head.is_empty() || !fetch(head.clone()).await {
+                return Err(format!("The branch of pull request #{n} could not be fetched"));
+            }
+            let commit = commit(format!("refs/remotes/origin/{head}"))
+                .await
+                .ok_or("The pull request branch has no commit")?;
+            Ok(Some(Start {
+                commit,
+                remote: head,
+                pr: Some((url, base)),
+            }))
+        }
+        Ref::Branch(name) => {
+            let valid = gitops::run(top, &["check-ref-format", "--branch", name], None)
+                .await
+                .is_ok();
+            if !valid || name.starts_with('-') || *name == gitops::default_base(top).await {
+                return Ok(None);
+            }
+            let local = commit(format!("refs/heads/{name}")).await;
+            let remote = if fetch(name.clone()).await {
+                commit(format!("refs/remotes/origin/{name}")).await
+            } else {
+                None
+            };
+            // The local branch wins when it contains everything on origin.
+            let commit = match (local, remote) {
+                (Some(l), Some(r)) => {
+                    let ahead = gitops::run(top, &["merge-base", "--is-ancestor", &r, &l], None)
+                        .await
+                        .is_ok();
+                    if ahead {
+                        l
+                    } else {
+                        r
+                    }
+                }
+                (Some(c), None) | (None, Some(c)) => c,
+                (None, None) => return Ok(None),
+            };
+            let pr = gh_run(
+                top,
+                &[
+                    "pr",
+                    "view",
+                    name,
+                    "--json",
+                    "url,state,baseRefName,isCrossRepository",
+                ],
+            )
+            .await
+            .ok()
+            .and_then(|v| serde_json::from_str::<serde_json::Value>(&v).ok())
+            .filter(|v| v["state"] == "OPEN" && v["isCrossRepository"] != true)
+            .map(|v| {
+                (
+                    v["url"].as_str().unwrap_or_default().to_string(),
+                    v["baseRefName"].as_str().unwrap_or_default().to_string(),
+                )
+            });
+            Ok(Some(Start {
+                commit,
+                remote: name.clone(),
+                pr,
+            }))
+        }
+    }
 }
 
 /// Ignored local files a fresh checkout needs to run: `.env*` and `*.local*`, at most 1 MB each.
@@ -231,6 +447,9 @@ async fn install(cmd: &str, dir: &Path, mut cancel: watch::Receiver<bool>) -> Re
 }
 
 /// Creates the session's worktree, moves the session into it and returns the updated session.
+/// `named` is a branch or pull request the request asked for: the worktree starts there and
+/// Publish pushes back to it. Without `big`, only a usable `named` gets a worktree.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create(
     app: &crate::host::EventHub,
     core: &Core,
@@ -238,6 +457,8 @@ pub(crate) async fn create(
     out: &mut Message,
     request: &str,
     access: AccessMode,
+    named: Option<Ref>,
+    big: bool,
     cancel: watch::Receiver<bool>,
 ) -> Result<Option<Session>, String> {
     if active(core, s).is_some() {
@@ -247,6 +468,30 @@ pub(crate) async fn create(
     let Some(top) = gitops::toplevel(&origin).await else {
         return Ok(None);
     };
+    let from = match &named {
+        Some(r) => match resolve(&top, r).await {
+            Ok(start) => start,
+            Err(e) => {
+                let rest = if big {
+                    "the task starts from the project's current state"
+                } else {
+                    "Lumen works in the project folder"
+                };
+                note(
+                    app,
+                    &s.id,
+                    out,
+                    "task-worktree",
+                    format!("{e}, so {rest}."),
+                );
+                None
+            }
+        },
+        None => None,
+    };
+    if from.is_none() && !big {
+        return Ok(None);
+    }
     let rel = origin
         .strip_prefix(&top)
         .unwrap_or(Path::new(""))
@@ -256,14 +501,31 @@ pub(crate) async fn create(
     if path.exists() {
         gitops::remove_worktree(&top, &path).await;
     }
-    let base = gitops::write_tree(&top).await?;
-    let start = gitops::run(&top, &["rev-parse", "HEAD"], None)
-        .await
-        .map(|h| h.trim().to_string())
-        .unwrap_or_default();
+    let (base, start) = match &from {
+        // A named branch starts from its own commit; the folder's uncommitted work stays
+        // in the folder.
+        Some(f) => (
+            gitops::run(&top, &["rev-parse", &format!("{}^{{tree}}", f.commit)], None)
+                .await?
+                .trim()
+                .to_string(),
+            f.commit.clone(),
+        ),
+        None => (
+            gitops::write_tree(&top).await?,
+            gitops::run(&top, &["rev-parse", "HEAD"], None)
+                .await
+                .map(|h| h.trim().to_string())
+                .unwrap_or_default(),
+        ),
+    };
     let short: String = crate::models::id().chars().take(6).collect();
-    let branch = format!("lumen/{}-{short}", slug(request));
-    gitops::add_lane(&top, &base, &path, &branch).await?;
+    let branch = match &from {
+        Some(f) => format!("lumen/{}-{short}", slug(&f.remote)),
+        None => format!("lumen/{}-{short}", slug(request)),
+    };
+    let at = from.as_ref().map_or("HEAD", |f| f.commit.as_str());
+    gitops::add_lane(&top, &base, &path, &branch, at).await?;
     let path = dunce::canonicalize(&path).unwrap_or(path);
     let task = Task {
         origin: origin.to_string_lossy().into_owned(),
@@ -274,6 +536,8 @@ pub(crate) async fn create(
         base,
         start,
         pr: None,
+        remote: from.as_ref().map(|f| f.remote.clone()),
+        continues: from.as_ref().and_then(|f| f.pr.clone()),
     };
     save(core, &s.id, &task)?;
     // The user's uncommitted work becomes the branch's first commit, so the pull request
@@ -290,7 +554,17 @@ pub(crate) async fn create(
         .is_some();
     let copied = copy_ignored(&top, &path).await;
     let work = path.join(&rel);
-    let mut lines = vec![format!("Branch {branch} in its own worktree.")];
+    let mut lines = vec![match &task.continues {
+        Some((url, _)) => format!(
+            "Worktree on {}, the branch of {url}. Publish pushes to that pull request.",
+            task.upstream()
+        ),
+        None if task.remote.is_some() => format!(
+            "Worktree on branch {}. Publish pushes to it.",
+            task.upstream()
+        ),
+        None => format!("Branch {branch} in its own worktree."),
+    }];
     if carried {
         lines.push("Your uncommitted changes are the branch's first commit.".into());
     }
@@ -453,7 +727,10 @@ async fn status_of(t: &Task, preview: bool) -> Status {
         .ok()
         .map(|u| u.trim().to_string())
         .filter(|u| !u.is_empty());
-    let base = gitops::default_base(Path::new(&t.top)).await;
+    let base = match &t.continues {
+        Some((_, base)) if !base.is_empty() => base.clone(),
+        _ => gitops::default_base(Path::new(&t.top)).await,
+    };
     let blocked = if !preview {
         None
     } else if remote.is_none() {
@@ -469,6 +746,8 @@ async fn status_of(t: &Task, preview: bool) -> Status {
         dirty,
         remote,
         base,
+        upstream: t.upstream().to_string(),
+        continues: t.continues.as_ref().map(|(url, _)| url.clone()),
         blocked,
         pr: t.pr.as_ref().map(|p| PrStatus {
             url: p.url.clone(),
@@ -583,16 +862,45 @@ pub async fn publish_task(
         return Err(reason);
     }
     gitops::commit_all(&path, &fallback_message(title, &[])).await?;
-    gitops::run(&path, &["push", "-u", "origin", &t.branch], None)
-        .await
-        .map_err(|e| format!("Push failed: {e}"))?;
-    // A second Publish reuses the open pull request instead of opening another.
-    let url = match gh_run(
+    let upstream = t.upstream().to_string();
+    gitops::run(
         &path,
-        &["pr", "view", &t.branch, "--json", "url", "-q", ".url"],
+        &[
+            "push",
+            "-u",
+            "origin",
+            &format!("{}:refs/heads/{upstream}", t.branch),
+        ],
+        None,
     )
     .await
-    {
+    .map_err(|e| format!("Push failed: {e}"))?;
+    // A second Publish, or a task that continues a pull request, reuses the open pull
+    // request instead of opening another.
+    let open = match &t.continues {
+        Some((url, _)) => Ok(url.clone()),
+        None => {
+            gh_run(
+                &path,
+                &[
+                    "pr",
+                    "view",
+                    &upstream,
+                    "--json",
+                    "url,state",
+                    "-q",
+                    "select(.state == \"OPEN\") | .url",
+                ],
+            )
+            .await
+        }
+    };
+    let base = match &t.continues {
+        Some((_, b)) if !b.is_empty() => b.clone(),
+        _ => base.to_string(),
+    };
+    let base = base.as_str();
+    let url = match open {
         Ok(url) if url.starts_with("http") => url,
         _ => {
             let out = gh_run(
@@ -603,7 +911,7 @@ pub async fn publish_task(
                     "--base",
                     base,
                     "--head",
-                    &t.branch,
+                    &upstream,
                     "--title",
                     title,
                     "--body",
@@ -622,7 +930,7 @@ pub async fn publish_task(
     let entry = autonomy::decision(
         autonomy::Class::External,
         "publish pull request",
-        &format!("{} → {base}: {url}", t.branch),
+        &format!("{upstream} → {base}: {url}"),
     );
     autonomy::append_log(&core.root, &id, &entry);
     if let Ok(mut messages) = core.store.messages(&id) {
@@ -633,7 +941,7 @@ pub async fn publish_task(
                 &id,
                 last,
                 "task-published",
-                serde_json::json!({"url": url, "branch": t.branch, "base": base}).to_string(),
+                serde_json::json!({"url": url, "branch": upstream, "base": base}).to_string(),
             );
             let _ = core.store.save_message(&id, last);
         }
@@ -697,6 +1005,8 @@ mod tests {
     use super::*;
 
     static GH_CALLS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    /// Tests that install a fake `gh` run one at a time.
+    static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     static HEAD: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
     static STATE: std::sync::Mutex<&str> = std::sync::Mutex::new("OPEN");
@@ -804,6 +1114,8 @@ error: expected 1 got 2".into()),
             &mut out,
             "Change b",
             AccessMode::FileEdits,
+            None,
+            true,
             watch::channel(false).1,
         )
         .await
@@ -828,11 +1140,202 @@ error: expected 1 got 2".into()),
         assert_eq!(git(&wt, &["show", "HEAD:b.txt"]).await, "y\n");
     }
 
+    fn fake_named(args: &[&str]) -> Result<String, String> {
+        GH_CALLS.lock().unwrap().push(args.join(" "));
+        let pr = |head: &str, fork: bool| {
+            Ok(serde_json::json!({
+                "url": "https://github.com/o/r/pull/5",
+                "state": "OPEN",
+                "headRefName": head,
+                "baseRefName": "develop",
+                "isCrossRepository": fork
+            })
+            .to_string())
+        };
+        match args {
+            ["auth", ..] => Ok("ok".into()),
+            ["pr", "view", "5", ..] => pr("feat/x", false),
+            ["pr", "view", "6", ..] => pr("feat/x", true),
+            ["pr", "view", ..] => Err("no pull requests found".into()),
+            ["pr", "create", ..] => Ok("https://github.com/o/r/pull/8".into()),
+            _ => Err("unexpected".into()),
+        }
+    }
+
+    #[test]
+    fn references_in_requests() {
+        let pr = |n, repo: Option<&str>| Some(Ref::Pr(n, repo.map(String::from)));
+        let branch = |b: &str| Some(Ref::Branch(b.into()));
+        assert_eq!(
+            reference("Continue https://github.com/o/r/pull/12 please"),
+            pr(12, Some("o/r"))
+        );
+        assert_eq!(reference("address the review on PR #7"), pr(7, None));
+        assert_eq!(reference("rivedi la pull request 31"), pr(31, None));
+        assert_eq!(
+            reference("Fix the login on branch feat/login"),
+            branch("feat/login")
+        );
+        assert_eq!(
+            reference("Lavora sul branch `fix-crash` e correggi"),
+            branch("fix-crash")
+        );
+        assert_eq!(
+            reference("update the `release/1.2` branch"),
+            branch("release/1.2")
+        );
+        assert_eq!(reference("finish the feat/x branch"), branch("feat/x"));
+        assert_eq!(reference("create a new branch for this"), None);
+        assert_eq!(reference("merge it into the main branch"), None);
+        assert_eq!(reference("Fix PR-related bugs in the parser"), None);
+    }
+
+    /// A request that names a pull request or branch works on it: the worktree starts at its
+    /// commit without the folder's uncommitted work, and Publish pushes back to it.
+    #[tokio::test]
+    async fn named_pull_request_and_branch() {
+        if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
+            return;
+        }
+        let _serial = SERIAL.lock().await;
+        let f = crate::test_support::Fixture::new();
+        let app = crate::host::EventHub::default();
+        let remote = f.directory("named.git");
+        git(&remote, &["init", "-q", "--bare", "-b", "main"]).await;
+        let project = f.directory("named");
+        git(&project, &["init", "-q", "-b", "main"]).await;
+        std::fs::write(project.join("a.txt"), "one\n").unwrap();
+        git(&project, &["add", "."]).await;
+        git(&project, &["commit", "-qm", "init"]).await;
+        git(
+            &project,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        )
+        .await;
+        git(&project, &["push", "-q", "origin", "main"]).await;
+        for b in ["feat/x", "feat/y"] {
+            git(&project, &["switch", "-q", "-c", b, "main"]).await;
+            std::fs::write(project.join(format!("{}.txt", &b[5..])), b).unwrap();
+            git(&project, &["add", "."]).await;
+            git(&project, &["commit", "-qm", b]).await;
+            git(&project, &["push", "-q", "origin", b]).await;
+        }
+        git(&project, &["switch", "-q", "main"]).await;
+        // feat/x exists only on origin.
+        git(&project, &["branch", "-q", "-D", "feat/x"]).await;
+        std::fs::write(project.join("a.txt"), "dirty\n").unwrap();
+        *FAKE_GH.lock().unwrap() = Some(fake_named);
+        GH_CALLS.lock().unwrap().clear();
+        let s = f
+            .core
+            .store
+            .create(project.to_string_lossy().into())
+            .unwrap();
+        let start = |s: Session, named: Ref| {
+            let (app, core) = (app.clone(), f.core.clone());
+            async move {
+                let mut out = message();
+                let moved = create(
+                    &app,
+                    &core,
+                    &s,
+                    &mut out,
+                    "small fix",
+                    AccessMode::FileEdits,
+                    Some(named),
+                    false,
+                    watch::channel(false).1,
+                )
+                .await
+                .unwrap();
+                let notes: Vec<String> = out
+                    .activity
+                    .iter()
+                    .filter(|a| a.kind == "task-worktree")
+                    .map(|a| a.text.clone())
+                    .collect();
+                (moved, notes.join("\n"), out)
+            }
+        };
+
+        // An open pull request: its branch, then Publish updates it.
+        let (moved, notes, mut out) = start(s.clone(), Ref::Pr(5, None)).await;
+        let moved = moved.expect("worktree for the pull request");
+        assert!(notes.contains("pull/5"), "{notes}");
+        let t = active(&f.core, &moved).unwrap();
+        assert_eq!(t.upstream(), "feat/x");
+        let wt = PathBuf::from(&t.path);
+        assert!(wt.join("x.txt").is_file());
+        assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "one\n");
+        let status = status_of(&t, false).await;
+        assert_eq!(
+            (status.ahead, status.base.as_str(), status.upstream.as_str()),
+            (0, "develop", "feat/x")
+        );
+        std::fs::write(wt.join("fix.txt"), "fix\n").unwrap();
+        commit_turn(&app, &f.core, &s.id, &mut out, "small fix").await;
+        f.core.store.save_message(&s.id, &out).unwrap();
+        let published = publish_task(
+            app.clone(),
+            crate::CoreRef(&f.core),
+            s.id.clone(),
+            "main".into(),
+            "Fix".into(),
+            String::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(published.url, "https://github.com/o/r/pull/5");
+        assert!(git(&remote, &["ls-tree", "--name-only", "feat/x"])
+            .await
+            .contains("fix.txt"));
+        assert_eq!(load(&f.core, &s.id).unwrap().pr.unwrap().base, "develop");
+        assert!(!GH_CALLS.lock().unwrap().iter().any(|c| c.contains("pr create")));
+        let s = discard_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap();
+
+        // A fork's pull request and a word that is no branch leave a small task in the folder.
+        let (moved, notes, _) = start(s.clone(), Ref::Pr(6, None)).await;
+        assert!(moved.is_none() && notes.contains("fork"), "{notes}");
+        let (moved, notes, _) = start(s.clone(), Ref::Branch("nope".into())).await;
+        assert!(moved.is_none() && notes.is_empty(), "{notes}");
+
+        // A branch without a pull request: Publish opens one from that branch.
+        let (moved, _, mut out) = start(s.clone(), Ref::Branch("feat/y".into())).await;
+        let t = active(&f.core, &moved.expect("worktree for the branch")).unwrap();
+        assert!(Path::new(&t.path).join("y.txt").is_file());
+        std::fs::write(Path::new(&t.path).join("more.txt"), "more\n").unwrap();
+        commit_turn(&app, &f.core, &s.id, &mut out, "small fix").await;
+        f.core.store.save_message(&s.id, &out).unwrap();
+        let published = publish_task(
+            app.clone(),
+            crate::CoreRef(&f.core),
+            s.id.clone(),
+            "main".into(),
+            "More".into(),
+            String::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(published.url, "https://github.com/o/r/pull/8");
+        let calls = GH_CALLS.lock().unwrap().join("\n");
+        assert!(
+            calls.contains("pr create --base main --head feat/y"),
+            "{calls}"
+        );
+        assert!(git(&remote, &["ls-tree", "--name-only", "feat/y"])
+            .await
+            .contains("more.txt"));
+        *FAKE_GH.lock().unwrap() = None;
+    }
+
     #[tokio::test]
     async fn worktree_commit_publish_apply_and_discard() {
         if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
             return;
         }
+        let _serial = SERIAL.lock().await;
         let f = crate::test_support::Fixture::new();
         let app = crate::host::EventHub::default();
         let remote = f.directory("remote.git");
@@ -887,6 +1390,8 @@ node_modules/
             &mut out,
             "Add the login page",
             AccessMode::FileEdits,
+            None,
+            true,
             watch::channel(false).1,
         )
         .await
@@ -914,6 +1419,8 @@ node_modules/
             &mut out,
             "more",
             AccessMode::FileEdits,
+            None,
+            true,
             watch::channel(false).1
         )
         .await
@@ -1026,6 +1533,8 @@ node_modules/
             &mut out,
             "Rename things",
             AccessMode::FileEdits,
+            None,
+            true,
             watch::channel(false).1,
         )
         .await
@@ -1062,6 +1571,8 @@ node_modules/
             &mut out,
             "Try something",
             AccessMode::FileEdits,
+            None,
+            true,
             watch::channel(false).1,
         )
         .await

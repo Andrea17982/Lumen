@@ -42,7 +42,7 @@ Projects organize conversations; moving a conversation between projects does not
 
 ## Browser, images and inspector
 
-Request web research or page interaction normally: Moli is automatically connected. Read-only profiles cannot submit page mutations. Captured images appear in the transcript; click to enlarge. The project inspector adds local previews, changes/checks, visual review, image/data inspection and layout constraints. Optional Godot actions require a compatible configured editor/addon.
+Request web research or page interaction normally: Moli is automatically connected. Read-only profiles cannot submit page mutations. Captured images appear in the transcript; click to enlarge. Optional Godot actions require a compatible configured editor/addon.
 
 ## Background work and recovery
 

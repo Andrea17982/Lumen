@@ -20,7 +20,7 @@ dunce = "1"
 toml = "0.8"
 ignore = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
-lumen-gatekeeper = { path = "../../../src/features/gatekeeper" }
+lumen-gatekeeper = { path = "../lumen-gatekeeper" }
 xcap = "0.8"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }

@@ -15,7 +15,7 @@
   </p>
 </div>
 
-![Lumen on Windows](docs/images/desktop.png)
+This checkout contains the daemon, backend and development tooling. Desktop releases linked below refer to the previous interface.
 
 Lumen is a desktop app for coding with AI. You sign in to the subscriptions you already pay for (Claude Code, Codex, Antigravity, OpenCode, Cursor, local Ollama or an API key) and Lumen uses them together, as one team, on your project.
 

@@ -10,7 +10,7 @@
   </p>
 </div>
 
-![Lumen su Windows](docs/images/desktop.png)
+Questo checkout contiene il daemon, il backend e gli strumenti di sviluppo. Le release desktop citate sotto appartengono all’interfaccia precedente.
 
 Lumen è un'app desktop per programmare con l'AI. Accedi agli abbonamenti che paghi già (Claude Code, Codex, Antigravity, OpenCode, Cursor, Ollama in locale o una chiave API) e Lumen li fa lavorare insieme, come una squadra, sul tuo progetto.
 

@@ -18,6 +18,8 @@ const FOLLOW_UP_CHARS: usize = 80;
 pub struct Verdict {
     pub task: TaskProfile,
     pub complex: bool,
+    /// A fix for a defect a test could reproduce: Auto asks for a failing test first.
+    pub bugfix: bool,
     /// Where the verdict came from: "ollama", "claude" or "keywords".
     pub source: &'static str,
 }
@@ -26,6 +28,7 @@ pub fn heuristic(prompt: &str) -> Verdict {
     Verdict {
         task: crate::router::profile(prompt),
         complex: crate::router::complex(prompt),
+        bugfix: crate::redgreen::looks_like_bugfix(prompt),
         source: "keywords",
     }
 }
@@ -39,6 +42,7 @@ pub fn record(v: &Verdict) -> Activity {
             "effort": v.task.effort,
             "review": v.task.review,
             "complex": v.complex,
+            "bugfix": v.bugfix,
             "source": v.source,
             "audit": v.task.audit,
         })
@@ -56,11 +60,13 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
             .activity
             .iter()
             .find(|a| a.kind == "route")
-            .and_then(|a| parse(&a.text))
-            .map(|(task, complex)| Verdict {
-                task,
-                complex,
-                source: "previous request",
+            .and_then(|a| {
+                parse(&a.text).map(|(task, complex)| Verdict {
+                    task,
+                    complex,
+                    bugfix: bugfix(&a.text).unwrap_or(false),
+                    source: "previous request",
+                })
             })
             .unwrap_or_else(|| heuristic(&request.text));
         for activity in messages[index + 1..end]
@@ -97,6 +103,7 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
             current.task.effort = current.task.effort.max(verdict.task.effort);
             current.task.review |= verdict.task.review;
             current.complex |= verdict.complex;
+            current.bugfix |= verdict.bugfix;
             if current.task.audit == crate::router::AuditIntent::Auto {
                 current.task.audit = verdict.task.audit;
             }
@@ -165,6 +172,7 @@ pub fn follow_up(previous: Option<Verdict>, request: &str) -> Option<Verdict> {
             },
         },
         complex: prev.complex,
+        bugfix: prev.bugfix,
         source: "previous request",
     })
 }
@@ -194,12 +202,13 @@ fn prompt(request: &str, context: &str) -> String {
     };
     format!(
         r#"You route requests in an app that runs coding agents (Claude, Codex). Rate the user's request. Reply with only one JSON object and nothing else:
-{{"tier":0,"effort":0,"review":false,"complex":false}}
+{{"tier":0,"effort":0,"review":false,"complex":false,"bugfix":false}}
 
 tier: 0 = small talk, quick factual questions, short writing or translation, trivial one-line edits. 1 = ordinary coding, debugging, refactoring, explaining code, substantial writing. 2 = hard work: architecture, security, concurrency, subtle or intermittent bugs, large refactors or migrations, math, deep analysis.
 effort: 0 = answer directly, 1 = needs some thought, 2 = needs long careful reasoning.
 review: true only when a mistake would be costly (security, data loss, money, production systems) and an independent second check is worth paying for. Most requests are false.
 complex: true only when the request asks for several separate deliverables, or one large feature spanning many files or areas, that independent agents could build in parallel. A single bug, question, review, explanation or change to one area is never complex, however hard. Most requests are false.
+bugfix: true when the request asks to fix a defect in existing code (wrong behavior, a crash, a failing case, a regression) that an automated test could reproduce. False for new features, refactors, styling, documentation, build or CI configuration, and questions.
 A short follow-up ("go on", "fix it", "procedi", "ok fallo") continues the previous task: rate that task, not the words.
 
 Previous exchange:
@@ -208,6 +217,13 @@ Previous exchange:
 Request:
 {request}"#
     )
+}
+
+/// The ugfix flag of the first JSON object in a model's answer or a stored route.
+fn bugfix(text: &str) -> Option<bool> {
+    let start = text.find('{')?;
+    let end = text[start..].find('}')? + start;
+    serde_json::from_str::<Value>(&text[start..=end]).ok()?["bugfix"].as_bool()
 }
 
 /// Reads the first JSON object in a model's answer.
@@ -246,6 +262,7 @@ pub async fn classify(data: &Path, accounts: &[Account], request: &str, context:
                 Verdict {
                     task,
                     complex,
+                    bugfix: bugfix(&text).unwrap_or(fallback.bugfix),
                     source: "claude",
                 }
             }
@@ -315,6 +332,7 @@ mod tests {
                 audit: Default::default(),
             },
             complex: true,
+            bugfix: false,
             source: "claude",
         };
         for request in [
@@ -367,6 +385,7 @@ mod tests {
                 audit: Default::default(),
             },
             complex: false,
+            bugfix: false,
             source: "claude",
         };
         let chat = vec![

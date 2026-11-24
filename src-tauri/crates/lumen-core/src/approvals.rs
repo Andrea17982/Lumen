@@ -177,7 +177,7 @@ mod tests {
 
     /// Runs the real Claude CLI against the real MCP bridge. Sends no prompt, so no model turn.
     /// Build the helper first, then point `LUMEN_GATEKEEPER_MCP_EXE` at it (an absolute path):
-    /// `cargo build --manifest-path ../src/features/gatekeeper/Cargo.toml --bin lumen-gatekeeper-mcp`
+    /// `cargo build --manifest-path src-tauri/crates/lumen-gatekeeper/Cargo.toml --bin lumen-gatekeeper-mcp`
     #[tokio::test]
     #[ignore]
     async fn probe_connects_to_the_installed_claude_cli() {

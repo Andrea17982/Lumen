@@ -54,7 +54,6 @@ mod execution;
 mod gitops;
 mod graph_mcp;
 mod impact;
-mod inspector;
 mod integrations;
 mod interactions;
 #[cfg(test)]
@@ -90,6 +89,7 @@ mod providers;
 mod repomap;
 mod review;
 mod rlm;
+mod redgreen;
 mod router;
 mod scheduling;
 mod screens;
@@ -1184,8 +1184,6 @@ pub async fn dispatch(
 ) -> Result<serde_json::Value, String> {
     match command {
         "acknowledge_tray_hint" => __ipc_acknowledge_tray_hint(app, core, args).await,
-        "inspect_json" => inspector::__ipc_inspect_json(app, core, args).await,
-        "inspect_sqlite" => inspector::__ipc_inspect_sqlite(app, core, args).await,
         "file_change_diff" => review::__ipc_file_change_diff(app, core, args).await,
         "count_tokens" => context::__ipc_count_tokens(app, core, args).await,
         "pending_questions" => interactions::__ipc_pending_questions(app, core, args).await,

@@ -1006,7 +1006,7 @@ mod tests {
     fn shipped_examples_are_valid_and_the_mcp_example_runs_scrubbed() {
         use std::io::{BufRead, Write};
         let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../plugins/examples");
-        for id in ["dusk-theme", "review-commands", "word-count"] {
+        for id in ["review-commands", "word-count"] {
             let m = validate(&examples.join(id)).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert_eq!(m.id, id);
             assert!(

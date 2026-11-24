@@ -409,17 +409,21 @@ pub fn truncate(mut s: String, limit: usize) -> String {
     s
 }
 
-/// A detached worktree on its own branch, seeded with the user's uncommitted state.
-pub async fn add_lane(top: &Path, base: &str, path: &Path, branch: &str) -> Result<(), String> {
+/// A worktree on its own branch started at commit `at`, seeded with the tree `base` (the
+/// user's uncommitted state when `at` is HEAD).
+pub async fn add_lane(
+    top: &Path,
+    base: &str,
+    path: &Path,
+    branch: &str,
+    at: &str,
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let p = path.to_string_lossy();
-    if run(top, &["rev-parse", "--verify", "HEAD"], None)
-        .await
-        .is_ok()
-    {
-        run(top, &["worktree", "add", "-b", branch, &p, "HEAD"], None).await?;
+    if run(top, &["rev-parse", "--verify", at], None).await.is_ok() {
+        run(top, &["worktree", "add", "-b", branch, &p, at], None).await?;
     } else {
         run(
             top,
@@ -591,7 +595,7 @@ mod tests {
             "{}-lane",
             top.file_name().unwrap().to_string_lossy()
         ));
-        add_lane(&top, &tree, &lane, "lumen/test-lane")
+        add_lane(&top, &tree, &lane, "lumen/test-lane", "HEAD")
             .await
             .unwrap();
         assert_eq!(

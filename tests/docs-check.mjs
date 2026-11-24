@@ -75,30 +75,19 @@ for (const file of markdown) {
       problems.push(`${file}: missing heading ${href}`);
   }
 }
-const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
-const tauri = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-const cargo = readFileSync('src-tauri/Cargo.toml', 'utf8').match(/^version = "([^"]+)"/m)?.[1];
 const cargoLock = readFileSync('src-tauri/Cargo.lock', 'utf8').match(
-  /name = "lumen"\r?\nversion = "([^"]+)"/,
+  /name = "lumen-daemon"\r?\nversion = "([^"]+)"/,
 )?.[1];
-for (const [name, version] of Object.entries({
-  lock: lock.version,
-  rootPackage: lock.packages[''].version,
-  tauri: tauri.version,
-  cargo,
-  cargoLock,
-}))
-  if (version !== pkg.version) problems.push(`${name}: ${version} differs from ${pkg.version}`);
+assert.ok(cargoLock, 'Missing lumen-daemon version in Cargo.lock');
 for (const name of ['lumen-core', 'lumen-daemon', 'lumen-ipc', 'lumen-commands']) {
   const manifest = readFileSync(`src-tauri/crates/${name}/Cargo.toml`, 'utf8').match(
     /^version = "([^"]+)"/m,
   )?.[1];
-  if (manifest !== pkg.version) problems.push(`${name}: ${manifest} differs from ${pkg.version}`);
+  if (manifest !== cargoLock) problems.push(`${name}: ${manifest} differs from ${cargoLock}`);
 }
-if (!existsSync(`docs/release-notes/${pkg.version}.md`))
+if (!existsSync(`docs/release-notes/${cargoLock}.md`))
   problems.push('Current release notes missing');
 assert.deepEqual(problems, [], 'Documentation/version consistency failed');
 console.log(
-  `Documentation passed: ${markdown.size} Markdown files, ${links} local references, version ${pkg.version}.`,
+  `Documentation passed: ${markdown.size} Markdown files, ${links} local references, version ${cargoLock}.`,
 );

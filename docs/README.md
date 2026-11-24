@@ -21,9 +21,3 @@ Start with [installation and the first conversation](getting-started.md). For th
 | [Release history](release-notes/README.md) | Current changelog; earlier versions on GitHub Releases |
 
 [Security](../SECURITY.md) · [Third-party notices](../THIRD_PARTY_NOTICES.md) · [Contributing](../CONTRIBUTING.md)
-
-## Gallery
-
-All views are native Windows WebView2 captures at a 1440×1000 documentation viewport with isolated demonstration data. The page image in the browser view was captured by bundled Moli.
-
-[Workspace](images/desktop.png) · [Dark theme](images/dark.png) · [Orchestra](images/orchestra-plan.png) · [Moli](images/moli-browser.png) · [Inspector/canvas](images/inspector-canvas.png) · [Simple settings](images/settings-simple.png) · [Advanced settings](images/settings-advanced.png)
