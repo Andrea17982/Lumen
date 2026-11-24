@@ -1,8 +1,8 @@
 # Third-party notices
 
-Lumen's original code/documentation is MIT licensed. Dependencies retain their own licenses. The committed JavaScript/Rust lockfiles and upstream license files are the authoritative version/license inventory.
+Lumen's original code/documentation is MIT licensed. Dependencies retain their own licenses. The committed Rust lockfile and upstream license files are the authoritative version/license inventory.
 
-The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, tiktoken-rs, React, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide, react-markdown, remark-gfm, Vitest and Playwright.
+The stack includes Tauri, Rust, Tokio, rusqlite/SQLite, serde, reqwest, axum, tokio-tungstenite, image, and tiktoken-rs. The desktop client is being rewritten; its dependencies will be listed here when it lands.
 
 ## T3 Code command receipts
 

@@ -114,7 +114,9 @@ async fn run(task: &Task) -> Option<Outcome> {
     for (label, agent, code) in [("A", "Claude", task.a), ("B", "GPT", task.b)] {
         let lane = top.with_file_name(format!("{}-{label}", top.file_name()?.to_string_lossy()));
         let branch = format!("lumen/compete-{label}-{}", crate::models::id());
-        gitops::add_lane(&top, &base, &lane, &branch, "HEAD").await.ok()?;
+        gitops::add_lane(&top, &base, &lane, &branch, "HEAD")
+            .await
+            .ok()?;
         std::fs::write(lane.join("lib.js"), format!("{code}\n")).ok()?;
         let patch = gitops::lane_patch(&lane, &base).await.ok()?;
         let (passed, failed, failure) = orchestra::check_candidate(&lane, &patch, cancel.clone())

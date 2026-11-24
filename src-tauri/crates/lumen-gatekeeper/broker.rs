@@ -249,7 +249,7 @@ impl Gatekeeper {
         self.lock()?
             .sessions
             .insert(scope.connection_id.clone(), view.clone());
-        let _ = self.events.send(GatekeeperEvent::Session(view));
+        let _ = self.events.send(GatekeeperEvent::Session(Box::new(view)));
         Ok(scope)
     }
 
@@ -534,7 +534,9 @@ impl Gatekeeper {
             session.availability = Availability::Unavailable {
                 reason: reason.into(),
             };
-            let _ = self.events.send(GatekeeperEvent::Session(session.clone()));
+            let _ = self
+                .events
+                .send(GatekeeperEvent::Session(Box::new(session.clone())));
         }
         Ok(())
     }

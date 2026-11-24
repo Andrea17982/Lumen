@@ -133,7 +133,7 @@ pub struct SessionView {
 #[serde(rename_all = "camelCase")]
 pub enum GatekeeperEvent {
     Changed(Box<ApprovalRequest>),
-    Session(SessionView),
+    Session(Box<SessionView>),
 }
 
 #[derive(Clone, Debug)]

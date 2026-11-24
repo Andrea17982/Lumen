@@ -167,9 +167,8 @@ pub(crate) fn reference(text: &str) -> Option<Ref> {
     static URL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"(?i)https?://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)").unwrap()
     });
-    static PR: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?i)\b(?:pr|pull[ -]request)\s*#?(\d+)\b").unwrap()
-    });
+    static PR: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?i)\b(?:pr|pull[ -]request)\s*#?(\d+)\b").unwrap());
     static AFTER: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
             r"(?i)\bbranch\s+(?:(?:named|called|chiamato)\s+)?[`'\x22]?([\w][\w./-]*[\w])[`'\x22]?",
@@ -177,8 +176,10 @@ pub(crate) fn reference(text: &str) -> Option<Ref> {
         .unwrap()
     });
     static BEFORE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?i)(?:[`'\x22]([\w][\w./-]*[\w])[`'\x22]|\b([\w.-]+/[\w./-]*[\w]))\s+branch\b")
-            .unwrap()
+        regex::Regex::new(
+            r"(?i)(?:[`'\x22]([\w][\w./-]*[\w])[`'\x22]|\b([\w.-]+/[\w./-]*[\w]))\s+branch\b",
+        )
+        .unwrap()
     });
     if let Some(c) = URL.captures(text) {
         return Some(Ref::Pr(c[2].parse().ok()?, Some(c[1].to_string())));
@@ -186,14 +187,11 @@ pub(crate) fn reference(text: &str) -> Option<Ref> {
     if let Some(c) = PR.captures(text) {
         return Some(Ref::Pr(c[1].parse().ok()?, None));
     }
-    let named = AFTER
-        .captures(text)
-        .map(|c| c[1].to_string())
-        .or_else(|| {
-            BEFORE
-                .captures(text)
-                .and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
-        })?;
+    let named = AFTER.captures(text).map(|c| c[1].to_string()).or_else(|| {
+        BEFORE
+            .captures(text)
+            .and_then(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
+    })?;
     // Words that follow "branch" in ordinary sentences are not branch names.
     let common = [
         "a", "an", "the", "this", "that", "new", "from", "to", "of", "and", "with", "for", "in",
@@ -281,7 +279,9 @@ async fn resolve(top: &Path, r: &Ref) -> Result<Option<Start>, String> {
             let head = view["headRefName"].as_str().unwrap_or_default().to_string();
             let base = view["baseRefName"].as_str().unwrap_or_default().to_string();
             if head.is_empty() || !fetch(head.clone()).await {
-                return Err(format!("The branch of pull request #{n} could not be fetched"));
+                return Err(format!(
+                    "The branch of pull request #{n} could not be fetched"
+                ));
             }
             let commit = commit(format!("refs/remotes/origin/{head}"))
                 .await
@@ -477,13 +477,7 @@ pub(crate) async fn create(
                 } else {
                     "Lumen works in the project folder"
                 };
-                note(
-                    app,
-                    &s.id,
-                    out,
-                    "task-worktree",
-                    format!("{e}, so {rest}."),
-                );
+                note(app, &s.id, out, "task-worktree", format!("{e}, so {rest}."));
                 None
             }
         },
@@ -505,10 +499,14 @@ pub(crate) async fn create(
         // A named branch starts from its own commit; the folder's uncommitted work stays
         // in the folder.
         Some(f) => (
-            gitops::run(&top, &["rev-parse", &format!("{}^{{tree}}", f.commit)], None)
-                .await?
-                .trim()
-                .to_string(),
+            gitops::run(
+                &top,
+                &["rev-parse", &format!("{}^{{tree}}", f.commit)],
+                None,
+            )
+            .await?
+            .trim()
+            .to_string(),
             f.commit.clone(),
         ),
         None => (
@@ -1290,7 +1288,11 @@ error: expected 1 got 2".into()),
             .await
             .contains("fix.txt"));
         assert_eq!(load(&f.core, &s.id).unwrap().pr.unwrap().base, "develop");
-        assert!(!GH_CALLS.lock().unwrap().iter().any(|c| c.contains("pr create")));
+        assert!(!GH_CALLS
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.contains("pr create")));
         let s = discard_task(crate::CoreRef(&f.core), s.id.clone())
             .await
             .unwrap();

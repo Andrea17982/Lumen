@@ -86,9 +86,9 @@ fn is_code(path: &str) -> bool {
         .unwrap_or("")
         .to_lowercase();
     [
-        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "py", "go", "java", "kt",
-        "cs", "rb", "php", "swift", "c", "cc", "cpp", "h", "hpp", "gd", "lua", "dart", "scala",
-        "ex", "exs", "vue", "svelte",
+        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "py", "go", "java", "kt", "cs",
+        "rb", "php", "swift", "c", "cc", "cpp", "h", "hpp", "gd", "lua", "dart", "scala", "ex",
+        "exs", "vue", "svelte",
     ]
     .contains(&ext.as_str())
 }
@@ -287,7 +287,12 @@ mod tests {
         ] {
             assert!(is_test(t), "{t}");
         }
-        for s in ["src/parse.rs", "src/testing_utils.rs", "src/contest.ts", "README.md"] {
+        for s in [
+            "src/parse.rs",
+            "src/testing_utils.rs",
+            "src/contest.ts",
+            "README.md",
+        ] {
             assert!(!is_test(s), "{s}");
         }
         assert!(looks_like_bugfix("The parser crashes on empty input"));
@@ -341,7 +346,10 @@ mod tests {
         let rx = watch::channel(false).1;
         let outcome = verify(&p, &p, &tree, &files, rx.clone()).await.unwrap();
         assert!(matches!(outcome, Outcome::Verified(_)), "{outcome:?}");
-        assert_eq!(std::fs::read_to_string(p.join("src/math.js")).unwrap(), fixed);
+        assert_eq!(
+            std::fs::read_to_string(p.join("src/math.js")).unwrap(),
+            fixed
+        );
 
         // A test that passes on the old code does not reproduce the bug.
         std::fs::write(
@@ -354,7 +362,10 @@ mod tests {
             matches!(&outcome, Outcome::Missing(t) if t.contains("do not reproduce")),
             "{outcome:?}"
         );
-        assert_eq!(std::fs::read_to_string(p.join("src/math.js")).unwrap(), fixed);
+        assert_eq!(
+            std::fs::read_to_string(p.join("src/math.js")).unwrap(),
+            fixed
+        );
 
         // A fix without any test asks for one.
         let outcome = verify(&p, &p, &tree, &files[..1], rx).await.unwrap();

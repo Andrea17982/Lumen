@@ -15,7 +15,7 @@ $M fetch -d markdown <url>                 # read a page (default choice)
 $M fetch -d semantic_tree_text <url>       # page structure: links, buttons, forms
 $M fetch --eval "document.title" <url>     # extract one value with JavaScript
 $M fetch --fail -d markdown <url>          # exit 22 on HTTP >= 400
-$M fetch -d screenshot <url> > shot.png    # viewport PNG; screenshot_full for the whole page
+$M fetch -l -d screenshot <url> > shot.png # viewport PNG (needs -l); screenshot_full for the whole page
 ```
 
 - Search: fetch `https://html.duckduckgo.com/html/?q=<terms>` as markdown, then open the relevant results.

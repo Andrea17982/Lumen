@@ -256,7 +256,7 @@ async fn list_screens() -> Result<String, String> {
             if title.trim().is_empty() || w.is_minimized().unwrap_or(true) { return None; }
             Some(json!({"type":"window","title":title,"app":w.app_name().unwrap_or_default(),"width":w.width().unwrap_or(0),"height":w.height().unwrap_or(0)}))
         }).collect::<Vec<_>>();
-        Ok(serde_json::to_string(&json!({"screens":monitors,"windows":windows})).map_err(|e|e.to_string())?)
+        serde_json::to_string(&json!({"screens":monitors,"windows":windows})).map_err(|e|e.to_string())
     }).await.map_err(|e|e.to_string())?
 }
 
