@@ -18,7 +18,7 @@ test('a daemon crash mid-stream keeps the partial reply once and shows the turn 
 
     await page.goto(daemon.url());
     await expect(page.getByRole('status')).toHaveText('Connected');
-    await page.getByRole('navigation').getByRole('button').first().click();
+    await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
 
     await client.call('send_message', {
       id: chat.id,

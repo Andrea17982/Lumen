@@ -6,7 +6,11 @@ import { Conversation } from '../../features/conversation/Conversation';
 import { ProjectPanel } from '../../features/sessions/ProjectPanel';
 import { currentProject } from '../../features/sessions/sessions';
 import { Sidebar } from '../../features/sessions/Sidebar';
+import type { Language, Preferences } from '../../features/settings/General';
 import { Settings } from '../../features/settings/Settings';
+import { WorktreeBar } from '../../features/worktree/Worktree';
+import { usePluginThemeStyle } from '../../features/settings/useThemeStyle';
+import { useNotifications } from './notifications';
 import type { Connection, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
@@ -18,15 +22,24 @@ const tones: Record<string, Tone> = { running: 'accent', queued: 'neutral', wait
  * reconnections.
  */
 export function App() {
-  useAppearance();
+  const [appearance, setAppearance] = useAppearance();
+  const [language, chooseLanguage] = useState<Language>(() => {
+    const saved = remembered('lumen.language');
+    return saved === 'en' || saved === 'it' ? saved : 'system';
+  });
+  // Tests pin the language in the URL; otherwise the saved choice or the system's.
   const query = new URLSearchParams(location.search).get('locale');
-  const locale: Locale = query === 'it' || query === 'en' ? query : systemLocale();
+  const locale: Locale = query === 'it' || query === 'en' ? query : language === 'system' ? systemLocale() : language;
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+  const setLanguage = (next: Language) => {
+    chooseLanguage(next);
+    remember('lumen.language', next === 'system' ? null : next);
+  };
   return (
     <I18nProvider locale={locale}>
-      <Shell />
+      <Shell preferences={{ appearance, setAppearance, language, setLanguage }} />
     </I18nProvider>
   );
 }
@@ -48,8 +61,10 @@ function remember(key: string, value: string | null) {
   }
 }
 
-function Shell() {
+function Shell({ preferences }: { preferences: Preferences }) {
   const t = useT();
+  usePluginThemeStyle();
+  useNotifications();
   const sync = useSyncClient();
   const sessions = useSyncState((st) => st.sessions);
   const workspaces = useSyncState((st) => st.workspaces);
@@ -116,7 +131,7 @@ function Shell() {
       <main className={s.main}>
         <Banners />
         {settings ? (
-          <Settings onClose={() => setSettings(false)} leading={hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />} />
+          <Settings preferences={preferences} onClose={() => setSettings(false)} leading={hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />} />
         ) : session ? (
           <>
             <header className={s.header}>
@@ -127,6 +142,7 @@ function Shell() {
               <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(!details)} />
               <Menu label={t.moreActions} items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }]} onAction={() => void compact(session.id)} />
             </header>
+            <WorktreeBar key={session.id} session={session} />
             {error && (
               <p className={s.headerError} role="alert">
                 {error}

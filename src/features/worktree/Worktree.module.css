@@ -1,0 +1,65 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--separator);
+  background: var(--surface-sunken);
+  font-size: var(--text-s);
+}
+.branch {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: baseline;
+}
+.branch code,
+.facts code {
+  font-family: var(--font-mono);
+}
+.quiet {
+  color: var(--text-secondary);
+}
+.spacer {
+  flex: 1;
+}
+.pr {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+}
+.error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--status-danger-text);
+}
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-s);
+}
+.facts div {
+  display: contents;
+}
+.facts dt {
+  color: var(--text-secondary);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

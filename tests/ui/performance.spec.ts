@@ -36,7 +36,7 @@ test(`a ${COUNT}-message conversation stays within the M0 budget`, async ({ page
       requestAnimationFrame(tick);
     });
     const start = Date.now();
-    await page.getByRole('navigation').getByRole('button').first().click();
+    await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
     await expect(page.getByText('ZEBRALAST marker in the last message.')).toBeVisible();
     const firstMessagesMs = Date.now() - start;
 

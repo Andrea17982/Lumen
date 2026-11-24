@@ -2,15 +2,16 @@ import { useState, type ReactNode } from 'react';
 import { IconButton, Segmented } from '../../design/components';
 import { useT } from '../../i18n';
 import { Accounts } from './Accounts';
-import { General } from './General';
+import { Extensions } from './Extensions';
+import { General, type Preferences } from './General';
 import s from './Settings.module.css';
 
-type Section = 'accounts' | 'general';
-const SECTIONS: Section[] = ['accounts', 'general'];
-const VIEWS: Record<Section, () => ReactNode> = { accounts: () => <Accounts />, general: () => <General /> };
+type Section = 'accounts' | 'general' | 'extensions';
+const SECTIONS: Section[] = ['accounts', 'general', 'extensions'];
+const VIEWS: Record<Section, (p: Preferences) => ReactNode> = { accounts: () => <Accounts />, general: (p) => <General preferences={p} />, extensions: () => <Extensions /> };
 
 /** Settings replace the conversation in the main area: a few sections, few options each. */
-export function Settings({ onClose, leading }: { onClose: () => void; leading?: ReactNode }) {
+export function Settings({ onClose, leading, preferences }: { onClose: () => void; leading?: ReactNode; preferences: Preferences }) {
   const t = useT();
   const [section, setSection] = useState<Section>('accounts');
   return (
@@ -34,7 +35,7 @@ export function Settings({ onClose, leading }: { onClose: () => void; leading?: 
             />
           )}
           <h2 className={s.title}>{t.settings.sections[section]}</h2>
-          {VIEWS[section]()}
+          {VIEWS[section](preferences)}
         </div>
       </div>
     </section>

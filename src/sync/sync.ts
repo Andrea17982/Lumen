@@ -53,8 +53,21 @@ export interface SyncState {
   approvals: Readonly<Record<string, Approvals>>;
   /** Ids of native questions the daemon is still waiting on, across sessions; null until read. */
   questions: readonly string[] | null;
+  /** What enabled plugins add: themes, slash commands and panels. */
+  contributions: Contributions;
+  /** Text a plugin panel asked to put in the composer, until one takes it. */
+  insert: { text: string; n: number } | null;
+  /** Changes whenever a recurring task is added from this window. */
+  routines: number;
   error?: string;
 }
+
+export interface Contributions {
+  themes: { plugin: string; id: string; name: string; tokens: Record<string, Record<string, string>> }[];
+  slashCommands: { plugin: string; name: string; description: string; prompt: string }[];
+  panels: { plugin: string; id: string; title: string; network: string[] }[];
+}
+const NO_CONTRIBUTIONS: Contributions = { themes: [], slashCommands: [], panels: [] };
 
 export interface Approvals extends ApprovalSnapshot {
   /** The journal could not be read: approvals cannot be shown, so they must not look empty. */
@@ -62,6 +75,8 @@ export interface Approvals extends ApprovalSnapshot {
 }
 
 const LIVE_LIMIT = 20_000;
+/** Text plugin panels may queue for the composer before one takes it. */
+const MAX_INSERT = 20_000;
 // Kinds the daemon folds only once when replaying, because the saved message may already hold them.
 const SAVED_ONCE = new Set(['interaction', 'interaction-result', 'quota-scheduled', 'browser', 'image']);
 const SESSION_REFRESH_MS = 120;
@@ -76,7 +91,7 @@ export const PAGE = 1000;
 const TAIL = 2;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], accounts: [], usage: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], accounts: [], usage: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null, contributions: NO_CONTRIBUTIONS, insert: null, routines: 0 };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -208,7 +223,7 @@ export class Sync {
     const generation = ++this.generation;
     this.set({ synced: false });
     try {
-      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), ...[...this.open].map((id) => this.load(id))]);
+      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), ...[...this.open].map((id) => this.load(id))]);
       if (generation === this.generation) this.set({ synced: true, error: undefined });
     } catch (error) {
       if (generation === this.generation) this.set({ error: errorText(error) });
@@ -236,6 +251,33 @@ export class Sync {
   async loadAccounts() {
     const [accounts, usage] = await Promise.all([this.transport.call('list_accounts', {}), this.transport.call('get_usage', {})]);
     this.set({ accounts: accounts as Account[], usage: usage as AccountUsage[] });
+  }
+
+  /** Read on every connection and after plugin changes. A failure leaves nothing contributed. */
+  async loadContributions() {
+    const value = (await this.transport.call('plugin_contributions', {}).catch(() => null)) as Partial<Contributions> | null;
+    this.set({ contributions: { themes: value?.themes ?? [], slashCommands: value?.slashCommands ?? [], panels: value?.panels ?? [] } });
+  }
+
+  /** Bumped when a recurring task is added, so lists of them read again. */
+  routinesChanged() {
+    this.set({ routines: this.state.routines + 1 });
+  }
+
+  /** A plugin panel's `prompt.insert`: it waits here until a composer takes it. */
+  insertPrompt(text: string): boolean {
+    const waiting = this.state.insert?.text;
+    const next = waiting ? `${waiting}
+${text}` : text;
+    if (next.length > MAX_INSERT) return false;
+    this.set({ insert: { text: next, n: (this.state.insert?.n ?? 0) + 1 } });
+    return true;
+  }
+
+  takeInsert() {
+    const text = this.state.insert?.text ?? null;
+    if (text !== null) this.set({ insert: null });
+    return text;
   }
 
   private onGatekeeper(event: GatekeeperEvent) {
@@ -346,6 +388,14 @@ export class Sync {
     return this.transport.pickFolder();
   }
 
+  notify(title: string, body: string) {
+    this.transport.notify(title, body);
+  }
+
+  panelUrl(plugin: string, panel: string) {
+    return this.transport.panelUrl(plugin, panel);
+  }
+
   /** Reads the session list for a search, from its first page. */
   searchSessions(search: string) {
     this.pages = 1;
@@ -411,7 +461,7 @@ export class Sync {
   }
 
   /** Reads the newest messages again and puts the saved copies in place of the folded ones. */
-  private async refreshTail(id: string) {
+  async refreshTail(id: string) {
     let tail: Message[];
     try {
       tail = (await this.transport.call('get_messages', { id, limit: TAIL })) as Message[];

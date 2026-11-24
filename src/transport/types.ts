@@ -11,6 +11,10 @@ export interface Transport {
   connection(): Promise<Connection>;
   /** The system folder picker; null when the user cancels or the window has none. */
   pickFolder(): Promise<string | null>;
+  /** A system notification; the shell shows it only while the window is not in front. */
+  notify(title: string, body: string): void;
+  /** Where a plugin panel is served, under its own sandbox policy; null when this window has none. */
+  panelUrl(plugin: string, panel: string): string | null;
 }
 
 export function errorText(error: unknown): string {

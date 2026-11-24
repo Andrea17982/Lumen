@@ -7,6 +7,7 @@ import { blocks, StreamingBlocks } from './blocks';
 import { CodeBlock, Markdown } from './Markdown';
 import { NoGitCard, OrchestraCard } from '../orchestra/Orchestra';
 import { orchestraOf } from '../orchestra/state';
+import { Notes } from './Notes';
 import { RewindButton } from './Rewind';
 import s from './Conversation.module.css';
 
@@ -59,6 +60,7 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
           <RewindButton messageId={message.id} />
         </div>
       )}
+      {!user && !live && parts.answer && !orchestra && <Notes sessionId={host.sessionId} message={message} />}
       {parts.images.map((path) => (
         <WorkspaceImage key={path} path={path} />
       ))}

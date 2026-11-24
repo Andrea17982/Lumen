@@ -90,9 +90,14 @@ impl Bridge {
         self.client.call(command, args).await
     }
 
+    /// The tray's explicit Quit: the service drains and stops. Never reachable from the page.
+    pub async fn stop_service(&self) -> Result<(), String> {
+        self.client.call("__shutdown", json!({})).await.map(drop)
+    }
+
     /// Runs for the life of the app: connect, relay, and on any loss reconnect without
     /// replaying anything. The client resynchronises from snapshots when it sees `connected`.
-    pub async fn supervise(&self, app: AppHandle) {
+    pub async fn supervise(&self, app: AppHandle, on_connect: impl Fn(&AppHandle)) {
         let mut retry = FIRST_RETRY;
         let mut spawned: Option<Instant> = None;
         let mut connected_once = false;
@@ -102,6 +107,7 @@ impl Bridge {
                     connected_once = true;
                     retry = FIRST_RETRY;
                     self.set(&app, Connection::Connected);
+                    on_connect(&app);
                     relay(&app, &mut io).await;
                     self.set(&app, Connection::Reconnecting);
                     continue;

@@ -28,7 +28,7 @@ async function open(page: Page) {
   await page.goto(daemon.url());
   // The newest conversation is first once the list has loaded all of them.
   await expect(page.getByRole('navigation').getByRole('listitem')).toHaveCount(all.length);
-  await page.getByRole('navigation').getByRole('button').first().click();
+  await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
   await expect(page.getByRole('textbox', { name: 'Describe what you want to do' })).toBeVisible();
   return chat;
 }

@@ -23,6 +23,12 @@ export function bridgeTransport(url: string, token: string): Transport {
     },
     // Tests answer the browser's prompt with a folder path.
     pickFolder: async () => prompt('Folder') || null,
+    // Tests read what would have been shown.
+    notify: (title, body) => {
+      const w = window as unknown as { __lumenNotifications?: { title: string; body: string }[] };
+      (w.__lumenNotifications ??= []).push({ title, body });
+    },
+    panelUrl: (plugin, panel) => `${url}/panel/${encodeURIComponent(plugin)}/${encodeURIComponent(panel)}?token=${encodeURIComponent(token)}`,
     connection: async () => (await (await fetch(`${url}/connection`, { headers })).json()) as Connection,
   };
 }

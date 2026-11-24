@@ -4,7 +4,7 @@
 // opens a Lumen window on the desktop for about half a minute.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { daemonClient, sleep } from '../daemon-harness.mjs';
@@ -22,6 +22,7 @@ await mkdir(workspace);
 const client = await daemonClient(data, daemonPath);
 const checks = [];
 let app;
+let probe;
 try {
   app = await launchApp(data);
   const { browser } = app;
@@ -55,6 +56,44 @@ try {
   const text = await browser.run(log);
   assert.equal(text.split('DAEMON_PARTIAL').length - 1, 1, text);
   checks.push('after a service crash the shell restarts it, and the window shows the partial reply once and the turn interrupted');
+
+  // A plugin panel served by lumen-plugin: tries to reach the shell's IPC. Tauri's own invoke
+  // falls back to postMessage when the panel's CSP blocks fetch, so this covers both paths.
+  probe = await mkdtemp(path.join(tmpdir(), 'lumen-probe-'));
+  await writeFile(path.join(probe, 'lumen-plugin.json'), JSON.stringify({ id: 'ipc-probe', name: 'IPC probe', version: '1.0.0', lumen: '>=0.10.0 <1.0.0', contributes: { panels: [{ id: 'main', title: 'Probe', entry: 'panel.html' }] } }));
+  await writeFile(
+    path.join(probe, 'panel.html'),
+    `<!doctype html><script>
+(async () => {
+  const out = { internals: typeof window.__TAURI_INTERNALS__, ipc: typeof window.ipc, webview: typeof (window.chrome && window.chrome.webview) };
+  const call = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (call) {
+    out.invoke = await Promise.race([
+      call('daemon_call', { command: 'rename_account', args: { id: ${JSON.stringify(account.id)}, name: 'PANEL_REACHED_IPC' } }).then(() => 'ALLOWED', (e) => 'DENIED ' + e),
+      new Promise((resolve) => setTimeout(() => resolve('NO_ANSWER'), 3000)),
+    ]);
+  }
+  parent.postMessage({ probe: out }, '*');
+})();
+</script>`,
+  );
+  const inspected = await client.call('plugin_inspect', { source: probe });
+  const installed = await client.call('plugin_install', { token: inspected.token });
+  await client.call('plugin_set_enabled', { id: installed.id, on: true });
+  await browser.run(`
+    window.__probe = null;
+    addEventListener('message', (e) => { if (e.data && e.data.probe) window.__probe = e.data.probe; });
+    const frame = document.createElement('iframe');
+    frame.sandbox = 'allow-scripts';
+    frame.src = 'http://lumen-plugin.localhost/ipc-probe/main';
+    document.body.append(frame);
+  `);
+  const result = await browser.until('return window.__probe', (v) => !!v, 'panel probe', 15_000);
+  await sleep(1000);
+  const [renamed] = await client.call('list_accounts');
+  assert.notEqual(renamed.name, 'PANEL_REACHED_IPC', JSON.stringify(result));
+  assert.notEqual(result.invoke, 'ALLOWED', JSON.stringify(result));
+  checks.push(`a sandboxed plugin panel cannot call the shell (${JSON.stringify(result)})`);
   console.log(JSON.stringify({ passed: true, checks }, null, 2));
 } finally {
   await app?.close();
@@ -66,4 +105,5 @@ try {
   await client.call('__shutdown').catch(() => {});
   for (let i = 0; pid && i < 50 && alive(pid); i++) await sleep(100);
   await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  if (probe) await rm(probe, { recursive: true, force: true });
 }

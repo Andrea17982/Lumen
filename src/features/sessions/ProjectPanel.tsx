@@ -3,6 +3,7 @@ import { Button, IconButton } from '../../design/components';
 import { useT } from '../../i18n';
 import type { Session } from '../../protocol/types';
 import { useSyncClient } from '../../sync/react';
+import { Checks, Routines } from './ProjectExtras';
 import s from './ProjectPanel.module.css';
 
 interface Fact {
@@ -116,6 +117,8 @@ export function ProjectPanel({ session, onClose }: { session: Session; onClose: 
           </dl>
         )}
       </section>
+      <Routines session={session} />
+      <Checks session={session} />
       <section className={s.section}>
         <h3>{t.project.log}</h3>
         {log && log.length === 0 && <p className={s.help}>{t.project.noLog}</p>}

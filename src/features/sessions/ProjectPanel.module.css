@@ -109,3 +109,42 @@
   color: var(--status-danger);
   font-size: var(--text-s);
 }
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.checkHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.checkHead > span:first-child {
+  flex: 1;
+  font-size: var(--text-s);
+}
+.command {
+  color: var(--text-secondary);
+  font: var(--text-xs) / 1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.output {
+  max-height: 180px;
+  margin: var(--space-1) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--text-xs) / 1.4 var(--font-mono);
+}
+.link {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: var(--text-xs) / 1.4 var(--font-mono);
+  text-align: left;
+}

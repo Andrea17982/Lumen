@@ -21,4 +21,6 @@ export const unavailable: Transport = {
   subscribe: async () => () => {},
   connection: async () => ({ state: 'failed', detail: 'No Lumen service in this window' }),
   pickFolder: async () => null,
+  notify: () => {},
+  panelUrl: () => null,
 };

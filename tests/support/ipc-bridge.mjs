@@ -5,6 +5,9 @@ import { randomBytes } from 'node:crypto';
 import http from 'node:http';
 import { sleep } from '../daemon-harness.mjs';
 
+// Copied from src-tauri/desktop/src/main.rs (PANEL_CSP).
+const PANEL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
+
 /** @param {Awaited<ReturnType<typeof import('../daemon-harness.mjs').daemonClient>>} client */
 export async function startBridge(client, { origin }) {
   const token = randomBytes(24).toString('hex');
@@ -59,6 +62,13 @@ export async function startBridge(client, { origin }) {
     }
     const json = (value) => res.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify(value));
     if (url.pathname === '/connection') return json(connection);
+    // Plugin panels, under the same policy as the shell's lumen-plugin: protocol.
+    const panel = url.pathname.match(/^\/panel\/([^/]+)\/([^/]+)$/);
+    if (panel && req.method === 'GET') {
+      const html = await client.call('plugin_panel', { id: decodeURIComponent(panel[1]), panel: decodeURIComponent(panel[2]) }).catch(() => null);
+      const headers = { 'content-security-policy': PANEL_CSP, 'x-content-type-options': 'nosniff', 'content-type': 'text/html; charset=utf-8' };
+      return typeof html === 'string' ? res.writeHead(200, headers).end(html) : res.writeHead(404, headers).end('Plugin panel unavailable');
+    }
     if (url.pathname === '/call' && req.method === 'POST') {
       let body = '';
       for await (const chunk of req) {

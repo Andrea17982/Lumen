@@ -10,5 +10,8 @@ export function tauriTransport(): Transport {
     subscribe: (listener) => listen<Frame>('lumen:event', (e) => listener(e.payload)),
     connection: () => invoke<Connection>('daemon_connection'),
     pickFolder: () => invoke<string | null>('pick_folder'),
+    notify: (title, body) => void invoke('notify', { title, body }).catch(() => {}),
+    // Custom schemes are served as http://<scheme>.localhost on Windows (WebView2).
+    panelUrl: (plugin, panel) => `${navigator.userAgent.includes('Windows') ? 'http://lumen-plugin.localhost' : 'lumen-plugin://localhost'}/${encodeURIComponent(plugin)}/${encodeURIComponent(panel)}`,
   };
 }

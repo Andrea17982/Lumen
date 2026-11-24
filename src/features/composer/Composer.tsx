@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
-import { Button, Select } from '../../design/components';
+import { Button, IconButton, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
 import type { AccessMode, AutoPolicy, ModelInfo, RunOptions, Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
+import { visibleText } from '../attention/requests';
 import s from './Composer.module.css';
 
 const AUTO = 'auto';
 const ACCESS: AccessMode[] = ['read-only', 'file-edits', 'autopilot', 'ask'];
 const POLICIES: AutoPolicy[] = ['budget', 'default', 'quality'];
 const MAX_IMAGE = 24 * 1024 * 1024;
+// /every <interval> [HH:MM] <task>: the daemon parses the interval and the time.
+const EVERY = /^\/every(?:\s+(\S+))?(?:\s+(\d{1,2}:\d{2})(?=\s))?(?:\s+([\s\S]+))?$/i;
 
 /**
  * Sends work to the daemon. Choices are run options for the next message; access mode belongs to
@@ -33,6 +36,8 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [tokens, setTokens] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const running = session.status === 'running' || session.status === 'queued' || session.status === 'waiting';
 
@@ -42,6 +47,21 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
     setText(draft.text);
     input.current?.focus();
   }, [draft]);
+
+  // A plugin panel's prompt.insert adds to what is typed; nothing is sent by itself.
+  const insert = useSyncState((st) => st.insert);
+  useEffect(() => {
+    const text = insert ? sync.takeInsert() : null;
+    if (text !== null) setText((current) => (current.trim() ? `${current}
+${text}` : text));
+  }, [sync, insert]);
+
+  // Typing "/" offers the commands: the built-in /every and those of enabled plugins.
+  const pluginCommands = useSyncState((st) => st.contributions.slashCommands);
+  const slash = /^\/(\S*)$/.exec(text);
+  const commands = slash
+    ? [{ name: 'every', description: t.slash.every, prompt: '/every ' }, ...pluginCommands.map((c) => ({ name: c.name, description: visibleText(c.description), prompt: visibleText(c.prompt) }))].filter((c) => c.name.toLowerCase().startsWith(slash[1].toLowerCase()))
+    : [];
 
   const account = accounts.find((a) => a.id === route);
   useEffect(() => {
@@ -86,6 +106,23 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
       route === AUTO
         ? { mode: AUTO, effort: '', autoPolicy: policy, accessMode: session.accessMode, attachments }
         : { mode: account!.provider, accountId: account!.id, model, effort, accessMode: session.accessMode, attachments };
+    const routine = EVERY.exec(text.trim());
+    if (routine) {
+      if (!routine[1] || !routine[3]) return setError(t.routines.usage);
+      setError(null);
+      setSending(true);
+      try {
+        await sync.call('create_routine', { id: session.id, text: routine[3], every: routine[1], at: routine[2] ?? null, options: { ...options, attachments: [] } });
+        setText('');
+        setNotice(t.routines.created);
+        sync.routinesChanged();
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
     setSending(true);
     setError(null);
     const sent = text;
@@ -103,7 +140,24 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
     }
   }
 
+  async function screenshot() {
+    setCapturing(true);
+    setError(null);
+    try {
+      const shot = await sync.call<{ path: string }>('capture_screenshot', { folder: session.workspace, window: null, label: '', point: null });
+      setAttachments((list) => [...list, shot.path]);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setCapturing(false);
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && commands.length === 1 && commands[0].prompt !== text) {
+      e.preventDefault();
+      return setText(commands[0].prompt);
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void send();
@@ -151,6 +205,24 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
             ))}
           </ul>
         )}
+        {commands.length > 0 && (
+          <ul className={s.commands} aria-label={t.composer.commands}>
+            {commands.map((c) => (
+              <li key={c.name}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setText(c.prompt);
+                    input.current?.focus();
+                  }}
+                >
+                  <code>/{c.name}</code>
+                  <span>{c.description}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
           ref={input}
           className={s.input}
@@ -158,7 +230,10 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
           value={text}
           placeholder={t.composerPlaceholder}
           aria-label={t.composerPlaceholder}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setNotice(null);
+          }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
         />
@@ -182,6 +257,7 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
             options={ACCESS.map((a) => ({ id: a, label: t.access[a] }))}
             onChange={(mode) => sync.call('set_session_access_mode', { id: session.id, mode }).then(() => sync.resync(), (e) => setError(String(e)))}
           />
+          <IconButton icon="camera" label={t.composer.screenshot} isDisabled={!connected || capturing} onPress={() => void screenshot()} />
           <span className={s.spacer} />
           {tokens !== null && <span className={s.tokens}>{t.composer.tokens(formatNumber(locale, tokens))}</span>}
           {running ? (
@@ -195,6 +271,11 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
           )}
         </div>
       </div>
+      {notice && (
+        <p className={s.hint} role="status">
+          {notice}
+        </p>
+      )}
       {error && (
         <p className={s.error} role="alert">
           {error}

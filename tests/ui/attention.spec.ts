@@ -25,7 +25,7 @@ async function open(page: Page, account: string) {
   const chat = (await daemon.client.call('create_session', { workspace: daemon.workspace })) as { id: string };
   await daemon.client.call('set_session_access_mode', { id: chat.id, mode: 'ask' });
   await page.goto(daemon.url());
-  await page.getByRole('navigation').getByRole('button').first().click();
+  await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
   await page.getByRole('button', { name: /Agent/ }).click();
   await page.getByRole('option', { name: account }).click();
   await expect(page.getByRole('button', { name: /Model/ })).toBeVisible();
