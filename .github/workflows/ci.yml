@@ -52,6 +52,7 @@ jobs:
       - run: cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
       - run: npx playwright test
       # The desktop shell sits outside the Cargo workspace (WebView and dist/ dependencies).
+      - run: node scripts/prepare-daemon.mjs --debug
       - run: cargo fmt --manifest-path src-tauri/desktop/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/desktop/Cargo.toml --locked
       - run: cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings
