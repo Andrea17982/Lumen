@@ -44,5 +44,4 @@ for (const arch of targets) {
 const output = path.join(root, 'src-tauri/binaries', `lumen-daemon-${target}${extension}`);
 if (binaries.length === 2)
   execFileSync('lipo', ['-create', ...binaries, '-output', output], { stdio: 'inherit' });
-else copyFileSync(binaries[0], output);
 console.log(`Prepared ${profile} service: ${output}`);

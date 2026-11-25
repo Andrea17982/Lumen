@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
-export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 

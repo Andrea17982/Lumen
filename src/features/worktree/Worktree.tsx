@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, TextField } from '../../design/components';
 import { useT } from '../../i18n';
-import type { Session } from '../../protocol/types';
+import { isSessionActive, type Session } from '../../protocol/types';
 import { useSyncClient } from '../../sync/react';
 import { visibleText } from '../attention/requests';
 import s from './Worktree.module.css';
@@ -19,7 +19,6 @@ export interface WorktreeStatus {
   blocked: string | null;
   pr: { url: string; watching: boolean; rounds: number; last: string } | null;
 }
-const BUSY = new Set(['running', 'queued', 'waiting']);
 
 /**
  * A large task runs on its own branch in its own worktree. This bar says so and offers the three
@@ -31,7 +30,7 @@ export function WorktreeBar({ session }: { session: Session }) {
   const [status, setStatus] = useState<WorktreeStatus | null>(null);
   const [dialog, setDialog] = useState<'publish' | 'apply' | 'discard' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const busy = BUSY.has(session.status);
+  const busy = isSessionActive(session.status);
   const load = () => sync.call<WorktreeStatus | null>('task_worktree_status', { id: session.id, preview: false }).then(setStatus, () => setStatus(null));
   // Read again whenever the conversation changes state: a turn may have started or ended the branch.
   useEffect(() => {

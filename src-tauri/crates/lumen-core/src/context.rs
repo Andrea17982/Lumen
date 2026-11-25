@@ -425,15 +425,11 @@ fn is_signal(line: &str) -> bool {
 pub fn compress_log(text: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let mut keep = vec![false; lines.len()];
+    let mut seen = std::collections::HashSet::new();
     for (i, l) in lines.iter().enumerate() {
-        if is_signal(l) {
-            for k in keep
-                .iter_mut()
-                .take((i + 4).min(lines.len()))
-                .skip(i.saturating_sub(2))
-            {
-                *k = true;
-            }
+        let range = i.saturating_sub(2)..(i + 4).min(lines.len());
+        if is_signal(l) && seen.insert(&lines[range.clone()]) {
+            keep[range].fill(true);
         }
     }
     let mut out: Vec<String> = vec![];

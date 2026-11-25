@@ -24,15 +24,11 @@ Non voglio stare a cambiare settaggi su settaggi, e non voglio andare a dover sc
 
 - **Sceglie l'agente al posto tuo.** Il migliore disponibile in quel momento per la vostra richiesta; se una quota finisce, ne continua un altro senza rifare quello che era già finito. Gli agenti comunicano fra loro facilmente evitando di dover creare continui handoff tra le app proprietarie.
 - **Si ferma quando deve.** Proprio come le CLI native, ha un sistema di permessi che ti consente di gestire gli agenti in sola lettura, in edits con approvazioni, o col pilota automatico.
-- **I task grandi vengono divisi.** Seguendo la filosofia del "non voglio doverlo fare io", il motore interno di Lumen valuta la complessità di una Task e decide se assegnarla a diversi agenti parallelamente, anche da subscription diverse.
+- **Divide i task grandi con Orchestra.** Dopo che approvi il piano, più agenti possono lavorare in parallelo, anche da abbonamenti diversi.
 - **Si ricorda del progetto.** Le decisioni finiscono in `LUMEN.md`, che ogni agente legge. Questo file punta a fare da memoria condivisa rimpiazzando le molteplici cartelle per Claude, Codex ecc... creando un'unica fonte di verità.
 - **Continua a lavorare.** Chiudi la finestra e il lavoro va avanti in background. O magari preferite che l'applicazione venga chiusa e non finisca nella Notification Tray, a voi la scelta.
 
-Due cose sono semplici interruttori nelle Impostazioni, ognuno con una riga di spiegazione:
-- **Orchestra**, che divide un task grande tra i tuoi agenti dopo che hai approvato il piano
-- **Code Mode**, che trasforma molte chiamate ai tool in un solo script per risparmiare token. Mutuata direttamente dall'ultimo aggiornamento sperimentale di Anthropic, mutuandola per ogni abbonamento (dove i miei benchmark hanno mostrato risultati soddisfacenti).
-
-Sotto il cofano ci sono anche tante modifiche e migliorie che non ho scritto rispetto all'utilizzo con le CLI native, come l'utilizzo del browser Moli per ottimizzare il consumo di Token nel caso di navigazione Web.
+Orchestra e **Code Mode** si attivano nelle Impostazioni. Code Mode raggruppa le chiamate ai tool in uno script per risparmiare token. Il browser Moli riduce il contenuto web che gli agenti devono elaborare.
 
 <img src="docs/images/settings.png" alt="Impostazioni di Lumen con Orchestra e Code Mode">
 
@@ -40,7 +36,9 @@ Sotto il cofano ci sono anche tante modifiche e migliorie che non ho scritto ris
 
 ## Download
 
-Consulta la [release 0.12.6](https://github.com/Andrea17982/Lumen/releases/tag/v0.12.6) per i pacchetti disponibili e i checksum SHA-256. La distribuzione prevede Windows x64 (setup e portable), macOS universale e Linux x64 (Debian e Ubuntu). Windows può mostrare un avviso perché i pacchetti non sono firmati.
+Consulta la [release 0.13.0](https://github.com/Andrea17982/Lumen/releases/tag/v0.13.0) per i pacchetti disponibili e i checksum SHA-256. La distribuzione prevede Windows x64 (setup e portable), macOS universale e Linux x64 (Debian e Ubuntu). Windows può mostrare un avviso perché i pacchetti non sono firmati.
+
+Per compilare Lumen dai sorgenti, segui la [guida di sviluppo](docs/development.md).
 
 ## Da sapere
 

@@ -77,11 +77,11 @@ try {
   assert.deepEqual(await client.call('create_session', { workspace }, { command_id }), replayed);
   assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
   if (process.platform === 'win32') {
-    await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
+    const codex = await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
     for (const [scenario, accessMode, status, reply, attempts] of [
       ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
       ['INCOMPLETE', 'autopilot', 'error', 'Ho ancora lavoro da fare.', ['autopilot', 'continue']],
-      ['BLOCKED', 'autopilot', 'error', "Serve una decisione dell'utente.", []],
+      ['BLOCKED', 'autopilot', 'error', 'Il servizio richiesto non risponde.', []],
       ['QUESTION', 'autopilot', 'completed', 'Risposta alla domanda.', []],
       ['EDIT', 'read-only', 'completed', /ho individuato il file/i, ['restricted']],
     ]) {
@@ -120,6 +120,90 @@ try {
       } else {
         await assert.rejects(readFile(result), { code: 'ENOENT' });
       }
+    }
+    const claude = await client.call('add_account', { name: 'Offline Claude', provider: 'claude' });
+    const verification = await mkdtemp(path.join(data, 'verify-'));
+    await mkdir(path.join(verification, '.lumen'));
+    execFileSync('git', ['init', '-q'], { cwd: verification, windowsHide: true });
+    await writeFile(path.join(verification, '.lumen', 'diagnostics.json'), '{"servers":[]}');
+    await writeFile(path.join(verification, '.lumen', 'checks.json'), JSON.stringify([
+      { name: 'Verification probe', command: 'node verification-probe.cjs', automatic: true },
+    ]));
+    await writeFile(path.join(verification, 'verification-probe.cjs'), `
+      const broken = require('node:fs').readFileSync('verification-target.txt', 'utf8').includes('broken');
+      if (broken) console.log('error: EVIDENCE_FIXTURE_ERROR');
+      console.log('Compiling EVIDENCE_FIXTURE_NOISE\\n'.repeat(3000));
+      process.exitCode = broken ? 3 : 0;
+    `);
+    const settings = await client.call('get_settings');
+    await client.call('save_settings', { value: { ...settings, verifyChanges: true } });
+    const verificationChat = await client.call('create_session', { workspace: verification });
+    await client.call('send_message', {
+      id: verificationChat.id,
+      text: 'VERIFY_AND_REVIEW_FIXTURE',
+      options: { mode: 'claude', accountId: claude.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: true },
+    });
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    const verified = (await client.call('get_messages', { id: verificationChat.id })).at(-1);
+    const activities = verified.activity.filter((step) => ['validation', 'review'].includes(step.kind));
+    assert.deepEqual(activities.map((step) => step.kind === 'validation' ? JSON.parse(step.text).status : step.kind), ['failed', 'passed', 'review']);
+    assert.match(activities.at(-1).text, /APPROVED/);
+    assert.match(activities[0].text, /EVIDENCE_FIXTURE_ERROR/);
+    assert.doesNotMatch(activities[0].text, /EVIDENCE_FIXTURE_NOISE/);
+    const captured = verified.activity.find((step) => step.kind === 'verify' && step.detail);
+    assert.ok(captured, 'large captured check output should be expandable');
+    const capturedText = await client.call('activity_detail', { id: verificationChat.id, message: verified.id, digest: captured.detail.digest });
+    assert.match(capturedText, /EVIDENCE_FIXTURE_NOISE/);
+    assert.match(capturedText, /Middle of check output omitted at the capture limit/);
+    assert.ok(JSON.parse(activities[0].text).detail.length < capturedText.length / 100);
+    await client.call('save_settings', { value: settings });
+    await client.call('send_message', {
+      id: verificationChat.id,
+      text: 'VERIFY_HANDOFF_FIXTURE',
+      options: { mode: 'gpt', accountId: codex.id, model: 'gpt-luna-fixture', effort: 'low', accessMode: 'read-only' },
+    });
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    assert.equal((await client.call('get_messages', { id: verificationChat.id })).at(-1).text, 'VERIFICATION_HANDOFF_OK');
+    const folder = await mkdtemp(path.join(data, 'router-'));
+    const { id } = await client.call('create_session', { workspace: folder });
+    const plan = await client.call('send_message', {
+      id,
+      text: 'Investigate rare divergence across systems with validation of ordering invariants. AUTOPILOT_FIXTURE_QUESTION',
+      options: { mode: 'auto', effort: '', accessMode: 'autopilot' },
+    });
+    assert.equal(plan.model, 'gpt-astra-fixture');
+    assert.equal(plan.effort, 'max');
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    const result = (await client.call('get_messages', { id })).at(-1);
+    assert.equal(result.text, 'Risposta alla domanda.');
+    for (const [autoPolicy, expectedAccount, used] of [
+      ['budget', codex.id, [15, 85]],
+      ['default', claude.id, [15, 85]],
+      ['quality', codex.id, [85, 15]],
+    ]) {
+      const chat = await client.call('create_session', { workspace: folder });
+      await client.call('send_message', {
+        id: chat.id,
+        text: 'Read the previous project context.',
+        options: { mode: 'claude', effort: '', accessMode: 'read-only' },
+      });
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+      const now = Date.now() - 100;
+      await writeFile(path.join(data, 'usage.json'), JSON.stringify(
+        [codex, claude].map((account, i) => ({
+          accountId: account.id,
+          updatedAt: now,
+          source: 'fixture',
+          windows: [{ usedPercent: used[i], windowMinutes: 300, resetsAt: now + 300 * 60_000 }],
+        })),
+      ));
+      const routed = await client.call('send_message', {
+        id: chat.id,
+        text: 'Da uno screenshot delle impostazioni, guidami nel trovare la sezione delle notifiche.',
+        options: { mode: 'auto', effort: '', accessMode: 'read-only', autoPolicy },
+      });
+      assert.equal(routed.accountId, expectedAccount, autoPolicy);
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
     }
   }
   await writeFile(
@@ -212,7 +296,11 @@ try {
           'event subscription',
           'connected update refusal',
           'drain and restart preserving data',
-          ...(process.platform === 'win32' ? ['Codex Autopilot completion and bounded native continuation'] : []),
+          ...(process.platform === 'win32' ? [
+            'Codex Autopilot completion and bounded native continuation',
+            'Compact verification evidence survives repair, independent review and account handoff',
+            'Auto selects a sufficient model from another catalog',
+          ] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',
         ],
       },

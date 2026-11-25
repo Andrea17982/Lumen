@@ -586,7 +586,7 @@ pub fn choose_accounts(subtasks: &mut [Subtask], accounts: &[Account], orchestra
 }
 
 pub fn effort_for(tier: i32, policy: &AutoPolicy) -> &'static str {
-    let base = i32::from(tier == 2);
+    let base = i32::from(tier >= 2);
     let adj = match policy {
         AutoPolicy::Budget => -1,
         AutoPolicy::Quality => 1,
@@ -599,7 +599,7 @@ pub fn effort_for(tier: i32, policy: &AutoPolicy) -> &'static str {
 /// floor (planning on the smallest models is the weak link); Quality uses the strongest.
 pub fn orchestrator_tier(policy: &AutoPolicy, task_tier: i32) -> i32 {
     match policy {
-        AutoPolicy::Quality => 2,
+        AutoPolicy::Quality => task_tier.max(2),
         _ => task_tier.max(1),
     }
 }
@@ -825,7 +825,13 @@ pub async fn ask(
 ) -> Result<(), String> {
     let orch = account(core, &plan.account_id)?;
     let models = models_for(core, &orch, false, Some(cancel.clone())).await?;
-    let tier = orchestrator_tier(&options.auto_policy, router::task_tier(task));
+    let rated_tier = plan
+        .model
+        .as_ref()
+        .and_then(|id| models.iter().find(|m| &m.id == id))
+        .map(router::model_tier)
+        .unwrap_or_else(|| router::task_tier(task));
+    let tier = orchestrator_tier(&options.auto_policy, rated_tier);
     let model = if options.mode != "auto" {
         if let Some(id) = plan.model.as_deref() {
             models.iter().find(|m| m.id == id)
@@ -1318,13 +1324,6 @@ fn run_deadline(now: i64, max_minutes: Option<u64>, elapsed_ms: i64) -> i64 {
     now + (time_limit(max_minutes) - elapsed_ms).max(0)
 }
 
-fn provider_id(p: &Provider) -> String {
-    serde_json::to_value(p)
-        .ok()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_default()
-}
-
 /// Accounts with their catalogs, for the scheduler; an account whose catalog
 /// cannot load keeps only the work already planned on it.
 async fn sched_accounts(
@@ -1348,7 +1347,7 @@ async fn sched_accounts(
             });
         out.push(scheduling::SchedAccount {
             id: a.id.clone(),
-            provider: provider_id(&a.provider),
+            provider: a.provider.id(),
             rank: a.provider.fallback_rank(),
             can_write: a.provider != Provider::Ollama,
             models,
@@ -2042,12 +2041,13 @@ pub async fn execute(
     }
 
     // The orchestrator checks the combined result and writes the final answer.
-    let diff = match (&top, base.is_empty()) {
+    let combined_diff = async || match (&top, base.is_empty()) {
         (Some(top), false) => gitops::diff_since(top, &base, 60_000)
             .await
             .unwrap_or_default(),
         _ => String::new(),
     };
+    let diff = combined_diff().await;
     let results: String = st
         .subtasks
         .iter()
@@ -2115,6 +2115,39 @@ pub async fn execute(
     st.steps[last].status = "done".into();
     publish(app, core, s, out, &st);
 
+    let verify_integration = async |st: &mut State,
+                                    out: &mut Message,
+                                    orch: &Account,
+                                    model: Option<&str>,
+                                    audit_step: Option<usize>| {
+        let result = turns::self_heal(
+            app,
+            core,
+            s,
+            out,
+            orch,
+            model,
+            &st.effort,
+            options,
+            baseline.clone(),
+            cancel.clone(),
+        )
+        .await;
+        if result.is_err() {
+            if let Some(step) = audit_step {
+                st.steps[step].status = "failed".into();
+            }
+            st.stage = "failed".into();
+            out.text.push_str(&format!("\n\n{}", team_summary(st)));
+            event(app, &s.id, &out.id, "replace", &out.text);
+            publish(app, core, s, out, st);
+        }
+        result
+    };
+    out.text = draft;
+    let mut verification = verify_integration(&mut st, out, &orch, model.as_deref(), None).await?;
+    draft = out.text.clone();
+
     // Cross-audit of the integration by the provider opposite the orchestrator.
     if options.auto_review {
         if let Some(reviewer) = reviewer_for(core, &orch.provider) {
@@ -2132,13 +2165,8 @@ pub async fn execute(
             let step = st.steps.len() - 1;
             publish(app, core, s, out, &st);
             for round in 1..=rounds {
-                let diff = match (&top, base.is_empty()) {
-                    (Some(top), false) => gitops::diff_since(top, &base, 60_000)
-                        .await
-                        .unwrap_or_default(),
-                    _ => String::new(),
-                };
-                let review_prompt = format!("Conversation for reference:\n{}\n\nYou are auditing the integrated result of a team of AI agents. Read-only during this audit call: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with exactly APPROVED and nothing else.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}", st.context, st.task, st.answers);
+                let diff = combined_diff().await;
+                let review_prompt = format!("Conversation for reference:\n{}\n\nYou are auditing the integrated result of a team of AI agents. Read-only during this audit call: never edit files. Find bugs, inconsistencies between parts, risks and missing requirements, and propose concrete corrections. If the work is correct and complete, reply with exactly APPROVED and nothing else.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nFinal answer:\n{draft}\n\nChanges (git diff -U3):\n{diff}{verification}", st.context, st.task, st.answers);
                 let review = match hidden(
                     app,
                     core,
@@ -2179,7 +2207,7 @@ pub async fn execute(
                 let revise = format!("Conversation for reference:\n{}\n\nAnother assistant audited the integrated result. Address every valid point (ignore incorrect ones) with minimal edits and give the final answer. Do not claim to have run checks unless you actually did.\n\nRequest:\n{}\n\nClarifications:\n{}\n\nYour answer:\n{draft}\n\nAudit:\n{review}", st.context, st.task, st.answers);
                 out.text.clear();
                 event(app, &s.id, &out.id, "replace", "");
-                draft = orchestrator_stage(
+                out.text = orchestrator_stage(
                     app,
                     core,
                     s,
@@ -2192,35 +2220,20 @@ pub async fn execute(
                     cancel.clone(),
                 )
                 .await?;
+                verification =
+                    verify_integration(&mut st, out, &orch, model.as_deref(), Some(step)).await?;
+                draft = out.text.clone();
             }
             st.steps[step].status = "done".into();
             publish(app, core, s, out, &st);
         }
     }
     out.text = format!("{}\n\n{}", draft.trim_end(), team_summary(&st));
-    let verification = turns::self_heal(
-        app,
-        core,
-        s,
-        out,
-        &orch,
-        model.as_deref(),
-        &st.effort,
-        options,
-        baseline,
-        cancel,
-    )
-    .await;
-    if let Err(error) = verification {
-        st.stage = "failed".into();
-        publish(app, core, s, out, &st);
-        return Err(error);
-    }
     if !st.read_only && !out.activity.iter().any(|a| a.kind == "verify") {
         out.text
             .push_str("\n- Project checks: none ran, so the combined result is not verified.");
-        event(app, &s.id, &out.id, "replace", &out.text);
     }
+    event(app, &s.id, &out.id, "replace", &out.text);
     st.stage = "done".into();
     publish(app, core, s, out, &st);
     Ok(())

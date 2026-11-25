@@ -21,6 +21,10 @@ export interface Session {
   accessMode: AccessMode;
 }
 
+export function isSessionActive(status: string): boolean {
+  return status === 'running' || status === 'queued' || status === 'waiting';
+}
+
 /** A tool output or diff over the wire limit arrives shortened, with this reference to the rest. */
 export interface Detail {
   digest: string;
@@ -130,21 +134,6 @@ export type Frame =
   | { event: 'lumen:connection'; payload: Connection }
   | { event: 'lumen:resync'; payload: unknown }
   | { event: string; payload: unknown };
-
-/** Commands the daemon deduplicates by id; a lost reply leaves their outcome unknown. */
-export const receipted = new Set([
-  'create_session',
-  'send_message',
-  'cancel_run',
-  'answer_question',
-  'gatekeeper_decide',
-  'resume_at_reset',
-  'orchestra_answer',
-  'orchestra_approve',
-  'orchestra_cancel',
-  'orchestra_resume',
-  'orchestra_raise',
-]);
 
 /** `lumen_ipc::Client::call` reports a receipted command it could not confirm this way. */
 export function unconfirmedId(error: string): string | null {

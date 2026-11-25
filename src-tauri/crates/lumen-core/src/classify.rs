@@ -85,13 +85,9 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
                 is_default: false,
             };
             verdict.task.tier = verdict.task.tier.max(crate::router::model_tier(&model));
-            verdict.task.effort = verdict.task.effort.max(
-                match activity.text.split('·').next_back().unwrap_or("").trim() {
-                    "high" | "xhigh" | "max" | "ultra" => 2,
-                    "medium" => 1,
-                    _ => 0,
-                },
-            );
+            verdict.task.effort = verdict.task.effort.max(crate::router::effort_grade(
+                activity.text.split('·').next_back().unwrap_or("").trim(),
+            ));
         }
         if let Some(current) = &mut merged {
             current.task.tier = current.task.tier.max(verdict.task.tier);
@@ -129,8 +125,10 @@ pub fn follow_up(previous: Option<Verdict>, request: &str) -> Option<Verdict> {
         "prosegui",
         "prosegui pure",
         "continua",
+        "riprendi",
         "proceed",
         "continue",
+        "resume",
         "go on",
         "go ahead",
         "ok fallo",
@@ -197,8 +195,8 @@ fn prompt(request: &str, context: &str) -> String {
         r#"You route requests in an app that runs coding agents (Claude, Codex). Rate the user's request. Reply with only one JSON object and nothing else:
 {{"tier":0,"effort":0,"review":false,"complex":false}}
 
-tier: 0 = small talk, quick factual questions, short writing or translation, trivial one-line edits. 1 = ordinary coding, debugging, refactoring, explaining code, substantial writing. 2 = hard work: architecture, security, concurrency, subtle or intermittent bugs, large refactors or migrations, math, deep analysis.
-effort: 0 = answer directly, 1 = needs some thought, 2 = needs long careful reasoning.
+tier: 0 = routine procedures, established facts, short translations or idioms, elementary calculations. 1 = bounded implementation, a local bug, interpretation of an interface, or a familiar design with few constraints. 2 = design or implementation with interacting constraints, complex incidents, rigorous multi-step calculations, or research with critical synthesis across sources. 3 = unusually difficult formal verification, open-ended investigation across systems, or extensive long-horizon work with hard invariants. Choose capability from the task, not the length or a technical term alone.
+effort: 0 = direct procedure or a small closed change, 1 = several steps or bounded edge cases, 2 = careful reasoning, synthesis or validation, 3 = exceptional reasoning depth with interacting proof obligations or failure hypotheses. Rate effort independently of tier. A small implementation can need a capable model at low effort; an extended investigation can need a frontier model at high effort. A single factual lookup is tier 0 and effort 0.
 review: true only when a mistake would be costly (security, data loss, money, production systems) and an independent second check is worth paying for. Most requests are false.
 complex: true only when the request asks for several separate deliverables, or one large feature spanning many files or areas, that independent agents could build in parallel. A single bug, question, review, explanation or change to one area is never complex, however hard. Most requests are false.
 A short follow-up ("go on", "fix it", "procedi", "ok fallo") continues the previous task: rate that task, not the words.
@@ -216,7 +214,7 @@ pub fn parse(text: &str) -> Option<(TaskProfile, bool)> {
     let start = text.find('{')?;
     let end = text[start..].find('}')? + start;
     let v: Value = serde_json::from_str(&text[start..=end]).ok()?;
-    let num = |k: &str| v[k].as_i64().map(|n| n.clamp(0, 2) as i32);
+    let num = |k: &str| v[k].as_i64().map(|n| n.clamp(0, 3) as i32);
     Some((
         TaskProfile {
             tier: num("tier")?,
@@ -235,6 +233,9 @@ pub fn parse(text: &str) -> Option<(TaskProfile, bool)> {
 /// Rates `request` with a small model. `accounts` and `data` locate a Claude login.
 pub async fn classify(data: &Path, accounts: &[Account], request: &str, context: &str) -> Verdict {
     let fallback = heuristic(request);
+    if fallback.task.tier == 3 || crate::router::deep_research(request) {
+        return fallback;
+    }
     let ask = prompt(request, context);
     let Some(account) = accounts.iter().find(|a| a.provider == Provider::Claude) else {
         return fallback;
@@ -355,7 +356,7 @@ mod tests {
         .unwrap();
         assert_eq!((t.tier, t.effort, t.review, complex), (2, 2, true, true));
         assert!(parse("no json here").is_none());
-        assert_eq!(parse("{\"tier\":9}").unwrap().0.tier, 2);
+        assert_eq!(parse("{\"tier\":9}").unwrap().0.tier, 3);
     }
 
     #[test]
@@ -386,8 +387,13 @@ mod tests {
         ];
         let prev = previous(&chat).unwrap();
         assert_eq!((prev.task.tier, prev.task.effort), (2, 2));
-        let v = follow_up(Some(prev), "procedi").unwrap();
-        assert_eq!((v.task.tier, v.source), (2, "previous request"));
+        for request in ["procedi", "Riprendi", "resume!"] {
+            let v = follow_up(Some(prev), request).unwrap();
+            assert_eq!(
+                (v.task.tier, v.task.effort, v.source),
+                (2, 2, "previous request")
+            );
+        }
         assert!(follow_up(Some(prev), &"x".repeat(81)).is_none());
         assert!(follow_up(Some(prev), "line one\nline two").is_none());
         assert!(follow_up(None, "procedi").is_none());

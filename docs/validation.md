@@ -1,10 +1,10 @@
 # Validation and known limits
 
-What has been verified for the current source (0.12.5), and what remains open. Fixtures, small real-account checks and observations are different kinds of evidence and are reported separately. Lumen is an alpha with no independent security audit. Evidence for earlier versions is in their Git tags.
+Automated checks, live observations and open limits. Evidence for earlier versions is in their Git tags.
 
 ## Automated
 
-- About 293 Rust tests (17 opt-in ignored), Clippy with warnings denied, formatting, the daemon smoke test over IPC, and documentation and version checks. CI runs them on Windows, macOS and Linux.
+- Rust tests, linting, formatting, the daemon smoke test over IPC, and documentation and version checks run in CI. See the [development guide](development.md#checks).
 - **Permissions.** A matrix checks every access profile against read, write, command, destructive command and `git push`, for both classic and Code Mode calls.
 - **Auto.** Deterministic rule tests for Parallel, Collaborative and Compete.
 - **Autonomy.** Fixtures for CRLF and Git filters, concurrent checkpoints, exact and undoable restore, Rewind refusals, and memory held after untrusted content.
@@ -15,7 +15,7 @@ What has been verified for the current source (0.12.5), and what remains open. F
 
 - **Unit tests** (Vitest) for the sync cache (snapshots, event order, deduplication, reconnection), the transcript model, attention and recovery rules, sidebar ordering, Orchestra plan edits, plugin theme filtering and both language catalogs.
 - **Browser tests** (Playwright) drive the client against the real debug service with offline CLI fixtures: streaming and Stop, approvals and native questions (a secret answer is kept nowhere), quota resume, rewind, projects and conversations, accounts (an API key never reaches the page or any file of the service), Orchestra from questions to the team result and resume after a crash, settings, MCP, skills, a plugin panel confined to its sandbox, `/every`, task branches with Apply and Discard. Axe accessibility checks run on each surface; the gallery has keyboard, 150 % text and screenshot checks.
-- **Long transcripts.** 5,000 messages: first messages in about 0.3 s, all mounted in 4 to 5 s, 95th-percentile frame and typing gaps under 25 ms on the owner's machine. Native search and UI Automation reach the whole transcript.
+- **Long transcripts.** 5,000 messages: first messages in about 0.3 s, all mounted in 4 to 5 s, 95th-percentile frame and typing gaps under 25 ms on the owner's machine. Windows UI Automation reaches the first and last fixture messages. Text inside an off-screen message can be absent from the accessibility tree.
 - **Real app** over WebDriver: the shell starts the bundled service, relays its events, restarts it after a crash without repeating the partial reply, and a sandboxed plugin panel cannot call the shell.
 - **Security review** of the panels, the plugin protocol and the shell by a review agent; findings fixed before release. Not an independent audit.
 
@@ -37,6 +37,10 @@ What has been verified for the current source (0.12.5), and what remains open. F
 
 Paid APIs have not been measured. No configuration passes the gate for making Code Mode always-on.
 
+## Codex correction benchmark
+
+Two paired synthetic tasks on Codex GPT‑6.2 Sol at low effort used 79.7% fewer input tokens outside cache after verification output was compacted. Both arms passed all 11 acceptance checks. [Method, token counts and limits](release-notes/0.13.0.md#codex-benchmark).
+
 ## Earlier live observations
 
 These are single configurations, not certified:
@@ -50,9 +54,9 @@ These are single configurations, not certified:
 
 ## Known limits
 
-- **Platforms.** Only Windows x64 has had interactive desktop acceptance, and 0.12.5 ships only the Windows installer. macOS and Linux pass CI only.
+- **Platforms.** Interactive desktop acceptance has been recorded on Windows x64. See [releases](release-notes/README.md) for packaging.
 - **Screen readers.** The transcript is checked through UI Automation; a full NVDA and Narrator pass by a person is still to do.
-- **Live coverage.** There is no live quality benchmark. The multi-account, CLI-version, quota and restart matrix is not certified.
+- **Live coverage.** The paired correction probe covers two tasks. The multi-account, CLI-version, quota and restart matrix remains uncertified.
 - **Integrations.** Portability is limited to the documented subset ([Providers](providers.md#shared-integrations)). Cursor runs in Autopilot only. API adapters buffer responses and are not Orchestra workers.
 - **Memory and schedules.** Facts come from model replies and can echo untrusted content. Routine end dates use UTC. The Orchestra time limit counts active time only.
 - **Graph.** Pattern-based. Arbitrary aliases, dynamic paths and Godot UIDs are not resolved.

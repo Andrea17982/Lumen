@@ -210,12 +210,29 @@ pub async fn run(
     for check in selected.into_iter().take(8) {
         let result = crate::projecttools::execute_check(root, &check, cancel.clone()).await;
         match result {
-            Ok(result) => reports.push(Report {
-                label: format!("{} ({})", check.label, check.cwd),
-                status: if result.ok { "passed" } else { "failed" }.into(),
-                detail: format!("{}\n{}", check.command, result.output),
-                diagnostics: vec![],
-            }),
+            Ok(result) => {
+                let exit = result
+                    .exit_code
+                    .map_or_else(|| "unavailable".into(), |code| code.to_string());
+                let mut detail = format!("{}\nExit code: {exit}", check.command);
+                if !result.ok {
+                    detail.push('\n');
+                    let compact = crate::context::compress_log(&result.output, 36);
+                    detail.extend(compact.chars().take(3600));
+                }
+                let mut output = format!("{}\nExit code: {exit}\n{}", check.command, result.output);
+                if result.truncated {
+                    detail.push_str("\n[Some output exceeded the capture limit.]");
+                }
+                crate::wire::keep("verify", &mut output);
+                reports.push(Report {
+                    label: format!("{} ({})", check.label, check.cwd),
+                    status: if result.ok { "passed" } else { "failed" }.into(),
+                    detail,
+                    diagnostics: vec![],
+                    output,
+                });
+            }
             Err(e) if e == "Cancelled" => return Err(e),
             Err(e) => reports.push(Report::unavailable(check.label, e)),
         }
@@ -233,12 +250,7 @@ pub fn failure_text(reports: &[Report]) -> String {
     reports
         .iter()
         .filter(|r| r.status == "failed")
-        .map(|r| {
-            format!("{}\n{}\n{}", r.label, r.errors(), r.detail)
-                .chars()
-                .take(8000)
-                .collect::<String>()
-        })
+        .map(|r| r.evidence(4000))
         .collect::<Vec<_>>()
         .join("\n\n")
         .chars()

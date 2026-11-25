@@ -6,7 +6,7 @@ Claude Code is the only agent developing this repository. Product code that inte
 
 ## State (Nov 2026)
 
-- Released as v0.12.5 (Windows x64 installer): the Rust workspace in `src-tauri/` and the new desktop client.
+- Current release: see [release notes](docs/release-notes/README.md).
 - The client was rewritten from scratch (milestones M0 to M10, all merged): `src/` (React) and `src-tauri/desktop/` (Tauri shell). It covers the design system, EN/IT, the daemon link with a synced cache, the conversation, attention and recovery, projects and sessions, accounts and quota, Orchestra as one switch, settings and extensions (sandboxed plugin panels), tray and notifications, the task branch bar, and the NSIS installer with the service as a sidecar.
 - Roadmap, decisions and frontend research are in `notes/ROADMAP.md`. That file is private: read it before planning product work, never commit it and never link it from tracked files.
 
@@ -28,26 +28,7 @@ Claude Code is the only agent developing this repository. Product code that inte
 
 ## Commands
 
-Run from the repo root. Use PowerShell or Bash; the paths are the same.
-
-```sh
-node scripts/prepare-moli.mjs                      # once, before the first build
-cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
-node tests/daemon-smoke.mjs
-cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
-cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
-cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
-node tests/docs-check.mjs                          # after any doc or version change
-npm ci                                             # client dependencies
-npm run typecheck && npm test                      # client typecheck and unit tests (Vitest)
-npx playwright test                                # gallery (axe, keyboard, 150% text, screenshots) and the daemon crash test; needs the debug daemon built
-cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings   # shell; also cargo test and fmt
-npx tauri build --no-bundle --config src-tauri/desktop/tauri.conf.json   # release shell with the built client
-npx tauri build --debug --no-bundle --features webdriver --config src-tauri/desktop/tauri.conf.json
-npm run test:app                                   # real app over WebDriver; opens a window for ~1.5 min (Windows)
-```
-
-CI (`.github/workflows/ci.yml`) runs the Rust and docs commands on Windows, macOS and Linux, and the client commands on Windows. Before calling work done, run the subset that covers what you touched. For Rust changes that is at least `cargo test` and `clippy` on the affected crate (`-p <crate>`).
+Run the relevant [development checks](docs/development.md#checks) from the repo root. For Rust changes, run at least `cargo test` and `cargo clippy` on the affected crate (`-p <crate>`). For the release shell executable without packaging, add `--no-bundle` to the source build.
 
 ## Claude tooling (`.claude/`)
 

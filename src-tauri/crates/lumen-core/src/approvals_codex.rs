@@ -448,7 +448,8 @@ async fn run(
         kind: "session".into(),
         text: thread_id.clone(),
     });
-    let mut user_input = vec![json!({"type":"text","text":input.prompt})];
+    let prompt = format!("{}\n\nWhen the user asks for questions or a material decision is needed, call lumen_request_user_input with clear selectable options and wait for the answers in Lumen. Provide any useful findings before calling the tool; keep working after the answer. Use the native request_user_input tool if the Lumen tool is unavailable. A request for a decision belongs in the tool, not in a final answer marked blocked.", input.prompt);
+    let mut user_input = vec![json!({"type":"text","text":prompt})];
     user_input.extend(
         images
             .iter()

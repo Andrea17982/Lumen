@@ -6,8 +6,15 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 /// Activity kinds whose text is plain tool output or diff text, never parsed as JSON.
-pub(crate) const BOUNDED: [&str; 6] =
-    ["tool", "command", "file", "tool-end", "code-output", "code"];
+pub(crate) const BOUNDED: [&str; 7] = [
+    "tool",
+    "command",
+    "file",
+    "tool-end",
+    "code-output",
+    "code",
+    "verify",
+];
 pub(crate) const LIMIT: usize = 16 * 1024;
 /// Tool output and diffs the store keeps, in bytes. Longer text is cut once, with a visible
 /// marker, before it is stored, digested or sent, so a digest always finds the same text again.

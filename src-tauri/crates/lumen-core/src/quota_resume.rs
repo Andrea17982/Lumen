@@ -71,11 +71,7 @@ pub async fn resume_at_reset(
             .text,
     )
     .map_err(|_| "Invalid saved execution options")?;
-    options.mode = serde_json::to_value(&account.provider)
-        .unwrap()
-        .as_str()
-        .unwrap()
-        .into();
+    options.mode = account.provider.id();
     options.account_id = Some(account.id);
     options.model = retry["model"].as_str().map(str::to_owned);
     options.effort = retry["effort"].as_str().unwrap_or("").into();

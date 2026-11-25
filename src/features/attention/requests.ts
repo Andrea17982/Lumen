@@ -1,4 +1,4 @@
-import type { ApprovalRequest, ApprovalSession, Interaction, InteractionResult, Message, Scope } from '../../protocol/types';
+import { isSessionActive, type ApprovalRequest, type ApprovalSession, type Interaction, type InteractionResult, type Message, type Scope } from '../../protocol/types';
 
 /**
  * Invisible formatting and control characters shown as escapes, so a command cannot hide a
@@ -112,7 +112,7 @@ export function recovery(messages: readonly Message[], status: string): Recovery
   };
   const scheduled = latest('quota-scheduled');
   if (status === 'waiting' && scheduled?.state === 'waiting' && typeof scheduled.at === 'number') return { kind: 'scheduled', at: scheduled.at };
-  if (status === 'running' || status === 'queued' || status === 'waiting') return null;
+  if (isSessionActive(status)) return null;
   const reset = latest('quota-reset');
   const resumable = last.activity.some((a) => a.kind === 'native') && last.activity.some((a) => a.kind === 'error');
   if (reset && typeof reset.at === 'number' && resumable && reset.at > 0 && scheduled?.state !== 'resuming') return { kind: 'quota', at: reset.at, messageId: last.id };

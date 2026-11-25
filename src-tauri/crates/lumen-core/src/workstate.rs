@@ -20,18 +20,28 @@ fn starts_new_task(message: &Message) -> bool {
 /// Facts added outside the CLI's own transcript: project notes and real backend checks.
 /// Read only this chat/current workspace; never replay the whole conversation on native resume.
 pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedContext, String> {
+    owned_context_excluding(core, session, &[])
+}
+
+pub(crate) fn owned_context_excluding(
+    core: &crate::Core,
+    session: &Session,
+    exclude: &[&str],
+) -> Result<OwnedContext, String> {
     use std::hash::{Hash, Hasher};
     let notes = crate::context::read_context(std::path::Path::new(&session.workspace));
     let mut reports = std::collections::BTreeMap::new();
     // The same derivation serves full replay and native resume, including Compact
     // seeds. Never follow a source-chat pointer that could import later changes.
+    let mut messages = core.store.messages(&session.id)?;
+    messages.retain(|message| !exclude.contains(&message.id.as_str()));
     let evidence = collect_check_evidence(
         core.store
             .work_seed(&session.id)?
             .unwrap_or_default()
             .check_evidence,
         session,
-        &core.store.messages(&session.id)?,
+        &messages,
     );
     for (sequence, check) in evidence.into_iter().enumerate() {
         if check.report["workspace"].as_str() != Some(session.workspace.as_str()) {
@@ -41,8 +51,8 @@ pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedConte
             reports.insert(label.to_owned(), (sequence, check.source, check.report));
         }
     }
-    // Invalidate revisions acknowledged by older, clipped project-note projections.
-    let canonical = serde_json::to_string(&(2, &notes, &reports)).map_err(|e| e.to_string())?;
+    // Refresh native sessions that acknowledged an older evidence projection.
+    let canonical = serde_json::to_string(&(3, &notes, &reports)).map_err(|e| e.to_string())?;
     let mut hash = std::hash::DefaultHasher::new();
     canonical.hash(&mut hash);
     let mut recent = reports.iter().collect::<Vec<_>>();
@@ -50,32 +60,15 @@ pub fn owned_context(core: &crate::Core, session: &Session) -> Result<OwnedConte
     let evidence = recent
         .into_iter()
         .take(8)
-        .map(|(label, (_, source, report))| {
-            let status = report["status"].as_str().unwrap_or("unavailable");
-            let details = report["detail"].as_str().unwrap_or("");
-            let diagnostics = report["diagnostics"]
-                .as_array()
-                .map(|rows| {
-                    rows.iter()
-                        .take(6)
-                        .map(|d| {
-                            format!(
-                                "{}:{} {}",
-                                d["file"].as_str().unwrap_or(""),
-                                d["line"],
-                                d["message"].as_str().unwrap_or("")
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                })
-                .unwrap_or_default();
-            format!(
-                "[{source}] {label}: {status}\n{}\n{}",
-                clip(details, 1200),
-                clip(&diagnostics, 1200)
-            )
-        })
+        .map(
+            |(label, (_, source, report))| match crate::diagnostics::Report::deserialize(report) {
+                Ok(report) => format!("[{source}] {}", report.evidence(1200)),
+                Err(_) => format!(
+                    "[{source}] {label}: {}",
+                    report["status"].as_str().unwrap_or("unavailable")
+                ),
+            },
+        )
         .collect::<Vec<_>>()
         .join("\n");
     let evidence = if evidence.is_empty() {
