@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="public/lumen.png" width="76" height="76" alt="Lumen">
+  <img src="src/brand/app-icon.svg" width="76" height="76" alt="Lumen">
   <h1>Lumen</h1>
-  <p><strong>The AI coding subscriptions you already pay for, in one quiet window.</strong></p>
+  <p><strong>Another AI subscription hub. This one comes with style and an automatic mode.</strong></p>
   <p>
     <a href="https://github.com/Andrea17982/Lumen/releases/latest">Download</a> ·
     <a href="docs/README.md">Docs</a> ·
@@ -19,26 +19,27 @@
   <img src="docs/images/conversation.png" alt="Lumen with a finished task: the request, the steps folded into one line, and the answer with what changed and what was checked">
 </picture>
 
-I pay for Claude, ChatGPT and a couple of other things, and I got tired of deciding which one to open, pasting context between them and checking their work by hand. Lumen is what I wanted instead: you sign in once with each official CLI (Claude Code, Codex, Antigravity, OpenCode, Cursor, local Ollama, or an API key), write what you need, and it picks who does the work.
+I built Lumen because I was tired of juggling Claude, ChatGPT and other apps for the same project. Every time I ran out of tokens, I had to switch apps, configure another agent and carry the context across sessions. I wanted to spend less time choosing models and reasoning settings, budgeting tokens and worrying about burning through my quota when context wasn't cached.
 
-It's free, MIT licensed and still in alpha.
+Lumen is free, MIT licensed and still in alpha. Try it, fork it, open an issue or send a pull request.
 
 ## What it does
 
-- **Picks the agent for you.** The best one available right now; when a quota runs out, another one carries on without redoing what was finished.
-- **Tells you what happened.** One answer at the end: what changed, what was checked, what failed, what's still open.
-- **Stops when it should.** Risky or irreversible actions wait for you. Everything else doesn't.
-- **Big tasks get a branch.** A bar above the conversation lets you publish it as a PR, apply it to your folder or throw it away.
-- **Remembers the project.** Decisions go into `LUMEN.md`, which every agent reads.
-- **Keeps running.** Close the window and the work goes on in the background.
+- **Picks an agent for you.** Lumen chooses an available agent for your request. When a quota runs out, another agent can pick up where it left off.
+- **Lets you choose how agents get permission.** Use read-only access, approve edits as they come up, or enable Autopilot.
+- **Splits large tasks with Orchestra.** Once you approve the plan, agents can work in parallel, including across subscriptions.
+- **Shares project memory.** Agents read decisions from `LUMEN.md` so the project has one place for shared context.
+- **Keeps work running in the background.** You can choose whether Lumen stays in the notification area after you close the window.
 
-Two things are just switches in Settings, each with one line of explanation: **Orchestra**, which splits a large task between your agents after you approve the plan, and **Code Mode**, which turns many tool calls into one script to save tokens.
+Orchestra and **Code Mode** are available in Settings. Code Mode groups tool calls into one script to save tokens and draws on Anthropic's experimental approach. Lumen also uses the Moli browser to reduce the amount of web content agents need to process.
 
-<img src="docs/images/settings.png" alt="Lumen settings: language, style, theme, and the Orchestra and Code Mode switches">
+<img src="docs/images/settings.png" alt="Lumen settings with Orchestra and Code Mode">
+
+<img src="docs/images/accounts.png" alt="Lumen provider account settings">
 
 ## Download
 
-Windows x64: the setup is on the [latest release](https://github.com/Andrea17982/Lumen/releases/latest). It isn't signed yet, so Windows will warn you; check it against `SHA256SUMS.txt`. macOS and Linux build from source for now.
+See the [0.12.6 release](https://github.com/Andrea17982/Lumen/releases/tag/v0.12.6) for available packages and SHA-256 checksums. The release targets Windows x64 setup and portable, macOS universal, and Linux x64 (Debian and Ubuntu). Windows may warn about unsigned packages.
 
 ## Build from source
 

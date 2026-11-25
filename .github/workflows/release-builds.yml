@@ -1,0 +1,118 @@
+name: Release builds
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release-builds.yml
+      - src-tauri/desktop/tauri*.conf.json
+      - src-tauri/desktop/icons/**
+      - scripts/prepare-daemon.mjs
+      - scripts/prepare-moli.mjs
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+          - os: macos-latest
+            target: universal-apple-darwin
+            bundle: dmg
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundle: deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            src-tauri/desktop
+      - name: macOS Rust targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libpipewire-0.3-dev libspa-0.2-dev libclang-dev libxcb1-dev libxrandr-dev libdbus-1-dev libgbm-dev libegl-dev libwayland-dev
+      - run: npm ci
+      - run: node scripts/prepare-moli.mjs
+      - name: Build release and native installer
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npx tauri build --config src-tauri/desktop/tauri.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} -- --locked
+      - name: Stage Windows setup and portable ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $target = "src-tauri/desktop/target/${{ matrix.target }}/release"
+          New-Item -ItemType Directory -Path release, portable, portable/resources
+          $setup = Get-Item "$target/bundle/nsis/*-setup.exe"
+          Copy-Item -LiteralPath $setup.FullName -Destination "release/Lumen_${version}_x64-setup.exe"
+          Copy-Item -LiteralPath "$target/Lumen.exe", "src-tauri/binaries/lumen-daemon-${{ matrix.target }}.exe" -Destination portable
+          Rename-Item "portable/lumen-daemon-${{ matrix.target }}.exe" "lumen-daemon.exe"
+          Copy-Item -Recurse -LiteralPath src-tauri/resources/moli, src-tauri/resources/legal -Destination portable/resources
+          Push-Location portable
+          try {
+            & 'C:/Program Files/7-Zip/7z.exe' a -tzip -mx=9 "../release/Lumen_${version}_x64-portable.zip" Lumen.exe lumen-daemon.exe resources
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & 'C:/Program Files/7-Zip/7z.exe' t "../release/Lumen_${version}_x64-portable.zip"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+      - name: Verify and stage macOS disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          bundle=src-tauri/desktop/target/${{ matrix.target }}/release/bundle
+          mkdir release
+          image="release/Lumen_${version}_macos-universal.dmg"
+          cp "$bundle"/dmg/*.dmg "$image"
+          hdiutil verify "$image"
+          mountpoint=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$image"
+          trap 'hdiutil detach "$mountpoint"' EXIT
+          app="$mountpoint/Lumen.app"
+          lipo "$app/Contents/MacOS/Lumen" -verify_arch arm64 x86_64
+          lipo "$app/Contents/MacOS/lumen-daemon" -verify_arch arm64 x86_64
+          test -x "$app/Contents/Resources/resources/moli/darwin-arm64/moli"
+          test -x "$app/Contents/Resources/resources/moli/darwin-x64/moli"
+          codesign --verify --deep --strict "$app"
+      - name: Verify and stage Linux Debian package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir release
+          package="release/Lumen_${version}_linux-amd64.deb"
+          cp src-tauri/desktop/target/${{ matrix.target }}/release/bundle/deb/*.deb "$package"
+          test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          dpkg-deb -x "$package" package
+          test -x package/usr/bin/Lumen
+          test -x package/usr/bin/lumen-daemon
+          moli=$(find package/usr/lib -path '*/resources/moli/linux-x64/moli' -print -quit)
+          test -x "$moli"
+          ldd package/usr/bin/Lumen
+          ldd "$moli"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumen-${{ runner.os }}
+          path: release/*
+          if-no-files-found: error
+          compression-level: 0
