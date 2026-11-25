@@ -88,7 +88,15 @@ if ($Provider -eq 'gpt' -and $AppServer -and ($promptText.Contains('AUTOPILOT_FI
     } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_QUESTION')) {
         $reply = 'Risposta alla domanda. <!-- lumen-autopilot: done -->'
     } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_BLOCKED')) {
-        $reply = "Serve una decisione dell'utente.`n<!-- lumen-autopilot: blocked -->"
+        $reply = "Il servizio richiesto non risponde.`n<!-- lumen-autopilot: blocked -->"
+    } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_DECISION')) {
+        if (!$promptText.Contains('call lumen_request_user_input')) {throw 'Codex must receive the named question tool instruction'}
+        $question = @{id='priority';header='Routing';question='Which priority should Auto use?';multiSelect=$false;options=@(@{label='Quality';description='Prefer stronger answers'},@{label='Speed';description='Prefer a faster response'})}
+        Emit @{id='fixture-decision';method='item/tool/call';params=@{threadId='fixture-thread';turnId='fixture-turn';tool='lumen_request_user_input';arguments=@{questions=@($question)}}}
+        $replyFrame = [Console]::In.ReadLine() | ConvertFrom-Json
+        $answer = $replyFrame.result.contentItems[0].text | ConvertFrom-Json
+        if (!$replyFrame.result.success -or $answer.answers.priority[0] -ne 'Quality') {throw 'Expected the priority chosen in Lumen'}
+        $reply = 'Priority confirmed. <!-- lumen-autopilot: done -->'
     } else {
         $access = if ($hasCheck) { 'autopilot' } else { 'restricted' }
         Add-Content -LiteralPath 'autopilot-attempts.txt' -Value $access
@@ -238,6 +246,21 @@ if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('SECRET_ASK_FI
     exit 0
 }
 $reply = "This is an **offline UI fixture**, not a live AI response.`n`n### A small, thoughtful plan`n`n- Keep the conversation clear.`n- Review the changes before applying them.`n- Make room for the next idea.`n`n| Step | State |`n| --- | --- |`n| Understand | Complete |`n| Review | Complete |`n`n" + '```typescript' + "`nconst clarity = true;`n" + '```'
+if (Test-Path -LiteralPath 'verification-probe.cjs') {
+    if ($Provider -eq 'claude' -and $promptText.Contains('Validation found concrete errors after your changes.')) {
+        if (!$promptText.Contains('EVIDENCE_FIXTURE_ERROR') -or $promptText.Contains('EVIDENCE_FIXTURE_NOISE')) {throw 'Expected compact failure evidence'}
+        Set-Content -LiteralPath 'verification-target.txt' -Value 'fixed'
+        $reply = 'Corrected the fixture.'
+    } elseif ($Provider -eq 'claude' -and $promptText.Contains('VERIFY_AND_REVIEW_FIXTURE')) {
+        Set-Content -LiteralPath 'verification-target.txt' -Value 'broken'
+        $reply = 'Edited the fixture.'
+    } elseif ($Provider -eq 'gpt' -and $promptText.Contains('You are auditing')) {
+        if (!$promptText.Contains('Exit code: 0') -or $promptText.Contains('EVIDENCE_FIXTURE_NOISE') -or $promptText.Contains('EVIDENCE_FIXTURE_ERROR')) {throw 'Expected only current passing evidence in review'}
+    } elseif ($Provider -eq 'gpt' -and $promptText.Contains('VERIFY_HANDOFF_FIXTURE')) {
+        if (!$promptText.Contains('Exit code: 0') -or $promptText.Contains('EVIDENCE_FIXTURE_NOISE') -or $promptText.Contains('EVIDENCE_FIXTURE_ERROR')) {throw 'Expected only current passing evidence in handoff'}
+        $reply = 'VERIFICATION_HANDOFF_OK'
+    }
+}
 if ($promptText.Contains('QUALITY_CONTEXT_FIXTURE')) {
     $reply = if ($promptText.Contains('Independent counter check: failed')) { 'QUALITY_CONTEXT_PRESENT' } else { 'QUALITY_CONTEXT_ABSENT' }
 }

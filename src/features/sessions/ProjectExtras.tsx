@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
+import { languageTag } from '../../i18n/format';
 import type { Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { visibleText } from '../attention/requests';
@@ -42,7 +43,7 @@ export function Routines({ session }: { session: Session }) {
     const [day, time] = r.anchor.split('@');
     if (!day) return t.routines.daily(time);
     // 1 January 2024 was a Monday; only the weekday name is used.
-    const name = new Date(Date.UTC(2024, 0, 1 + DAYS.indexOf(day))).toLocaleDateString(locale === 'it' ? 'it-IT' : 'en-US', { weekday: 'long', timeZone: 'UTC' });
+    const name = new Date(Date.UTC(2024, 0, 1 + DAYS.indexOf(day))).toLocaleDateString(languageTag(locale), { weekday: 'long', timeZone: 'UTC' });
     return t.routines.weekly(name, time);
   };
   return (

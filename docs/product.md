@@ -74,6 +74,8 @@ After a write turn, Lumen diffs the working tree against that turn's checkpoint.
 2. It runs the affected project checks: Rust, JS package scripts, C#, Go and Godot. You can override them with `verify:` in `LUMEN.md` or with `.lumen/checks.json` (entries need `"automatic": true`).
 3. It sends concrete errors back to the writer, for up to three corrections.
 
+When verification is enabled, an independent reviewer sees the latest check results for the diff it reviews. Lumen also reuses the latest recorded evidence in a handoff. Failed checks include a compact excerpt. The verification step shows the captured log, within the output limit.
+
 Missing coverage is reported as missing, never as a pass.
 
 The code graph is pattern-based, not a compiler. It feeds pre- and post-edit impact (callers, tests, contracts) to workers and to integration.

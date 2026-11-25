@@ -449,18 +449,7 @@ impl Store {
                 Ok(Account {
                     id: r.get(0)?,
                     name: r.get(1)?,
-                    provider: match p.as_str() {
-                        "claude" => Provider::Claude,
-                        "gpt" => Provider::Gpt,
-                        "antigravity" => Provider::Antigravity,
-                        "ollama" => Provider::Ollama,
-                        "opencode" => Provider::Opencode,
-                        "cursor" => Provider::Cursor,
-                        "openaiapi" => Provider::Openaiapi,
-                        "anthropicapi" => Provider::Anthropicapi,
-                        "googleapi" => Provider::Googleapi,
-                        _ => Provider::Gpt,
-                    },
+                    provider: Provider::from_id(&p).unwrap_or(Provider::Gpt),
                 })
             })?;
             rows.collect()
@@ -472,22 +461,10 @@ impl Store {
             name,
             provider,
         };
-        let p = match &a.provider {
-            Provider::Claude => "claude",
-            Provider::Gpt => "gpt",
-
-            Provider::Antigravity => "antigravity",
-            Provider::Ollama => "ollama",
-            Provider::Opencode => "opencode",
-            Provider::Cursor => "cursor",
-            Provider::Openaiapi => "openaiapi",
-            Provider::Anthropicapi => "anthropicapi",
-            Provider::Googleapi => "googleapi",
-        };
         self.with(|c| {
             c.execute(
                 "INSERT INTO accounts VALUES(?1,?2,?3)",
-                params![a.id, a.name, p],
+                params![a.id, a.name, a.provider.id()],
             )
         })?;
         Ok(a)

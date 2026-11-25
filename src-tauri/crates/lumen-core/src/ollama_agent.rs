@@ -408,6 +408,10 @@ mod tests {
     }
 
     use super::*;
+    use crate::{
+        models::{AccessMode, Account, Provider},
+        test_support::Fixture,
+    };
     #[tokio::test]
     #[ignore = "Requires an installed local Ollama model; no model is downloaded"]
     async fn real_local_model_calls_moli_and_uses_the_page_result() {
@@ -497,6 +501,47 @@ mod tests {
             .any(|a| a.kind == "browser" && a.text.contains("web_fetch")));
         server.abort();
     }
+    async fn fixture_turn(fixture: &Fixture, address: &str, expected: &str) -> Vec<Activity> {
+        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let browser =
+            crate::browser::tests::fixture_registration(fixture, AccessMode::ReadOnly, None, tx)
+                .await;
+        let account = Account {
+            id: "test".into(),
+            name: "fixture".into(),
+            provider: Provider::Ollama,
+        };
+        let config = fixture.directory("accounts/test");
+        let workspace = fixture.directory("project");
+        let (_stop, cancel) = watch::channel(false);
+        let mut events = Vec::new();
+        let answer = execute_at(
+            Invocation {
+                rlm: None,
+                automatic: false,
+                account: &account,
+                config: &config,
+                workspace: &workspace,
+                prompt: "Browse the fixture",
+                model: Some("fixture-local"),
+                effort: "",
+                access: AccessMode::ReadOnly,
+                approvals: None,
+                resume: None,
+                browser_scope: None,
+                browser_artifacts: None,
+                browser: Some(&browser),
+            },
+            cancel,
+            |event| events.push(event),
+            address,
+        )
+        .await
+        .unwrap();
+        assert_eq!(answer, expected);
+        events
+    }
+
     async fn tool_loop(native: bool, shared: bool) {
         use axum::{
             extract::State,
@@ -539,47 +584,7 @@ mod tests {
               format!("{}\n",json!({"message":message,"done":true}))
           }})).with_state(count);
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let browser = crate::browser::tests::fixture_registration(
-            &f,
-            crate::models::AccessMode::ReadOnly,
-            None,
-            tx,
-        )
-        .await;
-        let account = crate::models::Account {
-            id: "test".into(),
-            name: "fixture".into(),
-            provider: crate::models::Provider::Ollama,
-        };
-        let config = f.directory("accounts/test");
-        let workspace = f.directory("project");
-        let (_stop, cancel) = watch::channel(false);
-        let mut events = Vec::new();
-        let answer = execute_at(
-            Invocation {
-                rlm: None,
-                automatic: false,
-                account: &account,
-                config: &config,
-                workspace: &workspace,
-                prompt: "Browse the fixture",
-                model: Some("fixture-local"),
-                effort: "",
-                access: crate::models::AccessMode::ReadOnly,
-                approvals: None,
-                resume: None,
-                browser_scope: None,
-                browser_artifacts: None,
-                browser: Some(&browser),
-            },
-            cancel,
-            |a| events.push(a),
-            &address,
-        )
-        .await
-        .unwrap();
-        assert_eq!(answer, "Verified answer");
+        let events = fixture_turn(&f, &address, "Verified answer").await;
         assert_eq!(seen.load(Ordering::SeqCst), 2);
         assert_eq!(
             events
@@ -592,10 +597,6 @@ mod tests {
         server.abort();
     }
     async fn code_loop_falls_back(native: bool) {
-        use crate::{
-            models::{AccessMode, Account, Provider},
-            test_support::Fixture,
-        };
         use axum::{
             routing::{get, post},
             Json, Router,
@@ -669,43 +670,7 @@ mod tests {
                 }
             }));
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let browser =
-            crate::browser::tests::fixture_registration(&fixture, AccessMode::ReadOnly, None, tx)
-                .await;
-        let account = Account {
-            id: "test".into(),
-            name: "fixture".into(),
-            provider: Provider::Ollama,
-        };
-        let config = fixture.directory("accounts/test");
-        let workspace = fixture.directory("project");
-        let (_stop, cancel) = watch::channel(false);
-        let mut events = Vec::new();
-        let answer = execute_at(
-            Invocation {
-                rlm: None,
-                automatic: false,
-                account: &account,
-                config: &config,
-                workspace: &workspace,
-                prompt: "Browse the fixture",
-                model: Some("fixture-local"),
-                effort: "",
-                access: AccessMode::ReadOnly,
-                approvals: None,
-                resume: None,
-                browser_scope: None,
-                browser_artifacts: None,
-                browser: Some(&browser),
-            },
-            cancel,
-            |event| events.push(event),
-            &address,
-        )
-        .await
-        .unwrap();
-        assert_eq!(answer, "finished");
+        let events = fixture_turn(&fixture, &address, "finished").await;
         assert_eq!(
             events.iter().filter(|a| a.kind == "code-fallback").count(),
             1
@@ -728,10 +693,6 @@ mod tests {
     /// Automatic Code Mode: classic calls first, scripts after `ESCALATE_AFTER` tool rounds,
     /// and only for measured model families.
     async fn auto_escalation(family: &str) -> Vec<Activity> {
-        use crate::{
-            models::{AccessMode, Account, Provider},
-            test_support::Fixture,
-        };
         use axum::{
             routing::{get, post},
             Json, Router,
@@ -768,43 +729,7 @@ mod tests {
                 }
             }));
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let browser =
-            crate::browser::tests::fixture_registration(&fixture, AccessMode::ReadOnly, None, tx)
-                .await;
-        let account = Account {
-            id: "test".into(),
-            name: "fixture".into(),
-            provider: Provider::Ollama,
-        };
-        let config = fixture.directory("accounts/test");
-        let workspace = fixture.directory("project");
-        let (_stop, cancel) = watch::channel(false);
-        let mut events = Vec::new();
-        let answer = execute_at(
-            Invocation {
-                rlm: None,
-                automatic: false,
-                account: &account,
-                config: &config,
-                workspace: &workspace,
-                prompt: "Browse the fixture",
-                model: Some("fixture-local"),
-                effort: "",
-                access: AccessMode::ReadOnly,
-                approvals: None,
-                resume: None,
-                browser_scope: None,
-                browser_artifacts: None,
-                browser: Some(&browser),
-            },
-            cancel,
-            |event| events.push(event),
-            &address,
-        )
-        .await
-        .unwrap();
-        assert_eq!(answer, "finished");
+        let events = fixture_turn(&fixture, &address, "finished").await;
         server.abort();
         events
     }

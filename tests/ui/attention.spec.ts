@@ -20,15 +20,17 @@ test.beforeAll(async ({ baseURL }) => {
 });
 test.afterAll(async () => daemon?.close());
 
-/** A fresh conversation in "Ask first" access, opened, with the given account as the agent. */
-async function open(page: Page, account: string) {
+/** A fresh conversation, opened with the requested access and account. */
+async function open(page: Page, account: string | null, mode = 'ask') {
   const chat = (await daemon.client.call('create_session', { workspace: daemon.workspace })) as { id: string };
-  await daemon.client.call('set_session_access_mode', { id: chat.id, mode: 'ask' });
+  await daemon.client.call('set_session_access_mode', { id: chat.id, mode });
   await page.goto(daemon.url());
   await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
-  await page.getByRole('button', { name: /Agent/ }).click();
-  await page.getByRole('option', { name: account }).click();
-  await expect(page.getByRole('button', { name: /Model/ })).toBeVisible();
+  if (account) {
+    await page.getByRole('button', { name: /Agent/ }).click();
+    await page.getByRole('option', { name: account }).click();
+    await expect(page.getByRole('button', { name: /Model/ })).toBeVisible();
+  }
   return chat;
 }
 
@@ -104,6 +106,24 @@ test('a native question is answered from its card and the agent continues', asyn
   await expect(reply(page).getByRole('heading', { name: 'A small, thoughtful plan' })).toBeVisible({ timeout: 30_000 });
   await expect(attention(page)).toHaveCount(0);
   expect((await readFile(path.join(daemon.workspace, 'answer-claude.txt'), 'utf8')).trim()).toBe('Native');
+});
+
+test('Codex Autopilot waits for an interactive choice and resumes the turn', async ({ page }) => {
+  test.setTimeout(90_000);
+  const chat = await open(page, null, 'autopilot');
+  await send(page, 'Use Codex: research online sources and compare routing approaches. AUTOPILOT_FIXTURE_DECISION');
+  const card = attention(page).getByRole('form', { name: 'The agent has a question' });
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const header = page.locator('main > header');
+  await expect(header).toContainText('Waiting');
+  expect(JSON.stringify(await daemon.client.call('get_messages', { id: chat.id }))).toContain('GPT Sol fixture · high');
+  await expect(card.getByRole('radio')).toHaveCount(2);
+  await expect(card.getByRole('button', { name: 'Send answers' })).toBeDisabled();
+  await card.getByText('Quality', { exact: true }).click();
+  await card.getByRole('button', { name: 'Send answers' }).click();
+  await expect(reply(page).getByText('Priority confirmed.')).toBeVisible({ timeout: 30_000 });
+  await expect(header).toContainText('Done');
+  await expect(attention(page)).toHaveCount(0);
 });
 
 test('a secret answer reaches the agent and is kept nowhere else', async ({ page }) => {

@@ -39,19 +39,11 @@ Orchestra and **Code Mode** are available in Settings. Code Mode groups tool cal
 
 ## Download
 
-See the [0.12.6 release](https://github.com/Andrea17982/Lumen/releases/tag/v0.12.6) for available packages and SHA-256 checksums. The release targets Windows x64 setup and portable, macOS universal, and Linux x64 (Debian and Ubuntu). Windows may warn about unsigned packages.
+See the [0.13.0 release](https://github.com/Andrea17982/Lumen/releases/tag/v0.13.0) for available packages and SHA-256 checksums. The release targets Windows x64 setup and portable, macOS universal, and Linux x64 (Debian and Ubuntu). Windows may warn about unsigned packages.
 
 ## Build from source
 
-```sh
-git clone https://github.com/Andrea17982/Lumen.git
-cd Lumen
-node scripts/prepare-moli.mjs
-npm ci
-npx tauri build --config src-tauri/desktop/tauri.conf.json
-```
-
-Tests and the rest are in [development](docs/development.md).
+See the [development guide](docs/development.md) for prerequisites, builds and tests.
 
 ## Good to know
 

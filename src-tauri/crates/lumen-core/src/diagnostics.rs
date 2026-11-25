@@ -18,7 +18,9 @@ use tokio::{
 pub struct Diagnostic {
     pub file: String,
     pub line: u64,
+    #[serde(default)]
     pub column: u64,
+    #[serde(default)]
     pub severity: u64,
     pub message: String,
 }
@@ -27,8 +29,12 @@ pub struct Diagnostic {
 pub struct Report {
     pub label: String,
     pub status: String,
+    #[serde(default)]
     pub detail: String,
+    #[serde(default)]
     pub diagnostics: Vec<Diagnostic>,
+    #[serde(skip)]
+    pub output: String,
 }
 
 impl Report {
@@ -38,6 +44,7 @@ impl Report {
             status: "unavailable".into(),
             detail,
             diagnostics: vec![],
+            output: String::new(),
         }
     }
     pub fn errors(&self) -> String {
@@ -48,6 +55,25 @@ impl Report {
             .map(|d| format!("{}:{}:{}: {}", d.file, d.line, d.column, d.message))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    pub(crate) fn evidence(&self, limit: usize) -> String {
+        let diagnostics = self
+            .diagnostics
+            .iter()
+            .take(6)
+            .map(|d| format!("{}:{} {}", d.file, d.line, d.message))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let details = format!("{diagnostics}\n{}", self.detail);
+        let mut detail = details.trim().chars();
+        let excerpt: String = detail.by_ref().take(limit).collect();
+        let omitted = if detail.next().is_some() {
+            "\n[More in the verification step.]"
+        } else {
+            ""
+        };
+        format!("{}: {}\n{excerpt}{omitted}", self.label, self.status)
     }
 }
 
@@ -538,6 +564,7 @@ async fn collect(
             observed_count, files.len()
         ),
         diagnostics,
+        output: String::new(),
     })
 }
 

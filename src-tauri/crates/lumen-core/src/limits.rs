@@ -4,6 +4,11 @@ use std::{collections::HashMap, sync::Mutex};
 
 pub const RATE_LIMIT: &str = "RATE_LIMIT: ";
 const FIVE_HOURS: i64 = 5 * 3_600_000;
+const SPEND_LIMIT: &str = "monthly spend limit";
+
+pub fn is_spend_limit(text: &str) -> bool {
+    text.to_ascii_lowercase().contains(SPEND_LIMIT)
+}
 
 pub fn is_rate_limit(text: &str) -> bool {
     let l = text.to_lowercase();
@@ -13,6 +18,7 @@ pub fn is_rate_limit(text: &str) -> bool {
         "ratelimit",
         "429",
         "usage limit",
+        SPEND_LIMIT,
         "quota",
         "too many requests",
         "hit your limit",
@@ -135,6 +141,7 @@ mod tests {
     #[test]
     fn detects_and_parses() {
         assert!(is_rate_limit("Error 429: Too Many Requests"));
+        assert!(is_rate_limit("You've hit your monthly spend limit"));
         assert!(is_rate_limit(
             "You've hit your usage limit. Try again in 2h 5m."
         ));

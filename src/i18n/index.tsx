@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import { I18nProvider as AriaI18nProvider } from 'react-aria-components';
 import { en, type Catalog } from './en';
 import { it } from './it';
+import { languageTag } from './format';
 
 export type Locale = 'en' | 'it';
 export const catalogs: Record<Locale, Catalog> = { en, it };
@@ -17,7 +18,7 @@ export function I18nProvider({ locale, children }: { locale: Locale; children: R
   // React Aria gets the same locale for its built-in labels, collation and number parsing.
   return (
     <Context value={{ locale, t: catalogs[locale] }}>
-      <AriaI18nProvider locale={locale === 'it' ? 'it-IT' : 'en-US'}>{children}</AriaI18nProvider>
+      <AriaI18nProvider locale={languageTag(locale)}>{children}</AriaI18nProvider>
     </Context>
   );
 }
