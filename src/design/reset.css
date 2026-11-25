@@ -43,6 +43,11 @@ button {
   outline: none;
   box-shadow: var(--focus-ring);
 }
+/* Text boxes show the caret, not a ring. */
+input:focus-visible,
+textarea:focus-visible {
+  box-shadow: none;
+}
 @media (forced-colors: active) {
   :focus-visible {
     outline: 2px solid Highlight;

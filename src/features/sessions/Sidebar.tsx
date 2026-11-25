@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Mark, Wordmark } from '../../brand/Logo';
+import { LogoButton } from '../../brand/Logo';
 import { Button, ConfirmDialog, IconButton, Menu, SearchField, Select, TextField } from '../../design/components';
 import { Icon } from '../../design/icons';
 import { useT } from '../../i18n';
 import type { Session, Workspace } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
-import { daemonAnchor, folderName, groups, inProject, moved, toneOf } from './sessions';
+import { daemonAnchor, folderName, groups, inProject, moved, sessionTitle, toneOf } from './sessions';
 import s from './Sidebar.module.css';
 
 type Dialog = { kind: 'delete' | 'move'; session: Session } | { kind: 'renameProject' | 'removeProject'; project: Workspace } | null;
@@ -92,11 +92,9 @@ export function Sidebar({ project, selected, onSelect, onProject, onHide, onSett
   return (
     <aside ref={root} className={s.sidebar} aria-label={t.sessions}>
       <div className={s.brand}>
-        <Mark size={24} />
-        <Wordmark />
+        <LogoButton label={t.sidebar.hide} onPress={onHide} />
         <span className={s.spacer} />
         <IconButton icon="gear" label={t.settings.open} onPress={onSettings} />
-        <IconButton icon="sidebar" label={t.sidebar.hide} onPress={onHide} />
       </div>
       <Button variant="secondary" icon="plus" isDisabled={!project || !connected} onPress={() => void newTask()}>
         {t.newTask}
@@ -136,7 +134,7 @@ export function Sidebar({ project, selected, onSelect, onProject, onHide, onSett
                     ) : (
                       <button className={s.session} aria-current={x.id === selected ? 'page' : undefined} onClick={() => onSelect(x.id)} onKeyDown={(e) => onRowKey(e, x, group.sessions)}>
                         <Status status={x.status} />
-                        <span className={s.title}>{x.title || t.untitled}</span>
+                        <span className={s.title}>{sessionTitle(x, t.untitled)}</span>
                         {toneOf(x.status) === 'needsYou' && (
                           <span className={s.badge} title={t.needsYou}>
                             {t.needsYouShort}

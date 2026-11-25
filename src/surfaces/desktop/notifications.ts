@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { sessionTitle } from '../../features/sessions/sessions';
 import { useT } from '../../i18n';
 import { useSyncClient } from '../../sync/react';
 
@@ -19,7 +20,7 @@ export function useNotifications() {
       for (const session of sessions) {
         const before = last.get(session.id);
         if (!before || before === session.status) continue;
-        const title = session.title || t.untitled;
+        const title = sessionTitle(session, t.untitled);
         if (session.status === 'waiting') sync.notify(t.notify.attention, title);
         else if (ACTIVE.has(before) && session.status === 'completed') sync.notify(t.notify.done, title);
         else if (ACTIVE.has(before) && FAILED.has(session.status)) sync.notify(t.notify.failed, title);

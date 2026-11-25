@@ -4,7 +4,8 @@ import { useAppearance } from '../../design/appearance';
 import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
 import { Conversation } from '../../features/conversation/Conversation';
 import { ProjectPanel } from '../../features/sessions/ProjectPanel';
-import { currentProject } from '../../features/sessions/sessions';
+import { LogoButton } from '../../brand/Logo';
+import { currentProject, sessionTitle } from '../../features/sessions/sessions';
 import { Sidebar } from '../../features/sessions/Sidebar';
 import type { Language, Preferences } from '../../features/settings/General';
 import { Settings } from '../../features/settings/Settings';
@@ -131,12 +132,12 @@ function Shell({ preferences }: { preferences: Preferences }) {
       <main className={s.main}>
         <Banners />
         {settings ? (
-          <Settings preferences={preferences} onClose={() => setSettings(false)} leading={hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />} />
+          <Settings preferences={preferences} onClose={() => setSettings(false)} leading={hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />} />
         ) : session ? (
           <>
             <header className={s.header}>
-              {hidden && <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />}
-              <h1>{session.title || t.untitled}</h1>
+              {hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />}
+              <h1>{sessionTitle(session, t.untitled)}</h1>
               <StatusBadge status={session.status} />
               <span className={s.spacer} />
               <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(!details)} />
@@ -159,7 +160,7 @@ function Shell({ preferences }: { preferences: Preferences }) {
           <>
             {hidden && (
               <header className={s.header}>
-                <IconButton icon="sidebar" label={t.sidebar.show} onPress={() => hide(false)} />
+                <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />
               </header>
             )}
             <p className={s.empty}>{project ? t.chooseSession : t.sidebar.noProjects}</p>

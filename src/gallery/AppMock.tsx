@@ -1,5 +1,5 @@
 import { useLocale, useT } from '../i18n';
-import { Mark, Wordmark } from '../brand/Logo';
+import { Mark } from '../brand/Logo';
 import { code, demo } from './demo';
 import { Icon } from '../design/icons';
 import s from './AppMock.module.css';
@@ -12,10 +12,6 @@ export function AppMock() {
       <aside className={s.sidebar} aria-label={t.sessions}>
         <div className={s.brandRow}>
           <Mark size={26} />
-          <Wordmark />
-          <button className={s.iconButton} aria-label="Toggle sidebar">
-            <Icon name="sidebar" />
-          </button>
         </div>
         <button className={s.newTask}>
           <Icon name="plus" />
