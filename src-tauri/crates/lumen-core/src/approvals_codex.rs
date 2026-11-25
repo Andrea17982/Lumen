@@ -8,7 +8,7 @@ use crate::models::{AccessMode, Activity, Provider};
 use crate::providers::{self, Invocation};
 use lumen_gatekeeper::{support, Availability, Provider as Engine, Scope};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -274,6 +274,7 @@ async fn writer(
 
 pub async fn codex_turn(
     input: Invocation<'_>,
+    images: &[PathBuf],
     approvals: Approvals,
     mut cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity),
@@ -352,6 +353,7 @@ pub async fn codex_turn(
     let outcome = run(
         &mut wire,
         &input,
+        images,
         &approvals,
         &cwd,
         &version,
@@ -377,6 +379,7 @@ pub async fn codex_turn(
 async fn run(
     wire: &mut Wire,
     input: &Invocation<'_>,
+    images: &[PathBuf],
     approvals: &Approvals,
     cwd: &Path,
     version: &str,
@@ -445,9 +448,15 @@ async fn run(
         kind: "session".into(),
         text: thread_id.clone(),
     });
+    let mut user_input = vec![json!({"type":"text","text":input.prompt})];
+    user_input.extend(
+        images
+            .iter()
+            .map(|path| json!({"type":"localImage","path":path})),
+    );
     let mut turn = json!({
         "threadId": thread_id,
-        "input": crate::providers::wire_prompt(&Provider::Gpt, input.prompt),
+        "input": user_input,
         "approvalPolicy": if matches!(input.access, AccessMode::Ask | AccessMode::Autopilot) { "on-request" } else { "never" },
         "approvalsReviewer": "user",
         "cwd": cwd.to_string_lossy(),
@@ -861,6 +870,7 @@ mod tests {
                 access: AccessMode::Ask,
                 approvals: Some(approvals.clone()),
             },
+            &[],
             approvals,
             rx,
             |a| eprintln!("activity {}: {}", a.kind, a.text.chars().take(200).collect::<String>()),

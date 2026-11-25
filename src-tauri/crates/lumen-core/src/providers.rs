@@ -333,6 +333,15 @@ pub struct Invocation<'a> {
 pub async fn execute(
     input: Invocation<'_>,
     cancel: watch::Receiver<bool>,
+    emit: impl FnMut(Activity),
+) -> Result<String, String> {
+    execute_with_images(input, &[], cancel, emit).await
+}
+
+pub(crate) async fn execute_with_images(
+    input: Invocation<'_>,
+    images: &[PathBuf],
+    cancel: watch::Receiver<bool>,
     mut emit: impl FnMut(Activity),
 ) -> Result<String, String> {
     if input.account.provider == Provider::Cursor {
@@ -388,7 +397,7 @@ pub async fn execute(
             .await;
         }
     };
-    let run = execute_inner(input.clone(), cancel, |activity| {
+    let run = execute_inner(input.clone(), images, cancel, |activity| {
         let _ = send.send(activity);
     });
     tokio::pin!(run, code);
@@ -502,6 +511,7 @@ async fn configuration_lease(
 }
 async fn execute_inner(
     input: Invocation<'_>,
+    images: &[PathBuf],
     cancel: watch::Receiver<bool>,
     emit: impl FnMut(Activity) + Send,
 ) -> Result<String, String> {
@@ -539,7 +549,8 @@ async fn execute_inner(
     }
     if input.account.provider == Provider::Gpt {
         if let Some(approvals) = input.approvals.clone() {
-            return crate::approvals_codex::codex_turn(input, approvals, cancel, emit).await;
+            return crate::approvals_codex::codex_turn(input, images, approvals, cancel, emit)
+                .await;
         }
     }
     if input.access == AccessMode::Ask {
@@ -559,9 +570,6 @@ async fn execute_inner(
                     .into(),
             );
         };
-        if input.account.provider == Provider::Gpt {
-            return crate::approvals_codex::codex_turn(input, approvals, cancel, emit).await;
-        }
         let exe = std::env::current_exe().map_err(|e| format!("unavailable: {e}"))?;
         return crate::approvals::claude_turn(input, approvals, &exe, cancel, emit).await;
     }

@@ -76,6 +76,52 @@ try {
   await client.ready();
   assert.deepEqual(await client.call('create_session', { workspace }, { command_id }), replayed);
   assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
+  if (process.platform === 'win32') {
+    await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
+    for (const [scenario, accessMode, status, reply, attempts] of [
+      ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
+      ['INCOMPLETE', 'autopilot', 'error', 'Ho ancora lavoro da fare.', ['autopilot', 'continue']],
+      ['BLOCKED', 'autopilot', 'error', "Serve una decisione dell'utente.", []],
+      ['QUESTION', 'autopilot', 'completed', 'Risposta alla domanda.', []],
+      ['EDIT', 'read-only', 'completed', /ho individuato il file/i, ['restricted']],
+    ]) {
+      const folder = await mkdtemp(path.join(data, 'autopilot-'));
+      const attachments = [];
+      if (scenario === 'EDIT' && accessMode === 'autopilot') {
+        await writeFile(path.join(folder, 'autopilot-can-finish.txt'), '');
+        const screenshot = 'autopilot-reference.png';
+        const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jOIoAAAAASUVORK5CYII=';
+        await writeFile(path.join(folder, screenshot), Buffer.from(pixel, 'base64'));
+        attachments.push(screenshot, path.join(folder, screenshot));
+      }
+      const { id } = await client.call('create_session', { workspace: folder });
+      await client.call('send_message', {
+        id,
+        text: `AUTOPILOT_FIXTURE_${scenario}`,
+        options: { mode: 'gpt', model: 'gpt-luna-fixture', effort: 'low', accessMode, attachments },
+      });
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+      const session = (await client.call('list_sessions', { search: '', offset: 0 })).find(
+        (s) => s.id === id,
+      );
+      assert.equal(session?.status, status, `${scenario} ${accessMode}`);
+      const response = (await client.call('get_messages', { id })).at(-1);
+      if (typeof reply === 'string') assert.equal(response.text, reply);
+      else assert.match(response.text, reply);
+      const attemptsFile = path.join(folder, 'autopilot-attempts.txt');
+      if (attempts.length) {
+        assert.deepEqual((await readFile(attemptsFile, 'utf8')).trim().split(/\r?\n/), attempts);
+      } else {
+        await assert.rejects(readFile(attemptsFile), { code: 'ENOENT' });
+      }
+      const result = path.join(folder, 'autopilot-result.txt');
+      if (scenario === 'EDIT' && accessMode === 'autopilot') {
+        assert.equal((await readFile(result, 'utf8')).trim(), 'written once');
+      } else {
+        await assert.rejects(readFile(result), { code: 'ENOENT' });
+      }
+    }
+  }
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify({ scripts: { test: 'node owned-child.mjs' } }),
@@ -166,6 +212,7 @@ try {
           'event subscription',
           'connected update refusal',
           'drain and restart preserving data',
+          ...(process.platform === 'win32' ? ['Codex Autopilot completion and bounded native continuation'] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',
         ],
       },

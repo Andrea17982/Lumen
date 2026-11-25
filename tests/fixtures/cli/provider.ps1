@@ -74,6 +74,33 @@ if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
     Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
     exit 0
 }
+$autopilotContinuation = $promptText.Contains('Continue the current user request from this native session.')
+if ($Provider -eq 'gpt' -and $AppServer -and ($promptText.Contains('AUTOPILOT_FIXTURE_') -or $autopilotContinuation)) {
+    $hasCheck = $promptText.Contains('Lumen Autopilot completion check.')
+    if ($autopilotContinuation) {
+        if ($env:LUMEN_FIXTURE_RESUME -ne 'true' -or !$hasCheck -or $promptText.Contains('AUTOPILOT_FIXTURE_')) {throw 'Expected a native continuation without request replay'}
+        Add-Content -LiteralPath 'autopilot-attempts.txt' -Value 'continue'
+        $reply = "Ho ancora lavoro da fare.`n<!-- lumen-autopilot: continue -->"
+        if (Test-Path -LiteralPath 'autopilot-can-finish.txt') {
+            Add-Content -LiteralPath 'autopilot-result.txt' -Value 'written once'
+            $reply = "Modifica eseguita.`n<!-- lumen-autopilot: done -->"
+        }
+    } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_QUESTION')) {
+        $reply = 'Risposta alla domanda. <!-- lumen-autopilot: done -->'
+    } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_BLOCKED')) {
+        $reply = "Serve una decisione dell'utente.`n<!-- lumen-autopilot: blocked -->"
+    } else {
+        $access = if ($hasCheck) { 'autopilot' } else { 'restricted' }
+        Add-Content -LiteralPath 'autopilot-attempts.txt' -Value $access
+        if ($hasCheck -and $promptText.Contains('AUTOPILOT_FIXTURE_EDIT')) {
+            Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='autopilot-read';type='commandExecution';command='read a source file';aggregatedOutput='source file read';exitCode=0;status='completed'}}}
+        }
+        $reply = 'Ho individuato il file, ma il turno si è interrotto prima della modifica.'
+    }
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='autopilot-message';type='agentMessage';text=$reply}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
 if ($Provider -eq 'claude' -and $promptText.Contains('You are one agent in a team') -and $promptText.Contains('ORCHESTRA_CONTINUITY_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'worker-continuity-attempts.txt') -Value 'attempt'
     if ($promptText.Contains('WORKER_CANCEL')) {

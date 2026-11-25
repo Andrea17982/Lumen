@@ -39,9 +39,18 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
             Emit @{id=$request.id;result=@{thread=@{id='fixture-thread'}}}
         }
         if ($request.method -eq 'turn/start') {
-            if ($request.params.input[0].text.Contains('CONNECTOR_FIXTURE') -and $request.params.approvalPolicy -eq 'never') {throw 'MCP consent must not be declined by the native never policy'}
+            $prompt = $request.params.input[0].text
+            if ($prompt.Contains('AUTOPILOT_FIXTURE_EDIT') -and $prompt.Contains('Lumen Autopilot completion check.')) {
+                $images = @($request.params.input | Where-Object { $_.type -eq 'localImage' })
+                $expected = Join-Path (Get-Location).Path 'autopilot-reference.png'
+                if ($images.Count -ne 1 -or $images[0].path -ne $expected -or !(Test-Path -LiteralPath $images[0].path)) {throw 'Expected one canonical native image input'}
+            }
+            if ($prompt.Contains('Continue the current user request from this native session.') -and $request.params.input.Count -ne 1) {
+                throw 'Continuation must reuse the image already carried by the native session'
+            }
+            if ($prompt.Contains('CONNECTOR_FIXTURE') -and $request.params.approvalPolicy -eq 'never') {throw 'MCP consent must not be declined by the native never policy'}
             Emit @{id=$request.id;result=@{turn=@{id='fixture-turn'}}}
-            & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $request.params.input[0].text -AppServer
+            & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $prompt -AppServer
         }
         if ($request.method -eq 'model/list') {
             Emit @{id=$request.id;result=@{data=@(

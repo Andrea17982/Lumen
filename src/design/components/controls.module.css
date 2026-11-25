@@ -91,10 +91,6 @@ textarea.input {
 .input::placeholder {
   color: var(--text-tertiary);
 }
-.input[data-focused] {
-  border-color: var(--accent);
-  box-shadow: var(--focus-ring);
-}
 .input[data-invalid] {
   border-color: var(--status-danger);
 }
@@ -111,14 +107,12 @@ textarea.input {
   background: var(--surface-hover);
   color: var(--text-tertiary);
 }
-.search:focus-within {
-  box-shadow: var(--focus-ring);
-}
 .search input {
   flex: 1;
   min-width: 0;
   border: 0;
   outline: 0;
+  box-shadow: none;
   background: transparent;
   color: var(--text-primary);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { Button, IconButton, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
@@ -37,8 +37,9 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [capturing, setCapturing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const running = session.status === 'running' || session.status === 'queued' || session.status === 'waiting';
 
   // Text handed back by the conversation (after a rewind) replaces what is typed.
@@ -140,18 +141,33 @@ ${text}` : text));
     }
   }
 
-  async function screenshot() {
-    setCapturing(true);
+  const readBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '');
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  // Picked or dropped files of any type: the daemon keeps a copy and the message carries its path.
+  async function attach(files: File[]) {
+    if (files.length === 0) return;
     setError(null);
-    try {
-      const shot = await sync.call<{ path: string }>('capture_screenshot', { folder: session.workspace, window: null, label: '', point: null });
-      setAttachments((list) => [...list, shot.path]);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setCapturing(false);
+    for (const file of files) {
+      if (file.size > MAX_IMAGE) {
+        setError(t.composer.fileTooLarge);
+        continue;
+      }
+      try {
+        const path = await sync.call<string>('save_attachment', { data: await readBase64(file), name: file.name });
+        setAttachments((list) => [...list, path]);
+      } catch (e) {
+        setError(String(e));
+      }
     }
   }
+
+  const hasFiles = (e: DragEvent) => [...e.dataTransfer.types].includes('Files');
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && commands.length === 1 && commands[0].prompt !== text) {
@@ -169,12 +185,7 @@ ${text}` : text));
     if (!file) return;
     e.preventDefault();
     if (file.size > MAX_IMAGE) return setError(t.composer.imageTooLarge);
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '');
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
+    const data = await readBase64(file);
     sync.call<string>('save_pasted_image', { data, mime: file.type }).then(
       (path) => setAttachments((list) => [...list, path]),
       (err) => setError(String(err)),
@@ -192,12 +203,41 @@ ${text}` : text));
       }}
     >
       {blocked && <p className={s.notice}>{t.banner.unconfirmed}</p>}
-      <div className={s.box}>
+      <div
+        className={s.box}
+        data-dragging={dragging ? '' : undefined}
+        onDragOver={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDragging(false);
+          void attach([...e.dataTransfer.files]);
+        }}
+      >
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            void attach([...(e.target.files ?? [])]);
+            e.target.value = '';
+          }}
+        />
         {attachments.length > 0 && (
           <ul className={s.attachments} aria-label={t.conversationText.attachments}>
             {attachments.map((a) => (
               <li key={a}>
-                <span>{a.split(/[\\/]/).at(-1)}</span>
+                <span>{a.split(/[\\/]/).at(-1)?.replace(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}-/, '')}</span>
                 <button type="button" aria-label={t.composer.remove(a)} onClick={() => setAttachments((list) => list.filter((x) => x !== a))}>
                   ×
                 </button>
@@ -257,7 +297,10 @@ ${text}` : text));
             options={ACCESS.map((a) => ({ id: a, label: t.access[a] }))}
             onChange={(mode) => sync.call('set_session_access_mode', { id: session.id, mode }).then(() => sync.resync(), (e) => setError(String(e)))}
           />
-          <IconButton icon="camera" label={t.composer.screenshot} isDisabled={!connected || capturing} onPress={() => void screenshot()} />
+          <IconButton icon="paperclip" label={t.composer.attach} isDisabled={!connected} onPress={() => {
+            input.current?.focus();
+            picker.current?.click();
+          }} />
           <span className={s.spacer} />
           {tokens !== null && <span className={s.tokens}>{t.composer.tokens(formatNumber(locale, tokens))}</span>}
           {running ? (

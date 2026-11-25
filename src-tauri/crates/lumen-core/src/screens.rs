@@ -241,6 +241,40 @@ pub fn save_pasted_image(
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Stores a file the user attached (picked or dropped) in Lumen's private app-data directory.
+/// Only the file name's last component is kept, and a unique prefix prevents any overwrite.
+#[crate::command]
+pub fn save_attachment(
+    core: crate::CoreRef<'_>,
+    data: String,
+    name: String,
+) -> Result<String, String> {
+    if data.len() > 32 * 1024 * 1024 {
+        return Err("The file exceeds the 24 MB limit".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|_| "The file could not be decoded")?;
+    if bytes.len() > 24 * 1024 * 1024 {
+        return Err("The file exceeds the 24 MB limit".into());
+    }
+    let clean: String = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+        .take(100)
+        .collect();
+    let clean = clean.trim_matches([' ', '.']);
+    let clean = if clean.is_empty() { "file" } else { clean };
+    let dir = core.root.join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}-{clean}", uuid::Uuid::new_v4()));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// The image as a `data:` URL; the webview CSP allows `data:` images only.
 fn data_url(file: &Path, bytes: &[u8]) -> String {
     let mime = match file.extension().and_then(|e| e.to_str()).unwrap_or("") {

@@ -1,3 +1,5 @@
+import s from './Logo.module.css';
+
 /**
  * Lumen's mark: a single stem and a point of light. It takes its colours from the active style,
  * so it stays the same identity in Ink and in Satin. Pass `label=""` where it is decorative.
@@ -11,11 +13,11 @@ export function Mark({ size = 24, label = 'Lumen' }: { size?: number; label?: st
   );
 }
 
-/** The name is always lowercase, set in the system serif. */
-export function Wordmark({ size = 19 }: { size?: number }) {
+/** The mark as the control that hides or shows the sidebar. */
+export function LogoButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <span style={{ font: `400 ${size}px/1 var(--font-wordmark)`, letterSpacing: 0 }} aria-hidden="true">
-      lumen
-    </span>
+    <button type="button" className={s.button} aria-label={label} title={label} onClick={onPress}>
+      <Mark size={24} label="" />
+    </button>
   );
 }

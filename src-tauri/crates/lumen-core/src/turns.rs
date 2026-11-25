@@ -768,6 +768,8 @@ pub(crate) async fn stage_with(
         visible,
         resume,
         &mut replay_guard,
+        false,
+        &[],
     )
     .await
 }
@@ -787,6 +789,8 @@ async fn stage_observed(
     visible: bool,
     resume: Option<&Resume>,
     replay_guard: &mut ResumeReplayGuard,
+    check_completion: bool,
+    images: &[PathBuf],
 ) -> Result<String, String> {
     let config = config_dir(core, a);
     let mut trace = crate::execution::Trace::new(a.provider.binary());
@@ -816,6 +820,13 @@ async fn stage_observed(
     let prompt = stripped.as_str();
     let full_prompt = prompt;
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
+    let completion_prompt;
+    let prompt = if check_completion {
+        completion_prompt = format!("{prompt}\n\n{AUTOPILOT_COMPLETION}");
+        &completion_prompt
+    } else {
+        prompt
+    };
     let workspace = PathBuf::from(&s.workspace);
     let context_revision = Some(crate::workstate::owned_context(core, s)?.revision);
     let mut checkpoint = std::time::Instant::now();
@@ -917,7 +928,7 @@ async fn stage_observed(
     } else {
         None
     };
-    let result = providers::execute(
+    let result = providers::execute_with_images(
         providers::Invocation {
             rlm: rlm_sources.as_ref(),
             automatic: a.provider.is_api()
@@ -950,6 +961,7 @@ async fn stage_observed(
                 }),
             resume: resume.map(|r| r.session.as_str()),
         },
+        images,
         cancel,
         |activity| {
             // Observe before lifecycle events are discarded or activity is compacted.
@@ -1057,6 +1069,8 @@ async fn stage_observed(
                 visible,
                 None,
                 replay_guard,
+                check_completion,
+                images,
             ))
             .await;
         }
@@ -1230,6 +1244,38 @@ where
     Ok(())
 }
 
+const AUTOPILOT_COMPLETION: &str = "Lumen Autopilot completion check. When the user asks for an action, use your native tools and finish it before replying. \
+    Try an available workspace tool before reporting that access is missing. Recover from nonessential tool errors. \
+    For UI issues, inspect any supplied screenshots and identify the exact element and interaction state before editing. \
+    Verify the reported behavior through the relevant interaction when feasible, and say what you actually observed. \
+    A source change or a Git diff alone does not verify a visual result. If you believe the requested state already exists, verify it against the user's evidence before closing the task. \
+    Put exactly one of these markers at the end of your final answer: <!-- lumen-autopilot: done --> for a satisfied request (including questions and verified no-ops), \
+    <!-- lumen-autopilot: blocked --> for a concrete blocker or required user decision explained in your reply, or \
+    <!-- lumen-autopilot: continue --> if authorized work remains and you can safely proceed.";
+
+const AUTOPILOT_CONTINUE: &str = "Continue the current user request from this native session. Check the actual state and the existing tool results. Complete only the remaining authorized work. Preserve user decisions, approval outcomes and existing changes. Never repeat external or irreversible actions with an uncertain outcome. If you cannot proceed safely, explain the specific blocker.";
+
+#[derive(PartialEq, Eq)]
+enum AutopilotOutcome {
+    Done,
+    Blocked,
+    Unfinished,
+}
+
+fn autopilot_outcome(text: &str) -> (&str, AutopilotOutcome) {
+    let text = text.trim_end();
+    let Some((body, status)) = text.rsplit_once("<!-- lumen-autopilot: ") else {
+        return (text, AutopilotOutcome::Unfinished);
+    };
+    let outcome = match status {
+        "done -->" if !body.trim().is_empty() => AutopilotOutcome::Done,
+        "blocked -->" if !body.trim().is_empty() => AutopilotOutcome::Blocked,
+        "done -->" | "blocked -->" | "continue -->" => AutopilotOutcome::Unfinished,
+        _ => return (text, AutopilotOutcome::Unfinished),
+    };
+    (body.trim_end(), outcome)
+}
+
 /// On a rate limit, cool the account; switch once only before observed work.
 #[allow(clippy::too_many_arguments)]
 async fn stage_fallback(
@@ -1241,11 +1287,12 @@ async fn stage_fallback(
     prompt: &str,
     model: Option<&str>,
     effort: &str,
-    access: AccessMode,
+    options: &RunOptions,
     cancel: watch::Receiver<bool>,
-    visible: bool,
+    single: bool,
     resume: Option<&Resume>,
 ) -> Result<(String, Account), String> {
+    let access = options.access();
     let models = models_in(core, a, false, Some(cancel.clone()), &s.workspace).await?;
     let target = model
         .and_then(|id| models.iter().find(|m| m.id == id))
@@ -1256,10 +1303,18 @@ async fn stage_fallback(
     let mut current_effort = effort.to_owned();
     let mut attempted = std::collections::HashSet::new();
     let mut first = true;
+    let mut continuation = None;
+    let mut partial = String::new();
     loop {
         attempted.insert(current.id.clone());
         let mut guard = ResumeReplayGuard::default();
-        let replay = if !first && prompt.is_empty() {
+        let check_completion = single
+            && access == AccessMode::Autopilot
+            && current.provider == Provider::Gpt
+            && core.approvals.is_some()
+            && !options.resume_only
+            && options.audit_of.is_none();
+        let replay = if !first && continuation.is_none() && prompt.is_empty() {
             if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
                 Some(build_prompt(core, s, &[&out.id], options).await?.0)
             } else {
@@ -1267,6 +1322,14 @@ async fn stage_fallback(
             }
         } else {
             None
+        };
+        let images = if continuation.is_none()
+            && current.provider == Provider::Gpt
+            && core.approvals.is_some()
+        {
+            context::image_attachments(Path::new(&s.workspace), &options.attachments)?
+        } else {
+            Vec::new()
         };
         let result = stage_observed(
             app,
@@ -1279,16 +1342,70 @@ async fn stage_fallback(
             &current_effort,
             access,
             cancel.clone(),
-            visible,
-            if first { resume } else { None },
+            true,
+            continuation.as_ref().or(if first { resume } else { None }),
             &mut guard,
+            check_completion,
+            &images,
         )
         .await;
         first = false;
         let error = match result {
+            Ok(text) if check_completion => {
+                let (body, outcome) = autopilot_outcome(&text);
+                out.text = if body.is_empty() {
+                    std::mem::take(&mut partial)
+                } else {
+                    body.to_owned()
+                };
+                event(app, &s.id, &out.id, "replace", &out.text);
+                match outcome {
+                    AutopilotOutcome::Done => return Ok((out.text.clone(), current)),
+                    AutopilotOutcome::Blocked => return Err(
+                        "Autopilot could not finish the request. See the assistant's explanation."
+                            .into(),
+                    ),
+                    AutopilotOutcome::Unfinished if continuation.is_some() => return Err(
+                        "Autopilot could not confirm completion after continuing in the native session. Review the recorded work."
+                            .into(),
+                    ),
+                    AutopilotOutcome::Unfinished => {}
+                }
+                if *cancel.borrow() {
+                    return Err("Cancelled".into());
+                }
+                let mut next = continue_reply(
+                    out,
+                    &current,
+                    &s.workspace,
+                    AUTOPILOT_CONTINUE.into(),
+                )
+                .ok_or(
+                    "Autopilot could not confirm completion and the native session is unavailable.",
+                )?;
+                let mut resume_options = options.clone();
+                resume_options.resume_only = true;
+                next.replay = Some(resume_options);
+                note(
+                    app,
+                    &s.id,
+                    out,
+                    "resume",
+                    "Autopilot is continuing unfinished work in the same Codex session.".into(),
+                );
+                core.store.save_message(&s.id, out)?;
+                partial = std::mem::take(&mut out.text);
+                event(app, &s.id, &out.id, "replace", "");
+                continuation = Some(next);
+                continue;
+            }
             Ok(text) => return Ok((text, current)),
             Err(e) => e,
         };
+        if continuation.is_some() && out.text.is_empty() {
+            out.text = std::mem::take(&mut partial);
+            event(app, &s.id, &out.id, "replace", &out.text);
+        }
         if !limits::is_rate_limit(&error) {
             return Err(error);
         }
@@ -1296,9 +1413,10 @@ async fn stage_fallback(
         core.limits.cool(&current.id, reset);
         note(app, &s.id, out, "quota-reset", serde_json::json!({"at":reset,"accountId":current.id,"model":current_model,"effort":current_effort}).to_string());
         core.store.save_message(&s.id, out)?;
-        if resume
-            .and_then(|r| r.replay.as_ref())
-            .is_some_and(|o| o.resume_only)
+        if continuation.is_some()
+            || resume
+                .and_then(|r| r.replay.as_ref())
+                .is_some_and(|o| o.resume_only)
         {
             return Err(error);
         }
@@ -1924,9 +2042,9 @@ async fn run_plan(
         &prompt,
         plan.model.as_deref(),
         &plan.effort,
-        options.access(),
+        options,
         cancel.clone(),
-        true,
+        plan.strategy == "single",
         resume.as_ref(),
     )
     .await?;

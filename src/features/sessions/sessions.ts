@@ -1,5 +1,8 @@
 import type { Session, Workspace } from '../../protocol/types';
 
+/** The daemon names a new conversation "New conversation"; shown in the user's language. */
+export const sessionTitle = (session: Session, untitled: string) => (!session.title || session.title === 'New conversation' ? untitled : session.title);
+
 /** Windows paths compare without case or slash direction. */
 const same = (a: string, b: string) => a.replaceAll('\\', '/').replace(/\/$/, '').toLowerCase() === b.replaceAll('\\', '/').replace(/\/$/, '').toLowerCase();
 

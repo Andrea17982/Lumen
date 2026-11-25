@@ -302,7 +302,7 @@ pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String>
             .unwrap_or(selected);
         if crate::screens::is_image(selected) {
             out.push_str(&format!(
-                "\n<image path=\"{}\">Image attached by the user. Open this file with your image or file viewing tool before answering.</image>\n",
+                "\n<image path=\"{}\">Image attached by the user. Inspect the supplied image before answering. If only a path is available, open it with an image viewing tool.</image>\n",
                 path.display()
             ));
             continue;
@@ -348,6 +348,32 @@ pub fn attachments(workspace: &Path, files: &[String]) -> Result<String, String>
         out.push_str("\n[Lumen: only the first 50 attachment selections are included; additional selections were omitted.]\n");
     }
     Ok(out)
+}
+
+/// Local images for Codex's native input. Larger batches keep their textual path references.
+pub(crate) fn image_attachments(
+    workspace: &Path,
+    files: &[String],
+) -> Result<Vec<PathBuf>, String> {
+    let mut remaining: u64 = 24 * 1024 * 1024;
+    let mut seen = std::collections::HashSet::new();
+    let mut images = Vec::new();
+    for selected in files
+        .iter()
+        .take(50)
+        .filter(|p| crate::screens::is_image(p))
+    {
+        let path = attachment_path(workspace, selected)?;
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if let Some(budget) = remaining.checked_sub(size) {
+            remaining = budget;
+            images.push(path);
+        }
+    }
+    Ok(images)
 }
 
 /// Attachments can be project-relative files or absolute paths selected by the user.

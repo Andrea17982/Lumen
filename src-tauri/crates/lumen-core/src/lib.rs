@@ -1247,6 +1247,7 @@ pub async fn dispatch(
         "capture_targets" => screens::__ipc_capture_targets(app, core, args).await,
         "capture_screenshot" => screens::__ipc_capture_screenshot(app, core, args).await,
         "save_pasted_image" => screens::__ipc_save_pasted_image(app, core, args).await,
+        "save_attachment" => screens::__ipc_save_attachment(app, core, args).await,
         "attachment_image_data" => screens::__ipc_attachment_image_data(app, core, args).await,
         "response_image_data" => media::__ipc_response_image_data(app, core, args).await,
         "open_response_link" => media::__ipc_open_response_link(app, core, args).await,
