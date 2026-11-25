@@ -81,14 +81,19 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           bundle=src-tauri/desktop/target/${{ matrix.target }}/release/bundle
-          app="$bundle/macos/Lumen.app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/Lumen"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/lumen-daemon"
+          mkdir release
+          image="release/Lumen_${version}_macos-universal.dmg"
+          cp "$bundle"/dmg/*.dmg "$image"
+          hdiutil verify "$image"
+          mountpoint=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$image"
+          trap 'hdiutil detach "$mountpoint"' EXIT
+          app="$mountpoint/Lumen.app"
+          lipo "$app/Contents/MacOS/Lumen" -verify_arch arm64 x86_64
+          lipo "$app/Contents/MacOS/lumen-daemon" -verify_arch arm64 x86_64
           test -x "$app/Contents/Resources/resources/moli/darwin-arm64/moli"
           test -x "$app/Contents/Resources/resources/moli/darwin-x64/moli"
-          mkdir release
-          cp "$bundle"/dmg/*.dmg "release/Lumen_${version}_macos-universal.dmg"
-          hdiutil verify "release/Lumen_${version}_macos-universal.dmg"
+          codesign --verify --deep --strict "$app"
       - name: Verify and stage Linux Debian package
         if: runner.os == 'Linux'
         shell: bash
