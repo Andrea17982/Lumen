@@ -156,6 +156,7 @@ pub fn display(p: &Provider) -> &'static str {
         Provider::Ollama => "Ollama",
         Provider::Opencode => "OpenCode",
         Provider::Cursor => "Cursor",
+        Provider::Droid => "Droid",
         Provider::Openaiapi => "OpenAI API",
         Provider::Anthropicapi => "Anthropic API",
         Provider::Googleapi => "Google API",
@@ -613,7 +614,10 @@ async fn assign(core: &Core, st: &mut State, policy: &AutoPolicy) -> Result<(), 
         .into_iter()
         .filter(|a| {
             !a.provider.is_api()
-                && !matches!(a.provider, Provider::Opencode | Provider::Cursor)
+                && !matches!(
+                    a.provider,
+                    Provider::Opencode | Provider::Cursor | Provider::Droid
+                )
                 && !core.limits.cooling(&a.id, now())
         })
         .collect();

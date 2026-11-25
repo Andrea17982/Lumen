@@ -117,7 +117,7 @@ fn unavailable(note: &'static str) -> Capability {
 pub fn contract(provider: &Provider) -> AdapterContract {
     let native = matches!(
         provider,
-        Provider::Claude | Provider::Gpt | Provider::Opencode | Provider::Cursor
+        Provider::Claude | Provider::Gpt | Provider::Opencode | Provider::Cursor | Provider::Droid
     );
     AdapterContract {
         provider: provider.clone(),
@@ -128,6 +128,7 @@ pub fn contract(provider: &Provider) -> AdapterContract {
             Provider::Ollama => "Ollama",
             Provider::Opencode => "OpenCode",
             Provider::Cursor => "Cursor CLI",
+            Provider::Droid => "Factory Droid",
             Provider::Openaiapi => "OpenAI API",
             Provider::Anthropicapi => "Anthropic API",
             Provider::Googleapi => "Google API",
@@ -157,6 +158,8 @@ pub fn contract(provider: &Provider) -> AdapterContract {
         },
         shared_tools: if *provider == Provider::Cursor {
             unavailable("Uses the existing native profile in Autopilot only. Isolated account profiles, restricted permissions and Lumen shared tools are not integrated yet.")
+        } else if *provider == Provider::Droid {
+            unavailable("Uses the existing native Droid profile. Isolated account profiles and Lumen shared tools are not integrated yet.")
         } else if provider.is_api() {
             limited("Lumen host tools, Moli, graph and shared MCP follow all four access profiles; native runtime parity is not implied.")
         } else if *provider == Provider::Ollama {
@@ -164,7 +167,7 @@ pub fn contract(provider: &Provider) -> AdapterContract {
         } else {
             limited("Shared namespaces require Ask first or Autopilot. Restricted profiles use the filtered account gateway.")
         },
-        input_usage: if matches!(provider, Provider::Cursor | Provider::Opencode) {
+        input_usage: if matches!(provider, Provider::Cursor | Provider::Opencode | Provider::Droid) {
             unavailable("No input-token or context-window metadata is integrated for this adapter.")
         } else if *provider == Provider::Ollama {
             unavailable(
@@ -181,13 +184,15 @@ pub fn contract(provider: &Provider) -> AdapterContract {
         cancellation: available(),
         permission_profiles: if *provider == Provider::Cursor {
             unavailable("Autopilot only; the existing native profile owns its permissions.")
+        } else if *provider == Provider::Droid {
+            limited("Read only, File edits (--auto low) and Autopilot (--auto high). Droid stops at any action above the level; per-action Ask first is not integrated.")
         } else if *provider == Provider::Antigravity || *provider == Provider::Ollama {
             limited("Read only, File edits and Autopilot; per-action Ask first is not integrated.")
         } else { available() },
         streaming: if provider.is_api() {
             unavailable("Buffered official JSON responses. Tool steps and usage are emitted between requests; token streaming is not implemented.")
         } else { limited("Provider events are normalized as they arrive; exact chunking and thinking output are provider-specific.") },
-        input_images: if provider.is_api() || matches!(provider, Provider::Opencode | Provider::Cursor | Provider::Ollama) {
+        input_images: if provider.is_api() || matches!(provider, Provider::Opencode | Provider::Cursor | Provider::Droid | Provider::Ollama) {
             unavailable("No native image-input payload is integrated. Text attachments and tool-produced previews remain available.")
         } else { limited("Image support depends on the selected native model and its official tool surface.") },
         subagents: if matches!(provider, Provider::Claude | Provider::Gpt) {
@@ -195,11 +200,11 @@ pub fn contract(provider: &Provider) -> AdapterContract {
         } else if *provider == Provider::Opencode {
             limited("Native subagents may run in Autopilot. Disabled for Ask first and restricted profiles because custom agents do not inherit parent permissions.")
         } else { unavailable("No Lumen subagent tool is integrated for this adapter.") },
-        native_extensions: if matches!(provider, Provider::Claude | Provider::Gpt | Provider::Opencode | Provider::Cursor) {
+        native_extensions: if matches!(provider, Provider::Claude | Provider::Gpt | Provider::Opencode | Provider::Cursor | Provider::Droid) {
             limited("The native profile retains its supported instructions, commands, plugins and hooks. Proprietary cloud connectors and extension runtimes are not translated to other adapters.")
         } else { unavailable("Proprietary commands, hooks and extension runtimes are not executed by this adapter. Portable instructions and shared MCP are separate capabilities.") },
         model_change: limited("Selected model IDs are validated against the official catalog before a turn. No automatic substitution for a rejected explicit selection."),
-        fallback: if matches!(provider, Provider::Opencode | Provider::Cursor) {
+        fallback: if matches!(provider, Provider::Opencode | Provider::Cursor | Provider::Droid) {
             limited("Explicit selection only. Native continuation is preferred; no automatic entry or automatic review worker selection.")
         } else if provider.is_api() {
             limited("Auto and fallback require explicit API opt-in and sufficient reserved budget. No automatic retry after observed effects or uncertain requests.")
@@ -219,6 +224,7 @@ pub fn adapter_capabilities() -> Matrix {
             Provider::Ollama,
             Provider::Opencode,
             Provider::Cursor,
+            Provider::Droid,
             Provider::Openaiapi,
             Provider::Anthropicapi,
             Provider::Googleapi,
@@ -238,7 +244,7 @@ mod tests {
         let value = serde_json::to_value(adapter_capabilities()).unwrap();
         assert_eq!(value["schemaVersion"], 1);
         let adapters = value["adapters"].as_array().unwrap();
-        assert_eq!(adapters.len(), 9);
+        assert_eq!(adapters.len(), 10);
         for (adapter, provider) in adapters.iter().zip([
             "claude",
             "gpt",
@@ -246,6 +252,7 @@ mod tests {
             "ollama",
             "opencode",
             "cursor",
+            "droid",
             "openaiapi",
             "anthropicapi",
             "googleapi",

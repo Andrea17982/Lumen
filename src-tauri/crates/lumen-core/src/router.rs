@@ -244,6 +244,7 @@ pub fn route_with(
         "ollama" => Provider::Ollama,
         "opencode" => Provider::Opencode,
         "cursor" => Provider::Cursor,
+        "droid" => Provider::Droid,
         "openaiapi" => Provider::Openaiapi,
         "anthropicapi" => Provider::Anthropicapi,
         "googleapi" => Provider::Googleapi,

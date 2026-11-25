@@ -6,13 +6,14 @@ import type { Account, AccountUsage, Provider } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Settings.module.css';
 
-export const PROVIDERS: Provider[] = ['claude', 'gpt', 'antigravity', 'opencode', 'cursor', 'ollama', 'anthropicapi', 'openaiapi', 'googleapi'];
+export const PROVIDERS: Provider[] = ['claude', 'gpt', 'antigravity', 'opencode', 'cursor', 'droid', 'ollama', 'anthropicapi', 'openaiapi', 'googleapi'];
 export const providerName: Record<Provider, string> = {
   claude: 'Claude Code',
   gpt: 'Codex',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   cursor: 'Cursor',
+  droid: 'Droid',
   ollama: 'Ollama',
   anthropicapi: 'Anthropic API',
   openaiapi: 'OpenAI API',

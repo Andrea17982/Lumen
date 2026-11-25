@@ -109,6 +109,9 @@ pub(crate) async fn discover_observed(
     if account.provider == Provider::Cursor {
         return crate::cursor::models().await;
     }
+    if account.provider == Provider::Droid {
+        return Ok(crate::droid::models());
+    }
     if account.provider == Provider::Opencode {
         return crate::opencode::models(None, None).await;
     }

@@ -11,14 +11,15 @@ Lumen uses each provider only through its official interface. Subscription login
 | Antigravity | Separate `HOME`/`USERPROFILE`; `agy` login | `agy models`; print runner |
 | OpenCode | One existing native profile; `opencode auth login` | Project-scoped `models --standalone`; official ACP |
 | Cursor CLI | One existing native profile; `cursor-agent login` | `--list-models`; headless stream-json; Autopilot only |
+| Factory Droid | One existing native profile; `/login` in `droid` | No model listing: uses the profile default model; `droid exec` stream-json; Read only, File edits, Autopilot |
 | Ollama | No login | Loopback `/api/tags`, `/api/show`, `/api/chat` tool loop |
 | OpenAI / Anthropic / Google API | Key in the OS keychain per slot | Official HTTPS catalog; Responses / Messages / generateContent |
 
 - Slot directories live under `<app-data>/accounts/<UUID>`. Renaming a slot changes only its label.
-- Lumen strips inherited API-key variables (including `CURSOR_API_KEY`) before launching a CLI, so billing identity never changes silently.
+- Lumen strips inherited API-key variables (including `CURSOR_API_KEY` and `FACTORY_API_KEY`) before launching a CLI, so billing identity never changes silently.
 - Separate directories do not prove separate identities: OS keychains can be shared.
 - Catalogs are cached for 5 minutes. Lumen accepts only model and reasoning combinations the provider advertises, and never fabricates a list.
-- OpenCode and Cursor are always selected explicitly. They are never Auto fallbacks or Orchestra workers.
+- OpenCode, Cursor and Droid are always selected explicitly. They are never Auto fallbacks or Orchestra workers.
 - Ollama runs on loopback only. Lumen rejects remote hosts, proxies, redirects and cloud models, and never pulls a model automatically.
 
 Manual login into a slot:
@@ -53,6 +54,7 @@ The versioned Rust contract (`capability_catalog.rs`) declares what each of the 
 | Antigravity | Context continuation | No Approve each | Native namespaces or gateway | Input when emitted; no cost |
 | OpenCode | ACP load/continuation | All four, verified session policy | Moli/graph + shared MCP via ACP | Unavailable |
 | Cursor CLI | Headless continuation | Autopilot only | Native profile only | Unavailable |
+| Factory Droid | Headless continuation | Read only, File edits, Autopilot (`--auto`) | Native profile only | Unavailable |
 | Ollama | Context continuation | No Approve each | Filtered host tool loop | Context estimate |
 | OpenAI / Anthropic / Google API | Lumen context | All four | Common host tools | Reported usage + estimate, reserved budget |
 
