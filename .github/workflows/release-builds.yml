@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/release-builds.yml
       - src-tauri/desktop/tauri*.conf.json
+      - src-tauri/desktop/icons/**
       - scripts/prepare-daemon.mjs
       - scripts/prepare-moli.mjs
   push:
