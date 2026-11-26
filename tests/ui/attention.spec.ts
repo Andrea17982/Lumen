@@ -192,7 +192,10 @@ test('a conversation continues in a new one seeded from it', async ({ page }) =>
   await page.getByRole('menuitem', { name: 'Continue in a new conversation' }).click();
   await expect.poll(async () => (await list()).filter((x) => !before.has(x.id)).length).toBe(1);
   const created = (await list()).find((x) => !before.has(x.id))!;
+  // The daemon creates the continuation untitled and commits "… · continued" right after;
+  // read the title only once it is committed, or the frozen value races that write.
+  await expect.poll(async () => (await list()).find((x) => x.id === created.id)?.title).toBeTruthy();
   // The new conversation is the one now open; the old one is still there.
-  await expect(page.locator('main header h1')).toHaveText(created.title || 'New conversation');
+  await expect(page.locator('main header h1')).toHaveText((await list()).find((x) => x.id === created.id)!.title);
   expect((await list()).some((x) => x.title === 'Compact me')).toBe(true);
 });
