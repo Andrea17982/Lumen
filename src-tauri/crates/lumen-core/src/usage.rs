@@ -7,6 +7,11 @@ pub async fn read(a: &Account, dir: &Path) -> Result<AccountUsage, String> {
     if a.provider == Provider::Antigravity {
         return read_antigravity(a, dir).await;
     }
+    if a.provider == Provider::Opencode {
+        let mut usage = crate::opencode::usage(dir, None).await?;
+        usage.account_id = a.id.clone();
+        return Ok(usage);
+    }
     if a.provider != Provider::Gpt {
         return Err("This adapter does not expose a supported subscription-quota query. Enter known quota values manually; API cost budgets are configured separately in Accounts.".into());
     }

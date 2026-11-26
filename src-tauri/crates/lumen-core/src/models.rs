@@ -64,15 +64,13 @@ impl Provider {
     pub fn fallback_rank(&self) -> u8 {
         match self {
             Self::Claude | Self::Gpt => 0,
-            Self::Antigravity => 1,
-
-            Self::Ollama => 3,
-            Self::Opencode
-            | Self::Cursor
-            | Self::Droid
-            | Self::Openaiapi
-            | Self::Anthropicapi
-            | Self::Googleapi => 2,
+            // Emergency chain: OpenCode first, then the weaker declared fallbacks.
+            Self::Opencode => 1,
+            Self::Antigravity => 2,
+            Self::Openaiapi | Self::Anthropicapi | Self::Googleapi => 3,
+            Self::Ollama => 4,
+            // Explicit selection only; never reached by the Auto chain.
+            Self::Cursor | Self::Droid => 5,
         }
     }
 }

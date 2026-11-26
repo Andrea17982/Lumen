@@ -54,6 +54,9 @@ pub struct AppSettings {
     pub code_mode_chosen: bool,
     /// Exact local Ollama model IDs explicitly enabled for Code Mode.
     pub ollama_code_models: Vec<String>,
+    /// Per-provider emergency model (e.g. `opencode` → `opencode-go/qwen4-max`); empty means Auto
+    /// picks one of the curated tier models when the primary accounts are out of quota.
+    pub emergency_models: HashMap<String, String>,
     /// RLM effort for provider models without a mapped native reasoning effort.
     pub(crate) rlm_effort: crate::rlm::Effort,
 }
@@ -75,6 +78,7 @@ impl Default for AppSettings {
             code_mode: CodeMode::Auto,
             code_mode_chosen: false,
             ollama_code_models: Vec::new(),
+            emergency_models: HashMap::new(),
             rlm_effort: crate::rlm::Effort::Medium,
         }
     }
@@ -108,6 +112,14 @@ impl AppSettings {
                 && v.is_finite()
                 && *v > 0.0
                 && *v < 100.0
+        });
+        self.emergency_models.retain(|provider, model| {
+            ["opencode", "cursor", "droid"].contains(&provider.as_str())
+                && !model.is_empty()
+                && model.len() <= 100
+                && model
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-._:/[]".contains(c))
         });
         Ok(())
     }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, Menu, Select, Switch, TextField } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
 import { formatPercent, formatRelative, formatTime, languageTag } from '../../i18n/format';
-import type { Account, AccountUsage, Provider } from '../../protocol/types';
+import type { Account, AccountUsage, ModelInfo, Provider } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Settings.module.css';
 
@@ -152,6 +152,7 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
       </div>
       {resting && <p className={s.quiet}>{t.accounts.resting(formatTime(locale, resting))}</p>}
       {!api && account.provider !== 'ollama' && <Quota usage={usage} />}
+      {account.provider === 'opencode' && <EmergencyModel account={account} onError={onError} />}
       {account.provider === 'ollama' && <OllamaState />}
       {api && <ApiSettings account={account} onError={onError} onSaved={check} />}
       <div className={s.actions}>
@@ -214,9 +215,49 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
   );
 }
 
-/** One bar per window the CLI reported. Nothing reported shows as such, not as an empty bar. */
-function Quota({ usage }: { usage?: AccountUsage }) {
+/** The one model Auto uses when Claude and ChatGPT are out of quota, or none for the curated tiers. */
+function EmergencyModel({ account, onError }: { account: Account; onError: (e: string) => void }) {
   const t = useT();
+  const sync = useSyncClient();
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [pinned, setPinned] = useState('');
+  useEffect(() => {
+    sync.call<ModelInfo[]>('list_models', { id: account.id }).then(setModels, () => {});
+    sync.call<Record<string, unknown>>('get_settings').then(
+      (value) => setPinned(((value.emergencyModels ?? {}) as Record<string, string>)[account.provider] ?? ''),
+      () => {},
+    );
+  }, [sync, account.id, account.provider]);
+  if (models.length === 0) return null;
+  const options = [
+    { id: '', label: t.accounts.emergencyAuto },
+    ...models
+      .filter((m) => !m.description.includes('console credit'))
+      .map((m) => ({ id: m.id, label: m.name })),
+  ];
+  return (
+    <>
+      <Select
+        label={t.accounts.emergencyModel}
+        value={pinned}
+        options={options}
+        onChange={(id) => {
+          setPinned(id);
+          sync.call<Record<string, unknown>>('get_settings').then(async (value) => {
+            const map = { ...((value.emergencyModels ?? {}) as Record<string, string>) };
+            if (id) map[account.provider] = id;
+            else delete map[account.provider];
+            await sync.call('save_settings', { value: { ...value, emergencyModels: map } });
+          }, (e) => onError(String(e)));
+        }}
+      />
+      <p className={s.help}>{t.accounts.emergencyHelp}</p>
+    </>
+  );
+}
+
+/** One bar per window the CLI reported. Nothing reported shows as such, not as an empty bar. */
+function Quota({ usage }: { usage?: AccountUsage }) {  const t = useT();
   const locale = useLocale();
   if (!usage || usage.windows.length === 0) return <p className={s.quiet}>{t.accounts.notReported}</p>;
   return (
