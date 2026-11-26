@@ -30,8 +30,24 @@ export async function webdriver(port, { timeout = 30_000 } = {}) {
   return {
     run,
     async click(css) {
-      const element = await request('POST', session('/element'), { using: 'css selector', value: css });
-      await request('POST', session(`/element/${element[ELEMENT]}/click`), {});
+      // The renderer may not have mounted the target yet; only "not found yet" retries.
+      const missing = (error) =>
+        /no such element|stale element reference/i.test(String(error));
+      for (const start = Date.now(); ; await sleep(200)) {
+        let element;
+        try {
+          element = await request('POST', session('/element'), { using: 'css selector', value: css });
+        } catch (error) {
+          if (Date.now() - start > timeout || !missing(error)) throw error;
+          continue;
+        }
+        try {
+          await request('POST', session(`/element/${element[ELEMENT]}/click`), {});
+          return;
+        } catch (error) {
+          if (Date.now() - start > timeout || !missing(error)) throw error;
+        }
+      }
     },
     /** Polls a page expression until `test` accepts its value. */
     async until(script, test, label, wait = timeout) {
