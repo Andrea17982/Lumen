@@ -162,7 +162,7 @@ pub async fn usage(
             percent.clamp(0.0, 100.0)
         };
         windows.push(UsageWindow {
-            group: Some(meter.into()),
+            group: None,
             used_percent: used,
             window_minutes: minutes,
             resets_at,
