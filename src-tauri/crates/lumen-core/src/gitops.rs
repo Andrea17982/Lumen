@@ -255,17 +255,33 @@ pub async fn write_tree(top: &Path) -> Result<String, String> {
 
 /// Snapshot kept alive against `git gc` through a private ref.
 pub async fn checkpoint(top: &Path, key: &str) -> Result<String, String> {
-    let tree = write_tree(top).await?;
-    let commit = run(top, &["commit-tree", &tree, "-m", "Lumen checkpoint"], None)
-        .await?
-        .trim()
-        .to_string();
+    let snapshot = async || {
+        let tree = write_tree(top).await?;
+        let commit = run(top, &["commit-tree", &tree, "-m", "Lumen checkpoint"], None).await?;
+        Ok::<_, String>((tree, commit))
+    };
+    let mut result = snapshot().await;
+    // Concurrent Git for Windows writers can briefly contend on the same loose object.
+    if cfg!(windows) {
+        for delay in [25, 75, 150] {
+            if !result.as_ref().is_err_and(|e| {
+                e.contains("unable to write file")
+                    && e.contains("/objects/")
+                    && e.contains("Permission denied")
+            }) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            result = snapshot().await;
+        }
+    }
+    let (tree, commit) = result?;
     run(
         top,
         &[
             "update-ref",
             &format!("refs/lumen/checkpoints/{key}"),
-            &commit,
+            commit.trim(),
         ],
         None,
     )

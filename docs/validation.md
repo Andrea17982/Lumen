@@ -6,7 +6,8 @@ Automated checks, live observations and open limits. Evidence for earlier versio
 
 - Rust tests, linting, formatting, the daemon smoke test over IPC, and documentation and version checks run in CI. See the [development guide](development.md#checks).
 - **Permissions.** A matrix checks every access profile against read, write, command, destructive command and `git push`, for both classic and Code Mode calls.
-- **Auto.** Deterministic rule tests for Parallel, Collaborative and Compete.
+- **Auto.** Deterministic rule tests for Parallel, Collaborative and Compete. The Windows daemon smoke test also drives the quota ranking across two accounts of the same provider: more remaining quota, an earlier weekly reset or more weekly headroom each win in every priority, equal or missing data keeps the current account, and only Budget trades providers at an equal model tier.
+- **Auto recovery.** A Windows daemon smoke test with offline Codex verifies model and effort on the native wire, quota cooldown across a crash, and one native continuation in the original project's worktree. A later restart preserves the completed turn and its effects.
 - **Autonomy.** Fixtures for CRLF and Git filters, concurrent checkpoints, exact and undoable restore, Rewind refusals, and memory held after untrusted content.
 - **Handoff.** Constraints and decisions survive two compactions on all core agents and APIs.
 - **Plugins.** Manifest validation, refusal of undeclared capabilities, re-approval when permissions grow, and panel fetches refused for IP addresses and `localhost` names.
@@ -16,7 +17,7 @@ Automated checks, live observations and open limits. Evidence for earlier versio
 - **Unit tests** (Vitest) for the sync cache (snapshots, event order, deduplication, reconnection), the transcript model, attention and recovery rules, sidebar ordering, Orchestra plan edits, plugin theme filtering and both language catalogs.
 - **Browser tests** (Playwright) drive the client against the real debug service with offline CLI fixtures: streaming and Stop, approvals and native questions (a secret answer is kept nowhere), quota resume, rewind, projects and conversations, accounts (an API key never reaches the page or any file of the service), Orchestra from questions to the team result and resume after a crash, settings, MCP, skills, a plugin panel confined to its sandbox, `/every`, task branches with Apply and Discard. Axe accessibility checks run on each surface; the gallery has keyboard, 150 % text and screenshot checks.
 - **Long transcripts.** 5,000 messages: first messages in about 0.3 s, all mounted in 4 to 5 s, 95th-percentile frame and typing gaps under 25 ms on the owner's machine. Windows UI Automation reaches the first and last fixture messages. Text inside an off-screen message can be absent from the accessibility tree.
-- **Real app** over WebDriver: the shell starts the bundled service, relays its events, restarts it after a crash without repeating the partial reply, and a sandboxed plugin panel cannot call the shell.
+- **Real app** over WebDriver. The shell starts the bundled service, relays events and restarts it after a crash. Reopening the shell restores the last conversation in its project and shows the partial reply once. A sandboxed plugin panel cannot call the shell.
 - **Security review** of the panels, the plugin protocol and the shell by a review agent; findings fixed before release. Not an independent audit.
 
 ## Worktree and Publish

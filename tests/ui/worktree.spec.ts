@@ -42,6 +42,11 @@ test('a task on a named branch shows its bar, and Publish explains what it needs
   test.setTimeout(150_000);
   await start(page, 'feat-apply');
   await expect(bar(page)).toContainText(/\d+ commits?/);
+  await daemon.stop();
+  await daemon.restart();
+  await page.reload();
+  await expect(page.getByRole('navigation').getByRole('button', { name: /^Work on branch feat-apply/ })).toHaveAttribute('aria-current', 'page');
+  await expect(bar(page)).toContainText('feat-apply');
   await bar(page).getByRole('button', { name: 'Publish…' }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('Publish as a pull request');

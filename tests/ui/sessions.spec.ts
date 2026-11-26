@@ -134,5 +134,10 @@ test('500 conversations: search finds one at once, and the rest come a page at a
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toContainText('Task 042');
   expect(Date.now() - start).toBeLessThan(2_000);
+  await rows(page).first().getByRole('button').first().click();
+  await expect(page.locator('main header h1')).toHaveText('Task 042');
   await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(rows(page).filter({ hasText: 'Task 042' })).toHaveCount(0);
+  await expect(page.locator('main header h1')).toHaveText('Task 042');
 });

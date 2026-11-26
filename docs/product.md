@@ -5,8 +5,8 @@ Lumen runs your request on the agents you have connected and reports only what i
 ## Modes
 
 - **Direct.** You pick a provider and model. Lumen never overrides that choice, even when the request mentions architecture or security.
-- **Auto** (the default). Lumen classifies the task with a small model, falling back to keyword heuristics, and picks a model from the connected catalogs. A short continuation such as "procedi" reuses the previous rating. A new task gets a fresh rating.
-  - **Budget** lowers effort and skips optional stages.
+- **Auto** (the default). Lumen classifies the task with a small model, falling back to keyword heuristics, and picks a model from the connected catalogs. A short continuation such as "procedi" reuses the previous rating. A new task gets a fresh rating. Every priority balances accounts of the same provider that offer the selected model and effort. With fresh, comparable quota data, Auto compares the fraction of time until reset against the fraction of quota remaining, starting with the tightest window.
+  - **Budget** lowers effort, skips optional stages and can also switch between Claude and ChatGPT for more quota if the other provider has a model in the same tier at equivalent or higher effort. Choose **Auto → Priority → Save quota** in the composer.
   - **Default** uses calibrated routing.
   - **Quality** raises effort and adds independent review for tier-two tasks.
 - **Orchestra** is opt-in. It plans a task graph with file ownership and dependencies, then runs workers in isolated Git worktrees within limits on concurrency, total subtasks, quota and run time (120 min by default, up to 24 h). It integrates the results and runs final validation.
