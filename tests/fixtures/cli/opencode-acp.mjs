@@ -1,5 +1,5 @@
 // Official ACP/policy API fixtures. All state is owned by an isolated Lumen test root.
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
@@ -14,6 +14,61 @@ if (argv[0] === 'api') {
   const method = argv.find((x) => ['GET', 'POST', 'PATCH'].includes(x));
   const route = argv[argv.indexOf(method) + 1];
   const data = argv.includes('--data') ? JSON.parse(argv[argv.indexOf('--data') + 1]) : {};
+  // Catalogue and Go quota for the Auto emergency chain.
+  if (method === 'GET' && route === '/api/provider') {
+    out({
+      data: [
+        { id: 'opencode-go', name: 'OpenCode Go', activation: 'enabled' },
+        { id: 'opencode', name: 'Default / OpenCode', activation: 'enabled' },
+        { id: 'openrouter', name: 'OpenRouter', activation: 'auto' },
+      ],
+    });
+    process.exit(0);
+  }
+  if (method === 'GET' && route === '/api/model/default') {
+    out({ data: { id: 'fixture-free', providerID: 'opencode' } });
+    process.exit(0);
+  }
+  if (method === 'GET' && route === '/api/model') {
+    const model = (providerID, id, name, cost, variants = []) => ({
+      id,
+      providerID,
+      type: 'chat',
+      name,
+      enabled: true,
+      capabilities: { tools: true },
+      variants: variants.map((v) => ({ id: v })),
+      cost: [{ input: cost, output: cost }],
+    });
+    out({
+      data: [
+        model('opencode-go', 'claude-haiku-5-5', 'Claude Haiku 5.5', 0.1, ['none', 'low', 'medium', 'high', 'xhigh', 'max']),
+        model('opencode-go', 'gpt-6-luna', 'GPT-6 Luna', 0.1, ['none', 'low', 'medium', 'high']),
+        model('opencode-go', 'deepseek-v4.1-flash', 'DeepSeek V4.1 Flash 1017', 0.15, ['low', 'high', 'max']),
+        model('opencode-go', 'minimax-m3.1-flash', 'MiniMax M3.1 Flash', 0.15, ['low', 'medium', 'high']),
+        model('opencode-go', 'qwen4-max', 'Qwen4 Max', 1.5, ['none', 'low', 'high', 'xhigh']),
+        model('opencode-go', 'grok-4.7', 'Grok 4.7', 2, ['low', 'medium', 'high', 'xhigh']),
+        model('opencode-go', 'kimi-k3.1-pro', 'Kimi K3.1 Pro', 2, ['low', 'high', 'max']),
+        model('opencode', 'fixture-free', 'Fixture Free', 0),
+        model('opencode', 'gpt-6.2-sol', 'GPT-6.2 Sol', 2),
+        model('openrouter', 'solar-mini', 'Solar Mini', 0.1),
+      ],
+    });
+    process.exit(0);
+  }
+  if (method === 'GET' && route === '/api/experimental/usage/limits') {
+    const limited = existsSync(path.join(process.env.LUMEN_TEST_DATA_DIR, 'opencode-go-limited'));
+    const at = Date.now();
+    const meter = (minutes) => ({ percent: 10, limited, resetsAt: at + minutes * 60_000 });
+    out({
+      data: {
+        workspace: { id: 'wrk_fixture', name: 'Fixture' },
+        go: { rolling: meter(300), weekly: meter(10_080), monthly: meter(43_200) },
+        budgets: [],
+      },
+    });
+    process.exit(0);
+  }
   if (method === 'POST') {
     const s = {
       id: 'ses_' + crypto.randomUUID().replaceAll('-', ''),

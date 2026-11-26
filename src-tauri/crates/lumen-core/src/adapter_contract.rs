@@ -204,7 +204,9 @@ pub fn contract(provider: &Provider) -> AdapterContract {
             limited("The native profile retains its supported instructions, commands, plugins and hooks. Proprietary cloud connectors and extension runtimes are not translated to other adapters.")
         } else { unavailable("Proprietary commands, hooks and extension runtimes are not executed by this adapter. Portable instructions and shared MCP are separate capabilities.") },
         model_change: limited("Selected model IDs are validated against the official catalog before a turn. No automatic substitution for a rejected explicit selection."),
-        fallback: if matches!(provider, Provider::Opencode | Provider::Cursor | Provider::Droid) {
+        fallback: if *provider == Provider::Opencode {
+            limited("Selected explicitly, or automatically only when every Claude and ChatGPT account is out of quota. Auto uses curated tier models; console-credit models are never automatic. No automatic review worker selection.")
+        } else if matches!(provider, Provider::Cursor | Provider::Droid) {
             limited("Explicit selection only. Native continuation is preferred; no automatic entry or automatic review worker selection.")
         } else if provider.is_api() {
             limited("Auto and fallback require explicit API opt-in and sufficient reserved budget. No automatic retry after observed effects or uncertain requests.")

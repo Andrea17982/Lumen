@@ -1127,13 +1127,20 @@ fn save_mcp(core: crate::CoreRef<'_>, json: String) -> Result<(), String> {
     integrations::save_mcp(&core.root, &json)
 }
 
-/// Refresh Codex quota through its native metadata endpoint when Auto can compare accounts.
+/// Refresh native quota before Auto compares accounts: Codex every time it can matter, and
+/// OpenCode Go when the primary accounts are out of quota or Budget may trade with it.
 async fn refresh_routing_usage(
     core: &Core,
     accounts: &[Account],
     usage: &mut Vec<AccountUsage>,
+    opencode: bool,
 ) -> Result<(), String> {
-    for account in accounts.iter().filter(|a| a.provider == Provider::Gpt) {
+    let providers: &[Provider] = if opencode {
+        &[Provider::Gpt, Provider::Opencode]
+    } else {
+        &[Provider::Gpt]
+    };
+    for account in accounts.iter().filter(|a| providers.contains(&a.provider)) {
         if usage
             .iter()
             .find(|u| u.account_id == account.id)

@@ -9,7 +9,7 @@ Lumen uses each provider only through its official interface. Subscription login
 | Claude Code | Per-slot `CLAUDE_CONFIG_DIR`; `claude auth login` | Native initialize metadata; bidirectional stream-json |
 | Codex | Per-slot `CODEX_HOME`; `codex login` | app-server `model/list` and turns |
 | Antigravity | Separate `HOME`/`USERPROFILE`; `agy` login | `agy models`; print runner |
-| OpenCode | One existing native profile; `opencode auth login` | Project-scoped `models --standalone`; official ACP |
+| OpenCode | One existing native profile; `opencode auth login` | Catalog (names, reasoning variants) and Go quota from the local server API; official ACP |
 | Cursor CLI | One existing native profile; `cursor-agent login` | `--list-models`; headless stream-json; Autopilot only |
 | Factory Droid | One existing native profile; `/login` in `droid` | No model listing: the profile default plus the default model and favorites from Droid settings; `droid exec` stream-json; Read only, File edits, Autopilot |
 | Ollama | No login | Loopback `/api/tags`, `/api/show`, `/api/chat` tool loop |
@@ -19,7 +19,7 @@ Lumen uses each provider only through its official interface. Subscription login
 - Lumen strips inherited API-key variables (including `CURSOR_API_KEY` and `FACTORY_API_KEY`) before launching a CLI, so billing identity never changes silently.
 - Separate directories do not prove separate identities: OS keychains can be shared.
 - Catalogs are cached for 5 minutes. Lumen accepts only model and reasoning combinations the provider advertises, and never fabricates a list.
-- OpenCode, Cursor and Droid are always selected explicitly. They are never Auto fallbacks or Orchestra workers.
+- Cursor and Droid are always selected explicitly. OpenCode is explicit too, and the only automatic fallback: Auto uses it after every Claude and ChatGPT account is confirmed out of quota, with one curated model per difficulty tier (or the single emergency model pinned in Settings). Console-credit models are never automatic. None of them are Orchestra workers.
 - Ollama runs on loopback only. Lumen rejects remote hosts, proxies, redirects and cloud models, and never pulls a model automatically.
 
 Manual login into a slot:

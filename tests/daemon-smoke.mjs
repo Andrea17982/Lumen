@@ -356,6 +356,54 @@ try {
     await client.call('answer_question', { id: waiting, answers: { switch: ['Continue'] } });
     for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
     assert((await client.call('__status')).idle, 'the turn finished on the weaker model after consent');
+
+    // OpenCode Go is the emergency chain after Claude and ChatGPT: with every primary
+    // account out of quota, Auto runs the curated tier model; a pinned model wins always.
+    const opencode = await client.call('add_account', { name: 'Offline OpenCode', provider: 'opencode' });
+    await writeFile(path.join(data, 'usage.json'), JSON.stringify(
+      [codex, secondCodex, thirdCodex, claude, secondClaude].map((account) => {
+        const at = Date.now() - 100;
+        return {
+          accountId: account.id,
+          updatedAt: at,
+          source: 'fixture',
+          windows: [
+            { usedPercent: 100, windowMinutes: 300, resetsAt: at + 120 * 60_000 },
+            { usedPercent: 100, windowMinutes: 10080, resetsAt: at + 48 * 60 * 60_000 },
+          ],
+        };
+      }),
+    ));
+    const emergency = await client.call('create_session', { workspace: folder });
+    const fallback = await client.call('send_message', {
+      id: emergency.id,
+      text: architecture,
+      options: { mode: 'auto', effort: '', accessMode: 'read-only' },
+    });
+    assert.deepEqual(
+      [fallback.accountId, fallback.model],
+      [opencode.id, 'opencode-go/qwen4-max'],
+      'the tier-two emergency model runs when every primary is exhausted',
+    );
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    const emergencyReply = (await client.call('get_messages', { id: emergency.id })).at(-1);
+    assert.match(emergencyReply.text, /OPENCODE_FIRST_OK/);
+    const appSettings = await client.call('get_settings');
+    await client.call('save_settings', {
+      value: { ...appSettings, emergencyModels: { opencode: 'opencode-go/deepseek-v4.1-flash' } },
+    });
+    const pinned = await client.call('create_session', { workspace: folder });
+    const pinnedRoute = await client.call('send_message', {
+      id: pinned.id,
+      text: architecture,
+      options: { mode: 'auto', effort: '', accessMode: 'read-only' },
+    });
+    assert.deepEqual(
+      [pinnedRoute.accountId, pinnedRoute.model],
+      [opencode.id, 'opencode-go/deepseek-v4.1-flash'],
+      'a pinned emergency model is the only one used',
+    );
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
   }
   await writeFile(
     path.join(workspace, 'package.json'),
@@ -456,6 +504,7 @@ try {
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
             'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',
+            'Auto falls back to the OpenCode Go emergency model only when every Claude and ChatGPT account is out of quota',
           ] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',
         ],

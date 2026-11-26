@@ -102,6 +102,10 @@ pub(crate) async fn submit(
     let budget = options.auto_policy == AutoPolicy::Budget;
     let quality = options.auto_policy == AutoPolicy::Quality;
     let cross_provider = budget && requested.is_none();
+    let primary_down = primary_unavailable(&core, &accounts, &usage, now());
+    let opencode = requested.is_none()
+        && accounts.iter().any(|a| a.provider == Provider::Opencode)
+        && (budget || primary_down);
     if options.mode == "auto"
         && (accounts
             .iter()
@@ -111,15 +115,13 @@ pub(crate) async fn submit(
             || (requested.is_none()
                 && (budget || accounts.iter().any(|a| a.provider.fallback_rank() > 0))))
     {
-        crate::refresh_routing_usage(&core, &accounts, &mut usage).await?;
+        crate::refresh_routing_usage(&core, &accounts, &mut usage, opencode).await?;
     }
     let available = accounts
         .iter()
         .filter(|a| {
-            (!matches!(
-                a.provider,
-                Provider::Opencode | Provider::Cursor | Provider::Droid
-            )) && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
+            (!matches!(a.provider, Provider::Cursor | Provider::Droid))
+                && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
                 && !core.limits.cooling(&a.id, now())
                 && !usage
                     .iter()
@@ -189,9 +191,27 @@ pub(crate) async fn submit(
         let a = account(&core, &plan.account_id)?;
         let models = models_in(&core, &a, false, None, &session.workspace).await?;
         let target = verdict.task.tier;
-        let mut selected = router::select_tier(&models, target)
-            .cloned()
-            .ok_or("No provider model available")?;
+        let pinned = core
+            .settings
+            .lock()
+            .ok()
+            .and_then(|s| s.emergency_models.get(&plan.provider.id()).cloned());
+        let mut selected = if plan.provider == Provider::Opencode {
+            // OpenCode's emergency role is deterministic: the pinned model only, or the curated
+            // tier model (up before down), never an arbitrary catalogue entry.
+            crate::opencode::auto_model(&models, target, pinned.as_deref())
+                .cloned()
+                .ok_or_else(|| match pinned {
+                    Some(id) => format!(
+                        "The pinned emergency model {id} is not available; update it in Settings."
+                    ),
+                    None => "No OpenCode model is available for the emergency fallback".into(),
+                })?
+        } else {
+            router::select_tier(&models, target)
+                .cloned()
+                .ok_or("No provider model available")?
+        };
         if requested.is_none()
             && matches!(a.provider, Provider::Claude | Provider::Gpt)
             && router::model_tier(&selected) < target
@@ -662,7 +682,8 @@ fn stick_to_previous(
 }
 
 /// Quota may change the account after model selection. Cross-provider balancing can
-/// only trade for a named model of the same tier with no reduction in effort.
+/// only trade for a model of the same tier with no reduction in effort; Budget also lets
+/// OpenCode Go compete with its curated tier model.
 async fn balance_model_account(
     core: &Core,
     workspace: &str,
@@ -673,32 +694,47 @@ async fn balance_model_account(
     selected: ModelInfo,
 ) -> ModelInfo {
     let at = now();
-    let rank = |id: &str| {
-        usage
-            .iter()
-            .find(|u| u.account_id == id)
-            .and_then(|u| router::quota_rank(u, at))
-    };
-    let Some(current) = rank(&plan.account_id) else {
+    let Some(current) = usage.iter().find(|u| u.account_id == plan.account_id) else {
         return selected;
     };
     let effort = resolve_effort(&selected, &plan.effort);
+    let tier = if plan.provider == Provider::Opencode {
+        crate::opencode::tier_of_model(&selected.id)
+            .unwrap_or_else(|| router::model_tier(&selected))
+    } else {
+        router::model_tier(&selected)
+    };
+    let pinned = |provider: &Provider| {
+        core.settings.lock().ok().and_then(|s| {
+            s.emergency_models
+                .get(&provider.id())
+                .filter(|m| !m.is_empty())
+                .cloned()
+        })
+    };
     let mut alternatives = accounts
         .iter()
         .filter(|a| {
             a.id != plan.account_id
                 && (a.provider == plan.provider
                     || (cross_provider
-                        && matches!(a.provider, Provider::Claude | Provider::Gpt)
-                        && matches!(plan.provider, Provider::Claude | Provider::Gpt)))
+                        && matches!(
+                            a.provider,
+                            Provider::Claude | Provider::Gpt | Provider::Opencode
+                        )
+                        && matches!(
+                            plan.provider,
+                            Provider::Claude | Provider::Gpt | Provider::Opencode
+                        )))
         })
         .filter_map(|a| {
-            let other = rank(&a.id)?;
-            (other.len() == current.len() && other < current).then_some((a, other))
+            let other = usage.iter().find(|u| u.account_id == a.id)?;
+            (router::quota_compare(other, current, at)? == std::cmp::Ordering::Less)
+                .then_some((a, other))
         })
         .collect::<Vec<_>>();
     alternatives.sort_by(|(a, x), (b, y)| {
-        x.partial_cmp(y)
+        router::quota_compare(x, y, at)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| (a.provider != plan.provider).cmp(&(b.provider != plan.provider)))
     });
@@ -711,11 +747,18 @@ async fn balance_model_account(
             models
                 .iter()
                 .find(|m| m.id == selected.id && resolve_effort(m, &plan.effort) == effort)
+        } else if account.provider == Provider::Opencode {
+            crate::opencode::tier_model(&models, tier, pinned(&account.provider).as_deref()).filter(
+                |m| {
+                    router::effort_grade(&resolve_effort(m, &plan.effort))
+                        >= router::effort_grade(&effort)
+                },
+            )
         } else {
             models
                 .iter()
                 .filter(|m| {
-                    router::model_tier(m) == router::model_tier(&selected)
+                    router::model_tier(m) == tier
                         && !matches!(m.id.as_str(), "auto" | "default")
                         && router::effort_grade(&resolve_effort(m, &plan.effort))
                             >= router::effort_grade(&effort)
@@ -733,6 +776,20 @@ async fn balance_model_account(
         }
     }
     selected
+}
+
+/// No Claude or ChatGPT account could run a turn right now: none configured, in cooldown, or
+/// with fresh quota data showing exhaustion. Missing or stale data never counts as exhausted.
+fn primary_unavailable(core: &Core, accounts: &[Account], usage: &[AccountUsage], at: i64) -> bool {
+    !accounts.iter().any(|a| {
+        matches!(a.provider, Provider::Claude | Provider::Gpt)
+            && !core.limits.cooling(&a.id, at)
+            && !usage
+                .iter()
+                .find(|u| u.account_id == a.id)
+                .and_then(|u| router::usage_pressure(u, at))
+                .is_some_and(|p| p >= 1000.0)
+    })
 }
 
 /// D1: when Auto must run a weaker model because every account that could serve the task is
@@ -3247,6 +3304,68 @@ mod resume_tests {
         assert_eq!(in_about(5 * 60_000), "in about 5 minutes");
         assert_eq!(in_about(90 * 60_000), "in about 2 hours");
         assert_eq!(in_about(48 * 60 * 60_000), "in about 2 days");
+    }
+
+    #[test]
+    fn auto_uses_opencode_only_when_the_primaries_are_certainly_out() {
+        let f = crate::test_support::Fixture::new();
+        let at = now();
+        // No Claude or ChatGPT account: an OpenCode-only profile may run in Auto.
+        assert!(primary_unavailable(&f.core, &[], &[], at));
+        let claude = f
+            .core
+            .store
+            .add_account("Claude".into(), Provider::Claude)
+            .unwrap();
+        // A primary account without fresh data is never assumed exhausted.
+        assert!(!primary_unavailable(
+            &f.core,
+            std::slice::from_ref(&claude),
+            &[],
+            at
+        ));
+        let usage = |used: f64| AccountUsage {
+            account_id: claude.id.clone(),
+            updated_at: at,
+            source: "test".into(),
+            windows: vec![UsageWindow {
+                group: None,
+                used_percent: used,
+                window_minutes: 300,
+                resets_at: at + 60_000,
+            }],
+        };
+        // Fresh data with quota left: still the primary's turn.
+        assert!(!primary_unavailable(
+            &f.core,
+            std::slice::from_ref(&claude),
+            &[usage(40.0)],
+            at
+        ));
+        // Fresh exhausted data: the emergency chain may take over.
+        assert!(primary_unavailable(
+            &f.core,
+            std::slice::from_ref(&claude),
+            &[usage(100.0)],
+            at
+        ));
+        // Stale exhaustion proves nothing.
+        let mut stale = usage(100.0);
+        stale.updated_at = at - 900_001;
+        assert!(!primary_unavailable(
+            &f.core,
+            std::slice::from_ref(&claude),
+            &[stale],
+            at
+        ));
+        // A cooldown is a certainty.
+        f.core.limits.cool(&claude.id, at + 60_000);
+        assert!(primary_unavailable(
+            &f.core,
+            std::slice::from_ref(&claude),
+            &[],
+            at
+        ));
     }
 
     #[test]

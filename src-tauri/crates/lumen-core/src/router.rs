@@ -842,8 +842,8 @@ pub fn complex(prompt: &str) -> bool {
 /// Snapshots expire after 15 minutes; exhausted windows never receive reset bonuses.
 pub fn usage_pressure(usage: &AccountUsage, at: i64) -> Option<f64> {
     quota_windows(usage, at)?
-        .map(|(time, quota)| {
-            if quota == 0.0 {
+        .map(|(_, time, quota)| {
+            if quota <= 0.0 {
                 1000.0
             } else {
                 time.max(0.01) / quota.max(0.01)
@@ -852,16 +852,53 @@ pub fn usage_pressure(usage: &AccountUsage, at: i64) -> Option<f64> {
         .reduce(f64::max)
 }
 
-/// Compare the tightest window first, then each other window in descending order.
-pub(crate) fn quota_rank(usage: &AccountUsage, at: i64) -> Option<Vec<f64>> {
-    let mut windows = quota_windows(usage, at)?
-        .map(|(time, quota)| time / quota)
-        .collect::<Vec<_>>();
-    windows.sort_unstable_by(|a, b| b.total_cmp(a));
-    (!windows.is_empty()).then_some(windows)
+/// Compares two accounts for quota. `Less` means the left one has more room.
+/// The tightest window decides; on an exact tie the windows both accounts share are compared,
+/// tightest first, so different meter sets (OpenCode Go has three, Claude two) stay comparable.
+pub(crate) fn quota_compare(
+    left: &AccountUsage,
+    right: &AccountUsage,
+    at: i64,
+) -> Option<std::cmp::Ordering> {
+    let ordering = usage_pressure(left, at)?.total_cmp(&usage_pressure(right, at)?);
+    if ordering != std::cmp::Ordering::Equal {
+        return Some(ordering);
+    }
+    let pairs = |usage: &AccountUsage| {
+        quota_windows(usage, at).map(|windows| {
+            windows
+                .map(|(minutes, time, quota)| {
+                    let ratio = if quota <= 0.0 {
+                        1000.0
+                    } else {
+                        time.max(0.01) / quota.max(0.01)
+                    };
+                    (minutes, ratio)
+                })
+                .collect::<Vec<_>>()
+        })
+    };
+    let left_pairs = pairs(left)?;
+    let right_pairs = pairs(right)?;
+    let mut shared: Vec<(f64, f64)> = left_pairs
+        .iter()
+        .filter_map(|(minutes, l)| {
+            right_pairs
+                .iter()
+                .find(|(m, _)| m == minutes)
+                .map(|(_, r)| (*l, *r))
+        })
+        .collect();
+    shared.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let l = shared.iter().map(|(l, _)| *l).collect::<Vec<_>>();
+    let r = shared.iter().map(|(_, r)| *r).collect::<Vec<_>>();
+    Some(l.partial_cmp(&r).unwrap_or(std::cmp::Ordering::Equal))
 }
 
-fn quota_windows(usage: &AccountUsage, at: i64) -> Option<impl Iterator<Item = (f64, f64)> + '_> {
+fn quota_windows(
+    usage: &AccountUsage,
+    at: i64,
+) -> Option<impl Iterator<Item = (i64, f64, f64)> + '_> {
     if at - usage.updated_at > 900_000 || usage.updated_at > at {
         return None;
     }
@@ -882,7 +919,8 @@ fn quota_windows(usage: &AccountUsage, at: i64) -> Option<impl Iterator<Item = (
             })
             .map(move |w| {
                 let time = (w.resets_at - at) as f64 / (w.window_minutes as f64 * 60_000.0);
-                (time.min(1.0), (100.0 - w.used_percent) / 100.0)
+                let quota = (100.0 - w.used_percent) / 100.0;
+                (w.window_minutes, time.min(1.0), quota)
             }),
     )
 }
@@ -1282,6 +1320,34 @@ mod tests {
         assert_eq!(manual.strategy, "single");
     }
     #[test]
+    fn auto_fallback_order_prefers_opencode_over_the_declared_fallbacks() {
+        let account = |id: &str, provider: Provider| Account {
+            id: id.into(),
+            name: id.into(),
+            provider,
+        };
+        let accounts = vec![
+            account("antigravity", Provider::Antigravity),
+            account("opencode", Provider::Opencode),
+            account("ollama", Provider::Ollama),
+        ];
+        assert_eq!(
+            route("hello", &opts(), &accounts).unwrap().provider,
+            Provider::Opencode
+        );
+        let mut with_gpt = accounts.clone();
+        with_gpt.push(account("gpt", Provider::Gpt));
+        assert_eq!(
+            route("hello", &opts(), &with_gpt).unwrap().provider,
+            Provider::Gpt
+        );
+        // Cursor and Droid stay out of the automatic chain entirely.
+        assert_eq!(Provider::Cursor.fallback_rank(), 5);
+        assert_eq!(Provider::Droid.fallback_rank(), 5);
+        assert!(Provider::Opencode.fallback_rank() < Provider::Antigravity.fallback_rank());
+    }
+
+    #[test]
     fn balancing_respects_resets_exhaustion_and_freshness() {
         let at = 1_800_000_000_000;
         let usage = |used, minutes, remaining: i64| AccountUsage {
@@ -1311,7 +1377,7 @@ mod tests {
         assert_eq!(usage_pressure(&usage(20.0, 300, 0), at), None);
     }
     #[test]
-    fn quota_rank_orders_same_provider_accounts() {
+    fn quota_compare_orders_same_provider_accounts() {
         let at = 1_800_000_000_000;
         let usage = |short: f64, weekly: f64, weekly_reset: i64| AccountUsage {
             account_id: "a".into(),
@@ -1336,27 +1402,74 @@ mod tests {
         // Same reset times: the account with more of the five-hour window left wins.
         let scarce = usage(5.0, 60.0, 3 * day);
         let ample = usage(80.0, 60.0, 3 * day);
-        assert!(quota_rank(&ample, at).unwrap() < quota_rank(&scarce, at).unwrap());
+        assert_eq!(
+            quota_compare(&ample, &scarce, at),
+            Some(std::cmp::Ordering::Less)
+        );
         // Equal five-hour pressure: the account whose weekly window resets sooner wins.
         let soon = usage(20.0, 20.0, 20);
         let later = usage(20.0, 20.0, 3 * day);
-        assert!(quota_rank(&soon, at).unwrap() < quota_rank(&later, at).unwrap());
-        // Equal five-hour pressure and reset: more weekly headroom wins, so both
-        // accounts drain uniformly instead of exhausting one first.
+        assert_eq!(
+            quota_compare(&soon, &later, at),
+            Some(std::cmp::Ordering::Less)
+        );
+        // Equal five-hour pressure and reset: more weekly headroom wins.
         let drained = usage(5.0, 5.0, 3 * day);
         let deep = usage(5.0, 80.0, 3 * day);
-        assert!(quota_rank(&deep, at).unwrap() < quota_rank(&drained, at).unwrap());
-        // Equal pressure never switches: balance_model_account compares strictly.
         assert_eq!(
-            quota_rank(&scarce, at),
-            quota_rank(&usage(5.0, 60.0, 3 * day), at)
+            quota_compare(&deep, &drained, at),
+            Some(std::cmp::Ordering::Less)
         );
-        // An account reporting fewer windows is not comparable and never switches.
-        let mut partial = scarce.clone();
-        partial.windows.truncate(1);
-        assert_ne!(
-            quota_rank(&partial, at).map(|w| w.len()),
-            quota_rank(&scarce, at).map(|w| w.len())
+        // Equal pressure never switches: the caller compares strictly.
+        assert_eq!(
+            quota_compare(&scarce, &usage(5.0, 60.0, 3 * day), at),
+            Some(std::cmp::Ordering::Equal)
+        );
+        // An account reporting no windows cannot be compared.
+        let mut empty = scarce.clone();
+        empty.windows.clear();
+        assert_eq!(quota_compare(&empty, &scarce, at), None);
+    }
+
+    #[test]
+    fn quota_compare_pairs_windows_of_different_meter_sets() {
+        let at = 1_800_000_000_000;
+        let windows = |pairs: &[(i64, f64, i64)]| AccountUsage {
+            account_id: "a".into(),
+            updated_at: at,
+            source: "test".into(),
+            windows: pairs
+                .iter()
+                .map(|(minutes, used, resets_in)| UsageWindow {
+                    group: None,
+                    used_percent: *used,
+                    window_minutes: *minutes,
+                    resets_at: at + resets_in * 60_000,
+                })
+                .collect(),
+        };
+        let day = 24 * 60;
+        // Claude: five hours and weekly, both nearly full. OpenCode Go: same pressure, a
+        // fresh monthly meter, and a slightly better weekly window.
+        let claude = windows(&[(300, 20.0, 300), (10_080, 20.0, 3 * day)]);
+        let go = windows(&[
+            (300, 20.0, 300),
+            (10_080, 10.0, 3 * day),
+            (43_200, 10.0, 20 * day),
+        ]);
+        assert_eq!(
+            quota_compare(&go, &claude, at),
+            Some(std::cmp::Ordering::Less)
+        );
+        // A binding monthly window makes the extra meter count: the Go account is worse.
+        let go_limited = windows(&[
+            (300, 20.0, 300),
+            (10_080, 20.0, 3 * day),
+            (43_200, 95.0, 20 * day),
+        ]);
+        assert_eq!(
+            quota_compare(&go_limited, &claude, at),
+            Some(std::cmp::Ordering::Greater)
         );
     }
 
