@@ -9,6 +9,7 @@ pub enum Provider {
     Ollama,
     Opencode,
     Cursor,
+    Droid,
     Openaiapi,
     Anthropicapi,
     Googleapi,
@@ -38,6 +39,7 @@ impl Provider {
             Self::Ollama => "ollama",
             Self::Opencode => "opencode",
             Self::Cursor => "cursor-agent",
+            Self::Droid => "droid",
             Self::Openaiapi => "openai-api",
             Self::Anthropicapi => "anthropic-api",
             Self::Googleapi => "google-api",
@@ -52,6 +54,7 @@ impl Provider {
             Self::Ollama => "",
             Self::Opencode
             | Self::Cursor
+            | Self::Droid
             | Self::Openaiapi
             | Self::Anthropicapi
             | Self::Googleapi => "",
@@ -66,6 +69,7 @@ impl Provider {
             Self::Ollama => 3,
             Self::Opencode
             | Self::Cursor
+            | Self::Droid
             | Self::Openaiapi
             | Self::Anthropicapi
             | Self::Googleapi => 2,

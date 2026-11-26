@@ -58,7 +58,7 @@ These are single configurations, not certified:
 - **Platforms.** Interactive desktop acceptance has been recorded on Windows x64. See [releases](release-notes/README.md) for packaging.
 - **Screen readers.** The transcript is checked through UI Automation; a full NVDA and Narrator pass by a person is still to do.
 - **Live coverage.** The paired correction probe covers two tasks. The multi-account, CLI-version, quota and restart matrix remains uncertified.
-- **Integrations.** Portability is limited to the documented subset ([Providers](providers.md#shared-integrations)). Cursor runs in Autopilot only. API adapters buffer responses and are not Orchestra workers.
+- **Integrations.** Portability is limited to the documented subset ([Providers](providers.md#shared-integrations)). Cursor runs in Autopilot only. Droid has no Ask first. API adapters buffer responses and are not Orchestra workers.
 - **Memory and schedules.** Facts come from model replies and can echo untrusted content. Routine end dates use UTC. The Orchestra time limit counts active time only.
 - **Graph.** Pattern-based. Arbitrary aliases, dynamic paths and Godot UIDs are not resolved.
 - **Moli.** Results vary by site; there is no Canvas/WebGL parity.

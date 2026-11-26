@@ -18,7 +18,7 @@ The local daemon owns storage, accounts, process and API execution, permissions,
 | --- | --- |
 | `turns.rs`, `router.rs`, `classify.rs` | Direct/Auto/review lifecycle, routing, classification |
 | `native_claude.rs`, `approvals_codex.rs` | Native Claude stream; Codex app-server |
-| `opencode.rs`, `opencode_acp.rs`, `cursor.rs` | OpenCode catalogs and ACP; Cursor headless runner |
+| `opencode.rs`, `opencode_acp.rs`, `cursor.rs`, `droid.rs` | OpenCode catalogs and ACP; Cursor and Factory Droid headless runners |
 | `api.rs`, `api_wire.rs`, `api_tools.rs` | Keychain and reservations; three wire formats; host file/command tools |
 | `approvals.rs`, `interactions.rs`, `activity.rs` | Scoped approvals, questions, activity and child streams |
 | `capability_catalog.rs`, `integrations.rs`, `native_mcp.rs`, `shared_tools.rs` | Adapter contract, integration discovery, account gateway, shared MCP client |

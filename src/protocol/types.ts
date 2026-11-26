@@ -62,7 +62,7 @@ export interface RunEvent {
   detail?: Detail;
 }
 
-export type Provider = 'claude' | 'gpt' | 'antigravity' | 'ollama' | 'opencode' | 'cursor' | 'openaiapi' | 'anthropicapi' | 'googleapi';
+export type Provider = 'claude' | 'gpt' | 'antigravity' | 'ollama' | 'opencode' | 'cursor' | 'droid' | 'openaiapi' | 'anthropicapi' | 'googleapi';
 
 export interface Account {
   id: string;
