@@ -3,19 +3,59 @@ use crate::{models::*, providers};
 use serde_json::Value;
 use tokio::sync::watch;
 
-/// `droid exec` has no model listing command. Lumen exposes the profile's configured default
-/// rather than inventing a catalog; Droid validates the model itself.
+/// `droid exec` has no model listing command. Lumen offers the profile default plus the models
+/// the user chose in Droid's own settings (default model and favorites), never an invented
+/// catalog; Droid validates the model itself.
 pub const DEFAULT_MODEL: &str = "default";
 
 pub fn models() -> Vec<ModelInfo> {
-    vec![ModelInfo {
+    let settings = dirs::home_dir()
+        .and_then(|h| std::fs::read_to_string(h.join(".factory").join("settings.json")).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    from_settings(&settings)
+}
+
+fn from_settings(settings: &Value) -> Vec<ModelInfo> {
+    let configured = settings["sessionDefaultSettings"]["model"].as_str();
+    let mut rows = vec![ModelInfo {
         id: DEFAULT_MODEL.into(),
-        name: "Droid default".into(),
+        name: match configured {
+            Some(m) if valid(m) => format!("Droid default ({m})"),
+            _ => "Droid default".into(),
+        },
         description: "Model configured in the Droid profile".into(),
         efforts: vec![],
         default_effort: String::new(),
         is_default: true,
-    }]
+    }];
+    let favorites = settings["modelFavorites"].as_array().into_iter().flatten();
+    for id in configured
+        .into_iter()
+        .chain(favorites.filter_map(Value::as_str))
+    {
+        if valid(id) && !rows.iter().any(|m| m.id == id) {
+            rows.push(ModelInfo {
+                id: id.into(),
+                name: id.into(),
+                description: "From your Droid settings".into(),
+                efforts: vec![],
+                default_effort: String::new(),
+                is_default: false,
+            });
+        }
+    }
+    rows
+}
+
+fn valid(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 100
+        && id != DEFAULT_MODEL
+        && !id.starts_with('-')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-._:/[]".contains(c))
 }
 
 /// Signed in through `/login` (stored by Droid under `~/.factory`). `FACTORY_API_KEY` is stripped
@@ -233,6 +273,18 @@ mod tests {
             "provider-event"
         );
         assert!(normalize(&serde_json::json!({"session_id":"../bad","type":"system"})).is_empty());
+    }
+
+    #[test]
+    fn models_come_from_droid_settings_only() {
+        let rows = from_settings(&serde_json::json!({
+            "sessionDefaultSettings": {"model": "gpt-6.1-sol"},
+            "modelFavorites": ["claude-opus-5-5", "gpt-6.1-sol", "--bad", "a b"]
+        }));
+        let ids: Vec<_> = rows.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["default", "gpt-6.1-sol", "claude-opus-5-5"]);
+        assert_eq!(rows[0].name, "Droid default (gpt-6.1-sol)");
+        assert_eq!(from_settings(&Value::Null).len(), 1);
     }
 
     #[test]

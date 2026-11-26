@@ -11,7 +11,7 @@ Lumen uses each provider only through its official interface. Subscription login
 | Antigravity | Separate `HOME`/`USERPROFILE`; `agy` login | `agy models`; print runner |
 | OpenCode | One existing native profile; `opencode auth login` | Project-scoped `models --standalone`; official ACP |
 | Cursor CLI | One existing native profile; `cursor-agent login` | `--list-models`; headless stream-json; Autopilot only |
-| Factory Droid | One existing native profile; `/login` in `droid` | No model listing: uses the profile default model; `droid exec` stream-json; Read only, File edits, Autopilot |
+| Factory Droid | One existing native profile; `/login` in `droid` | No model listing: the profile default plus the default model and favorites from Droid settings; `droid exec` stream-json; Read only, File edits, Autopilot |
 | Ollama | No login | Loopback `/api/tags`, `/api/show`, `/api/chat` tool loop |
 | OpenAI / Anthropic / Google API | Key in the OS keychain per slot | Official HTTPS catalog; Responses / Messages / generateContent |
 
