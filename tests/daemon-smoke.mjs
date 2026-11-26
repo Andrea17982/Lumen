@@ -313,6 +313,49 @@ try {
       assert.deepEqual([route.accountId, route.model, route.effort], [expected.id, model, effort], name);
       for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
     }
+
+    // D1: when the only available model is weaker than the task and the preferred account
+    // is out of quota, the downgrade needs consent. Autopilot asks interactively: the
+    // question names the blocked provider and its reset, and Continue finishes the turn.
+    const thirdCodex = await client.call('add_account', { name: 'Third Offline Codex', provider: 'gpt' });
+    await writeFile(path.join(data, 'accounts', thirdCodex.id, 'small-catalog-fixture'), '');
+    const exhaustedAt = Date.now() - 100;
+    await writeFile(path.join(data, 'usage.json'), JSON.stringify(
+      [codex, secondCodex, thirdCodex, claude, secondClaude].map((account, i) => ({
+        accountId: account.id,
+        updatedAt: exhaustedAt,
+        source: 'fixture',
+        windows: i === 2 ? [
+          { usedPercent: 20, windowMinutes: 300, resetsAt: exhaustedAt + 300 * 60_000 },
+          { usedPercent: 20, windowMinutes: 10080, resetsAt: exhaustedAt + week * 60_000 },
+        ] : [
+          { usedPercent: 100, windowMinutes: 300, resetsAt: exhaustedAt + 120 * 60_000 },
+          { usedPercent: 100, windowMinutes: 10080, resetsAt: exhaustedAt + 48 * 60 * 60_000 },
+        ],
+      })),
+    ));
+    const consent = await client.call('create_session', { workspace: folder });
+    const downgraded = await client.call('send_message', {
+      id: consent.id,
+      text: architecture,
+      options: { mode: 'auto', effort: '', accessMode: 'autopilot' },
+    });
+    assert.deepEqual([downgraded.accountId, downgraded.model], [thirdCodex.id, 'gpt-terra-fixture']);
+    let waiting;
+    for (let i = 0; i < 200 && !waiting; i++) {
+      waiting = (await client.call('pending_questions')).at(-1);
+      if (!waiting) await sleep(100);
+    }
+    assert(waiting, 'the downgrade asks before anything is sent');
+    const asked = (await client.call('get_messages', { id: consent.id }))
+      .flatMap((message) => message.activity)
+      .find((step) => step.kind === 'interaction');
+    const question = JSON.parse(asked.text).questions[0].question;
+    assert.match(question, /No available model meets this task's retained difficulty\./, question);
+    assert.match(question, /The Claude account has a suitable model, but its quota is exhausted and resets in about 2 hours\./, question);
+    await client.call('answer_question', { id: waiting, answers: { switch: ['Continue'] } });
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    assert((await client.call('__status')).idle, 'the turn finished on the weaker model after consent');
   }
   await writeFile(
     path.join(workspace, 'package.json'),

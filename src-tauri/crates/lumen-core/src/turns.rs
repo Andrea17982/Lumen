@@ -735,6 +735,73 @@ async fn balance_model_account(
     selected
 }
 
+/// D1: when Auto must run a weaker model because every account that could serve the task is
+/// out of quota, say which provider is blocked and when its quota resets, so the user can also
+/// wait and resend. `None` means the weaker model is the honest best choice, not a quota trade.
+async fn preferred_quota_hint(core: &Core, request: &str, target: i32) -> Option<String> {
+    let preferred = router::provider_for(request, target);
+    if !matches!(preferred, Provider::Claude | Provider::Gpt) {
+        return None;
+    }
+    let accounts = core.store.accounts().ok()?;
+    let usage = crate::read_usage(core).ok()?;
+    let at = now();
+    let blocked = accounts
+        .iter()
+        .filter(|a| a.provider == preferred)
+        .any(|a| {
+            core.limits.cooling(&a.id, at)
+                || usage
+                    .iter()
+                    .find(|u| u.account_id == a.id)
+                    .and_then(|u| router::usage_pressure(u, at))
+                    .is_some_and(|p| p >= 1000.0)
+        });
+    if !blocked {
+        return None;
+    }
+    // Only offer the wait when a blocked account really has a model for this difficulty.
+    for a in accounts.iter().filter(|a| a.provider == preferred) {
+        let Ok(models) = models_in(core, a, false, None, "").await else {
+            continue;
+        };
+        if !models.iter().any(|m| router::model_tier(m) >= target) {
+            continue;
+        }
+        let resets = usage.iter().find(|u| u.account_id == a.id).and_then(|u| {
+            u.windows
+                .iter()
+                .map(|w| w.resets_at)
+                .filter(|r| *r > at)
+                .min()
+        });
+        let name = match preferred {
+            Provider::Claude => "Claude",
+            _ => "ChatGPT",
+        };
+        return Some(match resets {
+            Some(at_reset) => format!(
+                " The {name} account has a suitable model, but its quota is exhausted and resets {}.",
+                in_about(at_reset - at)
+            ),
+            None => format!(" The {name} account has a suitable model, but its quota is exhausted."),
+        });
+    }
+    None
+}
+
+/// Coarse, honest phrasing of a waiting time; the exact clock lives in the quota panel.
+fn in_about(ms: i64) -> String {
+    let minutes = (ms / 60_000).max(1);
+    if minutes < 60 {
+        format!("in about {minutes} minutes")
+    } else if minutes < 48 * 60 {
+        format!("in about {} hours", (minutes as f64 / 60.0).round() as i64)
+    } else {
+        format!("in about {} days", (minutes as f64 / 1440.0).round() as i64)
+    }
+}
+
 fn use_writer(plan: &mut Plan, a: &Account, accounts: &[Account]) {
     plan.provider = a.provider.clone();
     plan.account_id = a.id.clone();
@@ -2109,11 +2176,14 @@ async fn run_plan(
     let writer = account(core, &plan.account_id)?;
     if options.mode == "auto" {
         let history = core.store.messages(&s.id)?;
-        let explicit = history
+        let request = history
             .iter()
             .rev()
             .find(|m| m.role == "user")
-            .is_some_and(|m| router::requested_provider(&m.text).is_some());
+            .map(|m| m.text.as_str())
+            .unwrap_or_default();
+        let explicit = router::requested_provider(request).is_some();
+        // The difficulty retained across this conversation, starting from the current request.
         let target = crate::classify::previous(&history)
             .map(|v| v.task.tier)
             .unwrap_or(0);
@@ -2125,8 +2195,36 @@ async fn run_plan(
                 .and_then(|id| models.iter().find(|m| &m.id == id))
                 .is_some_and(|m| router::model_tier(m) < target)
         {
+            // D1: when the weaker model is a quota trade, say which account is blocked and
+            // when its quota resets, so waiting and resending is an informed alternative.
+            let hint = if options.audit_of.is_none() {
+                preferred_quota_hint(core, request, target).await
+            } else {
+                None
+            };
+            let question = format!(
+                "No available model meets this task's retained difficulty.{} Continue with the proposed weaker model? Expect a possible drop in quality.",
+                hint.unwrap_or_default()
+            );
             let connection = crate::interactions::Connection::default();
-            let question=crate::interactions::Question {id:"switch".into(),header:"Model capability".into(),question:"No available model meets this task's retained difficulty. Continue with the proposed weaker model? Expect a possible drop in quality.".into(),options:vec![crate::interactions::OptionItem{label:"Continue".into(),description:"Use the proposed model for this task.".into()},crate::interactions::OptionItem{label:"Stop".into(),description:"Keep the task here without sending it.".into()}],multi_select:false,secret:false,optional:false};
+            let question = crate::interactions::Question {
+                id: "switch".into(),
+                header: "Model capability".into(),
+                question,
+                options: vec![
+                    crate::interactions::OptionItem {
+                        label: "Continue".into(),
+                        description: "Use the proposed model for this task.".into(),
+                    },
+                    crate::interactions::OptionItem {
+                        label: "Stop".into(),
+                        description: "Keep the task here without sending it.".into(),
+                    },
+                ],
+                multi_select: false,
+                secret: false,
+                optional: false,
+            };
             let (activity, receive) = connection.ask(vec![question], "model-downgrade".into())?;
             note(app, &s.id, out, &activity.kind, activity.text);
             core.store.save_message(&s.id, out)?;
@@ -3041,6 +3139,114 @@ mod resume_tests {
         };
         stick_to_previous(&f.core, &history, &[old.clone(), other], &mut plan);
         assert_eq!(plan.account_id, old.id);
+    }
+
+    fn catalog_with(name: &str) -> Vec<ModelInfo> {
+        vec![ModelInfo {
+            id: name.into(),
+            name: name.into(),
+            description: String::new(),
+            efforts: vec![],
+            default_effort: String::new(),
+            is_default: true,
+        }]
+    }
+
+    fn usage_json(path: &std::path::Path, account: &str, used: f64, resets_in: i64) {
+        let at = now();
+        let value = serde_json::json!([{
+            "accountId": account,
+            "updatedAt": at,
+            "source": "test",
+            "windows": [
+                {"usedPercent": used, "windowMinutes": 300, "resetsAt": at + resets_in},
+                {"usedPercent": used, "windowMinutes": 10080, "resetsAt": at + 48 * 3_600_000},
+            ]
+        }]);
+        std::fs::write(path, value.to_string()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn quota_hint_names_the_blocked_provider_and_its_reset() {
+        let f = crate::test_support::Fixture::new();
+        let claude = f
+            .core
+            .store
+            .add_account("Claude".into(), Provider::Claude)
+            .unwrap();
+        f.core.catalogs.lock().unwrap().insert(
+            claude.id.clone(),
+            (std::time::Instant::now(), catalog_with("opus")),
+        );
+        usage_json(&f.root.join("usage.json"), &claude.id, 100.0, 7_200_000);
+        let hint =
+            preferred_quota_hint(&f.core, "Progetta la nuova architettura del database", 2).await;
+        assert_eq!(
+            hint.as_deref(),
+            Some(" The Claude account has a suitable model, but its quota is exhausted and resets in about 2 hours.")
+        );
+        // A healthy account, or a request that prefers another provider, stays silent.
+        usage_json(&f.root.join("usage.json"), &claude.id, 40.0, 7_200_000);
+        assert!(
+            preferred_quota_hint(&f.core, "Progetta la nuova architettura del database", 2)
+                .await
+                .is_none()
+        );
+        usage_json(&f.root.join("usage.json"), &claude.id, 100.0, 7_200_000);
+        assert!(
+            preferred_quota_hint(&f.core, "Research primary sources and trade-offs", 2)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn quota_hint_waits_only_for_an_account_that_can_serve_the_task() {
+        let f = crate::test_support::Fixture::new();
+        let claude = f
+            .core
+            .store
+            .add_account("Claude".into(), Provider::Claude)
+            .unwrap();
+        f.core.catalogs.lock().unwrap().insert(
+            claude.id.clone(),
+            (std::time::Instant::now(), catalog_with("haiku")),
+        );
+        usage_json(&f.root.join("usage.json"), &claude.id, 100.0, 7_200_000);
+        // Exhausted, but its catalog cannot serve a tier-two task: no reason to wait.
+        assert!(
+            preferred_quota_hint(&f.core, "Progetta la nuova architettura del database", 2)
+                .await
+                .is_none()
+        );
+        // Exhausted with a suitable model but no readable reset time: ask without a time.
+        f.core.catalogs.lock().unwrap().insert(
+            claude.id.clone(),
+            (std::time::Instant::now(), catalog_with("opus")),
+        );
+        f.core.limits.cool(&claude.id, now() + 60_000);
+        let value = serde_json::json!([{
+            "accountId": claude.id,
+            "updatedAt": now(),
+            "source": "test",
+            "windows": [
+                {"usedPercent": 100.0, "windowMinutes": 300, "resetsAt": now() - 1},
+            ]
+        }]);
+        std::fs::write(f.root.join("usage.json"), value.to_string()).unwrap();
+        assert_eq!(
+            preferred_quota_hint(&f.core, "Progetta la nuova architettura del database", 2)
+                .await
+                .as_deref(),
+            Some(" The Claude account has a suitable model, but its quota is exhausted.")
+        );
+    }
+
+    #[test]
+    fn waiting_time_is_phased_honestly() {
+        assert_eq!(in_about(5 * 60_000), "in about 5 minutes");
+        assert_eq!(in_about(90 * 60_000), "in about 2 hours");
+        assert_eq!(in_about(48 * 60 * 60_000), "in about 2 days");
     }
 
     #[test]
