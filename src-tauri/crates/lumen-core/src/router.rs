@@ -565,7 +565,7 @@ pub fn route_with(
                     .iter()
                     .find(|a| matches!(a.provider, Provider::Claude | Provider::Gpt))
             })
-            .or_else(|| accounts.first())
+            .or_else(|| accounts.iter().min_by_key(|a| a.provider.fallback_rank()))
     };
     let a = selected.ok_or(
         "Add an account for this provider in Settings, then complete the official CLI login.",
@@ -841,32 +841,50 @@ pub fn complex(prompt: &str) -> bool {
 /// Quota pressure per time remaining. The tightest active window is the constraint.
 /// Snapshots expire after 15 minutes; exhausted windows never receive reset bonuses.
 pub fn usage_pressure(usage: &AccountUsage, at: i64) -> Option<f64> {
+    quota_windows(usage, at)?
+        .map(|(time, quota)| {
+            if quota == 0.0 {
+                1000.0
+            } else {
+                time.max(0.01) / quota.max(0.01)
+            }
+        })
+        .reduce(f64::max)
+}
+
+/// Compare the tightest window first, then each other window in descending order.
+pub(crate) fn quota_rank(usage: &AccountUsage, at: i64) -> Option<Vec<f64>> {
+    let mut windows = quota_windows(usage, at)?
+        .map(|(time, quota)| time / quota)
+        .collect::<Vec<_>>();
+    windows.sort_unstable_by(|a, b| b.total_cmp(a));
+    (!windows.is_empty()).then_some(windows)
+}
+
+fn quota_windows(usage: &AccountUsage, at: i64) -> Option<impl Iterator<Item = (f64, f64)> + '_> {
     if at - usage.updated_at > 900_000 || usage.updated_at > at {
         return None;
     }
-    usage
-        .windows
-        .iter()
-        .filter(|w| {
-            (usage.source != "antigravity-cli"
-                || w.group.as_deref().is_some_and(|g| {
-                    let g = g.to_lowercase();
-                    g.contains("gemini") || g.contains("google")
-                }))
-                && w.resets_at > at
-                && w.window_minutes > 0
-                && w.used_percent.is_finite()
-                && (0.0..=100.0).contains(&w.used_percent)
-        })
-        .map(|w| {
-            if w.used_percent >= 100.0 {
-                return 1000.0;
-            }
-            let remaining_time =
-                ((w.resets_at - at) as f64 / (w.window_minutes as f64 * 60_000.0)).clamp(0.01, 1.0);
-            remaining_time / ((100.0 - w.used_percent) / 100.0).max(0.01)
-        })
-        .reduce(f64::max)
+    Some(
+        usage
+            .windows
+            .iter()
+            .filter(move |w| {
+                (usage.source != "antigravity-cli"
+                    || w.group.as_deref().is_some_and(|g| {
+                        let g = g.to_lowercase();
+                        g.contains("gemini") || g.contains("google")
+                    }))
+                    && w.resets_at > at
+                    && w.window_minutes > 0
+                    && w.used_percent.is_finite()
+                    && (0.0..=100.0).contains(&w.used_percent)
+            })
+            .map(move |w| {
+                let time = (w.resets_at - at) as f64 / (w.window_minutes as f64 * 60_000.0);
+                (time.min(1.0), (100.0 - w.used_percent) / 100.0)
+            }),
+    )
 }
 
 #[cfg(test)]
@@ -941,7 +959,6 @@ mod tests {
             effort: "medium".into(),
             write_access: false,
             auto_policy: AutoPolicy::Default,
-            balance_usage: false,
             access_mode: None,
             auto_review: false,
             attachments: vec![],
@@ -1293,6 +1310,56 @@ mod tests {
         assert_eq!(usage_pressure(&near_reset, at - 1), None);
         assert_eq!(usage_pressure(&usage(20.0, 300, 0), at), None);
     }
+    #[test]
+    fn quota_rank_orders_same_provider_accounts() {
+        let at = 1_800_000_000_000;
+        let usage = |short: f64, weekly: f64, weekly_reset: i64| AccountUsage {
+            account_id: "a".into(),
+            updated_at: at,
+            source: "test".into(),
+            windows: vec![
+                UsageWindow {
+                    group: None,
+                    used_percent: 100.0 - short,
+                    window_minutes: 300,
+                    resets_at: at + 300 * 60_000,
+                },
+                UsageWindow {
+                    group: None,
+                    used_percent: 100.0 - weekly,
+                    window_minutes: 10_080,
+                    resets_at: at + weekly_reset * 60_000,
+                },
+            ],
+        };
+        let day = 24 * 60;
+        // Same reset times: the account with more of the five-hour window left wins.
+        let scarce = usage(5.0, 60.0, 3 * day);
+        let ample = usage(80.0, 60.0, 3 * day);
+        assert!(quota_rank(&ample, at).unwrap() < quota_rank(&scarce, at).unwrap());
+        // Equal five-hour pressure: the account whose weekly window resets sooner wins.
+        let soon = usage(20.0, 20.0, 20);
+        let later = usage(20.0, 20.0, 3 * day);
+        assert!(quota_rank(&soon, at).unwrap() < quota_rank(&later, at).unwrap());
+        // Equal five-hour pressure and reset: more weekly headroom wins, so both
+        // accounts drain uniformly instead of exhausting one first.
+        let drained = usage(5.0, 5.0, 3 * day);
+        let deep = usage(5.0, 80.0, 3 * day);
+        assert!(quota_rank(&deep, at).unwrap() < quota_rank(&drained, at).unwrap());
+        // Equal pressure never switches: balance_model_account compares strictly.
+        assert_eq!(
+            quota_rank(&scarce, at),
+            quota_rank(&usage(5.0, 60.0, 3 * day), at)
+        );
+        // An account reporting fewer windows is not comparable and never switches.
+        let mut partial = scarce.clone();
+        partial.windows.truncate(1);
+        assert_ne!(
+            quota_rank(&partial, at).map(|w| w.len()),
+            quota_rank(&scarce, at).map(|w| w.len())
+        );
+    }
+
     #[test]
     fn named_models_beat_catalog_aliases() {
         let m = |id: &str, name: &str, default: bool| ModelInfo {

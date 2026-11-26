@@ -94,11 +94,25 @@ pub(crate) async fn submit(
     let requested = (options.mode == "auto")
         .then(|| router::requested_provider(&text))
         .flatten();
-    let usage = if options.mode == "auto" && requested.is_none() {
+    let mut usage = if options.mode == "auto" {
         crate::read_usage(&core)?
     } else {
         vec![]
     };
+    let budget = options.auto_policy == AutoPolicy::Budget;
+    let quality = options.auto_policy == AutoPolicy::Quality;
+    let cross_provider = budget && requested.is_none();
+    if options.mode == "auto"
+        && (accounts
+            .iter()
+            .filter(|a| a.provider == Provider::Gpt)
+            .count()
+            > 1
+            || (requested.is_none()
+                && (budget || accounts.iter().any(|a| a.provider.fallback_rank() > 0))))
+    {
+        crate::refresh_routing_usage(&core, &accounts, &mut usage).await?;
+    }
     let available = accounts
         .iter()
         .filter(|a| {
@@ -150,9 +164,6 @@ pub(crate) async fn submit(
         crate::classify::heuristic(&text)
     };
     let mut routing = options.clone();
-    let budget = options.auto_policy == AutoPolicy::Budget;
-    let quality = options.auto_policy == AutoPolicy::Quality;
-    routing.balance_usage = budget || (!quality && options.balance_usage);
     if let Some(provider) = requested {
         routing.mode = provider.into();
         routing.account_id = None;
@@ -171,13 +182,10 @@ pub(crate) async fn submit(
         if deep_research {
             plan.reason = "In-depth research with proportional reasoning".into();
         }
-        if requested.is_none() {
-            let balanced = crate::balance(&core, &routing, &available, &mut plan).await?;
-            if !quality || reused.is_some() {
-                let quota_decisive = balanced && (budget || plan.provider.fallback_rank() > 0);
-                stick_to_previous(&core, &history, &available, &mut plan, quota_decisive);
-            }
-        }
+        let resumed = requested.is_none()
+            && !budget
+            && (!quality || reused.is_some())
+            && stick_to_previous(&core, &history, &available, &mut plan);
         let a = account(&core, &plan.account_id)?;
         let models = models_in(&core, &a, false, None, &session.workspace).await?;
         let target = verdict.task.tier;
@@ -208,6 +216,20 @@ pub(crate) async fn submit(
                     break;
                 }
             }
+        }
+        selected = balance_model_account(
+            &core,
+            &session.workspace,
+            &available,
+            &usage,
+            cross_provider,
+            &mut plan,
+            selected,
+        )
+        .await;
+        if resumed && plan.account_id == a.id {
+            plan.reason
+                .push_str(" · same assistant as the previous reply");
         }
         reconcile_review(verdict.task, &options, wanted_review, &mut plan)?;
         plan.effort = resolve_effort(&selected, &plan.effort);
@@ -613,15 +635,13 @@ fn stick_to_previous(
     history: &[Message],
     accounts: &[Account],
     plan: &mut Plan,
-    balanced: bool,
-) {
-    if balanced
-        || crate::adapter_contract::contract(&plan.provider)
-            .native_resume
-            .support
-            != crate::adapter_contract::Support::Available
+) -> bool {
+    if crate::adapter_contract::contract(&plan.provider)
+        .native_resume
+        .support
+        != crate::adapter_contract::Support::Available
     {
-        return;
+        return false;
     }
     let Some(native) = history
         .iter()
@@ -629,17 +649,90 @@ fn stick_to_previous(
         .find(|m| m.role == "assistant")
         .and_then(native_of)
     else {
-        return;
+        return false;
     };
     let Some(a) = accounts.iter().find(|a| a.id == native.account) else {
-        return;
+        return false;
     };
     if a.id == plan.account_id || core.limits.cooling(&a.id, now()) {
-        return;
+        return false;
     }
     use_writer(plan, a, accounts);
-    plan.reason
-        .push_str(" · same assistant as the previous reply");
+    true
+}
+
+/// Quota may change the account after model selection. Cross-provider balancing can
+/// only trade for a named model of the same tier with no reduction in effort.
+async fn balance_model_account(
+    core: &Core,
+    workspace: &str,
+    accounts: &[Account],
+    usage: &[AccountUsage],
+    cross_provider: bool,
+    plan: &mut Plan,
+    selected: ModelInfo,
+) -> ModelInfo {
+    let at = now();
+    let rank = |id: &str| {
+        usage
+            .iter()
+            .find(|u| u.account_id == id)
+            .and_then(|u| router::quota_rank(u, at))
+    };
+    let Some(current) = rank(&plan.account_id) else {
+        return selected;
+    };
+    let effort = resolve_effort(&selected, &plan.effort);
+    let mut alternatives = accounts
+        .iter()
+        .filter(|a| {
+            a.id != plan.account_id
+                && (a.provider == plan.provider
+                    || (cross_provider
+                        && matches!(a.provider, Provider::Claude | Provider::Gpt)
+                        && matches!(plan.provider, Provider::Claude | Provider::Gpt)))
+        })
+        .filter_map(|a| {
+            let other = rank(&a.id)?;
+            (other.len() == current.len() && other < current).then_some((a, other))
+        })
+        .collect::<Vec<_>>();
+    alternatives.sort_by(|(a, x), (b, y)| {
+        x.partial_cmp(y)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| (a.provider != plan.provider).cmp(&(b.provider != plan.provider)))
+    });
+    for (account, _) in alternatives {
+        let Ok(models) = models_in(core, account, false, None, workspace).await else {
+            continue;
+        };
+        let same = account.provider == plan.provider;
+        let candidate = if same {
+            models
+                .iter()
+                .find(|m| m.id == selected.id && resolve_effort(m, &plan.effort) == effort)
+        } else {
+            models
+                .iter()
+                .filter(|m| {
+                    router::model_tier(m) == router::model_tier(&selected)
+                        && !matches!(m.id.as_str(), "auto" | "default")
+                        && router::effort_grade(&resolve_effort(m, &plan.effort))
+                            >= router::effort_grade(&effort)
+                })
+                .max_by_key(|m| m.is_default)
+        };
+        if let Some(model) = candidate {
+            use_writer(plan, account, accounts);
+            plan.reason.push_str(if same {
+                " · more quota for the same model"
+            } else {
+                " · more quota at the same model tier"
+            });
+            return model.clone();
+        }
+    }
+    selected
 }
 
 fn use_writer(plan: &mut Plan, a: &Account, accounts: &[Account]) {
@@ -1392,7 +1485,6 @@ async fn stage_fallback(
             && access == AccessMode::Autopilot
             && current.provider == Provider::Gpt
             && core.approvals.is_some()
-            && !options.resume_only
             && options.audit_of.is_none();
         let replay = if !first && continuation.is_none() && prompt.is_empty() {
             if let Some(options) = resume.and_then(|r| r.replay.as_ref()) {
@@ -1445,7 +1537,7 @@ async fn stage_fallback(
                         "Autopilot could not finish the request. See the assistant's explanation."
                             .into(),
                     ),
-                    AutopilotOutcome::Unfinished if continuation.is_some() => return Err(
+                    AutopilotOutcome::Unfinished if continuation.is_some() || options.resume_only => return Err(
                         "Autopilot could not confirm completion after continuing in the native session. Review the recorded work."
                             .into(),
                     ),
@@ -2929,7 +3021,7 @@ mod resume_tests {
         assert!(reconcile_review(optional, &options, false, &mut plan).is_ok());
     }
     #[test]
-    fn quality_continuity_does_not_undo_balanced_account_selection() {
+    fn continuity_prefers_the_previous_native_account() {
         let f = crate::test_support::Fixture::new();
         let old = claude();
         let other = Account {
@@ -2947,8 +3039,8 @@ mod resume_tests {
             reason: "quota selection".into(),
             partner_account: None,
         };
-        stick_to_previous(&f.core, &history, &[old, other.clone()], &mut plan, true);
-        assert_eq!(plan.account_id, other.id);
+        stick_to_previous(&f.core, &history, &[old.clone(), other], &mut plan);
+        assert_eq!(plan.account_id, old.id);
     }
 
     #[test]

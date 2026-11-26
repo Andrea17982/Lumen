@@ -353,6 +353,11 @@ fn list_sessions(
     Ok(sessions)
 }
 #[crate::command]
+fn get_session(core: crate::CoreRef<'_>, id: String) -> Result<Session, String> {
+    core.store.session(&id)
+}
+
+#[crate::command]
 fn create_session(core: crate::CoreRef<'_>, workspace: String) -> Result<Session, String> {
     let path = dunce::canonicalize(workspace).map_err(|_| "Choose an existing workspace folder")?;
     if !path.is_dir() {
@@ -1122,108 +1127,28 @@ fn save_mcp(core: crate::CoreRef<'_>, json: String) -> Result<(), String> {
     integrations::save_mcp(&core.root, &json)
 }
 
-/// Usage-aware account choice for Auto (and the Google emergency fallback).
-async fn balance(
+/// Refresh Codex quota through its native metadata endpoint when Auto can compare accounts.
+async fn refresh_routing_usage(
     core: &Core,
-    options: &RunOptions,
     accounts: &[Account],
-    plan: &mut Plan,
-) -> Result<bool, String> {
-    let mut selected_by_usage = false;
-    if options.balance_usage || accounts.iter().any(|a| a.provider.fallback_rank() > 0) {
-        let mut usage = read_usage(core)?;
-        for a in accounts.iter().filter(|a| a.provider == Provider::Gpt) {
-            let fresh = usage
-                .iter()
-                .find(|u| u.account_id == a.id)
-                .and_then(|u| router::usage_pressure(u, now()))
-                .is_some();
-            if !fresh
-                && (options.balance_usage
-                    || accounts.iter().any(|x| x.provider.fallback_rank() > 0))
-            {
-                if let Ok(snapshot) = usage::read(a, &config_dir(core, a)).await {
-                    write_usage(core, snapshot.clone())?;
-                    usage.retain(|u| u.account_id != a.id);
-                    usage.push(snapshot);
-                }
-            }
+    usage: &mut Vec<AccountUsage>,
+) -> Result<(), String> {
+    for account in accounts.iter().filter(|a| a.provider == Provider::Gpt) {
+        if usage
+            .iter()
+            .find(|u| u.account_id == account.id)
+            .and_then(|u| router::usage_pressure(u, now()))
+            .is_some()
+        {
+            continue;
         }
-        let primary: Vec<_> = accounts
-            .iter()
-            .filter(|a| matches!(a.provider, Provider::Claude | Provider::Gpt))
-            .collect();
-        // Google is a last resort only when every configured primary account has fresh exhausted quota.
-        let scores: Option<Vec<_>> = primary
-            .iter()
-            .map(|a| {
-                usage
-                    .iter()
-                    .find(|u| u.account_id == a.id)
-                    .and_then(|u| router::usage_pressure(u, now()))
-                    .map(|score| (*a, score))
-            })
-            .collect();
-        if let Some(scores) = scores {
-            if !scores.is_empty() && scores.iter().all(|(_, score)| *score >= 1000.0) {
-                if let Some(google) = accounts
-                    .iter()
-                    .filter(|a| {
-                        a.provider.fallback_rank() > 0
-                            && !core.limits.cooling(&a.id, now())
-                            && !usage
-                                .iter()
-                                .find(|u| u.account_id == a.id)
-                                .and_then(|u| router::usage_pressure(u, now()))
-                                .is_some_and(|p| p >= 1000.0)
-                    })
-                    .min_by_key(|a| a.provider.fallback_rank())
-                {
-                    plan.provider = google.provider.clone();
-                    selected_by_usage = true;
-                    plan.account_id = google.id.clone();
-                    plan.strategy = "single".into();
-                    plan.partner_account = None;
-                    plan.reason = format!(
-                        "Claude and GPT quotas confirmed exhausted; emergency fallback to {}",
-                        google.provider.binary()
-                    );
-                } else {
-                    return Err("Claude and GPT quotas are exhausted. Add an Antigravity or Ollama account for emergency fallback.".into());
-                }
-            } else if options.balance_usage {
-                if let Some((a, _)) = scores
-                    .iter()
-                    .filter(|(_, score)| *score < 1000.0)
-                    .min_by(|a, b| a.1.total_cmp(&b.1))
-                {
-                    plan.provider = a.provider.clone();
-                    selected_by_usage = true;
-                    plan.account_id = a.id.clone();
-                    plan.partner_account = if plan.strategy == "single" {
-                        None
-                    } else {
-                        scores
-                            .iter()
-                            .filter(|(b, score)| b.id != a.id && *score < 1000.0)
-                            .min_by(|left, right| {
-                                (left.0.provider == a.provider)
-                                    .cmp(&(right.0.provider == a.provider))
-                                    .then(left.1.total_cmp(&right.1))
-                            })
-                            .map(|(b, _)| b.id.clone())
-                    };
-                    if plan.partner_account.is_none() {
-                        plan.strategy = "single".into();
-                    }
-                }
-            }
-        } else {
-            plan.reason
-                .push_str(" · usage balancing unavailable: missing/stale quota data");
+        if let Ok(snapshot) = usage::read(account, &config_dir(core, account)).await {
+            write_usage(core, snapshot.clone())?;
+            usage.retain(|u| u.account_id != account.id);
+            usage.push(snapshot);
         }
     }
-    Ok(selected_by_usage)
+    Ok(())
 }
 
 pub async fn dispatch(
@@ -1243,6 +1168,7 @@ pub async fn dispatch(
             __ipc_toggle_discovered_integration(app, core, args).await
         }
         "list_sessions" => __ipc_list_sessions(app, core, args).await,
+        "get_session" => __ipc_get_session(app, core, args).await,
         "create_session" => __ipc_create_session(app, core, args).await,
         "update_session" => __ipc_update_session(app, core, args).await,
         "set_session_access_mode" => __ipc_set_session_access_mode(app, core, args).await,

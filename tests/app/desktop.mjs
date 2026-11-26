@@ -25,7 +25,7 @@ let app;
 let probe;
 try {
   app = await launchApp(data);
-  const { browser } = app;
+  let { browser } = app;
   const status = "return document.querySelector('[role=status]')?.textContent";
   await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'connection');
   const first = await client.call('__status');
@@ -56,6 +56,15 @@ try {
   const text = await browser.run(log);
   assert.equal(text.split('DAEMON_PARTIAL').length - 1, 1, text);
   checks.push('after a service crash the shell restarts it, and the window shows the partial reply once and the turn interrupted');
+  await app.close();
+  app = undefined;
+  app = await launchApp(data);
+  browser = app.browser;
+  await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'connection after reopening');
+  await browser.until("return document.querySelector('nav button[aria-current=page]')?.textContent", (s) => s?.includes('DAEMON_TURN_FIXTURE'), 'restored conversation in its project');
+  await browser.until(log, (t) => t.split('DAEMON_PARTIAL').length - 1 === 1, 'restored partial transcript');
+  assert.equal((await client.call('__status')).pid, restarted.pid);
+  checks.push('reopening the shell restores the selected conversation and partial output without relaunching the daemon');
 
   // A plugin panel served by lumen-plugin: tries to reach the shell's IPC. Tauri's own invoke
   // falls back to postMessage when the panel's CSP blocks fetch, so this covers both paths.

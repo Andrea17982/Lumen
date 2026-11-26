@@ -29,6 +29,7 @@ export async function launchApp(data) {
     env: {
       ...process.env,
       LUMEN_TEST_DATA_DIR: data,
+      WEBVIEW2_USER_DATA_FOLDER: path.join(data, 'webview'),
       TAURI_WEBDRIVER_PORT: String(port),
       PATH: `${path.resolve('tests/fixtures/cli')};${process.env.PATH}`,
     },

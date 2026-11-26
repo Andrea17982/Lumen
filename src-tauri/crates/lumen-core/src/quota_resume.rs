@@ -17,7 +17,7 @@ pub fn reset_at(core: &Core, account: &str, error: &str) -> i64 {
 }
 
 #[crate::command]
-pub async fn resume_at_reset(
+pub fn resume_at_reset(
     app: crate::host::EventHub,
     core: crate::CoreRef<'_>,
     id: String,
@@ -47,6 +47,7 @@ pub async fn resume_at_reset(
         .filter(|at| *at <= now() + 7 * 24 * 3_600_000)
         .ok_or("Invalid reset time")?;
     let account = crate::account(&core, retry["accountId"].as_str().ok_or("Missing account")?)?;
+    core.limits.cool(&account.id, at);
     if crate::adapter_contract::contract(&account.provider)
         .native_resume
         .support
@@ -71,6 +72,11 @@ pub async fn resume_at_reset(
             .text,
     )
     .map_err(|_| "Invalid saved execution options")?;
+    if options.access() != session.access_mode {
+        return Err(
+            "Conversation permissions changed since the interrupted turn; resume manually".into(),
+        );
+    }
     options.mode = account.provider.id();
     options.account_id = Some(account.id);
     options.model = retry["model"].as_str().map(str::to_owned);
@@ -171,27 +177,21 @@ pub async fn resume_at_reset(
 
 pub(crate) fn restore(app: crate::host::EventHub, core: &Arc<Core>) {
     for (id, message) in core.store.quota_schedules().unwrap_or_default() {
-        let core = core.clone();
-        let app = app.clone();
-        tokio::spawn(async move {
-            if let Err(error) = resume_at_reset(
-                app.clone(),
-                crate::CoreRef(&core),
-                id.clone(),
-                message.clone(),
-            )
-            .await
-            {
-                let _ = core.store.unschedule_quota(&id);
-                crate::event(
-                    &app,
-                    &id,
-                    &message,
-                    "error",
-                    &format!("Scheduled continuation needs manual review: {error}"),
-                );
-            }
-        });
+        if let Err(error) = resume_at_reset(
+            app.clone(),
+            crate::CoreRef(core),
+            id.clone(),
+            message.clone(),
+        ) {
+            let _ = core.store.unschedule_quota(&id);
+            crate::event(
+                &app,
+                &id,
+                &message,
+                "error",
+                &format!("Scheduled continuation needs manual review: {error}"),
+            );
+        }
     }
 }
 
@@ -205,5 +205,65 @@ mod tests {
         let usage = serde_json::json!([{"accountId":"a","updatedAt":time,"source":"manual","windows":[{"usedPercent":100,"resetsAt":time+1000,"windowMinutes":300},{"usedPercent":100,"resetsAt":time+5000,"windowMinutes":10080},{"usedPercent":20,"resetsAt":time+9000,"windowMinutes":60}]}]);
         std::fs::write(f.root.join("usage.json"), usage.to_string()).unwrap();
         assert_eq!(reset_at(&f.core, "a", "Resets in 1 second"), time + 5000);
+    }
+
+    #[tokio::test]
+    async fn restore_cancels_a_schedule_if_conversation_permissions_changed() {
+        let f = crate::test_support::Fixture::new();
+        let session = f
+            .core
+            .store
+            .create(f.root.to_string_lossy().into())
+            .unwrap();
+        let account = f
+            .core
+            .store
+            .add_account("Codex fixture".into(), Provider::Gpt)
+            .unwrap();
+        let request = Message {
+            id: id(),
+            role: "user".into(),
+            text: "Make a change".into(),
+            activity: vec![Activity {
+                kind: "run-options".into(),
+                text: serde_json::to_string(&crate::test_support::Fixture::options(
+                    AccessMode::Autopilot,
+                ))
+                .unwrap(),
+            }],
+        };
+        let reply = Message {
+            id: id(),
+            role: "assistant".into(),
+            text: "Partial work".into(),
+            activity: vec![
+                Activity { kind: "error".into(), text: "Rate limit".into() },
+                Activity {
+                    kind: "quota-reset".into(),
+                    text: serde_json::json!({"at":now()+60_000,"accountId":account.id,"model":"test","effort":"low"}).to_string(),
+                },
+                Activity {
+                    kind: "native".into(),
+                    text: serde_json::json!({"account":account.id,"workspace":session.workspace,"session":"native-session"}).to_string(),
+                },
+            ],
+        };
+        f.core.store.insert_message(&session.id, &request).unwrap();
+        f.core.store.save_message(&session.id, &reply).unwrap();
+        f.core.store.schedule_quota(&session.id, &reply.id).unwrap();
+        restore(crate::host::EventHub::default(), &f.core);
+        assert!(f.core.store.quota_schedules().unwrap().is_empty());
+        assert!(f.core.jobs.lock().unwrap().is_empty());
+        assert!(f.core.limits.cooling(&account.id, now()));
+        assert_eq!(
+            f.core
+                .store
+                .messages(&session.id)
+                .unwrap()
+                .last()
+                .unwrap()
+                .text,
+            "Partial work"
+        );
     }
 }

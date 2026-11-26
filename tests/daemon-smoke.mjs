@@ -16,6 +16,7 @@ daemon.stderr.on('data', (b) => {
   log += b;
 });
 let stream;
+let checkQuotaReplay;
 try {
   assert.equal((await client.ready()).idle, true, log);
   await assert.rejects(
@@ -72,7 +73,7 @@ try {
   await new Promise((resolve) =>
     daemon.exitCode !== null ? resolve() : daemon.once('exit', resolve),
   );
-  const restarted = client.start();
+  let restarted = client.start();
   await client.ready();
   assert.deepEqual(await client.call('create_session', { workspace }, { command_id }), replayed);
   assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
@@ -205,6 +206,113 @@ try {
       assert.equal(routed.accountId, expectedAccount, autoPolicy);
       for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
     }
+    const origin = await mkdtemp(path.join(data, 'auto-quota-'));
+    const project = await client.call('add_workspace', { name: 'Quota project', folder: origin });
+    const git = (cwd, ...args) => execFileSync('git', args, { cwd, windowsHide: true, encoding: 'utf8' }).trim();
+    git(origin, 'init', '-q', '-b', 'main');
+    await writeFile(path.join(origin, 'auto-quota-project.txt'), 'Project marker');
+    git(origin, 'add', 'auto-quota-project.txt');
+    git(origin, '-c', 'user.name=Lumen Fixture', '-c', 'user.email=lumen@example.invalid', 'commit', '-qm', 'Fixture project');
+    const chat = await client.call('create_session', { workspace: origin });
+    const session = async () => (await client.call('list_sessions', { search: '', offset: 0 })).find((s) => s.id === chat.id);
+    const waitForStatus = async (expected) => {
+      for (let i = 0; i < 240; i++) {
+        const current = await session();
+        if (current?.status === expected) return current;
+        await sleep(100);
+      }
+      assert.equal((await session())?.status, expected);
+    };
+    await client.call('set_session_access_mode', { id: chat.id, mode: 'autopilot' });
+    const routed = await client.call('send_message', {
+      id: chat.id,
+      text: 'Investigate rare divergence across systems with validation of ordering invariants. Implement the fix. AUTO_QUOTA_RESTART_FIXTURE',
+      options: { mode: 'auto', effort: '', accessMode: 'autopilot' },
+    });
+    assert.equal(routed.accountId, codex.id);
+    assert.equal(routed.model, 'gpt-astra-fixture');
+    assert.equal(routed.effort, 'max');
+    const interrupted = await waitForStatus('error');
+    const task = await client.call('task_worktree_status', { id: chat.id, preview: false });
+    assert.equal(task?.origin, project.folder);
+    assert.equal(interrupted.workspaceId, project.id);
+    assert.notEqual(interrupted.workspace, project.folder);
+    const previous = (await client.call('get_messages', { id: chat.id })).at(-1);
+    assert.match(previous.text, /Recorded the first edit/);
+    const retry = JSON.parse(previous.activity.find((step) => step.kind === 'quota-reset').text);
+    assert.equal(retry.accountId, codex.id);
+    assert.equal(retry.model, routed.model);
+    assert.equal(retry.effort, routed.effort);
+    await client.call('resume_at_reset', { id: chat.id, message: previous.id });
+    await waitForStatus('waiting');
+    const oldProcess = restarted;
+    const exited = new Promise((resolve) => oldProcess.once('exit', resolve));
+    oldProcess.kill('SIGKILL');
+    await exited;
+    restarted = client.start();
+    await client.ready();
+    const restored = await waitForStatus('waiting');
+    assert.ok(Date.now() < retry.at, 'restart must occur before the simulated reset');
+    assert.equal(restored.workspace, interrupted.workspace);
+    assert.equal(restored.workspaceId, project.id);
+    const health = await client.call('provider_health');
+    assert.equal(health.find((entry) => entry.accountId === codex.id)?.state, 'cooldown');
+    const read = async (folder, name) => (await readFile(path.join(folder, name), 'utf8')).trim();
+    assert.equal(await read(restored.workspace, 'quota-attempts.txt'), 'initial');
+    const finished = await waitForStatus('completed');
+    assert.equal(finished.workspace, restored.workspace);
+    assert.equal(finished.workspaceId, project.id);
+    checkQuotaReplay = async () => {
+      const history = await client.call('get_messages', { id: chat.id });
+      assert.equal(history.filter((message) => message.role === 'user').length, 2);
+      assert.match(history.find((message) => message.id === previous.id).text, /Recorded the first edit/);
+      assert.equal(history.at(-1).text, 'Finished after reset.');
+      assert.equal(await read(finished.workspace, 'quota-effect.txt'), 'once');
+      assert.deepEqual((await read(finished.workspace, 'quota-attempts.txt')).split(/\r?\n/), ['initial', 'resume']);
+    };
+    await checkQuotaReplay();
+    assert.equal(await read(finished.workspace, 'quota-finished.txt'), 'finished');
+    await assert.rejects(read(project.folder, 'quota-effect.txt'), { code: 'ENOENT' });
+    await assert.rejects(read(workspace, 'quota-effect.txt'), { code: 'ENOENT' });
+
+    const secondCodex = await client.call('add_account', { name: 'Second Offline Codex', provider: 'gpt' });
+    const secondClaude = await client.call('add_account', { name: 'Second Offline Claude', provider: 'claude' });
+    const research = 'Research primary sources and synthesize the trade-offs between routing approaches.';
+    const architecture = 'Research primary sources and synthesize the trade-offs between architecture approaches.';
+    const week = 3 * 24 * 60;
+    // Entries give the remaining quota at five hours and one week, then minutes to weekly reset.
+    for (const [name, autoPolicy, prompt, quotas, expected, model, effort] of [
+      ['more quota', 'default', research, [[5, 60], [80, 60], [1, 1]], secondCodex, 'gpt-fixture', 'high'],
+      ['earlier weekly reset', 'quality', research, [[20, 20], [20, 20, 20], [1, 1]], secondCodex, 'gpt-fixture', 'high'],
+      ['more weekly quota', 'budget', research, [[5, 5], [5, 80], [1, 1]], secondCodex, 'gpt-fixture', 'medium'],
+      ['quality keeps provider', 'quality', architecture, [[100, 100], [80, 80], [5, 5]], claude, 'opus', 'high'],
+      ['budget switches provider', 'budget', architecture, [[100, 100], [80, 80], [5, 5]], codex, 'gpt-fixture', 'medium'],
+      ['explicit provider in Budget', 'budget', `Use Claude: ${architecture}`, [[100, 100], [80, 80], [5, 5]], claude, 'opus', 'medium'],
+      ['balance two Claude accounts', 'quality', architecture, [[100, 100], [80, 80], [5, 5], [80, 80]], secondClaude, 'opus', 'high'],
+      ['equal quota keeps the original account', 'default', research, [[20, 20], [20, 20], [1, 1]], codex, 'gpt-fixture', 'high'],
+    ]) {
+      const now = Date.now() - 100;
+      await writeFile(path.join(data, 'usage.json'), JSON.stringify(
+        [codex, secondCodex, claude, secondClaude].map((account, i) => {
+          const [short, weekly, weeklyReset = week] = quotas[i] ?? [1, 1];
+          return {
+            accountId: account.id,
+            updatedAt: now,
+            source: 'fixture',
+            windows: [
+              { usedPercent: 100 - short, windowMinutes: 300, resetsAt: now + 300 * 60_000 },
+              { usedPercent: 100 - weekly, windowMinutes: 10080, resetsAt: now + weeklyReset * 60_000 },
+            ],
+          };
+        }),
+      ));
+      const { id } = await client.call('create_session', { workspace: folder });
+      const route = await client.call('send_message', {
+        id, text: prompt, options: { mode: 'auto', effort: '', accessMode: 'read-only', autoPolicy },
+      });
+      assert.deepEqual([route.accountId, route.model, route.effort], [expected.id, model, effort], name);
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    }
   }
   await writeFile(
     path.join(workspace, 'package.json'),
@@ -272,6 +380,10 @@ try {
   }
   const recovered = client.start();
   await client.ready();
+  if (checkQuotaReplay) {
+    assert.equal((await client.call('__status')).idle, true);
+    await checkQuotaReplay();
+  }
   await client.call('__shutdown');
   await new Promise((resolve) =>
     recovered.exitCode !== null ? resolve() : recovered.once('exit', resolve),
@@ -300,6 +412,7 @@ try {
             'Codex Autopilot completion and bounded native continuation',
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
+            'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',
           ] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',
         ],

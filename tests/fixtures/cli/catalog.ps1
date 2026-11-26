@@ -36,6 +36,7 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
         if ($request.method -eq 'initialize') { Emit @{id=$request.id;result=@{userAgent='offline-fixture'}} }
         if ($request.method -in @('thread/start','thread/resume')) {
             $env:LUMEN_FIXTURE_RESUME = if ($request.method -eq 'thread/resume') { 'true' } else { 'false' }
+            $threadRequest = $request.params
             Emit @{id=$request.id;result=@{thread=@{id='fixture-thread'}}}
         }
         if ($request.method -eq 'turn/start') {
@@ -49,6 +50,12 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
                 throw 'Continuation must reuse the image already carried by the native session'
             }
             if ($prompt.Contains('CONNECTOR_FIXTURE') -and $request.params.approvalPolicy -eq 'never') {throw 'MCP consent must not be declined by the native never policy'}
+            if ($prompt.Contains('AUTO_QUOTA_RESTART_FIXTURE') -or $prompt.Contains('Continue the interrupted task from the recorded work')) {
+                if (Test-Path -LiteralPath 'auto-quota-project.txt') {
+                    if ($threadRequest.model -ne 'gpt-astra-fixture' -or $request.params.effort -ne 'max' -or $request.params.cwd -ne (Get-Location).Path) {throw 'Expected native model, effort and working directory'}
+                    if ($env:LUMEN_FIXTURE_RESUME -eq 'true' -and $threadRequest.threadId -ne 'fixture-thread') {throw 'Expected the recorded native thread'}
+                }
+            }
             Emit @{id=$request.id;result=@{turn=@{id='fixture-turn'}}}
             & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $prompt -AppServer
         }

@@ -5,7 +5,7 @@ import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
 import { Conversation } from '../../features/conversation/Conversation';
 import { ProjectPanel } from '../../features/sessions/ProjectPanel';
 import { LogoButton } from '../../brand/Logo';
-import { currentProject, sessionTitle } from '../../features/sessions/sessions';
+import { currentProject, inProject, sessionTitle } from '../../features/sessions/sessions';
 import { Sidebar } from '../../features/sessions/Sidebar';
 import type { Language, Preferences } from '../../features/settings/General';
 import { Settings } from '../../features/settings/Settings';
@@ -69,18 +69,31 @@ function Shell({ preferences }: { preferences: Preferences }) {
   const sync = useSyncClient();
   const sessions = useSyncState((st) => st.sessions);
   const workspaces = useSyncState((st) => st.workspaces);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(() => remembered('lumen.session'));
+  const [outsideList, setOutsideList] = useState<Session | null>(null);
   const [projectId, setProjectId] = useState<string | null>(() => remembered('lumen.project'));
   const [hidden, setHidden] = useState(() => remembered('lumen.sidebar') === 'hidden');
   const [details, setDetails] = useState(false);
   const [settings, setSettings] = useState(false);
-  useEffect(() => {
-    if (!selected) return;
-    sync.watch(selected);
-    return () => sync.unwatch(selected);
-  }, [sync, selected]);
-  const session = sessions.find((x) => x.id === selected);
   const project = currentProject(workspaces, sessions, projectId);
+  const synced = useSyncState((st) => st.synced);
+  useEffect(() => {
+    if (!selected || !synced || sessions.some((s) => s.id === selected)) return;
+    let live = true;
+    sync.call<Session>('get_session', { id: selected }).then(
+      (session) => { if (live) setOutsideList(session); },
+      () => { if (live) setOutsideList(null); },
+    );
+    return () => { live = false; };
+  }, [sync, selected, synced, sessions]);
+  const candidate = sessions.find((x) => x.id === selected) ?? (outsideList?.id === selected ? outsideList : null);
+  const session = candidate && project && inProject(candidate, project) ? candidate : null;
+  const activeId = session?.id;
+  useEffect(() => {
+    if (!activeId) return;
+    sync.watch(activeId);
+    return () => sync.unwatch(activeId);
+  }, [sync, activeId]);
   // Once chosen, the open project stays put: moving or updating a conversation never switches it.
   useEffect(() => {
     if (project && project.id !== projectId) setProjectId(project.id);
@@ -107,12 +120,17 @@ function Shell({ preferences }: { preferences: Preferences }) {
   function choose(id: string | null) {
     setSettings(false);
     setSelected(id);
+    remember('lumen.session', id);
+    if (id && project) remember('lumen.project', project.id);
   }
 
   function openProject(id: string | null) {
     setProjectId(id);
     remember('lumen.project', id);
-    if (id !== project?.id) setSelected(null);
+    if (id !== project?.id) {
+      setSelected(null);
+      remember('lumen.session', null);
+    }
   }
 
   // Handoff: the daemon writes a new conversation seeded with this one's goal and changes.
@@ -120,7 +138,7 @@ function Shell({ preferences }: { preferences: Preferences }) {
     setError(null);
     try {
       const next = await sync.mutate<Session>('compact_session', { id });
-      setSelected(next.id);
+      choose(next.id);
     } catch (e) {
       setError(String(e));
     }

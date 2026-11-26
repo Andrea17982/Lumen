@@ -148,8 +148,6 @@ pub struct RunOptions {
     #[serde(default)]
     pub auto_policy: AutoPolicy,
     #[serde(default)]
-    pub balance_usage: bool,
-    #[serde(default)]
     pub access_mode: Option<AccessMode>,
     /// Cross-audit the answer with the other provider.
     #[serde(default)]

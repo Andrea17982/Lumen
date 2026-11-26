@@ -75,6 +75,26 @@ if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
     exit 0
 }
 $autopilotContinuation = $promptText.Contains('Continue the current user request from this native session.')
+if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'auto-quota-project.txt')) {
+    $initial = $promptText.Contains('AUTO_QUOTA_RESTART_FIXTURE')
+    $resume = $env:LUMEN_FIXTURE_RESUME -eq 'true'
+    if ($initial -eq $resume) {throw 'Expected the original request only on thread/start'}
+    if (!$promptText.Contains('Lumen Autopilot completion check.')) {throw 'Expected Autopilot to confirm completion after quota reset'}
+    Add-Content -LiteralPath 'quota-attempts.txt' -Value $(if ($resume) {'resume'} else {'initial'})
+    if ($resume) {
+        if ((Get-Content -LiteralPath 'quota-effect.txt').Count -ne 1) {throw 'Earlier edit is missing or duplicated'}
+        Set-Content -LiteralPath 'quota-finished.txt' -Value 'finished'
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='quota-finish';type='agentMessage';text='Finished after reset. <!-- lumen-autopilot: done -->'}}}
+        $turn = @{id='fixture-turn';status='completed'}
+    } else {
+        Add-Content -LiteralPath 'quota-effect.txt' -Value 'once'
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='quota-write';type='fileChange';changes=@(@{path='quota-effect.txt';kind='add'})}}}
+        Emit @{method='item/agentMessage/delta';params=@{threadId='fixture-thread';turnId='fixture-turn';itemId='quota-partial';delta='Recorded the first edit.'}}
+        $turn = @{id='fixture-turn';status='failed';error=@{message='Rate limit reached. Resets in 12 seconds.'}}
+    }
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turn=$turn}}
+    exit 0
+}
 if ($Provider -eq 'gpt' -and $AppServer -and ($promptText.Contains('AUTOPILOT_FIXTURE_') -or $autopilotContinuation)) {
     $hasCheck = $promptText.Contains('Lumen Autopilot completion check.')
     if ($autopilotContinuation) {

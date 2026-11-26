@@ -94,7 +94,8 @@ impl Limits {
     }
     pub fn cool(&self, account: &str, until: i64) {
         if let Ok(mut c) = self.cooldown.lock() {
-            c.insert(account.into(), until);
+            let current = c.entry(account.into()).or_default();
+            *current = (*current).max(until);
         }
     }
     pub fn cooling(&self, account: &str, now: i64) -> bool {
