@@ -283,7 +283,7 @@ ${text}` : text));
             <Select compact label={t.composer.policy} value={policy} options={POLICIES.map((p) => ({ id: p, label: t.composer.policies[p] }))} onChange={setPolicy} />
           ) : (
             <>
-              {models.length > 0 && model && <Select compact label={t.composer.model} value={model} options={models.map((m) => ({ id: m.id, label: m.name }))} onChange={(id) => {
+              {models.length > 0 && model && <Select compact label={t.composer.model} value={model} options={models.map((m) => ({ id: m.id, label: m.description === 'OpenCode · console credit' ? `${m.name} · console credit` : m.description === 'OpenCode · free' ? `${m.name} · free` : m.name }))} onChange={(id) => {
                 setModel(id);
                 setEffort(models.find((m) => m.id === id)?.defaultEffort ?? '');
               }} />}
