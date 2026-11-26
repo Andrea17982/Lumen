@@ -312,6 +312,10 @@ impl Trace {
                 "tool-start" | "tool-end" | "interaction" | "interaction-result"
             )
     }
+    pub fn awaiting_input(&self) -> bool {
+        !self.questions.is_empty()
+    }
+
     pub fn finish(&mut self, result: &Result<String, String>) {
         self.mark("return");
         self.snapshot.ended_at = Some(now());

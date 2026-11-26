@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { Button, IconButton, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
-import type { AccessMode, AutoPolicy, ModelInfo, RunOptions, Session } from '../../protocol/types';
+import { isSessionActive, type AccessMode, type AutoPolicy, type ModelInfo, type RunOptions, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { visibleText } from '../attention/requests';
 import s from './Composer.module.css';
@@ -40,7 +40,7 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const running = session.status === 'running' || session.status === 'queued' || session.status === 'waiting';
+  const running = isSessionActive(session.status);
 
   // Text handed back by the conversation (after a rewind) replaces what is typed.
   useEffect(() => {

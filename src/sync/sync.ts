@@ -311,7 +311,7 @@ ${text}` : text;
 
   private onRun(event: RunEvent) {
     // Session status is not persisted per event: the list is the truth, so read it again.
-    if (!event.messageId || event.kind === 'start' || event.kind === 'done') this.scheduleSessions();
+    if (!event.messageId || event.kind === 'start' || event.kind === 'status' || event.kind === 'done') this.scheduleSessions();
     if (QUESTION_KINDS.has(event.kind)) this.scheduleQuestions();
     if (!event.messageId || !this.open.has(event.sessionId)) return;
     const buffer = this.buffers.get(event.sessionId);

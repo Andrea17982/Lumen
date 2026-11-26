@@ -551,7 +551,11 @@ pub async fn run_project_check(
         );
     }
     let (_tx, cancel) = tokio::sync::watch::channel(false);
-    execute_check(&root, &check, cancel).await
+    let mut result = execute_check(&root, &check, cancel).await?;
+    let (preview, truncated) = bound_output(&result.output);
+    result.output = preview;
+    result.truncated |= truncated;
+    Ok(result)
 }
 
 pub(crate) async fn execute_check(
@@ -572,24 +576,22 @@ pub(crate) async fn execute_check(
             .await
             .map_err(|e| e.to_string())?;
         let links = source_links(&root, &root, &text);
-        let (output, truncated) = bound_output(&text);
         return Ok(CheckResult {
             ok,
             exit_code: Some(if ok { 0 } else { 1 }),
-            output,
-            truncated,
+            output: text,
+            truncated: false,
             millis: started.elapsed().as_millis() as u64,
             links,
         });
     }
     let (status, text, cut) = run_cancellable(&cwd, &check.command, CHECK_TIMEOUT, cancel).await?;
     let links = source_links(&root, &cwd, &text);
-    let (output, truncated) = bound_output(&text);
     Ok(CheckResult {
         ok: status.success(),
         exit_code: status.code(),
-        output,
-        truncated: truncated || cut,
+        output: text,
+        truncated: cut,
         millis: started.elapsed().as_millis() as u64,
         links,
     })
@@ -597,11 +599,13 @@ pub(crate) async fn execute_check(
 
 const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// Bytes kept per stream while a check runs; older output is dropped as it arrives.
-const STREAM_TAIL: usize = 64 * 1024;
+/// Keep early diagnostics and the latest output within 64 KiB per stream.
+const STREAM_HEAD: usize = 8 * 1024;
+const STREAM_TAIL: usize = 56 * 1024;
 
-async fn tail_of<R: tokio::io::AsyncRead + Unpin>(mut stream: R) -> (Vec<u8>, bool) {
+async fn capture_stream<R: tokio::io::AsyncRead + Unpin>(mut stream: R) -> (Vec<u8>, bool) {
     use tokio::io::AsyncReadExt;
+    let mut head = Vec::new();
     let mut kept: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
     let mut cut = false;
     let mut buf = [0u8; 8192];
@@ -609,13 +613,19 @@ async fn tail_of<R: tokio::io::AsyncRead + Unpin>(mut stream: R) -> (Vec<u8>, bo
         if n == 0 {
             break;
         }
-        kept.extend(&buf[..n]);
+        let take = n.min(STREAM_HEAD - head.len());
+        head.extend_from_slice(&buf[..take]);
+        kept.extend(&buf[take..n]);
         if kept.len() > STREAM_TAIL {
             kept.drain(..kept.len() - STREAM_TAIL);
             cut = true;
         }
     }
-    (kept.into_iter().collect(), cut)
+    if cut {
+        head.extend_from_slice(b"\n[Middle of check output omitted at the capture limit.]\n");
+    }
+    head.extend(kept);
+    (head, cut)
 }
 
 /// Runs the command with piped streams read incrementally, so verbose output cannot exhaust memory.
@@ -647,8 +657,12 @@ async fn run_cancellable(
     #[cfg(unix)]
     c.process_group(0);
     let mut child = c.spawn().map_err(|e| e.to_string())?;
-    let out = tokio::spawn(tail_of(child.stdout.take().ok_or("No output stream")?));
-    let err = tokio::spawn(tail_of(child.stderr.take().ok_or("No error stream")?));
+    let out = tokio::spawn(capture_stream(
+        child.stdout.take().ok_or("No output stream")?,
+    ));
+    let err = tokio::spawn(capture_stream(
+        child.stderr.take().ok_or("No error stream")?,
+    ));
     let result = tokio::select! {
         biased;
         _ = cancel.changed() => None,

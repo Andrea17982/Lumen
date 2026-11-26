@@ -109,7 +109,7 @@ mod workstate;
 use models::*;
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use tokio::sync::{watch, Semaphore};
@@ -339,7 +339,18 @@ fn list_sessions(
     search: String,
     offset: u32,
 ) -> Result<Vec<Session>, String> {
-    core.store.sessions(&search, offset)
+    let mut sessions = core.store.sessions(&search, offset)?;
+    let Ok(worktrees) = dunce::canonicalize(core.root.join("worktrees")) else {
+        return Ok(sessions);
+    };
+    for session in sessions.iter_mut().filter(|session| {
+        session.workspace_id.is_none() && Path::new(&session.workspace).starts_with(&worktrees)
+    }) {
+        if let Some(task) = task_worktree::active(&core, session) {
+            session.workspace_id = task_worktree::origin_project(&core, &task.origin)?;
+        }
+    }
+    Ok(sessions)
 }
 #[crate::command]
 fn create_session(core: crate::CoreRef<'_>, workspace: String) -> Result<Session, String> {
@@ -848,8 +859,21 @@ pub fn serve_graph(data: std::path::PathBuf, root: std::path::PathBuf) -> std::i
 }
 
 fn resolve_effort(model: &ModelInfo, requested: &str) -> String {
-    let levels = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
-    let target = levels.iter().position(|e| *e == requested).unwrap_or(2) as i32;
+    if model.efforts.iter().any(|effort| effort == requested) {
+        return requested.into();
+    }
+    let levels = [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+        "ultrahigh",
+    ];
+    let target = levels.iter().position(|e| *e == requested).unwrap_or(3) as i32;
     model
         .efforts
         .iter()

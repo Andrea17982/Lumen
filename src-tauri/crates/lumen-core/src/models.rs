@@ -15,6 +15,18 @@ pub enum Provider {
     Googleapi,
 }
 impl Provider {
+    pub(crate) fn from_id(id: &str) -> Option<Self> {
+        use serde::de::value::{Error, StrDeserializer};
+        Self::deserialize(StrDeserializer::<Error>::new(id)).ok()
+    }
+
+    pub(crate) fn id(&self) -> String {
+        match serde_json::to_value(self) {
+            Ok(serde_json::Value::String(id)) => id,
+            _ => unreachable!("provider is a unit enum serialized as a string"),
+        }
+    }
+
     pub fn is_api(&self) -> bool {
         matches!(self, Self::Openaiapi | Self::Anthropicapi | Self::Googleapi)
     }

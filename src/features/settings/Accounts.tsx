@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, Menu, Select, Switch, TextField } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
-import { formatPercent, formatRelative, formatTime } from '../../i18n/format';
+import { formatPercent, formatRelative, formatTime, languageTag } from '../../i18n/format';
 import type { Account, AccountUsage, Provider } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Settings.module.css';
 
-export const PROVIDERS: Provider[] = ['claude', 'gpt', 'antigravity', 'opencode', 'cursor', 'droid', 'ollama', 'anthropicapi', 'openaiapi', 'googleapi'];
-export const providerName: Record<Provider, string> = {
+const providerName: Record<Provider, string> = {
   claude: 'Claude Code',
   gpt: 'Codex',
   antigravity: 'Antigravity',
@@ -19,6 +18,7 @@ export const providerName: Record<Provider, string> = {
   openaiapi: 'OpenAI API',
   googleapi: 'Google API',
 };
+const providerOptions = (Object.keys(providerName) as Provider[]).map((id) => ({ id, label: providerName[id] }));
 const cliName: Record<string, string> = {
   'claude-cli': 'Claude Code',
   'codex-cli': 'Codex',
@@ -327,7 +327,7 @@ function ApiSettings({ account, onError, onSaved }: { account: Account; onError:
           return false;
         },
       );
-  const money = new Intl.NumberFormat(locale === 'it' ? 'it-IT' : 'en-US', {
+  const money = new Intl.NumberFormat(languageTag(locale), {
     style: 'currency',
     currency: 'USD',
   });
@@ -423,7 +423,7 @@ function AddAccount({ open, onClose, onAdd }: { open: boolean; onClose: () => vo
           <Select
             label={t.accounts.provider}
             value={provider}
-            options={PROVIDERS.map((p) => ({ id: p, label: providerName[p] }))}
+            options={providerOptions}
             onChange={(p) => {
               // The name follows the agent until the user types one.
               if (name === providerName[provider]) setName(providerName[p]);

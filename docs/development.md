@@ -2,8 +2,24 @@
 
 You need Rust 1.90+ and Node.js 24. On Linux, also install the native libraries listed in `.github/workflows/ci.yml`.
 
+## Build from source
+
+From the repository root, install the frontend dependencies and the pinned Moli browser.
+
 ```sh
-node scripts/prepare-moli.mjs        # downloads and verifies the pinned Moli browser
+node scripts/prepare-moli.mjs
+npm ci
+```
+
+```sh
+npx tauri build --config src-tauri/desktop/tauri.conf.json
+```
+
+## Checks
+
+Run the setup above before the checks.
+
+```sh
 cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
 node tests/daemon-smoke.mjs          # isolated data dir, offline CLI fixtures, real IPC
 cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
@@ -15,7 +31,6 @@ node tests/docs-check.mjs            # local links, anchors, crate versions, cur
 The desktop client (React, in `src/`) and its shell (Tauri, in `src-tauri/desktop/`):
 
 ```sh
-npm ci
 npm run typecheck && npm test        # Vitest
 npx playwright test                  # the client against the real debug daemon and offline fixtures
 cargo clippy --manifest-path src-tauri/desktop/Cargo.toml --all-targets --locked -- -D warnings
@@ -24,7 +39,7 @@ npm run test:app                     # the real app over WebDriver; opens a wind
 npx tauri dev --config src-tauri/desktop/tauri.conf.json   # the app with hot reload
 ```
 
-CI runs all of these on every push to `main` and on every pull request.
+CI runs the service checks on Windows, macOS and Linux, and the desktop checks on Windows. Use the last command for local hot reload.
 
 ## Manual harnesses
 
@@ -45,4 +60,4 @@ Use synthetic data. Any test that contacts a real provider must be deliberate an
 1. Bump the version in every crate's `Cargo.toml` and in `Cargo.lock`.
 2. Write `docs/release-notes/<version>.md` and delete the previous one; GitHub Releases keeps the history.
 3. Run `node tests/docs-check.mjs`. It fails if the crate versions disagree or the release notes are missing.
-4. Build the Windows installer with `npx tauri build --config src-tauri/desktop/tauri.conf.json`. It builds the release daemon (`scripts/prepare-daemon.mjs`) and bundles it next to `Lumen.exe` with the Moli browser. The setup is in `src-tauri/desktop/target/release/bundle/nsis/`.
+4. Run the [source build](#build-from-source). It bundles the release daemon and Moli. On Windows, find the installer in `src-tauri/desktop/target/release/bundle/nsis/`. The [release workflow](../.github/workflows/release-builds.yml) defines the packages for each platform.

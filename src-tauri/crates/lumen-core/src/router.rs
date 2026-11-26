@@ -9,7 +9,7 @@ pub enum AuditIntent {
     Forbidden,
 }
 
-/// What a request needs. `effort` 0..=2 maps to low/medium/high before the Auto policy.
+/// Model capability and reasoning depth each have four grades, from 0 to 3.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TaskProfile {
     pub tier: i32,
@@ -57,6 +57,42 @@ pub fn audit_intent(prompt: &str) -> AuditIntent {
 
 /// Calibrated against the user's Italian examples. Length raises effort only;
 /// a long email should not automatically require a flagship model.
+pub(crate) fn deep_research(prompt: &str) -> bool {
+    let text = prompt.to_lowercase();
+    let has = |terms: &[&str]| terms.iter().any(|term| text.contains(term));
+    has(&[
+        "deep research",
+        "ricerca approfondita",
+        "literature review",
+        "revisione della letteratura",
+    ]) || (has(&[
+        "research",
+        "ricerc",
+        "studia",
+        "study",
+        "investig",
+        "approfond",
+    ]) && has(&[
+        "online",
+        "fonti",
+        "sources",
+        "literature",
+        "letteratura",
+        "benchmark",
+    ]) && has(&[
+        "approfond",
+        "in-depth",
+        "thorough",
+        "confront",
+        "compar",
+        "sintes",
+        "synthesi",
+        "trade-off",
+        "evidenz",
+        "evidence",
+    ]))
+}
+
 pub(crate) fn profile(prompt: &str) -> TaskProfile {
     let p = prompt.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| p.contains(w));
@@ -106,9 +142,186 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
         "complesso",
         "complex",
     ]);
-    let tier = if translation {
+    let research = deep_research(prompt);
+    let visual = visual_work(&p);
+    let implementation = has(&[
+        "implement",
+        "progetta",
+        "design",
+        "scrivi",
+        "write",
+        "sviluppa",
+        "definisci",
+        "proponi",
+    ]);
+    let narrow = has(&[
+        "estrai solo",
+        "extract only",
+        "senza testo aggiuntivo",
+        "no extra text",
+        "correggi solo",
+    ]) || (has(&["riscrivi", "rewrite"]) && has(&["una sola frase", "one sentence"]));
+    let verification = has(&[
+        " test",
+        "test ",
+        "validaz",
+        "validat",
+        "verific",
+        "benchmark",
+        "assert",
+        "metriche",
+        "misur",
+    ]);
+    let invariants = has(&[
+        "atomic",
+        "invariant",
+        "idempoten",
+        "isolament",
+        "isolation",
+        "transaz",
+        "transaction",
+        "determinismo",
+        "determinism",
+        "durabilit",
+        "coerenza",
+        "consistency",
+        "ordinamento",
+        "ordering",
+        "correttezza",
+        "ripetibil",
+        "reproducib",
+        "linearizzabil",
+        "linearizab",
+    ]);
+    let lifecycle = has(&[
+        "streaming",
+        "cancellaz",
+        "shutdown",
+        "concorren",
+        "concurrency",
+        "asincron",
+        "async",
+        "thread",
+        "goroutine",
+        "persisten",
+        "salvataggio",
+        "lifecycle",
+        "retry",
+        "rollback",
+        "riavvi",
+        "restart",
+        "replic",
+    ]);
+    let integration = has(&[
+        "migraz",
+        "migration",
+        "compatibil",
+        "distribuit",
+        "distributed",
+        "deploy",
+        "versionat",
+        "multi-",
+        "più component",
+        "across systems",
+        "cutover",
+        "rollout",
+    ]);
+    let formal = has(&[
+        "dimostra",
+        "prove",
+        "proof",
+        "controesemp",
+        "counterexample",
+        "equivalen",
+        "deriva",
+        "derive",
+        "dimostrazione",
+        "formalizz",
+        "formaliz",
+    ]);
+    let stakes = has(&[
+        "produzion",
+        "production",
+        "perdita di dati",
+        "data loss",
+        "prestaz",
+        "performance",
+        "senza ferm",
+        "senza interru",
+        "deadlock",
+        "corruzion",
+        "corruption",
+    ]);
+    let diagnosis = has(&["diagnos", "indag", "investig", "root cause"]);
+    let competing_explanations = has(&[
+        "ipotesi",
+        "hypothes",
+        "meccanismi causali",
+        "causal mechanism",
+        "spiegazioni concorrenti",
+        "competing explanations",
+        "controprove",
+    ]);
+    let ambiguity = has(&[
+        "conflitt",
+        "conflict",
+        "trade-off",
+        "ambig",
+        "incoeren",
+        "inconsisten",
+    ]);
+    let cross_boundary = has(&[
+        "migraz",
+        "migration",
+        "distribuit",
+        "distributed",
+        "multi-",
+        "across systems",
+        "client e server",
+        "server e client",
+        "end-to-end",
+    ]);
+    let requirements = p.split([',', ';']).count() >= 3;
+    let demanding_verification = has(&["matrice di test", "test matrix", "property-based"])
+        || (diagnosis && has(&["log", "profiler", "telemetri", "metriche", "traces"]));
+    let dimensions = [
+        verification,
+        invariants,
+        lifecycle,
+        integration,
+        formal,
+        stakes,
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
+    let frontier = (diagnosis
+        && (dimensions >= 3
+            || has(&["multi-repo", "non riproducib", "non-reproducib"])
+            || (cross_boundary && has(&["rare", "intermittent", "sporadic"]))))
+        || (formal
+            && has(&[
+                "unicità",
+                "uniqueness",
+                "controesemp",
+                "counterexample",
+                "non determinist",
+                "nondeterminist",
+            ]))
+        || (integration && invariants && has(&["monorepo", "multi-repo"]))
+        || (competing_explanations && (verification || invariants || formal))
+        || (formal && invariants && (lifecycle || integration))
+        || (has(&["safety", "sicurezza"]) && has(&["liveness", "vivacità"]) && invariants);
+    let direct = translation || (narrow && !frontier && dimensions <= 1);
+    let tier = if direct {
         0
-    } else if advanced
+    } else if frontier {
+        3
+    } else if research
+        || advanced
+        || demanding_verification
+        || (formal && requirements)
+        || dimensions >= 2
         || (debugging
             && has(&[
                 "concurrency",
@@ -120,17 +333,59 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
             ]))
     {
         2
-    } else if debugging && !translation {
+    } else if debugging || implementation || visual || dimensions > 0 {
         1
     } else {
         0
     };
+    let audit = if translation {
+        AuditIntent::Auto
+    } else {
+        audit_intent(prompt)
+    };
     TaskProfile {
         tier,
-        effort: i32::from(demanding || prompt.len() > 1200),
+        effort: if direct {
+            0
+        } else if frontier && (formal || (invariants && verification) || competing_explanations) {
+            3
+        } else if research
+            || frontier
+            || demanding_verification
+            || (formal && requirements)
+            || (cross_boundary && requirements)
+            || (ambiguity && requirements && (verification || competing_explanations))
+            || dimensions >= 3
+            || (dimensions >= 2 && (formal || stakes))
+        {
+            2
+        } else {
+            i32::from(
+                demanding
+                    || dimensions >= 2
+                    || (requirements && (implementation || debugging || visual || tier >= 1))
+                    || (visual && has(&["guidami", "interpret", "verific", "guide me"]))
+                    || (dimensions == 1
+                        && (verification || lifecycle)
+                        && (implementation || debugging))
+                    || has(&[
+                        "passaggi",
+                        "trade-off",
+                        "confronta",
+                        "compare",
+                        "passo per passo",
+                        "fammi un esempio",
+                        "fammi esempi",
+                        "with examples",
+                        "perché ",
+                        "probabilit",
+                    ])
+                    || prompt.len() > 1200,
+            )
+        },
         review: !translation
-            && audit_intent(prompt) != AuditIntent::Forbidden
-            && (audit_intent(prompt) == AuditIntent::Requested
+            && audit != AuditIntent::Forbidden
+            && (audit == AuditIntent::Requested
                 || (has(&[
                     "security",
                     "sicurezza",
@@ -155,21 +410,77 @@ pub(crate) fn profile(prompt: &str) -> TaskProfile {
                         "intermittent",
                         "intermittente",
                     ]))),
-        audit: if translation {
-            AuditIntent::Auto
-        } else {
-            audit_intent(prompt)
-        },
+        audit,
     }
 }
 
-fn requested_effort(task: TaskProfile, policy: &AutoPolicy) -> &'static str {
+fn visual_work(lower: &str) -> bool {
+    [
+        "da uno screenshot",
+        "uno screenshot di",
+        "screenshot delle",
+        "ti mostro",
+        "from a screenshot",
+        "attached screenshot",
+        "screenshot dei passaggi",
+    ]
+    .iter()
+    .any(|cue| lower.contains(cue))
+}
+
+/// Tie-break before continuity and quota are applied.
+fn provider_for(request: &str, tier: i32) -> Provider {
+    let lower = request.to_lowercase();
+    let has = |cues: &[&str]| cues.iter().any(|cue| lower.contains(cue));
+    if visual_work(&lower) {
+        Provider::Gpt
+    } else if tier == 0 {
+        if has(&[
+            "riscrivi",
+            "rewrite",
+            "traduci",
+            "translate",
+            "concordanza",
+            "tono",
+        ]) {
+            Provider::Claude
+        } else {
+            Provider::Gpt
+        }
+    } else if tier == 1
+        || has(&[
+            "indag",
+            "investig",
+            "root cause",
+            "riprogett",
+            "redesign",
+            "architettur",
+            "architecture",
+        ])
+    {
+        Provider::Claude
+    } else {
+        Provider::Gpt
+    }
+}
+
+pub(crate) fn requested_effort(task: TaskProfile, policy: &AutoPolicy) -> &'static str {
     let adjustment = match policy {
         AutoPolicy::Budget => -1,
         AutoPolicy::Quality => 1,
         AutoPolicy::Default => 0,
     };
-    ["low", "medium", "high"][(task.effort + adjustment).clamp(0, 2) as usize]
+    let ceiling = task.effort.clamp(2, 3);
+    ["low", "medium", "high", "ultrahigh"][(task.effort + adjustment).clamp(0, ceiling) as usize]
+}
+
+pub(crate) fn effort_grade(effort: &str) -> i32 {
+    match effort {
+        "medium" => 1,
+        "high" => 2,
+        "xhigh" | "max" | "ultra" | "ultrahigh" => 3,
+        _ => 0,
+    }
 }
 
 /// Only an explicit instruction at the start pins Auto; mentioning a provider is not a choice.
@@ -201,7 +512,7 @@ pub fn requested_provider(prompt: &str) -> Option<&'static str> {
 /// Keyword routing, for callers without a classifier verdict.
 #[cfg(test)]
 pub fn route(prompt: &str, options: &RunOptions, accounts: &[Account]) -> Result<Plan, String> {
-    route_with(profile(prompt), options, accounts)
+    route_with(profile(prompt), options, accounts, prompt)
 }
 
 /// Plans a turn for a rated task (`crate::classify`, or the keyword profile).
@@ -209,24 +520,14 @@ pub fn route_with(
     task: TaskProfile,
     options: &RunOptions,
     accounts: &[Account],
+    request: &str,
 ) -> Result<Plan, String> {
-    if ![
-        "auto",
-        "claude",
-        "gpt",
-        "antigravity",
-        "ollama",
-        "opencode",
-        "cursor",
-        "droid",
-        "openaiapi",
-        "anthropicapi",
-        "googleapi",
-    ]
-    .contains(&options.mode.as_str())
-    {
-        return Err("Unknown provider mode".into());
-    }
+    let auto = options.mode == "auto";
+    let preferred = if auto {
+        provider_for(request, task.tier)
+    } else {
+        Provider::from_id(&options.mode).ok_or("Unknown provider mode")?
+    };
     if options.effort.len() > 32 || !options.effort.chars().all(|c| c.is_ascii_lowercase()) {
         return Err("Unknown effort".into());
     }
@@ -239,21 +540,7 @@ pub fn route_with(
             return Err("Invalid model identifier".into());
         }
     }
-    let preferred = match options.mode.as_str() {
-        "claude" => Provider::Claude,
-        "gpt" => Provider::Gpt,
-        "antigravity" => Provider::Antigravity,
-        "ollama" => Provider::Ollama,
-        "opencode" => Provider::Opencode,
-        "cursor" => Provider::Cursor,
-        "droid" => Provider::Droid,
-        "openaiapi" => Provider::Openaiapi,
-        "anthropicapi" => Provider::Anthropicapi,
-        "googleapi" => Provider::Googleapi,
-        _ if task.tier == 2 => Provider::Claude,
-        _ => Provider::Gpt,
-    };
-    let selected = if options.mode != "auto" {
+    let selected = if !auto {
         options
             .account_id
             .as_ref()
@@ -284,53 +571,44 @@ pub fn route_with(
         "Add an account for this provider in Settings, then complete the official CLI login.",
     )?;
     let partner = review_partner(accounts, a);
-    let strategy = if options.mode == "auto" && partner.is_some() {
-        if task.audit != AuditIntent::Forbidden
-            && (task.audit == AuditIntent::Requested
-                || task.review
-                || (options.auto_policy == AutoPolicy::Quality && task.tier == 2)
-                || options.auto_review)
-        {
-            "review"
-        } else {
-            "single"
-        }
-    } else if task.audit != AuditIntent::Forbidden && options.auto_review && partner.is_some() {
-        "review"
-    } else {
-        "single"
-    };
-    if task.audit != AuditIntent::Forbidden
-        && partner.is_none()
-        && (options.auto_review || (options.mode == "auto" && task.audit == AuditIntent::Requested))
-    {
+    let review_required = options.auto_review || (auto && task.audit == AuditIntent::Requested);
+    let review_suggested =
+        auto && (task.review || (options.auto_policy == AutoPolicy::Quality && task.tier >= 2));
+    let review_allowed = task.audit != AuditIntent::Forbidden;
+    if review_allowed && review_required && partner.is_none() {
         return Err(
             "Independent review requires another available Claude or ChatGPT account.".into(),
         );
     }
-    let automatic = options.mode == "auto";
+    let strategy = if review_allowed && partner.is_some() && (review_required || review_suggested) {
+        "review"
+    } else {
+        "single"
+    };
     let mut plan = Plan {
         provider: a.provider.clone(),
         account_id: a.id.clone(),
-        model: if automatic {
+        model: if auto {
             None
         } else {
             options.model.clone().filter(|s| !s.is_empty())
         },
-        effort: if automatic {
+        effort: if auto {
             requested_effort(task, &options.auto_policy).into()
         } else {
             options.effort.clone()
         },
         strategy: strategy.into(),
-        reason: if !automatic && strategy == "single" {
+        reason: if !auto && strategy == "single" {
             "Native session with the selected model and reasoning"
-        } else if strategy == "review" && options.mode != "auto" {
+        } else if !auto {
             "Answer, then cross-audit by another account"
+        } else if task.tier == 3 {
+            "Exceptionally difficult task: highest model capability with proportional reasoning"
         } else if task.tier == 2 {
-            "Migration, architecture or security: flagship model with proportional reasoning"
+            "Demanding task: flagship model with proportional reasoning"
         } else if task.tier == 1 {
-            "Coding or debugging: Sonnet/Terra class with proportional reasoning"
+            "Bounded task: balanced model with proportional reasoning"
         } else {
             "Direct response with a smaller reasoning budget"
         }
@@ -341,11 +619,7 @@ pub fn route_with(
             None
         },
     };
-    if options.mode == "auto"
-        && partner.is_none()
-        && task.audit != AuditIntent::Forbidden
-        && (task.review || (options.auto_policy == AutoPolicy::Quality && task.tier == 2))
-    {
+    if review_allowed && review_suggested && partner.is_none() {
         plan.reason
             .push_str(" · independent review unavailable: no other configured primary account");
     }
@@ -453,18 +727,18 @@ pub fn review_partner<'a>(accounts: &'a [Account], writer: &Account) -> Option<&
         .filter(|a| a.id != writer.id && matches!(a.provider, Provider::Claude | Provider::Gpt))
         .min_by_key(|a| a.provider == writer.provider)
 }
-/// Model class: 0 Haiku/Luna, 1 Sonnet/Terra (and unknown), 2 Opus/Sol.
+/// Model class: fast, balanced, flagship, frontier. Unknown named models are balanced.
 pub fn model_tier(m: &ModelInfo) -> i32 {
     let name = format!("{} {}", m.id, m.name).to_lowercase();
-    if ["luna", "mini", "nano", "haiku", "flash"]
-        .iter()
-        .any(|k| name.contains(k))
-    {
+    let belongs_to = |families: &[&str]| {
+        name.split(|c: char| !c.is_alphanumeric())
+            .any(|word| families.contains(&word))
+    };
+    if belongs_to(&["astra", "fable", "mythos"]) {
+        3
+    } else if belongs_to(&["luna", "mini", "nano", "haiku", "flash"]) {
         0
-    } else if ["astra", "opus", "sol", "pro"]
-        .iter()
-        .any(|k| name.contains(k))
-    {
+    } else if belongs_to(&["opus", "sol", "pro"]) {
         2
     } else {
         1
@@ -477,9 +751,15 @@ fn is_alias(m: &ModelInfo) -> bool {
 /// Closest catalog model to a class; named models beat aliases, then catalog defaults break ties.
 pub fn select_tier(models: &[ModelInfo], target: i32) -> Option<&ModelInfo> {
     // Terra is also acceptable for small tasks, but prefer Luna when present.
-    models
-        .iter()
-        .min_by_key(|m| ((model_tier(m) - target).abs(), is_alias(m), !m.is_default))
+    models.iter().min_by_key(|m| {
+        let tier = model_tier(m);
+        (
+            (tier - target).abs(),
+            tier < target,
+            is_alias(m),
+            !m.is_default,
+        )
+    })
 }
 /// Use catalog IDs, never manufacture a model name unavailable to the account.
 #[cfg(test)]
@@ -729,7 +1009,7 @@ mod tests {
             let task = profile(request);
             let mut options = opts();
             options.auto_policy = AutoPolicy::Quality;
-            let plan = route_with(task, &options, &accounts()).unwrap();
+            let plan = route_with(task, &options, &accounts(), request).unwrap();
             let actual = serde_json::json!({"tier":task.tier,"review":task.review,"complex":complex(request),"qualityStrategy":plan.strategy});
             let ok = ["tier", "review", "complex", "qualityStrategy"]
                 .iter()
@@ -827,6 +1107,103 @@ mod tests {
             })
             .collect()
     }
+
+    fn score_routes(corpus: &str) -> [usize; 5] {
+        let gpt = catalog(&["luna", "terra", "sol", "astra"]);
+        let claude = catalog(&["haiku", "sonnet", "opus", "fable"]);
+        let options = opts();
+        let accounts = accounts();
+        let rank = |family: &str| match family {
+            "luna" | "haiku" => 0,
+            "terra" | "sonnet" => 1,
+            "sol" | "opus" => 2,
+            "astra" | "fable" => 3,
+            _ => panic!("Unknown model family {family}"),
+        };
+        let mut totals = [0; 5];
+        let mut tier_confusion = [[0; 4]; 4];
+        let mut effort_confusion = [[0; 4]; 4];
+        for line in corpus.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).unwrap();
+            let expected = row["model"]
+                .as_str()
+                .unwrap()
+                .split_whitespace()
+                .nth(1)
+                .unwrap()
+                .to_ascii_lowercase();
+            let expected_effort = row["effort"].as_str().unwrap();
+            let request = row["question"].as_str().unwrap();
+            let task = profile(request);
+            let plan = route_with(task, &options, &accounts, request).unwrap();
+            let models = if plan.provider == Provider::Claude {
+                &claude
+            } else {
+                &gpt
+            };
+            let actual = &select_tier(models, task.tier).unwrap().id;
+            let effort = plan.effort;
+            let tier_matches = rank(actual) == rank(&expected);
+            let effort_matches = effort == expected_effort;
+            tier_confusion[rank(&expected)][rank(actual)] += 1;
+            effort_confusion[effort_grade(expected_effort) as usize]
+                [effort_grade(&effort) as usize] += 1;
+            totals[0] += 1;
+            totals[1] += usize::from(tier_matches);
+            totals[2] += usize::from(effort_matches);
+            totals[3] += usize::from(actual == &expected && effort_matches);
+            totals[4] += usize::from(tier_matches && effort_matches);
+        }
+        println!("cases/tier/effort/exact pair/tier+effort: {totals:?}");
+        println!("tier matrix: {tier_confusion:?}; effort matrix: {effort_confusion:?}");
+        totals
+    }
+
+    #[test]
+    #[ignore = "requires the owner's private calibration corpus"]
+    fn annotated_router_corpus() {
+        let path = std::env::var_os("LUMEN_ROUTER_CALIBRATION")
+            .expect("set LUMEN_ROUTER_CALIBRATION to the annotated JSONL corpus");
+        let corpus = std::fs::read_to_string(path).expect("read the annotated JSONL corpus");
+        let totals = score_routes(&corpus);
+        assert_eq!(totals[0], 100);
+        assert!(
+            totals[1] >= 52 && totals[2] >= 42 && totals[3] >= 11,
+            "{totals:?}"
+        );
+    }
+
+    #[test]
+    fn independent_router_validation() {
+        let totals = score_routes(include_str!(
+            "../../../../tests/fixtures/quality/model-router-validation.jsonl"
+        ));
+        assert_eq!(totals[0], 32);
+        assert!(totals[1] >= 15 && totals[4] >= 8, "{totals:?}");
+    }
+
+    #[test]
+    fn frontier_capability_and_effort_use_the_catalog() {
+        let mut models = catalog(&["gpt-6.2-sol", "gpt-6.2-astra"]);
+        models[1].efforts.extend(["xhigh".into(), "max".into()]);
+        let frontier = select_tier(&models, 3).unwrap();
+        assert_eq!(frontier.id, "gpt-6.2-astra");
+        assert_eq!(crate::resolve_effort(frontier, "ultrahigh"), "max");
+        assert_eq!(crate::resolve_effort(frontier, "xhigh"), "xhigh");
+        assert_eq!(crate::resolve_effort(&models[0], "ultrahigh"), "high");
+        let task = TaskProfile {
+            tier: 3,
+            effort: 2,
+            review: false,
+            audit: AuditIntent::Auto,
+        };
+        assert_eq!(requested_effort(task, &AutoPolicy::Quality), "high");
+        let mut max = task;
+        max.effort = 3;
+        assert_eq!(requested_effort(max, &AutoPolicy::Default), "ultrahigh");
+        assert_eq!(requested_effort(max, &AutoPolicy::Budget), "high");
+    }
+
     #[test]
     fn user_calibration_for_both_catalogs() {
         let gpt = catalog(&["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6.1-luna"]);
@@ -838,6 +1215,9 @@ mod tests {
             ("Trova un bug intermittente di concorrenza", 0, "medium"),
             ("Progetta una migrazione del database", 0, "low"),
             ("Controlla la sicurezza dell'autenticazione", 0, "low"),
+            ("Studia come funziona ora la modalità Auto e fammi ogni domanda dopo aver approfondito online la questione", 0, "high"),
+            ("Research primary sources and synthesize the trade-offs between routing approaches", 0, "high"),
+            ("Cerca online il numero della versione corrente", 2, "low"),
         ] {
             assert_eq!(
                 select_model(&gpt, prompt, &AutoPolicy::Default).unwrap().id,

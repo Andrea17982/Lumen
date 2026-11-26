@@ -4,14 +4,13 @@ import { Icon } from '../../design/icons';
 import { useLocale, useT } from '../../i18n';
 import { formatDate, formatTime } from '../../i18n/format';
 import type { Locale } from '../../i18n';
-import type { Session } from '../../protocol/types';
+import { isSessionActive, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { openQuestions, recovery, shown, type Recovery } from './requests';
 import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import s from './Attention.module.css';
 
-const ACTIVE = new Set(['running', 'queued', 'waiting']);
 const EMPTY: never[] = [];
 
 /**
@@ -30,7 +29,7 @@ export function Attention({ session }: { session: Session }) {
 
   // Requests seen open here stay as an outcome line until the turn ends.
   const seen = useRef(new Set<string>());
-  const active = ACTIVE.has(session.status);
+  const active = isSessionActive(session.status);
   for (const r of requests) if (r.status === 'pending') seen.current.add(r.id);
   useEffect(() => {
     if (!active) seen.current.clear();

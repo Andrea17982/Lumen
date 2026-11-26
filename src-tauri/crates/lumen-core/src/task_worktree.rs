@@ -123,6 +123,15 @@ pub(crate) fn active(core: &Core, s: &Session) -> Option<Task> {
     load(core, &s.id).filter(|t| Path::new(&s.workspace).starts_with(&t.path))
 }
 
+pub(crate) fn origin_project(core: &Core, origin: &str) -> Result<Option<String>, String> {
+    Ok(core
+        .store
+        .workspaces()?
+        .into_iter()
+        .find(|workspace| Path::new(&workspace.folder) == Path::new(origin))
+        .map(|workspace| workspace.id))
+}
+
 /// A branch name from the request's first words.
 fn slug(text: &str) -> String {
     let words: Vec<String> = text
@@ -491,10 +500,15 @@ pub(crate) async fn create(
         .unwrap_or(Path::new(""))
         .to_path_buf();
     let root = dir(core, &s.id);
-    let path = root.join("task");
+    let short: String = crate::models::id().chars().take(6).collect();
+    let mut path = root.join("task");
     if path.exists() {
-        gitops::remove_worktree(&top, &path).await;
+        path = root.join(format!("task-{short}"));
     }
+    let project = match &s.workspace_id {
+        Some(id) => Some(id.clone()),
+        None => origin_project(core, &origin.to_string_lossy())?,
+    };
     let (base, start) = match &from {
         // A named branch starts from its own commit; the folder's uncommitted work stays
         // in the folder.
@@ -517,7 +531,6 @@ pub(crate) async fn create(
                 .unwrap_or_default(),
         ),
     };
-    let short: String = crate::models::id().chars().take(6).collect();
     let branch = match &from {
         Some(f) => format!("lumen/{}-{short}", slug(&f.remote)),
         None => format!("lumen/{}-{short}", slug(request)),
@@ -588,9 +601,9 @@ pub(crate) async fn create(
         "task worktree",
         &format!("{} on {branch}", task.path),
     ));
-    let moved =
-        core.store
-            .bind_workspace(&s.id, s.workspace_id.as_deref(), &work.to_string_lossy())?;
+    let moved = core
+        .store
+        .bind_workspace(&s.id, project.as_deref(), &work.to_string_lossy())?;
     crate::event(
         app,
         &s.id,
@@ -682,6 +695,75 @@ pub(crate) async fn commit_turn(
         Ok(None) => {}
         Err(e) => note(app, session, out, "error", format!("Commit failed: {e}")),
     }
+}
+
+/// Return after a completed task whose Git state has nothing left to integrate.
+pub(crate) async fn return_if_integrated(
+    app: &crate::host::EventHub,
+    core: &Core,
+    s: &Session,
+    out: &mut Message,
+) -> Result<(), String> {
+    let Some(task) = active(core, s).filter(|t| t.remote.is_none() && t.pr.is_none()) else {
+        return Ok(());
+    };
+    let path = Path::new(&task.path);
+    if !gitops::changed_paths(path).await?.is_empty() {
+        return Ok(());
+    }
+    if !gitops::run(path, &["symbolic-ref", "--short", "HEAD"], None)
+        .await
+        .is_ok_and(|branch| branch.trim() == task.branch)
+    {
+        return Ok(());
+    }
+    let head = gitops::run(path, &["rev-parse", "HEAD"], None).await?;
+    if head.trim() != task.start {
+        let upstream = format!("refs/remotes/origin/{}", task.branch);
+        if gitops::run(path, &["show-ref", "--verify", "--quiet", &upstream], None)
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
+        let args = ["pr", "view", &task.branch, "--json", "state,headRefOid"];
+        let Ok(Ok(view)) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), gh_run(path, &args)).await
+        else {
+            return Ok(());
+        };
+        let view: serde_json::Value = serde_json::from_str(&view).map_err(|e| e.to_string())?;
+        if view["state"] != "MERGED" || view["headRefOid"] != head.trim() {
+            return Ok(());
+        }
+    }
+    let project = match &s.workspace_id {
+        Some(id) => Some(id.clone()),
+        None => origin_project(core, &task.origin)?,
+    };
+    let moved = core
+        .store
+        .bind_workspace(&s.id, project.as_deref(), &task.origin)?;
+    // A detached task's files and branch remain available. A later task uses a new folder.
+    let _ = std::fs::remove_file(dir(core, &s.id).join("task.json"));
+    note(
+        app,
+        &s.id,
+        out,
+        "task-worktree",
+        format!(
+            "Conversation returned to the project folder. Worktree kept at {}.",
+            task.path
+        ),
+    );
+    crate::event(
+        app,
+        &s.id,
+        "",
+        "workspace",
+        &serde_json::to_string(&moved).map_err(|e| e.to_string())?,
+    );
+    Ok(())
 }
 
 fn idle(core: &Core, id: &str) -> Result<(), String> {
@@ -1085,6 +1167,7 @@ error: expected 1 got 2".into()),
         if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
             return;
         }
+        let _serial = SERIAL.lock().await;
         let f = crate::test_support::Fixture::new();
         let app = crate::host::EventHub::default();
         let project = f.directory("crlf");
@@ -1099,6 +1182,12 @@ error: expected 1 got 2".into()),
         std::fs::write(project.join("b.txt"), "x\r\n").unwrap();
         assert!(git(&project, &["diff", "--stat"]).await.trim().is_empty());
 
+        let folder = project.to_string_lossy().into_owned();
+        let workspace = f
+            .core
+            .store
+            .add_workspace("Project".into(), folder.clone())
+            .unwrap();
         let s = f
             .core
             .store
@@ -1119,6 +1208,21 @@ error: expected 1 got 2".into()),
         .await
         .unwrap()
         .expect("worktree");
+        assert_eq!(moved.workspace_id.as_deref(), Some(workspace.id.as_str()));
+        let legacy = f
+            .core
+            .store
+            .bind_workspace(&s.id, None, &moved.workspace)
+            .unwrap();
+        let listed = crate::dispatch(
+            app.clone(),
+            &f.core,
+            "list_sessions",
+            serde_json::json!({"search":"","offset":0}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(listed[0]["workspaceId"], workspace.id);
         let t = active(&f.core, &moved).expect("active");
         let wt = PathBuf::from(&t.path);
         assert!(!out
@@ -1136,6 +1240,55 @@ error: expected 1 got 2".into()),
             "b.txt"
         );
         assert_eq!(git(&wt, &["show", "HEAD:b.txt"]).await, "y\n");
+
+        git(
+            &wt,
+            &[
+                "update-ref",
+                &format!("refs/remotes/origin/{}", t.branch),
+                &t.start,
+            ],
+        )
+        .await;
+        *STATE.lock().unwrap() = "MERGED";
+        *HEAD.lock().unwrap() = t.start.clone();
+        *FAKE_GH.lock().unwrap() = Some(fake_pr);
+        let unpublished = return_if_integrated(&app, &f.core, &legacy, &mut out).await;
+        *FAKE_GH.lock().unwrap() = None;
+        unpublished.unwrap();
+        assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_some());
+
+        *HEAD.lock().unwrap() = git(&wt, &["rev-parse", "HEAD"]).await.trim().into();
+        *FAKE_GH.lock().unwrap() = Some(fake_pr);
+        let merged = return_if_integrated(&app, &f.core, &legacy, &mut out).await;
+        *FAKE_GH.lock().unwrap() = None;
+        *STATE.lock().unwrap() = "OPEN";
+        merged.unwrap();
+        let returned = f.core.store.session(&s.id).unwrap();
+        assert_eq!(returned.workspace, folder);
+        assert_eq!(returned.workspace_id, Some(workspace.id));
+        assert!(active(&f.core, &returned).is_none());
+
+        let moved_again = create(
+            &app,
+            &f.core,
+            &returned,
+            &mut out,
+            "Another task",
+            AccessMode::FileEdits,
+            None,
+            true,
+            watch::channel(false).1,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_ne!(active(&f.core, &moved_again).unwrap().path, t.path);
+        return_if_integrated(&app, &f.core, &moved_again, &mut out)
+            .await
+            .unwrap();
+        assert_eq!(f.core.store.session(&s.id).unwrap().workspace, folder);
+        assert_eq!(std::fs::read_to_string(wt.join("b.txt")).unwrap(), "y\r\n");
     }
 
     fn fake_named(args: &[&str]) -> Result<String, String> {

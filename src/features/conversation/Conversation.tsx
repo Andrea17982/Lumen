@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n';
-import type { Session } from '../../protocol/types';
+import { isSessionActive, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { Attention } from '../attention/Attention';
 import { Composer } from '../composer/Composer';
@@ -10,7 +10,6 @@ import { RewindContext, useRewind, type RewindHost } from './Rewind';
 import { Transcript } from './Transcript';
 import s from './Conversation.module.css';
 
-const ACTIVE = new Set(['running', 'queued', 'waiting']);
 
 /** A session: its transcript, the user's messages on their way, and the composer. */
 export function Conversation({ session }: { session: Session }) {
@@ -19,7 +18,7 @@ export function Conversation({ session }: { session: Session }) {
   const transcript = useSyncState((st) => st.transcripts[session.id]);
   const allOutgoing = useSyncState((st) => st.outgoing);
   const outgoing = useMemo(() => allOutgoing.filter((o) => o.sessionId === session.id), [allOutgoing, session.id]);
-  const running = ACTIVE.has(session.status);
+  const running = isSessionActive(session.status);
   const connected = useSyncState((st) => st.connection.state === 'connected');
   // A rewind gives the original prompt back to the composer, to edit and send again.
   const [draft, setDraft] = useState<{ text: string } | null>(null);
@@ -69,8 +68,8 @@ function Announcer({ status }: { status: string }) {
     const was = previous.current;
     previous.current = status;
     if (was === status) return;
-    if (ACTIVE.has(status) && !ACTIVE.has(was)) setMessage(t.conversationText.replying);
-    else if (!ACTIVE.has(status) && ACTIVE.has(was)) setMessage(t.status[status] ?? status);
+    if (isSessionActive(status) && !isSessionActive(was)) setMessage(t.conversationText.replying);
+    else if (!isSessionActive(status) && isSessionActive(was)) setMessage(t.status[status] ?? status);
   }, [status, t]);
   return (
     <div className={s.announcer} aria-live="polite">

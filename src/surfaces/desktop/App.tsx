@@ -12,7 +12,7 @@ import { Settings } from '../../features/settings/Settings';
 import { WorktreeBar } from '../../features/worktree/Worktree';
 import { usePluginThemeStyle } from '../../features/settings/useThemeStyle';
 import { useNotifications } from './notifications';
-import type { Connection, Session } from '../../protocol/types';
+import { isSessionActive, type Connection, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
 
@@ -87,7 +87,7 @@ function Shell({ preferences }: { preferences: Preferences }) {
   }, [project, projectId]);
   const connected = useSyncState((st) => st.connection.state === 'connected');
   const [error, setError] = useState<string | null>(null);
-  const busy = !!session && ['running', 'queued', 'waiting'].includes(session.status);
+  const busy = !!session && isSessionActive(session.status);
 
   const hide = (value: boolean) => {
     setHidden(value);

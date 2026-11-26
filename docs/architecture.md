@@ -1,6 +1,6 @@
 # Architecture
 
-The local daemon owns everything: storage, accounts, process and API execution, permissions, routing and cancellation. Clients are thin. They render state and send commands over authenticated local IPC. The desktop client is being rewritten.
+The local daemon owns storage, accounts, process and API execution, permissions, routing and cancellation. The React desktop client renders state and sends commands through the Tauri shell over authenticated local IPC.
 
 ## Crates
 
