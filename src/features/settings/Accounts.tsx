@@ -12,6 +12,7 @@ const providerName: Record<Provider, string> = {
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   cursor: 'Cursor',
+  droid: 'Droid',
   ollama: 'Ollama',
   anthropicapi: 'Anthropic API',
   openaiapi: 'OpenAI API',

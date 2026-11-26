@@ -102,8 +102,10 @@ pub(crate) async fn submit(
     let available = accounts
         .iter()
         .filter(|a| {
-            (!matches!(a.provider, Provider::Opencode | Provider::Cursor))
-                && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
+            (!matches!(
+                a.provider,
+                Provider::Opencode | Provider::Cursor | Provider::Droid
+            )) && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
                 && !core.limits.cooling(&a.id, now())
                 && !usage
                     .iter()
@@ -882,7 +884,7 @@ async fn stage_observed(
     };
     let stripped = if !matches!(
         a.provider,
-        Provider::Ollama | Provider::Opencode | Provider::Cursor
+        Provider::Ollama | Provider::Opencode | Provider::Cursor | Provider::Droid
     ) {
         stripped
     } else {
@@ -1517,8 +1519,10 @@ async fn stage_fallback(
             .accounts()?
             .into_iter()
             .filter(|b| {
-                (!matches!(b.provider, Provider::Opencode | Provider::Cursor))
-                    && (!b.provider.is_api() || crate::api::eligible(&core.root, b))
+                (!matches!(
+                    b.provider,
+                    Provider::Opencode | Provider::Cursor | Provider::Droid
+                )) && (!b.provider.is_api() || crate::api::eligible(&core.root, b))
                     && !attempted.contains(&b.id)
                     && !core.limits.cooling(&b.id, now())
                     && !usage

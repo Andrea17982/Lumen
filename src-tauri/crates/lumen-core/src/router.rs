@@ -494,6 +494,7 @@ pub fn requested_provider(prompt: &str) -> Option<&'static str> {
         ("ollama", "ollama"),
         ("opencode", "opencode"),
         ("cursor", "cursor"),
+        ("droid", "droid"),
     ] {
         for verb in ["usa ", "use ", "utilizza ", "utilize "] {
             if let Some(rest) = text.strip_prefix(&format!("{verb}{name}")) {
@@ -908,6 +909,27 @@ mod tests {
         );
         assert_eq!(super::requested_provider("What is Antigravity?"), None);
         assert_eq!(super::requested_provider("Use ClaudeCodeExploit"), None);
+        assert_eq!(super::requested_provider("usa droid: fix"), Some("droid"));
+    }
+
+    #[test]
+    fn every_provider_is_a_known_mode() {
+        let mut o = opts();
+        for provider in crate::adapter_contract::adapter_capabilities().adapters {
+            o.mode = serde_json::to_value(&provider.provider)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .into();
+            let accounts = [Account {
+                id: "a".into(),
+                name: "A".into(),
+                provider: provider.provider.clone(),
+            }];
+            if let Err(e) = route("Test", &o, &accounts) {
+                assert_ne!(e, "Unknown provider mode", "mode {}", o.mode);
+            }
+        }
     }
 
     use super::*;

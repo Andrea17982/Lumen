@@ -31,7 +31,10 @@ pub fn command(p: &Provider) -> Result<Command, String> {
 pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
     if *p == Provider::Antigravity {
         c.env("HOME", dir).env("USERPROFILE", dir);
-    } else if matches!(p, Provider::Ollama | Provider::Opencode | Provider::Cursor) {
+    } else if matches!(
+        p,
+        Provider::Ollama | Provider::Opencode | Provider::Cursor | Provider::Droid
+    ) {
         // Local models live in the user's own Ollama store; nothing to isolate.
     } else {
         c.env(p.env(), dir);
@@ -47,6 +50,7 @@ pub fn isolate(c: &mut Command, p: &Provider, dir: &Path) {
         "GOOGLE_API_KEY",
         "GEMINI_API_KEY",
         "CURSOR_API_KEY",
+        "FACTORY_API_KEY",
     ] {
         c.env_remove(key);
     }
@@ -88,6 +92,9 @@ pub fn normalize(p: &Provider, v: &Value) -> Vec<Activity> {
     };
     if *p == Provider::Cursor {
         return crate::cursor::normalize(v);
+    }
+    if *p == Provider::Droid {
+        return crate::droid::normalize(v);
     }
     if *p == Provider::Gpt {
         if v["type"] == "thread.started" {
@@ -346,6 +353,9 @@ pub(crate) async fn execute_with_images(
 ) -> Result<String, String> {
     if input.account.provider == Provider::Cursor {
         return crate::cursor::execute(input, cancel, emit).await;
+    }
+    if input.account.provider == Provider::Droid {
+        return crate::droid::execute(input, cancel, emit).await;
     }
     // IPC is limited to one text delta per frame. Control/diagnostic events flush pending text
     // first, so ordering and interactive questions are preserved without delaying decisions.
@@ -792,6 +802,7 @@ pub fn invocation_args(
         Provider::Ollama => vec!["run"],
         Provider::Opencode
         | Provider::Cursor
+        | Provider::Droid
         | Provider::Openaiapi
         | Provider::Anthropicapi
         | Provider::Googleapi => return vec![],
@@ -899,6 +910,7 @@ pub fn invocation_args(
         }
         Provider::Opencode
         | Provider::Cursor
+        | Provider::Droid
         | Provider::Openaiapi
         | Provider::Anthropicapi
         | Provider::Googleapi => unreachable!("Adapter owns its invocation"),
@@ -954,7 +966,7 @@ pub(crate) async fn run_owned_json(
     });
     let mut lines = BufReader::new(child.stdout.take().ok_or("Missing CLI stream")?).lines();
     let mut text = String::new();
-    let mut completed = *provider != Provider::Cursor;
+    let mut completed = !matches!(provider, Provider::Cursor | Provider::Droid);
     let mut stdin = child.stdin.take().ok_or("Missing CLI input")?;
     let send = async move {
         stdin
@@ -991,7 +1003,10 @@ pub(crate) async fn run_owned_json(
             return Err(format!("{} exited unsuccessfully; check official CLI login, model access and workspace permissions", provider.binary()));
         }
         if !completed {
-            return Err("Cursor stream ended without a successful terminal result".into());
+            return Err(format!(
+                "{} stream ended without a successful terminal result",
+                provider.binary()
+            ));
         }
         if text.trim().is_empty() {
             return Err("CLI returned no assistant text".into());

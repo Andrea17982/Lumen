@@ -30,6 +30,7 @@ mod catalog;
 mod command_receipts;
 pub use command_receipts::dispatch as dispatch_receipted;
 mod cursor;
+mod droid;
 mod opencode;
 mod opencode_acp;
 mod quota_resume;
@@ -441,12 +442,14 @@ fn add_account(
     if name.trim().is_empty() || name.len() > 80 {
         return Err("Use an account name of 1–80 characters".into());
     }
-    if matches!(provider, Provider::Opencode | Provider::Cursor)
-        && core
-            .store
-            .accounts()?
-            .iter()
-            .any(|a| a.provider == provider)
+    if matches!(
+        provider,
+        Provider::Opencode | Provider::Cursor | Provider::Droid
+    ) && core
+        .store
+        .accounts()?
+        .iter()
+        .any(|a| a.provider == provider)
     {
         return Err(
             "This adapter uses one existing native profile; it cannot create isolated identities yet."
@@ -515,6 +518,9 @@ async fn account_status(core: crate::CoreRef<'_>, id: String) -> Result<bool, St
     if a.provider == Provider::Cursor {
         return Ok(!crate::cursor::models().await?.is_empty());
     }
+    if a.provider == Provider::Droid {
+        return Ok(crate::droid::signed_in());
+    }
     if a.provider == Provider::Opencode {
         return Ok(!crate::opencode::models(None, None).await?.is_empty());
     }
@@ -535,6 +541,7 @@ async fn account_status(core: crate::CoreRef<'_>, id: String) -> Result<bool, St
         Provider::Ollama
         | Provider::Opencode
         | Provider::Cursor
+        | Provider::Droid
         | Provider::Openaiapi
         | Provider::Anthropicapi
         | Provider::Googleapi => unreachable!(),
@@ -571,6 +578,7 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
             Provider::Antigravity | Provider::Ollama => "",
             Provider::Opencode => "auth login",
             Provider::Cursor => "login",
+            Provider::Droid => "",
             Provider::Openaiapi | Provider::Anthropicapi | Provider::Googleapi => {
                 return Err("Use API settings to save a key in the OS keychain".into())
             }
@@ -582,7 +590,10 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
         };
         let script = format!(
             "$env:{} = {}\n{}{}\n& {} {}\nWrite-Host 'Return to Lumen and check connection.'\n",
-            if matches!(a.provider, Provider::Opencode | Provider::Cursor) {
+            if matches!(
+                a.provider,
+                Provider::Opencode | Provider::Cursor | Provider::Droid
+            ) {
                 "LUMEN_NATIVE_PROFILE"
             } else {
                 a.provider.env()
@@ -598,7 +609,8 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
                 "CODEX_ACCESS_TOKEN",
                 "GOOGLE_API_KEY",
                 "GEMINI_API_KEY",
-                "CURSOR_API_KEY"
+                "CURSOR_API_KEY",
+                "FACTORY_API_KEY"
             ]
             .iter()
             .map(|k| format!("Remove-Item Env:{k} -ErrorAction SilentlyContinue"))
@@ -621,6 +633,7 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
             Provider::Gpt => "login",
             Provider::Opencode => "auth login",
             Provider::Cursor => "login",
+            Provider::Droid => "",
             Provider::Openaiapi | Provider::Anthropicapi | Provider::Googleapi => {
                 return Err("Use API settings to save a key in the OS keychain".into())
             }
@@ -632,8 +645,8 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
             String::new()
         };
         let script = format!(
-            "#!/bin/sh\nexport {}={}\n{home}unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN GOOGLE_API_KEY GEMINI_API_KEY CURSOR_API_KEY\n{} {action}\necho 'Return to Lumen and check connection.'\n",
-            if matches!(a.provider, Provider::Opencode | Provider::Cursor) { "LUMEN_NATIVE_PROFILE" } else { a.provider.env() },
+            "#!/bin/sh\nexport {}={}\n{home}unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN GOOGLE_API_KEY GEMINI_API_KEY CURSOR_API_KEY FACTORY_API_KEY\n{} {action}\necho 'Return to Lumen and check connection.'\n",
+            if matches!(a.provider, Provider::Opencode | Provider::Cursor | Provider::Droid) { "LUMEN_NATIVE_PROFILE" } else { a.provider.env() },
             quote(&dir.to_string_lossy()),
             quote(&exe.to_string_lossy()),
         );

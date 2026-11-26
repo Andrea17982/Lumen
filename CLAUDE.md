@@ -1,6 +1,6 @@
 # Lumen
 
-Lumen is a local desktop app that orchestrates the AI coding agents the user already pays for: Claude Code, Codex, Antigravity, OpenCode, Cursor CLI, Ollama and the official Anthropic, OpenAI and Google APIs. It is MIT licensed, in alpha, and Windows x64 is the primary target.
+Lumen is a local desktop app that orchestrates the AI coding agents the user already pays for: Claude Code, Codex, Antigravity, OpenCode, Cursor CLI, Factory Droid, Ollama and the official Anthropic, OpenAI and Google APIs. It is MIT licensed, in alpha, and Windows x64 is the primary target.
 
 Claude Code is the only agent developing this repository. Product code that integrates other agents is the product itself, so never remove it as clutter.
 
