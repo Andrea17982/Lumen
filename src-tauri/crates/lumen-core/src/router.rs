@@ -429,7 +429,7 @@ fn visual_work(lower: &str) -> bool {
 }
 
 /// Tie-break before continuity and quota are applied.
-fn provider_for(request: &str, tier: i32) -> Provider {
+pub(crate) fn provider_for(request: &str, tier: i32) -> Provider {
     let lower = request.to_lowercase();
     let has = |cues: &[&str]| cues.iter().any(|cue| lower.contains(cue));
     if visual_work(&lower) {

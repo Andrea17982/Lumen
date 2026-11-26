@@ -60,6 +60,14 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
             & "$PSScriptRoot/provider.ps1" -Provider gpt -PromptText $prompt -AppServer
         }
         if ($request.method -eq 'model/list') {
+            # The downgrade-consent scenario pins one Codex account to a catalog with no tier-two model.
+            if (Test-Path -LiteralPath (Join-Path $env:CODEX_HOME 'small-catalog-fixture')) {
+                Emit @{id=$request.id;result=@{data=@(
+                    @{id='gpt-luna-fixture';model='gpt-luna-fixture';displayName='GPT Luna fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'})},
+                    @{id='gpt-terra-fixture';model='gpt-terra-fixture';displayName='GPT Terra fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'})}
+                );nextCursor=$null}}
+                continue
+            }
             Emit @{id=$request.id;result=@{data=@(
                 @{id='gpt-fixture';model='gpt-fixture';displayName='GPT Sol fixture';isDefault=$true;defaultReasoningEffort='medium';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'},@{reasoningEffort='xhigh'},@{reasoningEffort='ultra'})},
                 @{id='gpt-luna-fixture';model='gpt-luna-fixture';displayName='GPT Luna fixture';defaultReasoningEffort='low';supportedReasoningEfforts=@(@{reasoningEffort='low'},@{reasoningEffort='medium'},@{reasoningEffort='high'})},
