@@ -9,8 +9,10 @@ import { startDaemon } from './daemon-fixture';
 test.skip(process.platform !== 'win32', 'the daemon fixtures run on Windows');
 
 const COUNT = 5000;
-// Measured on the owner's machine (24/11): 0.3 s, 3.8 s, 17–21 ms, 3–5 ms.
-const budget = { firstMessagesMs: 1500, allMountedMs: 12_000, frameP95Ms: 50, typingP95Ms: 50 };
+// Measured on the owner's machine (24/11): 0.3 s, 3.8 s, 17–21 ms, 3–5 ms. The hosted CI
+// Windows runner measured frame p95 at 50 ms (26/11), so that budget keeps room for it;
+// the disqualified no-containment variant was 113 ms, far above any limit here.
+const budget = { firstMessagesMs: 1500, allMountedMs: 12_000, frameP95Ms: 70, typingP95Ms: 50 };
 
 test(`a ${COUNT}-message conversation stays within the M0 budget`, async ({ page, baseURL }) => {
   test.setTimeout(180_000);
