@@ -95,6 +95,8 @@ export async function startBridge(client, { origin }) {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     token,
+    /** Plays an event only the shell sends, such as `lumen:update`. */
+    emit: (event, payload) => broadcast({ event, payload }),
     async close() {
       closed = true;
       stream?.io.destroy();

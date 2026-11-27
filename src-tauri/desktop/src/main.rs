@@ -334,7 +334,19 @@ fn on_connect(app: &tauri::AppHandle) {
 }
 
 fn main() {
-    let builder = tauri::Builder::default()
+    // One shell per installation. A second launch (Start menu while the window sits in the
+    // tray) shows the open window and exits. Two shells would each supervise the service, and
+    // one would restart it while the other stops it to install an update or go back.
+    // Test builds on a throwaway data directory stay independent of the user's Lumen.
+    let isolated = cfg!(debug_assertions) && std::env::var_os("LUMEN_TEST_DATA_DIR").is_some();
+    let builder = if isolated {
+        tauri::Builder::default()
+    } else {
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            tray::show_main(app)
+        }))
+    };
+    let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
