@@ -1,6 +1,6 @@
 //! Transactional, versioned SQLite schema upgrades. A newer database is never downgraded.
 use rusqlite::Connection;
-const CURRENT: u32 = 8;
+pub(crate) const CURRENT: u32 = 8;
 fn column(c: &Connection, table: &str, name: &str) -> rusqlite::Result<bool> {
     let mut q = c.prepare(&format!("PRAGMA table_info({table})"))?;
     let rows = q.query_map([], |r| r.get::<_, String>(1))?;

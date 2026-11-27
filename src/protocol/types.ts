@@ -140,6 +140,56 @@ export function unconfirmedId(error: string): string | null {
   return /^Cannot confirm command ([0-9a-f-]{36}):/.exec(error)?.[1] ?? null;
 }
 
+/** A newer signed release, from the shell's update check. */
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+  /** False for the portable folder and the Linux package: they update from the release page. */
+  installable: boolean;
+  page: string;
+}
+
+/** `update_status`, answered by the desktop shell. */
+export interface UpdateStatus {
+  current: string;
+  available: UpdateInfo | null;
+  /** The version the last update replaced, when Lumen can go back to it. */
+  previous: string | null;
+  installable: boolean;
+  /** A Go back that could not finish at startup; the current data was kept. */
+  problem: string | null;
+}
+
+/** `repair`: what Repair Lumen checked and fixed. */
+export interface RepairReport {
+  database: { ok: boolean; detail: string | null; backup: string | null };
+  recovered: number;
+  accounts: { id: string; name: string; provider: Provider; installed: boolean; version: string | null; signedIn: boolean | null }[];
+  tasks: { path: string; branch: string | null; changes: number | null; conversation: boolean }[];
+  restored: number;
+}
+
+/** `account_cli`: the official app behind an account. */
+export interface CliInfo {
+  installed: boolean;
+  version: string | null;
+  inAppSignIn: boolean;
+}
+
+/** `login_state`: a sign-in Lumen runs without a terminal. */
+export interface SignIn {
+  phase: 'starting' | 'browser' | 'code' | 'checking' | 'done' | 'failed' | 'cancelled';
+  needsCode: boolean;
+  hasLink: boolean;
+  message: string | null;
+}
+
+/** The daemon's answer when Stop ended a turn before it started: nothing was recorded. */
+export function isCancelled(error: unknown): boolean {
+  const text = typeof error === 'string' ? error : error instanceof Error ? error.message : String(error);
+  return text.trim() === 'Cancelled';
+}
+
 // Attention (M4): native questions and Gatekeeper approvals.
 
 export interface QuestionOption {

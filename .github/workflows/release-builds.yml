@@ -23,7 +23,7 @@ jobs:
             bundle: nsis
           - os: macos-latest
             target: universal-apple-darwin
-            bundle: dmg
+            bundle: app,dmg
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             bundle: deb
@@ -51,9 +51,17 @@ jobs:
       - run: npm ci
       - run: node scripts/prepare-moli.mjs
       - name: Build release and native installer
+        shell: bash
         env:
           APPLE_SIGNING_IDENTITY: '-'
-        run: npx tauri build --config src-tauri/desktop/tauri.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} -- --locked
+          # Update signing (minisign), never on pull requests. Without the key the build still
+          # runs, with no updater artifacts.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          signed=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then signed=(--config '{"bundle":{"createUpdaterArtifacts":true}}'); fi
+          npx tauri build --config src-tauri/desktop/tauri.conf.json "${signed[@]}" --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} -- --locked
       - name: Stage Windows setup and portable ZIP
         if: runner.os == 'Windows'
         shell: pwsh
@@ -63,6 +71,9 @@ jobs:
           New-Item -ItemType Directory -Path release, portable, portable/resources
           $setup = Get-Item "$target/bundle/nsis/*-setup.exe"
           Copy-Item -LiteralPath $setup.FullName -Destination "release/Lumen_${version}_x64-setup.exe"
+          if (Test-Path -LiteralPath "$($setup.FullName).sig") {
+            Copy-Item -LiteralPath "$($setup.FullName).sig" -Destination "release/Lumen_${version}_x64-setup.exe.sig"
+          }
           Copy-Item -LiteralPath "$target/Lumen.exe", "src-tauri/binaries/lumen-daemon-${{ matrix.target }}.exe" -Destination portable
           Rename-Item "portable/lumen-daemon-${{ matrix.target }}.exe" "lumen-daemon.exe"
           Copy-Item -Recurse -LiteralPath src-tauri/resources/moli, src-tauri/resources/legal -Destination portable/resources
@@ -84,6 +95,10 @@ jobs:
           mkdir release
           image="release/Lumen_${version}_macos-universal.dmg"
           cp "$bundle"/dmg/*.dmg "$image"
+          if [ -f "$bundle/macos/Lumen.app.tar.gz.sig" ]; then
+            cp "$bundle/macos/Lumen.app.tar.gz" "release/Lumen_${version}_macos-universal.app.tar.gz"
+            cp "$bundle/macos/Lumen.app.tar.gz.sig" "release/Lumen_${version}_macos-universal.app.tar.gz.sig"
+          fi
           hdiutil verify "$image"
           mountpoint=$(mktemp -d)
           hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$image"
@@ -116,3 +131,25 @@ jobs:
           path: release/*
           if-no-files-found: error
           compression-level: 0
+  manifest:
+    # The updater manifest for a tagged release, from the signed artifacts of every platform.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: The tag names the packaged version
+        run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
+      - run: node scripts/update-manifest.mjs "$(node -p "require('./package.json').version")" release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumen-manifest
+          path: release/latest.json
+          if-no-files-found: error

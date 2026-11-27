@@ -12,7 +12,8 @@ import { Settings } from '../../features/settings/Settings';
 import { WorktreeBar } from '../../features/worktree/Worktree';
 import { usePluginThemeStyle } from '../../features/settings/useThemeStyle';
 import { useNotifications } from './notifications';
-import { isSessionActive, type Connection, type Session } from '../../protocol/types';
+import { isSessionActive, type Connection, type Session, type UpdateStatus } from '../../protocol/types';
+import { errorText } from '../../transport/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './App.module.css';
 
@@ -214,9 +215,49 @@ function Banners() {
   const synced = useSyncState((st) => st.synced);
   const sessions = useSyncState((st) => st.sessions);
   const error = useSyncState((st) => st.error);
+  const update = useSyncState((st) => st.update);
+  const [later, setLater] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  // A Go back that could not finish at startup: the shell kept the current data and says why.
+  useEffect(() => {
+    sync.call<UpdateStatus>('update_status').then((st) => setProblem(st.problem), () => {});
+  }, [sync]);
   return (
     <div className={s.banners}>
       <ConnectionBanner connection={connection} stale={!synced && sessions.length > 0} />
+      {problem && (
+        <div className={s.banner} data-tone="warning" role="alert">
+          <span>{t.banner.goBackFailed(problem)}</span>
+          <Button variant="secondary" onPress={() => setProblem(null)}>
+            {t.banner.checked}
+          </Button>
+        </div>
+      )}
+      {update && later !== update.version && (
+        <div className={s.banner} role="status">
+          <span>{updateError ?? t.banner.update(update.version)}</span>
+          <Button
+            variant="primary"
+            isDisabled={installing}
+            onPress={() => {
+              setInstalling(true);
+              setUpdateError(null);
+              // On success the app restarts; only a failure comes back here.
+              sync
+                .call(update.installable ? 'update_install' : 'update_open_page')
+                .catch((e) => setUpdateError(errorText(e)))
+                .finally(() => setInstalling(false));
+            }}
+          >
+            {t.banner.updateNow}
+          </Button>
+          <Button variant="secondary" onPress={() => setLater(update.version)}>
+            {t.banner.later}
+          </Button>
+        </div>
+      )}
       {error && connection.state === 'connected' && (
         <div className={s.banner} data-tone="warning" role="alert">
           <span>{t.banner.syncError(error)}</span>
@@ -240,12 +281,44 @@ function Banners() {
 
 function ConnectionBanner({ connection, stale }: { connection: Connection; stale: boolean }) {
   const t = useT();
-  if (connection.state === 'mismatch') return <p className={s.banner} data-tone="warning">{t.banner.mismatch}</p>;
+  const sync = useSyncClient();
+  const [repairing, setRepairing] = useState(false);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  // The shell restarts the service itself: this works while the service cannot answer.
+  const repair = (
+    <>
+      <Button
+        variant="secondary"
+        isDisabled={repairing}
+        onPress={() => {
+          setRepairing(true);
+          setRepairError(null);
+          sync
+            .call('restart_service')
+            .catch((e) => setRepairError(errorText(e)))
+            .finally(() => setRepairing(false));
+        }}
+      >
+        {t.banner.repair}
+      </Button>
+      {repairError && <span role="alert">{repairError}</span>}
+    </>
+  );
+  if (connection.state === 'mismatch')
+    return (
+      <div className={s.banner} data-tone="warning" role="alert">
+        <span>{t.banner.mismatch}</span>
+        {repair}
+      </div>
+    );
   if (connection.state === 'failed')
     return (
-      <p className={s.banner} data-tone="danger" title={connection.detail}>
-        {t.banner.failed} {connection.detail}
-      </p>
+      <div className={s.banner} data-tone="danger" role="alert" title={connection.detail}>
+        <span>
+          {t.banner.failed} {connection.detail}
+        </span>
+        {repair}
+      </div>
     );
   if (connection.state === 'reconnecting' || (connection.state === 'connected' && stale)) return <p className={s.banner}>{t.banner.stale}</p>;
   return null;

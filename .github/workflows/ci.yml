@@ -51,6 +51,13 @@ jobs:
       - run: node scripts/prepare-moli.mjs
       - run: cargo build --manifest-path src-tauri/Cargo.toml -p lumen-daemon --locked
       - run: npx playwright test
+      # A failing UI test leaves its page snapshot and screenshot for diagnosis.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
       # The desktop shell sits outside the Cargo workspace (WebView and dist/ dependencies).
       - run: node scripts/prepare-daemon.mjs --debug
       - run: cargo fmt --manifest-path src-tauri/desktop/Cargo.toml --check

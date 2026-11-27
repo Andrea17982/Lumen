@@ -3,6 +3,7 @@
 
 mod bridge;
 mod tray;
+mod update;
 
 // The automation server must never reach a release build.
 #[cfg(all(feature = "webdriver", not(debug_assertions)))]
@@ -25,6 +26,43 @@ async fn daemon_call(
     command: String,
     mut args: Value,
 ) -> Result<Value, String> {
+    // Repair Lumen's first step and updates run here: the service they stop cannot answer for itself.
+    match command.as_str() {
+        "restart_service" => return bridge.restart_service().await.map(|_| Value::Null),
+        "update_status" => {
+            return Ok(json!({
+                "current": env!("CARGO_PKG_VERSION"),
+                "available": update::known(&app),
+                "previous": update::previous(&bridge),
+                "installable": update::installable(),
+                "problem": app.state::<update::Updates>().problem(),
+            }))
+        }
+        "update_check" => return update::check(&app).await.map(|found| json!(found)),
+        // Only the page of the release the shell itself found: the webview names no URL.
+        "update_open_page" => {
+            use tauri_plugin_opener::OpenerExt;
+            let page = update::known(&app)
+                .map(|found| found.page)
+                .ok_or("No newer version is known")?;
+            return app
+                .opener()
+                .open_url(page, None::<&str>)
+                .map(|_| Value::Null)
+                .map_err(|e| e.to_string());
+        }
+        "update_install" => {
+            return update::install(&app, bridge.inner())
+                .await
+                .map(|_| Value::Null)
+        }
+        "update_back" => {
+            return update::go_back(&app, bridge.inner())
+                .await
+                .map(|_| Value::Null)
+        }
+        _ => {}
+    }
     // A screen capture must not show Lumen itself: the window steps aside for a moment.
     let main = app.get_webview_window("main");
     let screen = command == "capture_screenshot" && args["window"].is_null();
@@ -110,9 +148,10 @@ async fn daemon_call(
         }
         // A connector's sign-in URL (validated by the daemon: HTTPS or loopback HTTP, no
         // credentials) can carry a secret in its query: the shell opens it, the page never sees it.
-        "open_connector_url" => {
+        // Same for a CLI's sign-in page (the daemon accepts only the provider's own HTTPS hosts).
+        "open_connector_url" | "open_login_url" => {
             use tauri_plugin_opener::OpenerExt;
-            let url = value.as_str().ok_or("Invalid connector sign-in URL")?;
+            let url = value.as_str().ok_or("Invalid sign-in URL")?;
             app.opener()
                 .open_url(url, None::<&str>)
                 .map_err(|e| e.to_string())?;
@@ -298,12 +337,14 @@ fn main() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init());
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
     // Test builds: W3C WebDriver on 127.0.0.1 on TAURI_WEBDRIVER_PORT (tests/app/desktop.mjs).
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     builder
         .manage(Prefs::default())
+        .manage(update::Updates::default())
         .invoke_handler(tauri::generate_handler![
             daemon_call,
             daemon_connection,
@@ -357,10 +398,20 @@ fn main() {
                     .permission("wdio-webdriver:default"),
             )?;
             let (root, resources, daemon) = locations(app)?;
+            // A Go back finishes here, before the service opens the database.
+            // A failure leaves the current database in place; the app says so instead of a log
+            // line nobody sees.
+            if let Err(e) = update::settle(&root) {
+                app.state::<update::Updates>().report(e);
+            }
             let bridge = Arc::new(Bridge::new(root, resources, daemon)?);
             app.manage(bridge.clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move { bridge.supervise(handle, on_connect).await });
+            // Development and test builds never reach the network for updates.
+            if !cfg!(debug_assertions) {
+                tauri::async_runtime::spawn(update::watch(app.handle().clone()));
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

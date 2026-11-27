@@ -36,7 +36,7 @@ Orchestra e **Code Mode** si attivano nelle Impostazioni. Code Mode raggruppa le
 
 ## Download
 
-Consulta la [release 0.14.0](https://github.com/Andrea17982/Lumen/releases/tag/v0.14.0) per i pacchetti disponibili e i checksum SHA-256. La distribuzione prevede Windows x64 (setup e portable), macOS universale e Linux x64 (Debian e Ubuntu). Windows può mostrare un avviso perché i pacchetti non sono firmati.
+Consulta la [release 0.15.0](https://github.com/Andrea17982/Lumen/releases/tag/v0.15.0) per i pacchetti disponibili e i checksum SHA-256. La distribuzione prevede Windows x64 (setup e portable), macOS universale e Linux x64 (Debian e Ubuntu). Windows può mostrare un avviso perché i pacchetti non sono firmati.
 
 Per compilare Lumen dai sorgenti, segui la [guida di sviluppo](docs/development.md).
 

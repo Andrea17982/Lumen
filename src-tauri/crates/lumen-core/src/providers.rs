@@ -7,6 +7,21 @@ use tokio::{
     sync::watch,
 };
 
+/// Credentials a sign-in must not inherit: the CLI should sign in to the subscription account,
+/// not silently use a key from the environment.
+pub const SIGN_IN_SECRETS: [&str; 10] = [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+    "CODEX_ACCESS_TOKEN",
+    "GOOGLE_API_KEY",
+    "GEMINI_API_KEY",
+    "CURSOR_API_KEY",
+    "FACTORY_API_KEY",
+];
+
 pub fn executable(p: &Provider) -> Result<PathBuf, String> {
     which::which(p.binary()).map_err(|_| {
         format!(

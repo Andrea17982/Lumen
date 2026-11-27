@@ -34,7 +34,8 @@ export async function launchApp(data) {
       PATH: `${path.resolve('tests/fixtures/cli')};${process.env.PATH}`,
     },
   });
-  const browser = await webdriver(port);
+  // A cold CI runner can take over 30 s to open the first WebView2 window.
+  const browser = await webdriver(port, { timeout: 60_000 });
   return {
     browser,
     pid: shell.pid,

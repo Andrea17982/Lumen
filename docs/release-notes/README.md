@@ -1,5 +1,5 @@
 # Release history
 
-- [0.14.0](0.14.0.md) — Stability: Autopilot stops are partial work instead of errors, a service that cannot start says why, and Stop, Quit and task worktrees never fail silently.
+- [0.15.0](0.15.0.md) — Onboarding and repair: Claude Code and Codex sign in without a terminal, Repair Lumen, signed updates with Go back, and Stop that works from the first second.
 
 Earlier versions and their changelogs are on [GitHub Releases](https://github.com/Andrea17982/Lumen/releases) and in their Git tags.

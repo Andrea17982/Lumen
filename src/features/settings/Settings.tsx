@@ -4,11 +4,12 @@ import { useT } from '../../i18n';
 import { Accounts } from './Accounts';
 import { Extensions } from './Extensions';
 import { General, type Preferences } from './General';
+import { Maintenance } from './Maintenance';
 import s from './Settings.module.css';
 
-type Section = 'accounts' | 'general' | 'extensions';
-const SECTIONS: Section[] = ['accounts', 'general', 'extensions'];
-const VIEWS: Record<Section, (p: Preferences) => ReactNode> = { accounts: () => <Accounts />, general: (p) => <General preferences={p} />, extensions: () => <Extensions /> };
+type Section = 'accounts' | 'general' | 'extensions' | 'maintenance';
+const SECTIONS: Section[] = ['accounts', 'general', 'extensions', 'maintenance'];
+const VIEWS: Record<Section, (p: Preferences) => ReactNode> = { accounts: () => <Accounts />, general: (p) => <General preferences={p} />, extensions: () => <Extensions />, maintenance: () => <Maintenance /> };
 
 /** Settings replace the conversation in the main area: a few sections, few options each. */
 export function Settings({ onClose, leading, preferences }: { onClose: () => void; leading?: ReactNode; preferences: Preferences }) {

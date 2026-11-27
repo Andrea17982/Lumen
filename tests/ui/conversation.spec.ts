@@ -21,9 +21,15 @@ async function open(page: Page) {
   const chat = await daemon.client.call('create_session', { workspace: daemon.workspace });
   await page.goto(daemon.url());
   await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
-  await page.getByRole('button', { name: /Agent/ }).click();
-  await page.getByRole('option', { name: accountName }).click();
-  await expect(page.getByRole('button', { name: /Model/ })).toBeVisible();
+  // As in attention.spec: a press while the list is still opening may not take; choose again.
+  const agent = page.getByRole('button', { name: /Agent/ });
+  await expect(async () => {
+    if (!(await agent.textContent())?.includes(accountName)) {
+      await agent.click();
+      await page.getByRole('option', { name: accountName }).click({ timeout: 5_000 });
+    }
+    await expect(page.getByRole('button', { name: /Model/ })).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
   return chat;
 }
 

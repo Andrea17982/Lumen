@@ -24,6 +24,33 @@ pub fn receipted(command: &str) -> bool {
     )
 }
 
+/// How long a client waits for one reply. Commands that run a check, a publish, an
+/// install, a sign-in or an Orchestra step can legitimately take minutes; everything else
+/// answers from the store and a silent service must not leave the interface waiting forever.
+pub fn deadline(command: &str) -> std::time::Duration {
+    let long = matches!(
+        command,
+        "run_project_check"
+            | "publish_task"
+            | "apply_task"
+            | "discard_task"
+            | "compact_session"
+            | "plugin_install"
+            | "install_skill"
+            | "capture_screenshot"
+            | "refresh_usage"
+            | "provider_health"
+            | "account_status"
+            | "list_models"
+            | "mcp_health"
+            | "login_account"
+            | "repair"
+            | "__shutdown"
+    ) || command.starts_with("orchestra_")
+        || command.starts_with("login_");
+    std::time::Duration::from_secs(if long { 15 * 60 } else { 3 * 60 })
+}
+
 pub fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
@@ -104,6 +131,49 @@ pub struct Reply {
 pub type Stream = tokio::net::windows::named_pipe::NamedPipeClient;
 #[cfg(unix)]
 pub type Stream = tokio::net::UnixStream;
+/// The process that serves `endpoint`, after the same-user check `connect` makes. Used only by
+/// the desktop shell's Repair to stop a service that no longer answers.
+pub async fn server_pid(endpoint: &Path) -> Option<u32> {
+    let io = connect(endpoint).await.ok()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeServerProcessId};
+        let mut pid = 0;
+        // SAFETY: the handle belongs to `io`, a connected pipe that outlives this call, and
+        // `pid` is a valid out-pointer.
+        unsafe { GetNamedPipeServerProcessId(HANDLE(io.as_raw_handle()), &mut pid) }.ok()?;
+        Some(pid)
+    }
+    #[cfg(unix)]
+    {
+        io.peer_cred()
+            .ok()?
+            .pid()
+            .and_then(|p| u32::try_from(p).ok())
+    }
+}
+
+/// Whether nothing listens on the endpoint at all. A busy or unverified endpoint is not absent:
+/// a hung service whose pipe instances are all taken must not pass for a stopped one.
+pub async fn absent(endpoint: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        // ERROR_FILE_NOT_FOUND: no pipe instance exists under this name.
+        matches!(
+            tokio::net::windows::named_pipe::ClientOptions::new().open(endpoint),
+            Err(e) if e.raw_os_error() == Some(2)
+        )
+    }
+    #[cfg(unix)]
+    {
+        matches!(
+            tokio::net::UnixStream::connect(endpoint).await,
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused)
+        )
+    }
+}
+
 pub async fn connect(endpoint: &Path) -> Result<Stream, String> {
     #[cfg(windows)]
     {
@@ -169,28 +239,41 @@ impl Client {
         Ok(io)
     }
     pub async fn call(&self, command: &str, args: Value) -> Result<Value, String> {
+        self.call_within(command, args, deadline(command)).await
+    }
+    async fn call_within(
+        &self,
+        command: &str,
+        args: Value,
+        limit: std::time::Duration,
+    ) -> Result<Value, String> {
         let id = receipted(command).then(|| uuid::Uuid::new_v4().to_string());
         let mut retried = false;
         loop {
-            let reply = async {
+            let reply = tokio::time::timeout(limit, async {
                 let mut io = self
                     .start_request(command, args.clone(), id.clone())
                     .await?;
                 read::<Reply>(&mut io).await
-            }
+            })
             .await;
             match reply {
-                Ok(reply) => return reply.result,
-                Err(_) if id.is_some() && !retried => retried = true,
-                Err(error) => return Err(match id {
+                Ok(Ok(reply)) => return reply.result,
+                // A lost connection is retried once under the same receipt; a timeout is not,
+                // because the service may still be running the command.
+                Ok(Err(_)) if id.is_some() && !retried => retried = true,
+                Ok(Err(error)) => return Err(match id {
                     Some(id) => format!("Cannot confirm command {id}: {error}. Review its result before submitting new work."),
                     None => error,
+                }),
+                Err(_) => return Err(match id {
+                    Some(id) => format!("Cannot confirm command {id}: the service did not answer in time. Review its result before submitting new work."),
+                    None => "The Lumen service did not answer in time. Open Repair Lumen if this keeps happening.".into(),
                 }),
             }
         }
     }
 }
-
 #[cfg(windows)]
 pub mod peer {
     use windows::Win32::Security::RevertToSelf;
@@ -347,6 +430,94 @@ mod tests {
                 assert_eq!(error, "saved domain error");
             }
             server.await.unwrap();
+        }
+    }
+    #[test]
+    fn long_commands_get_the_long_deadline() {
+        let long = std::time::Duration::from_secs(15 * 60);
+        for command in [
+            "apply_task",
+            "login_start",
+            "login_account",
+            "orchestra_start",
+            "repair",
+            "__shutdown",
+        ] {
+            assert_eq!(deadline(command), long, "{command}");
+        }
+        for command in ["list_sessions", "create_session", "send_message"] {
+            assert_eq!(deadline(command), std::time::Duration::from_secs(180));
+        }
+    }
+    #[tokio::test]
+    async fn a_command_that_never_answers_times_out_without_a_retry() {
+        for command in ["create_session", "list_sessions"] {
+            #[cfg(windows)]
+            let endpoint = PathBuf::from(format!(
+                r"\\.\pipe\lumen-timeout-test-{}",
+                uuid::Uuid::new_v4()
+            ));
+            #[cfg(unix)]
+            let endpoint = std::env::temp_dir().join(uuid::Uuid::new_v4().simple().to_string());
+            #[cfg(windows)]
+            let listener = tokio::net::windows::named_pipe::ServerOptions::new()
+                .first_pipe_instance(true)
+                .reject_remote_clients(true)
+                .create(&endpoint)
+                .unwrap();
+            #[cfg(unix)]
+            let listener = tokio::net::UnixListener::bind(&endpoint).unwrap();
+            let client = Client {
+                endpoint: endpoint.clone(),
+                build: "fixture".into(),
+            };
+            let server_endpoint = endpoint.clone();
+            let (done, finished) = tokio::sync::oneshot::channel::<()>();
+            let server = tokio::spawn(async move {
+                #[cfg(windows)]
+                let (mut io, next) = {
+                    listener.connect().await.unwrap();
+                    let next = tokio::net::windows::named_pipe::ServerOptions::new()
+                        .reject_remote_clients(true)
+                        .create(&server_endpoint)
+                        .unwrap();
+                    (listener, next)
+                };
+                #[cfg(unix)]
+                let (mut io, _) = listener.accept().await.unwrap();
+                let request: Request = read(&mut io).await.unwrap();
+                assert_eq!(request.command, command);
+                // Hold the connection without replying, then check that no second attempt arrives.
+                finished.await.unwrap();
+                #[cfg(windows)]
+                let again =
+                    tokio::time::timeout(std::time::Duration::from_millis(300), next.connect())
+                        .await;
+                #[cfg(unix)]
+                let again =
+                    tokio::time::timeout(std::time::Duration::from_millis(300), listener.accept())
+                        .await;
+                assert!(again.is_err(), "{command} was sent twice");
+                drop(io);
+                #[cfg(unix)]
+                std::fs::remove_file(server_endpoint).unwrap();
+            });
+            let error = client
+                .call_within(
+                    command,
+                    serde_json::json!({}),
+                    std::time::Duration::from_millis(300),
+                )
+                .await
+                .unwrap_err();
+            done.send(()).unwrap();
+            server.await.unwrap();
+            if receipted(command) {
+                assert!(error.starts_with("Cannot confirm command"), "{error}");
+                assert!(error.contains("did not answer in time"), "{error}");
+            } else {
+                assert!(error.contains("did not answer in time"), "{error}");
+            }
         }
     }
     #[tokio::test]

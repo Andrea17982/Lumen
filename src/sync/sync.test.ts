@@ -180,6 +180,19 @@ describe('Sync', () => {
     expect(sync.getState().unconfirmed).toEqual([]);
   });
 
+  it('drops a message stopped before its turn started, instead of showing it as failed', async () => {
+    const daemon = fakeDaemon({
+      list_sessions: () => [],
+      send_message: () => {
+        throw 'Cancelled';
+      },
+    });
+    const sync = new Sync(daemon.transport);
+    await sync.start();
+    await expect(sync.send('s1', 'Go', { mode: 'auto', effort: '', accessMode: 'read-only' })).rejects.toBe('Cancelled');
+    expect(sync.getState().outgoing).toEqual([]);
+  });
+
   it('reports another service build and a stopping service', async () => {
     const daemon = fakeDaemon({
       list_sessions: () => [],

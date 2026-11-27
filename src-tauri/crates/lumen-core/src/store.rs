@@ -110,6 +110,32 @@ impl Store {
             rows.collect()
         })
     }
+    /// `PRAGMA integrity_check`: "ok", or what SQLite found damaged.
+    pub fn integrity(&self) -> Result<String, String> {
+        self.with(|c| {
+            let mut q = c.prepare("PRAGMA integrity_check")?;
+            let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map(|r| r.join("; "))
+        })
+    }
+    /// A consistent copy of the whole database, taken while Lumen runs.
+    pub fn backup(&self, path: &Path) -> Result<(), String> {
+        self.with(|c| {
+            c.execute("VACUUM INTO ?1", [path.to_string_lossy()])
+                .map(drop)
+        })
+    }
+    /// Conversations whose status says a turn is running, waiting or queued.
+    pub fn active_sessions(&self) -> Result<Vec<String>, String> {
+        self.with(|c| {
+            let mut q = c.prepare(
+                "SELECT id FROM sessions WHERE status IN ('running','waiting','queued')",
+            )?;
+            let rows = q.query_map([], |r| r.get(0))?;
+            rows.collect()
+        })
+    }
     pub fn session(&self, id: &str) -> Result<Session, String> {
         self.with(|c| {
             c.query_row(

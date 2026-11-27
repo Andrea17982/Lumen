@@ -74,6 +74,30 @@ pub async fn send_message(
     .await
 }
 
+/// The job a turn registers while it prepares: released on any early return, handed to the
+/// turn task once it starts. Only its own entry is removed, never a newer turn's.
+struct PreparingJob {
+    core: Arc<Core>,
+    id: String,
+    rx: watch::Receiver<bool>,
+    armed: bool,
+}
+impl Drop for PreparingJob {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        if let Ok(mut jobs) = self.core.jobs.lock() {
+            if jobs
+                .get(&self.id)
+                .is_some_and(|tx| tx.subscribe().same_channel(&self.rx))
+            {
+                jobs.remove(&self.id);
+            }
+        }
+    }
+}
+
 pub(crate) async fn submit(
     app: crate::host::EventHub,
     core: Arc<Core>,
@@ -102,18 +126,35 @@ pub(crate) async fn submit(
     if history.iter().any(|message| message.id == message_id) {
         return Err("This message was already accepted; reload the conversation".into());
     }
-    if reservation.is_none()
-        && core
-            .jobs
-            .lock()
-            .map_err(|_| "Jobs lock failed")?
-            .contains_key(&id)
-    {
-        return Err("This conversation already has a running or scheduled turn".into());
-    }
-    if reservation.as_ref().is_some_and(|cancel| *cancel.borrow()) {
-        return Err("Cancelled".into());
-    }
+    // The job is registered before preparation (routing, sign-in checks, catalogues), so Stop
+    // pressed in those first seconds cancels the turn instead of finding nothing to stop.
+    let reserved = reservation.is_some();
+    let rx = match reservation {
+        Some(rx) => rx,
+        None => {
+            let (tx, rx) = watch::channel(false);
+            let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+            if jobs.contains_key(&id) {
+                return Err("This conversation already has a running or scheduled turn".into());
+            }
+            jobs.insert(id.clone(), tx);
+            rx
+        }
+    };
+    let mut job = PreparingJob {
+        core: core.clone(),
+        id: id.clone(),
+        rx: rx.clone(),
+        armed: !reserved,
+    };
+    let stopped = || -> Result<(), String> {
+        if *rx.borrow() {
+            Err("Cancelled".into())
+        } else {
+            Ok(())
+        }
+    };
+    stopped()?;
     let workspace_changed = crate::workspace::apply(&app, &core, &id, &text)?;
     if workspace_changed {
         session = core.store.session(&id)?;
@@ -140,6 +181,12 @@ pub(crate) async fn submit(
             .iter()
             .filter(|a| matches!(a.provider, Provider::Claude | Provider::Gpt))
         {
+            if let Some(out) = core.logins.recent(&a.id) {
+                if out {
+                    signed_out.insert(a.id.clone());
+                }
+                continue;
+            }
             let mut command = match providers::command(&a.provider) {
                 Ok(command) => command,
                 Err(_) => continue,
@@ -163,20 +210,25 @@ pub(crate) async fn submit(
                         .await
                         .ok()?
                         .ok()?;
-                confirmed_logout(
+                let out = confirmed_logout(
                     &provider,
                     output.status.success(),
                     &output.stdout,
                     &output.stderr,
-                )
-                .then_some(id)
+                );
+                Some((id, out))
             });
         }
         while let Some(result) = checks.join_next().await {
-            if let Ok(Some(id)) = result {
-                signed_out.insert(id);
+            // An inconclusive check (timeout, spawn failure) is not remembered: the next turn asks again.
+            if let Ok(Some((id, out))) = result {
+                core.logins.remember(&id, out);
+                if out {
+                    signed_out.insert(id);
+                }
             }
         }
+        stopped()?;
     }
     let routing_accounts: Vec<_> = accounts
         .iter()
@@ -197,6 +249,7 @@ pub(crate) async fn submit(
                 && (budget || accounts.iter().any(|a| a.provider.fallback_rank() > 0))))
     {
         crate::refresh_routing_usage(&core, &accounts, &mut usage, opencode).await?;
+        stopped()?;
     }
     let available = accounts
         .iter()
@@ -218,6 +271,9 @@ pub(crate) async fn submit(
     }
     if options.audit_of.is_none() && requested.is_none() {
         if let Some((message, _)) = crate::orchestra::continuation(&history, &text) {
+            // Orchestra registers its own job for the continued plan, with no await in between.
+            stopped()?;
+            drop(job);
             return crate::orchestra::continue_message(
                 app,
                 core.clone(),
@@ -247,6 +303,7 @@ pub(crate) async fn submit(
     } else {
         crate::classify::heuristic(&text)
     };
+    stopped()?;
     let mut routing = options.clone();
     if let Some(provider) = requested {
         routing.mode = provider.into();
@@ -363,6 +420,7 @@ pub(crate) async fn submit(
     for f in &options.attachments {
         context::attachment_path(Path::new(&session.workspace), f)?;
     }
+    stopped()?;
     // Orchestra: complex Auto work is planned and split across agents.
     let mut orchestra_nogit = false;
     if options.audit_of.is_none()
@@ -416,27 +474,15 @@ pub(crate) async fn submit(
         && requested.is_none()
         && plan.strategy != "orchestra"
         && (big_task || named.is_some());
-    let (tx, rx) = watch::channel(false);
-    let reserved = reservation.is_some();
-    let rx = reservation.unwrap_or(rx);
     {
-        let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
-        if reserved {
-            if *rx.borrow() || !jobs.contains_key(&id) {
-                return Err("Cancelled".into());
-            }
-        } else {
-            if jobs.contains_key(&id) {
-                return Err("This conversation already has a running turn".into());
-            }
-            jobs.insert(id.clone(), tx);
+        let jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+        let owned = jobs
+            .get(&id)
+            .is_some_and(|tx| tx.subscribe().same_channel(&rx));
+        if *rx.borrow() || !owned {
+            return Err("Cancelled".into());
         }
     }
-    let release = |core: &Core| {
-        if let Ok(mut j) = core.jobs.lock() {
-            j.remove(&id);
-        }
-    };
     let mut user = Message {
         id: message_id,
         role: "user".into(),
@@ -466,10 +512,7 @@ pub(crate) async fn submit(
             row.text = value.to_string();
         }
     }
-    if let Err(e) = core.store.insert_message(&id, &user) {
-        release(&core);
-        return Err(e);
-    }
+    core.store.insert_message(&id, &user)?;
     crate::orchestra::supersede(&app, &core, &id);
     if session.title == "New conversation" {
         session.title = text
@@ -483,10 +526,9 @@ pub(crate) async fn submit(
     }
     session.status = "waiting".into();
     session.updated_at = now();
-    if let Err(e) = core.store.update(&session) {
-        release(&core);
-        return Err(e);
-    }
+    core.store.update(&session)?;
+    // From here the turn task owns the job and releases it when it ends.
+    job.armed = false;
     let core = core.clone();
     let returned = plan.clone();
     let auto_answer = options.mode == "auto" && options.access() != AccessMode::Autopilot;
@@ -3148,6 +3190,45 @@ pub async fn compact_session(
         },
     )?;
     core.store.session(&fresh.id)
+}
+
+#[cfg(test)]
+mod preparing_tests {
+    use super::*;
+
+    /// The guard removes only its own registration: a newer turn under the same conversation
+    /// keeps its job, and a guard handed over (disarmed) removes nothing.
+    #[test]
+    fn a_preparing_job_removes_only_its_own_registration() {
+        let f = crate::test_support::Fixture::new();
+        let register = |core: &Arc<Core>| {
+            let (tx, rx) = watch::channel(false);
+            core.jobs.lock().unwrap().insert("s".into(), tx);
+            rx
+        };
+        let guard = |rx, armed| PreparingJob {
+            core: f.core.clone(),
+            id: "s".into(),
+            rx,
+            armed,
+        };
+        let jobs = |core: &Arc<Core>| core.jobs.lock().unwrap().contains_key("s");
+
+        drop(guard(register(&f.core), true));
+        assert!(!jobs(&f.core), "an armed guard removes its job");
+
+        let old = register(&f.core);
+        let _newer = register(&f.core);
+        drop(guard(old, true));
+        assert!(jobs(&f.core), "a newer turn's job survives the old guard");
+
+        let current = f.core.jobs.lock().unwrap()["s"].subscribe();
+        drop(guard(current, false));
+        assert!(
+            jobs(&f.core),
+            "a disarmed guard leaves the job to its new owner"
+        );
+    }
 }
 
 #[cfg(test)]
