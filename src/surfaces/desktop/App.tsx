@@ -276,6 +276,9 @@ function Banners() {
       {update && later !== update.version && (
         <div className={s.banner} role="status">
           <span>{updateError ?? t.banner.update(update.version)}</span>
+          <Button variant="secondary" onPress={() => setLater(update.version)}>
+            {t.banner.later}
+          </Button>
           <Button
             variant="primary"
             isDisabled={installing}
@@ -290,9 +293,6 @@ function Banners() {
             }}
           >
             {t.banner.updateNow}
-          </Button>
-          <Button variant="secondary" onPress={() => setLater(update.version)}>
-            {t.banner.later}
           </Button>
         </div>
       )}

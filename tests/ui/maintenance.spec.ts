@@ -54,3 +54,21 @@ test('Repair checks the service and the database, backs it up and reports each a
   await accessible(page);
   await page.screenshot({ path: test.info().outputPath('maintenance.png'), fullPage: true });
 });
+
+test('the update banner keeps Later and Update together on the right, Update last', async ({ page }) => {
+  await page.goto(daemon.url());
+  await expect(page.getByRole('button', { name: 'New task' })).toBeVisible();
+  daemon.emit('lumen:update', { version: '9.9.9', notes: null, installable: true, page: 'https://github.com/Andrea17982/Lumen/releases' });
+  const banner = page.getByRole('status').filter({ hasText: 'Lumen 9.9.9 is available.' });
+  const text = (await banner.getByText('Lumen 9.9.9 is available.').boundingBox())!;
+  const later = (await banner.getByRole('button', { name: 'Later' }).boundingBox())!;
+  const update = (await banner.getByRole('button', { name: 'Update' }).boundingBox())!;
+  const box = (await banner.boundingBox())!;
+  expect(later.x).toBeGreaterThan(text.x + text.width);
+  expect(update.x).toBeGreaterThan(later.x + later.width);
+  // Adjacent, and against the right edge: not spread across the bar.
+  expect(update.x - (later.x + later.width)).toBeLessThan(24);
+  expect(box.x + box.width - (update.x + update.width)).toBeLessThan(40);
+  await banner.getByRole('button', { name: 'Later' }).click();
+  await expect(banner).toBeHidden();
+});

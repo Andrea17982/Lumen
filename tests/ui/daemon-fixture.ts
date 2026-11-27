@@ -31,6 +31,8 @@ export async function startDaemon(origin: string, { welcome = false } = {}) {
     get daemon() {
       return daemon;
     },
+    /** An event only the desktop shell sends, such as `lumen:update`. */
+    emit: (event: string, payload: unknown) => bridge.emit(event, payload),
     url: (query: Record<string, string> = {}) => `/?${new URLSearchParams({ locale: 'en', bridge: bridge.url, token: bridge.token, ...query })}`,
     /** Stops the service cleanly, for example to seed its store. */
     async stop() {

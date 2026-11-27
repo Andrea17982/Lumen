@@ -82,6 +82,10 @@
   border-bottom: 1px solid var(--separator);
   color: var(--text-secondary);
 }
+/* The message takes the free space, so the actions stay together on the right. */
+.banner > :first-child {
+  flex: 1;
+}
 .banner[data-tone='warning'] {
   background: var(--status-warning-subtle);
   color: var(--status-warning-text);
