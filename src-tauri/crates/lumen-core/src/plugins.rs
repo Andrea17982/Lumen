@@ -874,9 +874,8 @@ pub fn serve_mcp(data: &Path, id: &str, server: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn folder(manifest: Value) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("lumen-plugin-{}", crate::models::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn folder(manifest: Value) -> crate::test_support::TempDir {
+        let dir = crate::test_support::TempDir::new("lumen-plugin");
         std::fs::write(dir.join(MANIFEST), manifest.to_string()).unwrap();
         dir
     }

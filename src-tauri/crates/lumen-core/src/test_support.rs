@@ -55,3 +55,35 @@ impl Drop for Fixture {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
+
+/// A test folder under the system temp directory, removed when it goes out of scope.
+pub(crate) struct TempDir(PathBuf);
+impl TempDir {
+    pub fn new(prefix: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("{prefix}-{}", models::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dunce::canonicalize(dir).unwrap())
+    }
+}
+impl std::ops::Deref for TempDir {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+impl AsRef<std::path::Path> for TempDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        // Best effort, as for `Fixture`: a just-ended child may hold a handle for a moment.
+        for _ in 0..20 {
+            if std::fs::remove_dir_all(&self.0).is_ok() || !self.0.exists() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}

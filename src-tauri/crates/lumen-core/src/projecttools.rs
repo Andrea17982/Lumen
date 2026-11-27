@@ -724,10 +724,8 @@ mod tests {
         assert_eq!(result.unwrap_err(), "Cancelled");
     }
 
-    fn fixture(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("lumen-pt-{name}-{}", crate::models::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dunce::canonicalize(dir).unwrap()
+    fn fixture(name: &str) -> crate::test_support::TempDir {
+        crate::test_support::TempDir::new(&format!("lumen-pt-{name}"))
     }
     fn write(root: &Path, rel: &str, text: &str) {
         let path = root.join(rel);

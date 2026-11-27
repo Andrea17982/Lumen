@@ -2,7 +2,7 @@
 
 A Lumen plugin is a folder with a `lumen-plugin.json` manifest. It can add themes, slash commands, skills, MCP tools and small panels. Each plugin declares up front everything it may touch. You see that list before you install, the plugin stays off until you turn it on, and Lumen checks it again every time the plugin is used.
 
-Three examples ship in [plugins/examples](../plugins/examples/README.md).
+Two examples ship in [plugins/examples](../plugins/examples/README.md).
 
 ## Install, enable, update
 
@@ -26,7 +26,7 @@ A plugin whose files change on disk to ask for more than you approved stops work
   "name": "Word count",
   "version": "1.0.0",
   "description": "Counts words in text.",
-  "lumen": ">=0.10.0 <1.0.0",
+  "lumen": ">=0.15.0 <1.0.0",
   "contributes": {
     "themes": [{ "id": "dusk", "name": "Dusk", "file": "dusk.css" }],
     "slashCommands": [{ "name": "review", "description": "Review changes", "prompt": "Review…" }],
@@ -44,7 +44,7 @@ A plugin whose files change on disk to ask for more than you approved stops work
 ```
 
 - `id` is 2–64 lowercase letters, digits or dashes. `version` looks like `1.2.3`.
-- `lumen` is a list of comparators that all must match the running Lumen version, for example `>=0.12.0 <0.13.0`.
+- `lumen` is a list of comparators that all must match the running Lumen version, for example `>=0.15.0 <0.16.0`.
 - Unknown fields are rejected. Every path must stay inside the plugin folder, and symbolic links are refused.
 
 ### Permissions
