@@ -479,12 +479,17 @@ try {
         () => 'started',
         (error) => String(error),
       );
-    await sleep(700);
-    await client.call('cancel_run', { id: preparing.id });
-    assert.match(await pending, /Cancelled/, 'Stop during preparation cancels the turn');
-    assert.equal((await client.call('get_messages', { id: preparing.id })).length, 0, 'no message is recorded');
-    assert((await client.call('__status')).idle, 'nothing runs after a cancelled preparation');
-    await rm(path.join(data, 'accounts', claude.id, 'slow-status-fixture'));
+    try {
+      // The preparing turn holds a job: the service stops reporting idle until it ends.
+      for (let i = 0; i < 100 && (await client.call('__status')).idle; i++) await sleep(20);
+      assert(!(await client.call('__status')).idle, 'the turn is preparing');
+      await client.call('cancel_run', { id: preparing.id });
+      assert.match(await pending, /Cancelled/, 'Stop during preparation cancels the turn');
+      assert.equal((await client.call('get_messages', { id: preparing.id })).length, 0, 'no message is recorded');
+      assert((await client.call('__status')).idle, 'nothing runs after a cancelled preparation');
+    } finally {
+      await rm(path.join(data, 'accounts', claude.id, 'slow-status-fixture'), { force: true });
+    }
   }
   await writeFile(
     path.join(workspace, 'package.json'),

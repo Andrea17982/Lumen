@@ -271,7 +271,8 @@ pub(crate) async fn submit(
     }
     if options.audit_of.is_none() && requested.is_none() {
         if let Some((message, _)) = crate::orchestra::continuation(&history, &text) {
-            // Orchestra registers its own job for the continued plan.
+            // Orchestra registers its own job for the continued plan, with no await in between.
+            stopped()?;
             drop(job);
             return crate::orchestra::continue_message(
                 app,
@@ -3189,6 +3190,45 @@ pub async fn compact_session(
         },
     )?;
     core.store.session(&fresh.id)
+}
+
+#[cfg(test)]
+mod preparing_tests {
+    use super::*;
+
+    /// The guard removes only its own registration: a newer turn under the same conversation
+    /// keeps its job, and a guard handed over (disarmed) removes nothing.
+    #[test]
+    fn a_preparing_job_removes_only_its_own_registration() {
+        let f = crate::test_support::Fixture::new();
+        let register = |core: &Arc<Core>| {
+            let (tx, rx) = watch::channel(false);
+            core.jobs.lock().unwrap().insert("s".into(), tx);
+            rx
+        };
+        let guard = |rx, armed| PreparingJob {
+            core: f.core.clone(),
+            id: "s".into(),
+            rx,
+            armed,
+        };
+        let jobs = |core: &Arc<Core>| core.jobs.lock().unwrap().contains_key("s");
+
+        drop(guard(register(&f.core), true));
+        assert!(!jobs(&f.core), "an armed guard removes its job");
+
+        let old = register(&f.core);
+        let _newer = register(&f.core);
+        drop(guard(old, true));
+        assert!(jobs(&f.core), "a newer turn's job survives the old guard");
+
+        let current = f.core.jobs.lock().unwrap()["s"].subscribe();
+        drop(guard(current, false));
+        assert!(
+            jobs(&f.core),
+            "a disarmed guard leaves the job to its new owner"
+        );
+    }
 }
 
 #[cfg(test)]

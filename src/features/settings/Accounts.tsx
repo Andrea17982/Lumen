@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, ConfirmDialog, Menu, Select, Switch, TextField } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
 import { formatPercent, formatRelative, formatTime, languageTag } from '../../i18n/format';
@@ -117,6 +117,7 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
   const [cli, setCli] = useState<CliInfo | null>(null);
   const [signing, setSigning] = useState(false);
   const [terminal, setTerminal] = useState(false);
+  const [terminalTimedOut, setTerminalTimedOut] = useState(false);
   const api = isApi(account.provider);
   const cliAgent = signsIn(account.provider);
 
@@ -143,16 +144,33 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
   // The terminal sign-in ends outside Lumen: check every few seconds until it is done.
   useEffect(() => {
     if (!terminal) return;
+    setTerminalTimedOut(false);
     const started = Date.now();
-    const timer = setInterval(() => {
-      if (Date.now() - started > 10 * 60_000) return setTerminal(false);
-      sync.call<boolean>('account_status', { id: account.id }).then((ok) => {
-        if (!ok) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+    // One check at a time: each one runs the CLI.
+    const poll = () => {
+      if (Date.now() - started > TERMINAL_WAIT) {
         setTerminal(false);
-        void check();
-      }, () => {});
-    }, 3000);
-    return () => clearInterval(timer);
+        setTerminalTimedOut(true);
+        return;
+      }
+      sync
+        .call<boolean>('account_status', { id: account.id })
+        .then((ok) => {
+          if (!live || !ok) return;
+          setTerminal(false);
+          void check();
+        }, () => {})
+        .finally(() => {
+          if (live) timer = setTimeout(poll, 3000);
+        });
+    };
+    timer = setTimeout(poll, 3000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [terminal, sync, account.id]);
 
   async function signIn() {
@@ -221,6 +239,10 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
         <p className={s.help} role="status">
           {t.accounts.waitingTerminal}
         </p>
+      ) : terminalTimedOut && !status ? (
+        <p className={s.help} role="status">
+          {t.accounts.terminalTimedOut}
+        </p>
       ) : (
         cliAgent && !status && !signing && cli?.inAppSignIn === false && <p className={s.help}>{t.accounts.signInHelp}</p>
       )}
@@ -273,6 +295,10 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
   );
 }
 
+const TERMINAL_WAIT = 10 * 60_000;
+/** Polls in a row with no answer or no flow before the sign-in counts as lost. */
+const LOST_AFTER = 5;
+
 /**
  * The official CLI's sign-in without a terminal: the CLI opens the provider's page, and for
  * Claude Code the user pastes back the code that page shows. The daemon passes the code to the
@@ -284,6 +310,8 @@ function SignInFlow({ account, onFinished, onClose }: { account: Account; onFini
   const [state, setState] = useState<SignIn | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Bumped when the code is sent: a poll answered before that must not bring the code field back.
+  const codeSent = useRef(0);
   const start = () => {
     setError(null);
     setCode('');
@@ -293,18 +321,39 @@ function SignInFlow({ account, onFinished, onClose }: { account: Account; onFini
   const active = state !== null && ACTIVE.includes(state.phase);
   useEffect(() => {
     if (!active) return;
-    const timer = setInterval(() => {
-      sync.call<SignIn | null>('login_state', { id: account.id }).then((st) => {
-        if (!st) return;
-        setState(st);
-        // Confirmed by the CLI: the card shows Connected, and the flow closes.
-        if (st.phase === 'done') {
-          onFinished();
-          onClose();
-        }
-      }, () => {});
-    }, 1000);
-    return () => clearInterval(timer);
+    let live = true;
+    let misses = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = () => {
+      const sent = codeSent.current;
+      sync
+        .call<SignIn | null>('login_state', { id: account.id })
+        .then(
+          (st) => {
+            if (!live || sent !== codeSent.current) return;
+            // No flow in the service (it restarted): say so instead of waiting forever.
+            if (!st) return void (++misses >= LOST_AFTER && setError(t.accounts.signInLost));
+            misses = 0;
+            setState(st);
+            // Confirmed by the CLI: the card shows Connected, and the flow closes.
+            if (st.phase === 'done') {
+              onFinished();
+              onClose();
+            }
+          },
+          () => {
+            if (live && ++misses >= LOST_AFTER) setError(t.accounts.signInLost);
+          },
+        )
+        .finally(() => {
+          if (live && misses < LOST_AFTER) timer = setTimeout(poll, 1000);
+        });
+    };
+    timer = setTimeout(poll, 1000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [active, sync, account.id]);
   const phase = state?.phase ?? 'starting';
   const text =
@@ -316,7 +365,7 @@ function SignInFlow({ account, onFinished, onClose }: { account: Account; onFini
     : phase === 'cancelled' ? t.accounts.signInCancelled
     : t.accounts.signingIn;
   return (
-    <div className={s.api} aria-live="polite">
+    <div className={s.api}>
       <p className={phase === 'failed' ? s.error : s.quiet} role="status">
         {error ?? text}
       </p>
@@ -328,7 +377,10 @@ function SignInFlow({ account, onFinished, onClose }: { account: Account; onFini
             const value = code;
             setCode('');
             sync.call('login_code', { id: account.id, code: value }).then(
-              () => setState((st) => (st ? { ...st, phase: 'checking' } : st)),
+              () => {
+                codeSent.current += 1;
+                setState((st) => (st ? { ...st, phase: 'checking' } : st));
+              },
               (err) => setError(String(err)),
             );
           }}
@@ -350,15 +402,13 @@ function SignInFlow({ account, onFinished, onClose }: { account: Account; onFini
             {t.accounts.tryAgain}
           </Button>
         )}
-        {active && !error ? (
-          <Button variant="secondary" onPress={() => sync.call('login_cancel', { id: account.id }).then(onClose, (e) => setError(String(e)))}>
-            {t.cancel}
-          </Button>
-        ) : (
-          <Button variant="secondary" onPress={onClose}>
-            {t.cancel}
-          </Button>
-        )}
+        {/* Always ends the CLI too: after an error it may still be waiting for the code. */}
+        <Button
+          variant="secondary"
+          onPress={() => sync.call('login_cancel', { id: account.id }).then(onClose, (e) => (active && !error ? setError(String(e)) : onClose()))}
+        >
+          {t.cancel}
+        </Button>
       </div>
     </div>
   );

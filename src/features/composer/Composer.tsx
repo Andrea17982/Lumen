@@ -135,8 +135,11 @@ ${text}` : text));
     } catch (e) {
       // The message stays in the transcript with its error; give the text back to edit.
       // Stopped before the turn started: nothing was recorded, so the text simply returns.
-      setText(sent);
-      setAttachments(options.attachments ?? []);
+      // Anything typed meanwhile stays, after the returned text.
+      setText((current) => (current.trim() ? `${sent}
+
+${current}` : sent));
+      setAttachments((current) => [...(options.attachments ?? []), ...current]);
       if (!isCancelled(e)) setError(String(e));
     } finally {
       setSending(false);

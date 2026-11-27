@@ -144,10 +144,12 @@ pub struct Core {
 pub(crate) struct Logins(Mutex<HashMap<String, (std::time::Instant, bool)>>);
 impl Logins {
     const FRESH: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+    /// A sign-out is asked again sooner: the user may be signing in outside Lumen right now.
+    const FRESH_OUT: std::time::Duration = std::time::Duration::from_secs(60);
     pub(crate) fn recent(&self, id: &str) -> Option<bool> {
         let map = self.0.lock().ok()?;
         map.get(id)
-            .filter(|(at, _)| at.elapsed() < Self::FRESH)
+            .filter(|(at, out)| at.elapsed() < if *out { Self::FRESH_OUT } else { Self::FRESH })
             .map(|(_, out)| *out)
     }
     pub(crate) fn remember(&self, id: &str, signed_out: bool) {
@@ -161,6 +163,37 @@ impl Logins {
         }
     }
 }
+#[cfg(test)]
+mod logins_tests {
+    use super::Logins;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_sign_out_is_asked_again_sooner_than_a_sign_in() {
+        let logins = Logins::default();
+        logins.remember("a", false);
+        logins.remember("b", true);
+        assert_eq!(logins.recent("a"), Some(false));
+        assert_eq!(logins.recent("b"), Some(true));
+        logins.forget("a");
+        assert_eq!(logins.recent("a"), None);
+        let Some(earlier) = Instant::now().checked_sub(Duration::from_secs(120)) else {
+            return;
+        };
+        {
+            let mut map = logins.0.lock().unwrap();
+            map.insert("in".into(), (earlier, false));
+            map.insert("out".into(), (earlier, true));
+        }
+        assert_eq!(
+            logins.recent("in"),
+            Some(false),
+            "a sign-in lasts 10 minutes"
+        );
+        assert_eq!(logins.recent("out"), None, "a sign-out lasts one minute");
+    }
+}
+
 impl Core {
     fn new(
         store: store::Store,

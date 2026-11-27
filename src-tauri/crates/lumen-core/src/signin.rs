@@ -267,7 +267,8 @@ async fn watch(
         f.cancel = None;
     });
     // The CLI's own status is the only proof of a sign-in; its exit code alone is not.
-    let signed_in = crate::signed_in(&core, &a).await.unwrap_or(false);
+    let checked = crate::signed_in(&core, &a).await;
+    let signed_in = checked.as_ref().is_ok_and(|&ok| ok);
     core.catalogs.lock().map(|mut c| c.remove(&id)).ok();
     core.logins.forget(&id);
     core.sign_ins.update(&id, |f| {
@@ -280,6 +281,11 @@ async fn watch(
             f.state.phase = "failed".into();
             f.state.message = match outcome {
                 None => Some("The sign-in did not finish in time.".into()),
+                // The CLI ended but its status could not be read: say so instead of no cause.
+                Some(_) if checked.is_err() => Some(
+                    "Lumen could not check the sign-in. Press Check on the account to try again."
+                        .into(),
+                ),
                 Some(_) => reason(&output),
             };
         }

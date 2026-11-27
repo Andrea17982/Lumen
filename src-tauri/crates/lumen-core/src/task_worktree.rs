@@ -910,12 +910,29 @@ pub(crate) async fn free(path: &Path) -> Result<(), String> {
     let Some(name) = path.file_name() else {
         return Ok(());
     };
-    if !path.exists() {
-        return Ok(());
-    }
     let mut probe = name.to_os_string();
     probe.push(".lumen-probe");
     let probe = path.with_file_name(probe);
+    // An earlier check interrupted between its two renames (a crash) left the folder under the
+    // probe name: put it back first, or the task would look missing or in use forever.
+    if probe.exists() {
+        if path.exists() {
+            return Err(format!(
+                "Both {} and {} exist. Keep the one with your work, delete the other, and try again.",
+                path.display(),
+                probe.display()
+            ));
+        }
+        std::fs::rename(&probe, path).map_err(|e| {
+            format!(
+                "Lumen could not move the task folder back from {}: {e}",
+                probe.display()
+            )
+        })?;
+    }
+    if !path.exists() {
+        return Ok(());
+    }
     // A process that just ended (the agent, git) releases its handles a moment later.
     let mut moved = false;
     for _ in 0..30 {
@@ -1824,6 +1841,32 @@ node_modules/
 
     /// Apply and Discard while a program holds the task folder: nothing is copied or deleted,
     /// the task stays, and once the folder is free each completes exactly once.
+    /// A check interrupted between its renames leaves the folder under the probe name: the next
+    /// check puts it back, and refuses when both names exist rather than pick one.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_probe_left_by_a_crash_is_put_back_first() {
+        let f = crate::test_support::Fixture::new();
+        let task = f.root.join("task");
+        let probe = f.root.join("task.lumen-probe");
+        std::fs::create_dir_all(&probe).unwrap();
+        std::fs::write(probe.join("work.txt"), "kept").unwrap();
+        free(&task).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(task.join("work.txt")).unwrap(),
+            "kept"
+        );
+        assert!(!probe.exists());
+
+        std::fs::create_dir_all(&probe).unwrap();
+        let error = free(&task).await.unwrap_err();
+        assert!(error.contains("Both"), "{error}");
+        assert!(
+            task.join("work.txt").exists() && probe.exists(),
+            "nothing is moved or deleted"
+        );
+    }
+
     #[cfg(windows)]
     #[tokio::test]
     async fn apply_and_discard_wait_for_a_folder_in_use() {

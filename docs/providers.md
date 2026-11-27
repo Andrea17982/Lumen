@@ -27,7 +27,7 @@ Lumen uses each provider only through its official interface. Subscription login
 - **Claude Code and Codex sign in without a terminal.** Settings › Accounts runs the official `claude auth login` or `codex login` with no window. The CLI opens the provider's page in your browser, and Lumen shows **Open the page again** in case it did not. Codex completes by itself. Claude Code's page shows a code: paste it into Lumen, which passes it once to the CLI's input and keeps nothing. Lumen then checks the CLI's own status; only that counts as signed in. The sign-in stops after 10 minutes.
 - **OpenCode, Antigravity, Cursor and Droid keep the terminal sign-in.** OpenCode reads its key only from an interactive terminal. Antigravity uses the sign-in of the Antigravity app, so the same Google account serves every Antigravity slot. While the terminal is open, Lumen checks every few seconds and shows the account as connected when the CLI reports it.
 - Each account shows its CLI version, whether it is signed in, its quota windows with when they reset, and when the quota was last reported. **Sign in again** is in the account's menu.
-- Auto remembers each Claude Code and Codex sign-in check for 10 minutes, so it does not ask the CLIs before every message. **Check**, a sign-in from Lumen and Repair Lumen ask again.
+- Auto remembers each Claude Code and Codex sign-in check for 10 minutes (a signed-out answer for one minute, so a sign-in done in a terminal counts quickly), so it does not ask the CLIs before every message. **Check**, a sign-in from Lumen and Repair Lumen ask again.
 
 Manual login into a slot:
 

@@ -113,24 +113,33 @@ impl Bridge {
 
     /// Stops the service on this data directory: asked first, ended if it does not answer.
     pub async fn stop_quietly(&self) -> Result<(), String> {
-        let Some(pid) = lumen_ipc::server_pid(&self.client.endpoint).await else {
-            return Ok(());
+        const UNKNOWN: &str = "The Lumen service does not answer and cannot be stopped from here. Restart the computer, then open Lumen again.";
+        let endpoint = &self.client.endpoint;
+        // "Not answering" is not "stopped": a hung service with every pipe instance busy answers
+        // no connection either. Only an endpoint that no longer exists counts as stopped.
+        let Some(pid) = lumen_ipc::server_pid(endpoint).await else {
+            return if lumen_ipc::absent(endpoint).await {
+                Ok(())
+            } else {
+                Err(UNKNOWN.into())
+            };
         };
         let _ = tokio::time::timeout(Duration::from_secs(5), self.stop_service()).await;
         for _ in 0..40 {
-            if !self.reachable().await {
+            if lumen_ipc::absent(endpoint).await {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
         // Still the same process serving the pipe, and a Lumen service: only then is it ended.
-        match lumen_ipc::server_pid(&self.client.endpoint).await {
-            None => return Ok(()),
+        match lumen_ipc::server_pid(endpoint).await {
+            None if lumen_ipc::absent(endpoint).await => return Ok(()),
+            None => return Err(UNKNOWN.into()),
             Some(now) if now == pid && is_service(pid) => end_process(pid)?,
             Some(_) => return Err("Another program answers on Lumen's service address. Restart the computer, then open Lumen again.".into()),
         }
         for _ in 0..40 {
-            if !self.reachable().await {
+            if lumen_ipc::absent(endpoint).await {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(250)).await;

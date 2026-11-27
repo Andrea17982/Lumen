@@ -159,52 +159,55 @@ function Repair() {
           {error}
         </p>
       )}
-      {report && (
-        <ul className={s.report} aria-label={t.maintenance.repair}>
-          <li>
-            <Badge tone="success">{restarted ? t.maintenance.serviceRestarted : t.maintenance.serviceOk}</Badge>
-          </li>
-          <li>{!report.database.ok ? <Badge tone="danger">{t.maintenance.databaseBad(report.database.detail ?? '')}</Badge> : report.database.backup ? <Badge tone="success">{t.maintenance.databaseOk}</Badge> : <Badge tone="warning">{t.maintenance.backupFailed(report.database.detail ?? '')}</Badge>}</li>
-          <li>
-            <Badge tone={report.recovered ? 'warning' : 'success'}>{report.recovered ? t.maintenance.recovered(report.recovered) : t.maintenance.nothingToRecover}</Badge>
-          </li>
-          {report.restored > 0 && (
+      {/* Announced when it arrives: the result is the point of pressing Repair. */}
+      <div role="status">
+        {report && (
+          <ul className={s.report} aria-label={t.maintenance.repair}>
             <li>
-              <Badge tone="warning">{t.maintenance.restored(report.restored)}</Badge>
+              <Badge tone="success">{restarted ? t.maintenance.serviceRestarted : t.maintenance.serviceOk}</Badge>
             </li>
-          )}
-          {report.accounts.map((a) => {
-            const name = `${a.name} (${agentName[a.provider] ?? a.provider})`;
-            return (
-              <li key={a.id}>
-                <Badge tone={a.installed && a.signedIn ? 'success' : 'warning'}>{a.installed ? t.maintenance.agent(name, a.version, a.signedIn) : t.maintenance.agentMissing(name)}</Badge>
-              </li>
-            );
-          })}
-          {report.tasks.length === 0 ? (
+            <li>{!report.database.ok ? <Badge tone="danger">{t.maintenance.databaseBad(report.database.detail ?? '')}</Badge> : report.database.backup ? <Badge tone="success">{t.maintenance.databaseOk}</Badge> : <Badge tone="warning">{t.maintenance.backupFailed(report.database.detail ?? '')}</Badge>}</li>
             <li>
-              <Badge tone="success">{t.maintenance.noLeftovers}</Badge>
+              <Badge tone={report.recovered ? 'warning' : 'success'}>{report.recovered ? t.maintenance.recovered(report.recovered) : t.maintenance.nothingToRecover}</Badge>
             </li>
-          ) : (
-            report.tasks.map((task) => (
-              <li key={task.path} className={s.leftover}>
-                <span>
-                  <code>{task.path}</code>
-                  <small>{t.maintenance.leftover(task.changes, task.branch)}</small>
-                </span>
-                <Button variant="secondary" onPress={() => setRemoving(task)}>
-                  {t.maintenance.remove}
-                </Button>
+            {report.restored > 0 && (
+              <li>
+                <Badge tone="warning">{t.maintenance.restored(report.restored)}</Badge>
               </li>
-            ))
-          )}
-        </ul>
-      )}
+            )}
+            {report.accounts.map((a) => {
+              const name = `${a.name} (${agentName[a.provider] ?? a.provider})`;
+              return (
+                <li key={a.id}>
+                  <Badge tone={a.installed && a.signedIn ? 'success' : 'warning'}>{a.installed ? t.maintenance.agent(name, a.version, a.signedIn) : t.maintenance.agentMissing(name)}</Badge>
+                </li>
+              );
+            })}
+            {report.tasks.length === 0 ? (
+              <li>
+                <Badge tone="success">{t.maintenance.noLeftovers}</Badge>
+              </li>
+            ) : (
+              report.tasks.map((task) => (
+                <li key={task.path} className={s.leftover}>
+                  <span>
+                    <code>{task.path}</code>
+                    <small>{t.maintenance.leftover(task.changes, task.branch)}</small>
+                  </span>
+                  <Button variant="secondary" onPress={() => setRemoving(task)}>
+                    {t.maintenance.remove}
+                  </Button>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
       <ConfirmDialog
         isOpen={removing !== null}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={t.maintenance.removeTitle}
-        body={t.maintenance.removeBody(removing?.changes ?? 0)}
+        body={t.maintenance.removeBody(removing ? removing.changes : 0)}
         confirmLabel={t.maintenance.remove}
         cancelLabel={t.cancel}
         danger

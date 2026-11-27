@@ -25,6 +25,7 @@ const windows = platform('x64-setup.exe');
 if (windows) platforms['windows-x86_64'] = windows;
 const mac = platform('macos-universal.app.tar.gz');
 if (mac) platforms['darwin-aarch64'] = platforms['darwin-x86_64'] = mac;
+else console.warn(`Lumen_${version}_macos-universal.app.tar.gz or its signature is missing: macOS updates from the release page.`);
 if (!windows) {
   console.error('The Windows setup or its signature is missing: no manifest written.');
   process.exit(1);

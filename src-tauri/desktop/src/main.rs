@@ -35,6 +35,7 @@ async fn daemon_call(
                 "available": update::known(&app),
                 "previous": update::previous(&bridge),
                 "installable": update::installable(),
+                "problem": app.state::<update::Updates>().problem(),
             }))
         }
         "update_check" => return update::check(&app).await.map(|found| json!(found)),
@@ -398,8 +399,10 @@ fn main() {
             )?;
             let (root, resources, daemon) = locations(app)?;
             // A Go back finishes here, before the service opens the database.
+            // A failure leaves the current database in place; the app says so instead of a log
+            // line nobody sees.
             if let Err(e) = update::settle(&root) {
-                eprintln!("Lumen could not finish going back to the earlier version: {e}");
+                app.state::<update::Updates>().report(e);
             }
             let bridge = Arc::new(Bridge::new(root, resources, daemon)?);
             app.manage(bridge.clone());

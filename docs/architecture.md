@@ -54,7 +54,7 @@ Native continuations send only the new request plus the Lumen context that chang
 - Schema 5 adds command receipts. Older schemas upgrade in place, and a newer schema is refused. Back up the data directory before upgrading.
 - Run events reach SQLite before any client. Snapshots carry sequence numbers, so clients can deduplicate streamed events against them. An event that cannot be stored is still delivered, followed by `lumen:resync`.
 - `service.log` holds the service's error output for its latest start. The app shows its last lines when the service exits while starting.
-- `backups/` holds the newest five database copies (`VACUUM INTO`), made by Repair Lumen and before each update. `update.json` records the version the last update replaced, for going back.
+- `backups/` holds the newest five database copies (`VACUUM INTO`) made by Repair Lumen. `backups/update/` holds the copy made before an update; the shell prunes older ones at startup, never the one `update.json` names. `update.json` records the version the last update replaced, for going back; a failed update puts the previous record back. `backups/kept/` holds a newer database that a Go back replaced.
 - Tool output over 16 KiB reaches clients truncated, with a `detail` digest. `activity_detail(id, message, digest)` fetches the full text. The store keeps tool output and diffs up to 1 MiB per step; longer output is cut once, with a visible marker, before it is stored or sent. One message keeps up to 8 MiB of such output; later steps in it keep their first 16,000 characters.
 - Projects are containers that do not depend on folders. Checkpoints use a private Git index.
 

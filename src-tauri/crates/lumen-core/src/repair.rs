@@ -36,7 +36,7 @@ pub struct AgentCheck {
     pub provider: Provider,
     pub installed: bool,
     pub version: Option<String>,
-    pub signed_in: bool,
+    pub signed_in: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -45,7 +45,7 @@ pub struct Leftover {
     pub path: String,
     pub branch: Option<String>,
     /// Uncommitted files that removing the folder would lose (the branch keeps commits).
-    pub changes: usize,
+    pub changes: Option<usize>,
     /// Whether its conversation still exists.
     pub conversation: bool,
 }
@@ -65,7 +65,12 @@ pub async fn repair(
         }
         core.logins.forget(&a.id);
         let cli = crate::cli_info(&a).await;
-        let signed_in = cli.installed && crate::signed_in(&core, &a).await.unwrap_or(false);
+        // None: the check itself failed (timeout, spawn error); that is not "signed out".
+        let signed_in = if cli.installed {
+            crate::signed_in(&core, &a).await.ok()
+        } else {
+            Some(false)
+        };
         accounts.push(AgentCheck {
             id: a.id,
             name: a.name,
@@ -157,7 +162,8 @@ pub async fn backup_database(
     let path = tokio::task::spawn_blocking(move || {
         let backups = core.root.join("backups");
         if before_update {
-            backup(&core, &backups.join("update"), 1)
+            // Pruned by the shell at its next start, once no update record needs older ones.
+            backup(&core, &backups.join("update"), usize::MAX)
         } else {
             backup(&core, &backups, BACKUPS)
         }
@@ -259,10 +265,9 @@ async fn leftovers(core: &Core) -> Vec<Leftover> {
             if conversation && current.is_some() {
                 continue;
             }
-            let changes = gitops::changed_paths(&folder)
-                .await
-                .map(|c| c.len())
-                .unwrap_or(0);
+            // Unknown (git failed, broken worktree link) is not "nothing to lose": the
+            // confirmation says so.
+            let changes = gitops::changed_paths(&folder).await.ok().map(|c| c.len());
             found.push(Leftover {
                 path: folder.to_string_lossy().into_owned(),
                 branch: current.map(|t| t.branch.clone()),
@@ -325,6 +330,15 @@ mod tests {
             .create(f.directory("project").to_string_lossy().into())
             .unwrap();
         f.core.store.status(&s.id, "running").unwrap();
+        // A turn that really runs has its job: Repair leaves it alone.
+        let live = f
+            .core
+            .store
+            .create(f.directory("project").to_string_lossy().into())
+            .unwrap();
+        f.core.store.status(&live.id, "running").unwrap();
+        let (job, _rx) = tokio::sync::watch::channel(false);
+        f.core.jobs.lock().unwrap().insert(live.id.clone(), job);
         let session = f.root.join("worktrees").join("gone-conversation");
         std::fs::create_dir_all(session.join("task.lumen-probe")).unwrap();
 
@@ -334,11 +348,14 @@ mod tests {
         assert!(Path::new(report.database.backup.as_deref().unwrap()).is_file());
         assert_eq!(report.recovered, 1);
         assert_eq!(f.core.store.session(&s.id).unwrap().status, "interrupted");
+        assert_eq!(f.core.store.session(&live.id).unwrap().status, "running");
         assert_eq!(report.restored, 1);
         assert!(session.join("task").is_dir());
         // The restored folder belongs to no conversation: it is listed, not removed.
         assert_eq!(report.tasks.len(), 1);
         assert!(!report.tasks[0].conversation);
+        // Not a git worktree any more: its unsaved files are unknown, never "none".
+        assert_eq!(report.tasks[0].changes, None);
 
         repair_remove_task(crate::CoreRef(&f.core), report.tasks[0].path.clone())
             .await

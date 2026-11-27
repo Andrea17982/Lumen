@@ -54,6 +54,18 @@ struct Pending {
 pub struct Updates {
     available: Mutex<Option<Available>>,
     busy: tokio::sync::Mutex<()>,
+    /// A Go back that could not finish at startup: shown until Lumen starts again.
+    problem: Mutex<Option<String>>,
+}
+impl Updates {
+    pub fn report(&self, problem: String) {
+        if let Ok(mut slot) = self.problem.lock() {
+            *slot = Some(problem);
+        }
+    }
+    pub fn problem(&self) -> Option<String> {
+        self.problem.lock().ok()?.clone()
+    }
 }
 
 /// Installed with the NSIS setup on Windows, or a macOS app bundle: the forms the updater can
@@ -224,6 +236,8 @@ async fn run(
     // The download can take minutes: work started meanwhile is not stopped.
     idle(bridge).await?;
     let root = bridge.root();
+    // Put back if anything below fails, so a failed update never loses Go back.
+    let before = read(root);
     let saved = bridge
         .call("backup_database", json!({"beforeUpdate": back.is_none()}))
         .await?;
@@ -254,9 +268,10 @@ async fn run(
         Ok(()) => app.restart(),
         Err(error) => {
             // Nothing was replaced: the supervisor starts the service again.
-            if let Some(record) = back {
-                let _ = write(root, &record);
-            }
+            let _ = match &before {
+                Some(record) => write(root, record),
+                None => std::fs::remove_file(root.join(RECORD)).map_err(|e| e.to_string()),
+            };
             bridge.pause(false);
             Err(error)
         }
@@ -267,7 +282,11 @@ async fn run(
 /// pre-update backup replaces a database that version cannot open; in any other version (the
 /// installer did not run), the pending step is dropped and nothing changes.
 pub fn settle(root: &Path) -> Result<(), String> {
-    let Some(record) = read(root) else {
+    let record = read(root);
+    // Pre-update backups are pruned here, never before an install: a failed update keeps the
+    // backup its record still points to.
+    prune(root, record.as_ref().and_then(|r| r.backup.as_deref()));
+    let Some(record) = record else {
         return Ok(());
     };
     let Some(pending) = &record.pending else {
@@ -287,6 +306,36 @@ pub fn settle(root: &Path) -> Result<(), String> {
     }
     // Back on the earlier version: there is nothing further to go back to.
     std::fs::remove_file(root.join(RECORD)).map_err(|e| e.to_string())
+}
+
+/// Keeps, in `backups/update`, only the backup the record names, or the newest one when there
+/// is no record.
+fn prune(root: &Path, keep: Option<&str>) {
+    let Ok(entries) = std::fs::read_dir(root.join("backups").join("update")) else {
+        return;
+    };
+    let keep = keep.and_then(|k| canonical(Path::new(k)).ok());
+    let mut found: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.strip_prefix("lumen-")?.strip_suffix(".db"))
+                .is_some_and(|stamp| !stamp.is_empty() && stamp.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .collect();
+    // Same-width millisecond stamps: the name order is the time order.
+    found.sort();
+    let newest = found.last().cloned();
+    for path in found {
+        let named = keep
+            .as_ref()
+            .is_some_and(|k| canonical(&path).ok().as_ref() == Some(k));
+        if !named && (keep.is_some() || Some(&path) != newest.as_ref()) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// Puts the pre-update backup in place of the database, keeping the newer one (with its
@@ -411,6 +460,74 @@ mod tests {
             .collect();
         assert_eq!(kept.len(), 2, "{kept:?}");
         assert!(read(&dir).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Pre-update backups are pruned at startup, never the one a record still needs.
+    #[test]
+    fn startup_keeps_the_backup_the_record_names() {
+        let dir = root();
+        let update = dir.join("backups/update");
+        for stamp in ["1700000000001", "1700000000002", "1700000000003"] {
+            std::fs::write(update.join(format!("lumen-{stamp}.db")), stamp).unwrap();
+        }
+        std::fs::write(update.join("notes.txt"), "not a backup").unwrap();
+        let named = update.join("lumen-1700000000001.db");
+        write(
+            &dir,
+            &Record {
+                previous: "0.0.1".into(),
+                backup: Some(named.to_string_lossy().into()),
+                schema: Some(8),
+                pending: None,
+            },
+        )
+        .unwrap();
+        settle(&dir).unwrap();
+        let left = |dir: &Path| {
+            let mut names: Vec<_> = std::fs::read_dir(dir.join("backups/update"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(left(&dir), ["lumen-1700000000001.db", "notes.txt"]);
+        // With no record, only the newest stays.
+        std::fs::remove_file(dir.join(RECORD)).unwrap();
+        std::fs::write(update.join("lumen-1700000000009.db"), "9").unwrap();
+        settle(&dir).unwrap();
+        assert_eq!(left(&dir), ["lumen-1700000000009.db", "notes.txt"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A Go back whose backup is gone fails and leaves the current database where it is.
+    #[test]
+    fn a_missing_backup_keeps_the_current_database() {
+        let dir = root();
+        std::fs::write(dir.join("lumen.db"), "new").unwrap();
+        write(
+            &dir,
+            &Record {
+                previous: env!("CARGO_PKG_VERSION").into(),
+                backup: Some(
+                    dir.join("backups/update/lumen-1.db")
+                        .to_string_lossy()
+                        .into(),
+                ),
+                schema: Some(8),
+                pending: Some(Pending {
+                    version: env!("CARGO_PKG_VERSION").into(),
+                    restore: true,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(settle(&dir).is_err());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("lumen.db")).unwrap(),
+            "new"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
