@@ -202,6 +202,7 @@ ${current}` : sent));
   return (
     <form
       className={s.composer}
+      data-tour-target="composer"
       aria-label={t.composer.label}
       onSubmit={(e) => {
         e.preventDefault();
@@ -284,9 +285,9 @@ ${current}` : sent));
           onPaste={onPaste}
         />
         <div className={s.toolbar}>
-          <Select compact label={t.composer.agent} value={route} options={routes} onChange={setRoute} />
+          <Select compact tourTarget="agent" label={t.composer.agent} value={route} options={routes} onChange={setRoute} />
           {route === AUTO ? (
-            <Select compact label={t.composer.policy} value={policy} options={POLICIES.map((p) => ({ id: p, label: t.composer.policies[p] }))} onChange={setPolicy} />
+            <Select compact tourTarget="auto" label={t.composer.policy} value={policy} options={POLICIES.map((p) => ({ id: p, label: t.composer.policies[p] }))} onChange={setPolicy} />
           ) : (
             <>
               {models.length > 0 && model && <ModelSelect label={t.composer.model} value={model} options={models.map((m) => ({ id: m.id, label: m.description === 'OpenCode · console credit' ? `${m.name} · ${t.composer.consoleCredit}` : m.description === 'OpenCode · free' ? `${m.name} · ${t.composer.free}` : m.name }))} onChange={(id) => {
@@ -298,6 +299,7 @@ ${current}` : sent));
           )}
           <Select
             compact
+            tourTarget="access"
             label={t.composer.access}
             value={session.accessMode}
             options={ACCESS.map((a) => ({ id: a, label: t.access[a] }))}
@@ -310,7 +312,7 @@ ${current}` : sent));
           <span className={s.spacer} />
           {tokens !== null && <span className={s.tokens}>{t.composer.tokens(formatNumber(locale, tokens))}</span>}
           {running ? (
-            <Button variant="secondary" onPress={() => sync.call('cancel_run', { id: session.id }).catch((e) => setError(String(e)))}>
+            <Button variant="secondary" data-tour-target="stop" onPress={() => sync.call('cancel_run', { id: session.id }).catch((e) => setError(String(e)))}>
               {t.stop}
             </Button>
           ) : (

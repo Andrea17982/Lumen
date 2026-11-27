@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const styles = ['ink', 'satin'] as const;
 const themes = ['light', 'dark'] as const;
-const views = ['app', 'board', 'components', 'attention'] as const;
+const views = ['app', 'board', 'components', 'attention', 'welcome'] as const;
 
 async function open(page: Page, query: Record<string, string>) {
   await page.goto('/gallery.html?' + new URLSearchParams({ toolbar: '0', locale: 'en', ...query }));
@@ -100,6 +100,14 @@ test.describe('screenshots', () => {
           await open(page, { style, theme, view });
           await expect(page).toHaveScreenshot(`${view}-${style}-${theme}.png`, { fullPage: false });
         });
+  test('welcome in Ink light', async ({ page }) => {
+    await open(page, { view: 'welcome', style: 'ink', theme: 'light' });
+    await expect(page).toHaveScreenshot('welcome-ink-light.png', { animations: 'disabled' });
+  });
+  test('welcome appearance in Satin dark', async ({ page }) => {
+    await open(page, { view: 'welcome', step: 'appearance', style: 'satin', theme: 'dark', locale: 'it' });
+    await expect(page).toHaveScreenshot('welcome-appearance-satin-dark.png', { animations: 'disabled' });
+  });
 });
 
 test('attention states say why a request cannot be decided, and show hidden characters', async ({ page }) => {

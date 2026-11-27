@@ -1886,7 +1886,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lumen-commands"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "auto-launch",
  "axum",
@@ -1931,7 +1931,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-daemon"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dirs",
  "lumen-core",
@@ -1958,7 +1958,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-ipc"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dunce",
  "libc",

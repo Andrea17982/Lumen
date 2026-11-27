@@ -20,6 +20,13 @@ pub fn run(c: &mut Connection) -> Result<(), String> {
     }
     let tx = c.transaction().map_err(|e| e.to_string())?;
     let apply = || -> rusqlite::Result<()> {
+        // Additive desktop metadata. Version 0.15 can still read and write this database.
+        let existing = version > 0 || column(&tx, "sessions", "id")?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS onboarding(id INTEGER PRIMARY KEY CHECK(id=1), existing INTEGER NOT NULL, setup INTEGER NOT NULL DEFAULT 0, tour INTEGER NOT NULL DEFAULT 0);")?;
+        tx.execute(
+            "INSERT OR IGNORE INTO onboarding(id,existing) VALUES(1,?1)",
+            [existing],
+        )?;
         tx.execute_batch("CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at INTEGER NOT NULL);")?;
         for next in (version + 1)..=CURRENT {
             match next {

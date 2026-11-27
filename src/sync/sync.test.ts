@@ -3,7 +3,7 @@ import type { ApprovalRequest, Connection, Frame, Message, RunEvent } from '../p
 import type { Transport } from '../transport/types';
 import { apply, FIRST_PAGE, PAGE, Sync } from './sync';
 
-const defaults: Record<string, () => unknown> = { list_workspaces: () => [], list_accounts: () => [], get_usage: () => [], plugin_contributions: () => ({ themes: [], slashCommands: [], panels: [] }), pending_questions: () => [], gatekeeper_snapshot: () => ({ requests: [], sessions: [] }) };
+const defaults: Record<string, () => unknown> = { list_workspaces: () => [], list_accounts: () => [], get_usage: () => [], plugin_contributions: () => ({ themes: [], slashCommands: [], panels: [] }), pending_questions: () => [], gatekeeper_snapshot: () => ({ requests: [], sessions: [] }), onboarding_state: () => ({ existing: true, setup: 'pending', tour: 'pending', revision: 0 }) };
 
 /** A daemon stand-in: replies come from `handlers`, frames are pushed with `emit`. */
 function fakeDaemon(handlers: Record<string, (args: Record<string, unknown>) => unknown>, connection: Connection = { state: 'connected' }) {
@@ -144,7 +144,7 @@ describe('Sync', () => {
     daemon.calls.length = 0;
     daemon.emit({ event: 'lumen:resync', payload: {} });
     await settle();
-    expect(daemon.calls.sort()).toEqual(['gatekeeper_snapshot', 'get_messages', 'get_usage', 'list_accounts', 'list_sessions', 'list_workspaces', 'pending_questions', 'plugin_contributions']);
+    expect(daemon.calls.sort()).toEqual(['gatekeeper_snapshot', 'get_messages', 'get_usage', 'list_accounts', 'list_sessions', 'list_workspaces', 'onboarding_state', 'pending_questions', 'plugin_contributions']);
   });
 
   it('reads the session list again when a turn starts or ends', async () => {
@@ -292,6 +292,15 @@ describe('Sync', () => {
     daemon.emit({ event: 'lumen:gatekeeper', payload: { changed: request('b', 'pending', 'other') } });
     expect(sync.getState().approvals.s1.requests.map((r) => [r.id, r.status])).toEqual([['a', 'approved']]);
     expect(sync.getState().approvals.other).toBeUndefined();
+  });
+
+  it('still syncs when the onboarding state cannot be read, and shows no welcome', async () => {
+    const daemon = fakeDaemon({ list_sessions: () => [], onboarding_state: () => Promise.reject('Unknown command onboarding_state') });
+    const sync = new Sync(daemon.transport);
+    await sync.start();
+    await settle();
+    expect(sync.getState().synced).toBe(true);
+    expect(sync.getState().onboarding).toBeUndefined();
   });
 
   it('shows an unreadable approval journal as an error, not as no approvals', async () => {

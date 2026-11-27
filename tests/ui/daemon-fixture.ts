@@ -8,17 +8,20 @@ import path from 'node:path';
 import { daemonClient } from '../daemon-harness.mjs';
 import { startBridge } from '../support/ipc-bridge.mjs';
 
-export async function startDaemon(origin: string) {
+export async function startDaemon(origin: string, { welcome = false } = {}) {
   const executable = path.resolve('src-tauri/target/debug/lumen-daemon.exe');
   expect(existsSync(executable), 'build the daemon first: cargo build -p lumen-daemon').toBe(true);
   const data = await mkdtemp(path.join(tmpdir(), 'lumen-ui-'));
   const workspace = path.join(data, 'workspace');
   await mkdir(workspace);
-  const client = await daemonClient(data, executable);
+  const client = await daemonClient(data, executable, { fixturePathOnly: welcome });
   let daemon = client.start();
   await client.ready();
   // Conversations are listed by project: the workspace is the project the UI opens.
-  await client.call('add_workspace', { name: 'Fixture', folder: workspace });
+  if (!welcome) {
+    await client.call('onboarding_state', { action: 'skipSetup' });
+    await client.call('add_workspace', { name: 'Fixture', folder: workspace });
+  }
   const bridge = await startBridge(client, { origin });
   const stopped = () => new Promise((resolve) => (daemon.exitCode !== null || daemon.signalCode !== null ? resolve(null) : daemon.once('exit', resolve)));
   return {

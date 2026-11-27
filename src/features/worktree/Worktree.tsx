@@ -45,7 +45,7 @@ export function WorktreeBar({ session }: { session: Session }) {
     );
   };
   return (
-    <div className={s.bar} role="region" aria-label={t.worktree.label}>
+    <div className={s.bar} role="region" aria-label={t.worktree.label} data-tour-target="task">
       <span className={s.branch}>
         {t.worktree.on}
         <code>{visibleText(status.branch)}</code>

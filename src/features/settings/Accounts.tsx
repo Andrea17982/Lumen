@@ -6,7 +6,7 @@ import type { Account, AccountUsage, CliInfo, ModelInfo, Provider, SignIn } from
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Settings.module.css';
 
-const providerName: Record<Provider, string> = {
+export const providerName: Record<Provider, string> = {
   claude: 'Claude Code',
   gpt: 'Codex',
   antigravity: 'Antigravity',
@@ -304,7 +304,7 @@ const LOST_AFTER = 5;
  * Claude Code the user pastes back the code that page shows. The daemon passes the code to the
  * CLI and checks the result; nothing here keeps it.
  */
-function SignInFlow({ account, onFinished, onClose }: { account: Account; onFinished: () => void; onClose: () => void }) {
+export function SignInFlow({ account, onFinished, onClose }: { account: Account; onFinished: () => void; onClose: () => void }) {
   const t = useT();
   const sync = useSyncClient();
   const [state, setState] = useState<SignIn | null>(null);

@@ -1,5 +1,6 @@
 import { isCancelled, unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace, type Account, type AccountUsage, type UpdateInfo } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
+import type { OnboardingAction, OnboardingState } from '../protocol/types';
 
 /**
  * A cache of daemon state, rebuilt from snapshots whenever the link is (re)established and kept
@@ -61,6 +62,7 @@ export interface SyncState {
   routines: number;
   /** A newer signed release, once the shell has found one. */
   update: UpdateInfo | null;
+  onboarding?: OnboardingState;
   error?: string;
 }
 
@@ -228,7 +230,7 @@ export class Sync {
     const generation = ++this.generation;
     this.set({ synced: false });
     try {
-      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), ...[...this.open].map((id) => this.load(id))]);
+      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), this.updateOnboarding().catch(() => undefined), ...[...this.open].map((id) => this.load(id))]);
       if (generation === this.generation) {
         this.retries = 0;
         this.set({ synced: true, error: undefined });
@@ -264,11 +266,21 @@ export class Sync {
         return this.onGatekeeper(frame.payload as GatekeeperEvent);
       case 'lumen:update':
         return this.set({ update: frame.payload as UpdateInfo });
+      case 'lumen:onboarding':
+        return this.applyOnboarding(frame.payload as OnboardingState);
       case 'lumen:usage': {
         const usage = frame.payload as AccountUsage;
         return this.set({ usage: [...this.state.usage.filter((u) => u.accountId !== usage.accountId), usage] });
       }
     }
+  }
+
+  async updateOnboarding(action?: OnboardingAction) {
+    this.applyOnboarding(await this.call<OnboardingState>('onboarding_state', action ? { action } : {}));
+  }
+
+  private applyOnboarding(onboarding: OnboardingState) {
+    if (onboarding.revision > (this.state.onboarding?.revision ?? -1)) this.set({ onboarding });
   }
 
   /** Accounts and their reported quota; read on every connection and after account changes. */

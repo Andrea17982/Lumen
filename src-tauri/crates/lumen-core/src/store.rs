@@ -99,7 +99,10 @@ impl Store {
         .map_err(|e| e.to_string())?;
         Ok(Self(Mutex::new(c)))
     }
-    fn with<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T, String> {
+    pub(crate) fn with<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+    ) -> Result<T, String> {
         let guard = self.0.lock().map_err(|_| "Database lock failed")?;
         f(&guard).map_err(|e| e.to_string())
     }

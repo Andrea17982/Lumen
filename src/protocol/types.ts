@@ -176,6 +176,20 @@ export interface CliInfo {
   inAppSignIn: boolean;
 }
 
+export interface OnboardingState {
+  existing: boolean;
+  setup: 'pending' | 'skipped' | 'completed';
+  tour: 'pending' | 'skipped' | 'completed';
+  revision: number;
+}
+
+export type OnboardingAction = 'skipSetup' | 'finishSetup' | 'skipTour' | 'finishTour';
+
+export interface OnboardingAgent extends CliInfo {
+  provider: Provider;
+  accounts: { account: Account; signedIn: boolean | null }[];
+}
+
 /** `login_state`: a sign-in Lumen runs without a terminal. */
 export interface SignIn {
   phase: 'starting' | 'browser' | 'code' | 'checking' | 'done' | 'failed' | 'cancelled';

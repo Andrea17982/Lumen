@@ -15,7 +15,7 @@ const sample = (fn: (...args: never[]) => string) => (fn as (...a: unknown[]) =>
 const render = (v: Leaf) => (typeof v === 'function' ? sample(v) : v);
 
 // Words that are the same in both languages on purpose.
-const sameInBoth = new Set(['appName', 'modeAuto', 'accounts.emergencyAuto', 'styles.ink', 'styles.satin', 'language.en', 'language.it', 'kinds.skill', 'kinds.browser', 'general.orchestra', 'general.codeMode', 'general.version', 'orchestra.title', 'worktree.branch', 'worktree.pr']);
+const sameInBoth = new Set(['appName', 'modeAuto', 'accounts.emergencyAuto', 'styles.ink', 'styles.satin', 'language.en', 'language.it', 'kinds.skill', 'kinds.browser', 'general.orchestra', 'welcome.tourSteps.2.title', 'welcome.tourSteps.6.title', 'general.codeMode', 'general.version', 'orchestra.title', 'worktree.branch', 'worktree.pr']);
 
 describe('catalogs', () => {
   const english = new Map(leaves(en));
