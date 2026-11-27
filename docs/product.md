@@ -2,6 +2,20 @@
 
 Lumen runs your request on the agents you have connected and reports only what it actually observed. This page covers the behavior. Providers and permissions are in [Providers](providers.md); internals are in [Architecture](architecture.md).
 
+## First launch
+
+On a new installation Lumen opens a guided setup. Every step can be skipped.
+
+1. **Welcome.**
+2. **Appearance.** Language, Ink or Satin, and light, dark or system theme. A live preview shows the result.
+3. **Agents.** Lumen finds the installed CLIs and shows each account as ready, not connected or missing. Claude Code and Codex sign in without a terminal; the other CLIs open their own sign-in.
+4. **Project.** Choose the folder you want to work in.
+5. **Summary.** It lists what is ready and what is still missing. Auto stays the default.
+
+A quick tour of the composer, the agent and access menus, Stop, the task bar, Orchestra and Maintenance can follow.
+
+The service stores whether you finished or skipped each part. **Settings › General** opens the setup or the tour again. An existing installation that updates gets a small invitation instead of the full screen.
+
 ## Modes
 
 - **Direct.** You pick a provider and model. Lumen never overrides that choice, even when the request mentions architecture or security.
