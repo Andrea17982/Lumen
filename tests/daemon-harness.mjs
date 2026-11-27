@@ -11,6 +11,7 @@ export async function daemonClient(
   executable = path.resolve(
     `src-tauri/target/debug/lumen-daemon${process.platform === 'win32' ? '.exe' : ''}`,
   ),
+  { fixturePathOnly = false } = {},
 ) {
   const canonical = await realpath(data);
   const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 32);
@@ -91,7 +92,9 @@ export async function daemonClient(
         LUMEN_TEST_DATA_DIR: data,
         PATH:
           process.platform === 'win32'
-            ? `${path.resolve('tests/fixtures/cli')};${process.env.PATH}`
+            ? [path.resolve('tests/fixtures/cli'), ...(fixturePathOnly
+                ? [path.join(process.env.SystemRoot, 'System32'), path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0'), path.dirname(process.execPath)]
+                : [process.env.PATH])].join(';')
             : process.env.PATH,
       },
     });

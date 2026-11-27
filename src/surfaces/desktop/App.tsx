@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, IconButton, Menu, type Tone } from '../../design/components';
 import { useAppearance } from '../../design/appearance';
 import { I18nProvider, systemLocale, useT, type Locale } from '../../i18n';
@@ -9,6 +9,9 @@ import { currentProject, inProject, sessionTitle } from '../../features/sessions
 import { Sidebar } from '../../features/sessions/Sidebar';
 import type { Language, Preferences } from '../../features/settings/General';
 import { Settings } from '../../features/settings/Settings';
+import { Welcome } from '../../features/welcome/Welcome';
+import { Tour } from '../../features/welcome/Tour';
+import welcomeStyles from '../../features/welcome/Welcome.module.css';
 import { WorktreeBar } from '../../features/worktree/Worktree';
 import { usePluginThemeStyle } from '../../features/settings/useThemeStyle';
 import { useNotifications } from './notifications';
@@ -76,8 +79,16 @@ function Shell({ preferences }: { preferences: Preferences }) {
   const [hidden, setHidden] = useState(() => remembered('lumen.sidebar') === 'hidden');
   const [details, setDetails] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [welcome, setWelcome] = useState<boolean | null>(null);
+  const [tour, setTour] = useState<number | null>(null);
+  const [inviteError, setInviteError] = useState(false);
+  const tourRoot = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLElement>(null);
+  const onboarding = useSyncState((st) => st.onboarding);
   const project = currentProject(workspaces, sessions, projectId);
   const synced = useSyncState((st) => st.synced);
+  const showWelcome = welcome ?? (onboarding?.setup === 'pending' && !onboarding.existing);
+  const tourSection = tour === 6 ? 'general' : tour === 7 ? 'maintenance' : undefined;
   useEffect(() => {
     if (!selected || !synced || sessions.some((s) => s.id === selected)) return;
     let live = true;
@@ -108,6 +119,7 @@ function Shell({ preferences }: { preferences: Preferences }) {
     remember('lumen.sidebar', value ? 'hidden' : null);
   };
   useEffect(() => {
+    if (showWelcome) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
@@ -145,13 +157,39 @@ function Shell({ preferences }: { preferences: Preferences }) {
     }
   }
 
+  function closeWelcome(startTour: boolean) {
+    setWelcome(false);
+    setSettings(false);
+    if (startTour) setTour(0);
+    else requestAnimationFrame(() => main.current?.focus());
+  }
+
+  function closeTour() {
+    setTour(null);
+    requestAnimationFrame(() => main.current?.focus());
+  }
+
+  if (showWelcome) return <Welcome preferences={preferences} project={project} onProject={openProject} onClose={closeWelcome} />;
+
   return (
-    <div className={s.window} data-sidebar={hidden ? 'hidden' : undefined}>
+    <div className={s.window} data-sidebar={hidden ? 'hidden' : undefined} ref={tourRoot}>
       {!hidden && <Sidebar project={project} selected={selected} onSelect={choose} onProject={openProject} onHide={() => hide(true)} onSettings={() => setSettings(!settings)} footer={<ConnectionStatus />} />}
-      <main className={s.main}>
+      <main className={s.main} ref={main} tabIndex={-1}>
         <Banners />
-        {settings ? (
-          <Settings preferences={preferences} onClose={() => setSettings(false)} leading={hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />} />
+        {tour !== null && <Tour index={tour} onStep={setTour} root={tourRoot} onClose={closeTour} />}
+        {tour === null && !settings && onboarding?.existing && onboarding.setup === 'pending' && welcome !== false && (
+          <aside className={welcomeStyles.invite} aria-label={t.welcome.invite}>
+            <span>{t.welcome.invite}</span>
+            <Button variant="plain" onPress={() => setWelcome(true)}>{t.welcome.reopen}</Button>
+            <IconButton icon="close" label={t.welcome.dismiss} onPress={() => {
+              setInviteError(false);
+              void sync.updateOnboarding('skipSetup').catch(() => setInviteError(true));
+            }} />
+            {inviteError && <span role="alert">{t.welcome.saveError}</span>}
+          </aside>
+        )}
+        {settings || tourSection ? (
+          <Settings key={tourSection ?? 'settings'} initialSection={tourSection} preferences={preferences} onClose={() => { setSettings(false); if (tourSection) closeTour(); }} onWelcome={() => { setTour(null); setWelcome(true); }} onTour={() => { setSettings(false); setTour(0); }} leading={hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />} />
         ) : session ? (
           <>
             <header className={s.header}>

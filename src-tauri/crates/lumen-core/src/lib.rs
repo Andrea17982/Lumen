@@ -116,6 +116,8 @@ use std::{
 };
 use tokio::sync::{watch, Semaphore};
 
+mod onboarding;
+
 pub struct Core {
     stopping: std::sync::atomic::AtomicBool,
     store: Arc<store::Store>,
@@ -643,15 +645,19 @@ async fn account_cli(core: crate::CoreRef<'_>, id: String) -> Result<CliInfo, St
 }
 
 pub(crate) async fn cli_info(a: &Account) -> CliInfo {
-    let in_app_sign_in = signin::supported(&a.provider);
-    if a.provider.is_api() {
+    provider_cli(&a.provider).await
+}
+
+async fn provider_cli(provider: &Provider) -> CliInfo {
+    let in_app_sign_in = signin::supported(provider);
+    if provider.is_api() {
         return CliInfo {
             installed: true,
             version: None,
             in_app_sign_in,
         };
     }
-    let Ok(mut c) = providers::command(&a.provider) else {
+    let Ok(mut c) = providers::command(provider) else {
         return CliInfo {
             installed: false,
             version: None,
@@ -1303,6 +1309,8 @@ pub async fn dispatch(
         "answer_question" => interactions::__ipc_answer_question(app, core, args).await,
         "open_connector_url" => interactions::__ipc_open_connector_url(app, core, args).await,
         "account_cli" => __ipc_account_cli(app, core, args).await,
+        "onboarding_state" => onboarding::__ipc_onboarding_state(app, core, args).await,
+        "onboarding_agents" => onboarding::__ipc_onboarding_agents(app, core, args).await,
         "repair" => repair::__ipc_repair(app, core, args).await,
         "backup_database" => repair::__ipc_backup_database(app, core, args).await,
         "repair_remove_task" => repair::__ipc_repair_remove_task(app, core, args).await,

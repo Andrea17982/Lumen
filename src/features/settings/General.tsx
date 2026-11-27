@@ -40,6 +40,18 @@ export interface Preferences {
   setLanguage: (next: Language) => void;
 }
 
+export function AppearanceFields({ preferences }: { preferences: Preferences }) {
+  const t = useT();
+  const { appearance, setAppearance, language, setLanguage } = preferences;
+  return (
+    <>
+      <Select label={t.languageLabel} value={language} options={[{ id: 'system', label: t.general.systemLanguage }, { id: 'en', label: t.language.en }, { id: 'it', label: t.language.it }]} onChange={setLanguage} />
+      <Segmented label={t.styleLabel} value={appearance.style} options={styles.map((id) => ({ id, label: t.styles[id] }))} onChange={(style) => setAppearance({ style })} />
+      <Segmented<ThemePreference> label={t.themeLabel} value={appearance.theme} options={(['system', 'light', 'dark'] as const).map((id) => ({ id, label: t.theme[id] }))} onChange={(theme) => setAppearance({ theme })} />
+    </>
+  );
+}
+
 /**
  * The few choices Lumen asks for. Everything else has a default that just works; the daemon keeps
  * the rest of its settings as they are.
@@ -47,19 +59,16 @@ export interface Preferences {
 export function General({ preferences }: { preferences: Preferences }) {
   const t = useT();
   const { value, error, saved, save, reset } = useAppSettings();
-  const { appearance, setAppearance, language, setLanguage } = preferences;
   return (
     <div className={s.section}>
       <div className={s.option}>
         <div className={s.fields}>
-          <Select label={t.languageLabel} value={language} options={[{ id: 'system', label: t.general.systemLanguage }, { id: 'en', label: t.language.en }, { id: 'it', label: t.language.it }]} onChange={setLanguage} />
-          <Segmented label={t.styleLabel} value={appearance.style} options={styles.map((id) => ({ id, label: t.styles[id] }))} onChange={(style) => setAppearance({ style })} />
-          <Segmented<ThemePreference> label={t.themeLabel} value={appearance.theme} options={(['system', 'light', 'dark'] as const).map((id) => ({ id, label: t.theme[id] }))} onChange={(theme) => setAppearance({ theme })} />
+          <AppearanceFields preferences={preferences} />
         </div>
       </div>
       {value && (
         <>
-          <div className={s.option}>
+          <div className={s.option} data-tour-target="orchestra">
             <Switch isSelected={value.orchestra} onChange={(orchestra) => void save({ orchestra })}>
               <span className={s.switchText}>
                 {t.general.orchestra}

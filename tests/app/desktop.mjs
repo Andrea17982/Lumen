@@ -26,6 +26,8 @@ let probe;
 try {
   app = await launchApp(data);
   let { browser } = app;
+  await client.ready();
+  await client.call('onboarding_state', { action: 'skipSetup' });
   const status = "return document.querySelector('[role=status]')?.textContent";
   await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'connection');
   const first = await client.call('__status');
