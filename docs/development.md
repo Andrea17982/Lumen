@@ -48,9 +48,8 @@ The scripts in `tests/manual/` are opt-in and never run in CI. Their output goes
 | Script | Purpose |
 | --- | --- |
 | `protocol-probe.mjs` | Metadata from installed CLIs only: no prompt, login or inference |
-| `moli-probe.mjs` | Local feasibility check of the Moli browser |
 | `live-routine-recognition.mjs` | Real Claude inference. Run only with an authorized budget |
-| `final-performance.mjs`, `quality-evidence.mjs` | Release regression and evidence helpers |
+| `transcript-5k.mjs` | Opens the app on 5,000 messages for screen reader checks |
 
 Use synthetic data. Any test that contacts a real provider must be deliberate and budgeted.
 

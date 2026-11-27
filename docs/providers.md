@@ -43,7 +43,7 @@ CODEX_HOME='/path/to/lumen/accounts/<uuid>' codex login
 | Read only | Initial profile. Read-only provider controls; Moli can read and capture but not mutate pages. |
 | File edits | Workspace edits through native controls. Antigravity's headless profile also allows shell commands. |
 | Autopilot | All available tools under the OS user, without approval prompts. Not administrator, not an OS sandbox. |
-| Approve each action | Native callbacks (Claude, Codex, OpenCode) or one-shot host decisions (APIs). Google print runners have no equivalent. |
+| Ask first | Native callbacks (Claude, Codex, OpenCode) or one-shot host decisions (APIs). Google print runners have no equivalent. |
 
 - Reviewers and analysis workers are always read-only.
 - A profile change applies from the next action.

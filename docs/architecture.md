@@ -29,7 +29,12 @@ The local daemon owns storage, accounts, process and API execution, permissions,
 | `context.rs`, `codegraph.rs`, `graph_mcp.rs`, `impact.rs` | Context, pattern graph, pre/post-edit impact |
 | `diagnostics.rs`, `validation.rs`, `projecttools.rs` | LSP and project checks |
 | `autonomy.rs` | Action classes, audit log, restore safety, untrusted-content gating |
-| `gitops.rs`, `workspace.rs`, `review.rs` | Private-index checkpoints, worktrees and Publish, diffs |
+| `gitops.rs`, `workspace.rs`, `review.rs` | Private-index checkpoints, folder changes, diffs |
+| `task_worktree.rs`, `pr_watch.rs` | A conversation's task worktree, Publish/Apply/Discard, follow-up of published pull requests |
+| `code_mode.rs`, `code_mcp.rs`, `rlm.rs` | Code Mode: turn-local JavaScript, its MCP helper, nested `llm()` queries |
+| `plugins.rs` | Plugin manifests, declared permissions, plugin MCP servers |
+| `quota_resume.rs`, `routines.rs`, `command_receipts.rs` | One continuation after a quota reset, recurring tasks, command receipts |
+| `connectors.rs`, `repomap.rs`, `layers.rs`, `media.rs`, `screens.rs` | MCP user input, repository symbol map, cross-layer change review, response links and images, screenshots |
 | `execution.rs` | Content-free timing and phase snapshots |
 | `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal, quota observation |
 | `signin.rs`, `repair.rs` | Terminal-free CLI sign-in; Repair Lumen (database check and backup, stale turns, leftover task folders) |
@@ -51,7 +56,7 @@ Native continuations send only the new request plus the Lumen context that chang
 
 - The app identifier is `io.github.andrea17982.lumen`.
 - `lumen.db` (SQLite, WAL) is opened **only by the daemon**, under one OS file lock per data directory. It holds sessions, messages and activity, account metadata (never tokens), projects and task state.
-- Schema 5 adds command receipts. Older schemas upgrade in place, and a newer schema is refused. Back up the data directory before upgrading.
+- Older schemas upgrade in place, and a newer schema is refused. Back up the data directory before upgrading.
 - Run events reach SQLite before any client. Snapshots carry sequence numbers, so clients can deduplicate streamed events against them. An event that cannot be stored is still delivered, followed by `lumen:resync`.
 - `service.log` holds the service's error output for its latest start. The app shows its last lines when the service exits while starting.
 - `backups/` holds the newest five database copies (`VACUUM INTO`) made by Repair Lumen. `backups/update/` holds the copy made before an update; the shell prunes older ones at startup, never the one `update.json` names. `update.json` records the version the last update replaced, for going back; a failed update puts the previous record back. `backups/kept/` holds a newer database that a Go back replaced.

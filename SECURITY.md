@@ -4,7 +4,7 @@ Lumen is an alpha, AI-written local application with no independent security aud
 
 ## Permissions
 
-- The profiles (Read only, File edits, Autopilot, Approve each action) map onto native provider controls and Lumen's own tool loops. **They are not an OS sandbox.**
+- The profiles (Read only, File edits, Autopilot, Ask first) map onto native provider controls and Lumen's own tool loops. **They are not an OS sandbox.**
 - Autopilot grants every available tool under the current OS user. It does not bypass UAC, OS ACLs or provider policy.
 - Reviewers are read-only. Questions and past approvals never raise the profile.
 - Risky commands always ask in Lumen's own loops (APIs and Ollama). Native CLIs in Autopilot are logged, not pre-blocked. See [autonomy](docs/product.md#recoverable-autonomy).

@@ -5,10 +5,10 @@ Lumen runs your request on the agents you have connected and reports only what i
 ## Modes
 
 - **Direct.** You pick a provider and model. Lumen never overrides that choice, even when the request mentions architecture or security.
-- **Auto** (the default). Lumen classifies the task with a small model, falling back to keyword heuristics, and picks a model from the connected catalogs. A short continuation such as "procedi" reuses the previous rating. A new task gets a fresh rating. Every priority balances accounts of the same provider that offer the selected model and effort. With fresh, comparable quota data, Auto compares the fraction of time until reset against the fraction of quota remaining, starting with the tightest window. If the available model is weaker than the conversation's retained difficulty, Auto asks before using it and, when that is a quota trade, names the account that could serve the task and when its quota resets; an explicit provider or model choice is never questioned. When every Claude and ChatGPT account is unavailable (absent, in cooldown, out of quota, or confirmed signed out), Auto continues on OpenCode with one curated model per difficulty tier, or with the single emergency model pinned in Settings; its Go quota is read from the local OpenCode server and console-credit models never enter Auto. Missing or stale quota data never counts as exhaustion; failed or ambiguous sign-in checks never count as logout.
-  - **Budget** lowers effort, skips optional stages and can also switch between Claude and ChatGPT for more quota if the other provider has a model in the same tier at equivalent or higher effort. Choose **Auto → Priority → Save quota** in the composer.
-  - **Default** uses calibrated routing.
-  - **Quality** raises effort and adds independent review for tier-two tasks.
+- **Auto** (the default). Lumen classifies the task with a small model, falling back to keyword heuristics, and picks a model from the connected catalogs. A short continuation such as "procedi" reuses the previous rating. A new task gets a fresh rating. Every priority balances accounts of the same provider that offer the selected model and effort. With fresh, comparable quota data, Auto compares the fraction of time until reset against the fraction of quota remaining, starting with the tightest window. If the available model is weaker than the conversation's retained difficulty, Auto asks before using it and, when that is a quota trade, names the account that could serve the task and when its quota resets; an explicit provider or model choice is never questioned. When every Claude and ChatGPT account is unavailable, Auto continues on OpenCode ([details](providers.md#accounts)). Missing or stale quota data never counts as exhaustion.
+  - **Save quota** lowers effort, skips optional stages and can also switch between Claude and ChatGPT for more quota if the other provider has a model in the same tier at equivalent or higher effort. Choose **Auto → Priority → Save quota** in the composer.
+  - **Balanced** uses calibrated routing.
+  - **Best quality** raises effort and adds independent review for tier-two tasks.
 - **Orchestra** is opt-in. It plans a task graph with file ownership and dependencies, then runs workers in isolated Git worktrees within limits on concurrency, total subtasks, quota and run time (120 min by default, up to 24 h). It integrates the results and runs final validation.
 
 | Shape | When |
@@ -16,7 +16,7 @@ Lumen runs your request on the agents you have connected and reports only what i
 | Single | Default. Adds a read-only reviewer when review applies, preferably from another provider. |
 | Parallel | Orchestra plan whose steps can run side by side. |
 | Collaborative | Every step depends on the earlier ones, or two writers claim one file. Agents take turns in plan order. |
-| Compete | Quality profile only. Applies to one important or uncertain writing task when two different providers have quota. |
+| Compete | Best quality only. Applies to one important or uncertain writing task when two different providers have quota. |
 
 How Compete works:
 
@@ -24,7 +24,7 @@ How Compete works:
 2. The project's checks run on each candidate.
 3. The winner is decided by rule, in this order: no failing check, most checks passed, the verdict of a reviewer from a third provider, smaller diff.
 
-In an offline corpus of six tasks, Compete solved 5/6 and Single 3/6, at twice the worker runs. Budget and Default never compete.
+In an offline corpus of six tasks, Compete solved 5/6 and Single 3/6, at twice the worker runs. Save quota and Balanced never compete.
 
 Every Orchestra run ends with **Team result by Lumen**. Lumen writes this summary itself from observed results, not from model claims. It lists subtasks done and failed, the audit verdict, and says so when a writing task ran no check.
 

@@ -1,6 +1,6 @@
 # Example plugins
 
-Install one from **Settings → Plugins** by choosing its folder. See [the plugin guide](../../docs/plugins.md).
+Install one from **Settings → Extensions → Add a plugin folder…** by choosing its folder. See [the plugin guide](../../docs/plugins.md).
 
 | Folder | Shows | Permissions |
 | --- | --- | --- |
