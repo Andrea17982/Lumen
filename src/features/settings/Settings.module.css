@@ -21,6 +21,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* Tabs keep the same position whether or not their page scrolls. */
+  scrollbar-gutter: stable;
 }
 .content {
   display: flex;

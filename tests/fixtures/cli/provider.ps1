@@ -75,6 +75,10 @@ if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
     exit 0
 }
 $autopilotContinuation = $promptText.Contains('Continue the current user request from this native session.')
+if ($Provider -eq 'claude' -and $promptText.Contains('AUTOPILOT_FIXTURE_HANDOFF')) {
+    Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    exit 0
+}
 if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'auto-quota-project.txt')) {
     $initial = $promptText.Contains('AUTO_QUOTA_RESTART_FIXTURE')
     $resume = $env:LUMEN_FIXTURE_RESUME -eq 'true'
@@ -105,6 +109,26 @@ if ($Provider -eq 'gpt' -and $AppServer -and ($promptText.Contains('AUTOPILOT_FI
             Add-Content -LiteralPath 'autopilot-result.txt' -Value 'written once'
             $reply = "Modifica eseguita.`n<!-- lumen-autopilot: done -->"
         }
+        if (Test-Path -LiteralPath 'autopilot-handoff-start.txt') {
+            if ((Get-Content -LiteralPath 'autopilot-handoff-start.txt').Count -ne 1) {throw 'Handoff edits were replayed'}
+            $step = (Get-Content -LiteralPath 'autopilot-attempts.txt').Count - 1
+            if ($step -eq 4) {
+                Add-Content -LiteralPath 'autopilot-result.txt' -Value 'written once'
+                $reply = 'Handoff completed. <!-- lumen-autopilot: done -->'
+            } else {
+                $file = "autopilot-handoff-step-$step.txt"
+                Add-Content -LiteralPath $file -Value "step $step"
+                Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id="edit-$step";type='fileChange';status='completed';changes=@(@{path=$file;kind=@{type='add'};diff="+step $step"})}}}
+                $reply = "Step $step is complete. Continue with the next check. <!-- lumen-autopilot: continue -->"
+            }
+        }
+        if (Test-Path -LiteralPath 'autopilot-unconfirmed.txt') { $reply = 'Completion still unconfirmed.' }
+    } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_HANDOFF')) {
+        if (!$hasCheck -or $env:LUMEN_FIXTURE_RESUME -eq 'true') {throw 'Expected a new Codex thread after the Claude limit'}
+        Add-Content -LiteralPath 'autopilot-attempts.txt' -Value 'autopilot'
+        Add-Content -LiteralPath 'autopilot-handoff-start.txt' -Value 'first step'
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='first-edit';type='fileChange';status='completed';changes=@(@{path='autopilot-handoff-start.txt';kind=@{type='add'};diff='+first step'})}}}
+        $reply = 'The first edit is complete. Make the second edit next. <!-- lumen-autopilot: continue -->'
     } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_QUESTION')) {
         $reply = 'Risposta alla domanda. <!-- lumen-autopilot: done -->'
     } elseif ($promptText.Contains('AUTOPILOT_FIXTURE_BLOCKED')) {
@@ -120,10 +144,24 @@ if ($Provider -eq 'gpt' -and $AppServer -and ($promptText.Contains('AUTOPILOT_FI
     } else {
         $access = if ($hasCheck) { 'autopilot' } else { 'restricted' }
         Add-Content -LiteralPath 'autopilot-attempts.txt' -Value $access
+        if ($promptText.Contains('AUTOPILOT_FIXTURE_UNCONFIRMED')) { Set-Content -LiteralPath 'autopilot-unconfirmed.txt' -Value '' }
+        if ($promptText.Contains('AUTOPILOT_FIXTURE_LOOP')) { Set-Content -LiteralPath 'autopilot-loop.txt' -Value '' }
+        if ($promptText.Contains('AUTOPILOT_FIXTURE_LIMIT')) { Set-Content -LiteralPath 'autopilot-limit.txt' -Value '' }
         if ($hasCheck -and $promptText.Contains('AUTOPILOT_FIXTURE_EDIT')) {
             Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='autopilot-read';type='commandExecution';command='read a source file';aggregatedOutput='source file read';exitCode=0;status='completed'}}}
         }
         $reply = 'Ho individuato il file, ma il turno si è interrotto prima della modifica.'
+    }
+    if (Test-Path -LiteralPath 'autopilot-loop.txt') {
+        $step = (Get-Content -LiteralPath 'autopilot-attempts.txt').Count - 1
+        $check = @('check A', 'check B')[$step % 2]
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id="check-$step";type='commandExecution';command=$check;exitCode=0;status='completed';aggregatedOutput="Passed in $step milliseconds"}}}
+        $reply = "Repeated verification $step. <!-- lumen-autopilot: continue -->"
+    }
+    if (Test-Path -LiteralPath 'autopilot-limit.txt') {
+        $step = (Get-Content -LiteralPath 'autopilot-attempts.txt').Count - 1
+        Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id="new-$step";type='commandExecution';command="new check $step";exitCode=0;status='completed';aggregatedOutput='passed'}}}
+        $reply = "New check $step passed. <!-- lumen-autopilot: continue -->"
     }
     Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='autopilot-message';type='agentMessage';text=$reply}}}
     Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}

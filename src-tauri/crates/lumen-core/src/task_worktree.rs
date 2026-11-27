@@ -37,6 +37,10 @@ pub struct Task {
     /// The open pull request the task continues: its URL and base branch.
     #[serde(default)]
     pub continues: Option<(String, String)>,
+    /// The worktree tree Apply copied into the project. A retry with the same tree only removes
+    /// the worktree; a tree that changed since is refused, so later work is never dropped.
+    #[serde(default)]
+    pub applied: Option<String>,
 }
 
 impl Task {
@@ -445,7 +449,17 @@ async fn install(cmd: &str, dir: &Path, mut cancel: watch::Receiver<bool>) -> Re
             }
             return Err("Cancelled".into());
         }
-        out = wait => out.map_err(|_| "timed out after 10 minutes".to_string())?.map_err(|e| e.to_string())?,
+        out = wait => match out {
+            Ok(out) => out.map_err(|e| e.to_string())?,
+            // Dropping the child stops only the shell: end the installer it started too.
+            Err(_) => {
+                #[cfg(windows)]
+                if let Some(pid) = pid {
+                    crate::proc::taskkill(pid).await;
+                }
+                return Err("timed out after 10 minutes".into());
+            }
+        },
     };
     if out.status.success() {
         Ok(())
@@ -549,6 +563,7 @@ pub(crate) async fn create(
         pr: None,
         remote: from.as_ref().map(|f| f.remote.clone()),
         continues: from.as_ref().and_then(|f| f.pr.clone()),
+        applied: None,
     };
     save(core, &s.id, &task)?;
     // The user's uncommitted work becomes the branch's first commit, so the pull request
@@ -888,14 +903,19 @@ pub(crate) async fn finish(
     t: &Task,
     drop_branch: bool,
 ) -> Result<Session, String> {
+    let top = Path::new(&t.top);
+    let path = Path::new(&t.path);
+    gitops::remove_worktree(top, path).await;
+    // A folder held open by an editor, terminal or dev server survives removal on Windows. Keep
+    // the task record and the branch so nothing is orphaned and the user can try again.
+    if path.exists() {
+        return Err("The task folder is in use and was not removed. Close the programs using it (editors, terminals, dev servers) and try again.".into());
+    }
     let moved = core
         .store
         .bind_workspace(&s.id, s.workspace_id.as_deref(), &t.origin)?;
-    let top = Path::new(&t.top);
     if drop_branch {
-        gitops::remove_lane(top, Path::new(&t.path), &t.branch).await;
-    } else {
-        gitops::remove_worktree(top, Path::new(&t.path)).await;
+        gitops::remove_lane(top, path, &t.branch).await;
     }
     let _ = std::fs::remove_file(dir(core, &s.id).join("task.json"));
     Ok(moved)
@@ -1056,9 +1076,20 @@ pub async fn publish_task(
 #[crate::command]
 pub async fn apply_task(core: crate::CoreRef<'_>, id: String) -> Result<Session, String> {
     idle(&core, &id)?;
-    let (s, t) = require(&core, &id)?;
-    let patch = gitops::lane_patch(Path::new(&t.path), &t.base).await?;
-    gitops::apply_patch(Path::new(&t.top), &patch).await?;
+    let (s, mut t) = require(&core, &id)?;
+    let tree = gitops::write_tree(Path::new(&t.path)).await?;
+    match &t.applied {
+        // A retry after the folder was in use: the changes are already in the project.
+        Some(applied) if *applied == tree => {}
+        Some(_) => return Err("This task changed after Lumen copied its earlier changes into the project. Review the project folder, then Discard the task or apply the new changes by hand.".into()),
+        None => {
+            let patch = gitops::lane_patch(Path::new(&t.path), &t.base).await?;
+            gitops::apply_patch(Path::new(&t.top), &patch).await?;
+            // Recorded before removal: if the folder is in use, Apply again must not copy twice.
+            t.applied = Some(tree);
+            save(&core, &id, &t)?;
+        }
+    }
     finish(&core, &s, &t, true).await
 }
 

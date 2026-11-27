@@ -181,14 +181,37 @@ async fn run() -> Result<(), String> {
             .reject_remote_clients(true)
             .create(&endpoint)
             .map_err(|e| e.to_string())?;
+        // One failed connection (a client that connected and left at once gives ERROR_NO_DATA)
+        // must not stop the service and every turn it runs: replace the pipe instance and go on.
+        let mut failures = 0;
         loop {
-            tokio::select! {_=service.shutdown.notified()=>break,result=server.connect()=>result.map_err(|e|e.to_string())?}
-            let connected = server;
-            server = ServerOptions::new()
+            let accepted = tokio::select! {_=service.shutdown.notified()=>break,result=server.connect()=>result};
+            let next = ServerOptions::new()
                 .reject_remote_clients(true)
-                .create(&endpoint)
-                .map_err(|e| e.to_string())?;
-            spawn_peer(connected, service.clone());
+                .create(&endpoint);
+            let next = match next {
+                Ok(next) => next,
+                Err(error) => {
+                    failures += 1;
+                    eprintln!("Lumen: could not open the next pipe instance: {error}");
+                    if failures >= 20 {
+                        return Err(error.to_string());
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+            let connected = std::mem::replace(&mut server, next);
+            match accepted {
+                Ok(()) => {
+                    failures = 0;
+                    spawn_peer(connected, service.clone());
+                }
+                Err(error) => {
+                    eprintln!("Lumen: a connection failed: {error}");
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }
         }
     }
     #[cfg(unix)]
@@ -202,7 +225,19 @@ async fn run() -> Result<(), String> {
         std::fs::set_permissions(&endpoint, std::fs::Permissions::from_mode(0o600))
             .map_err(|e| e.to_string())?;
         loop {
-            tokio::select! {_=service.shutdown.notified()=>break,peer=server.accept()=>{let(io,_)=peer.map_err(|e|e.to_string())?;if lumen_ipc::verify_unix(&io).is_ok(){spawn_peer(io,service.clone());}}}
+            let peer =
+                tokio::select! {_=service.shutdown.notified()=>break,peer=server.accept()=>peer};
+            match peer {
+                Ok((io, _)) if lumen_ipc::verify_unix(&io).is_ok() => {
+                    spawn_peer(io, service.clone())
+                }
+                Ok(_) => {}
+                // Accept errors such as EMFILE are transient: wait instead of stopping the service.
+                Err(error) => {
+                    eprintln!("Lumen: a connection failed: {error}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
         }
         let _ = std::fs::remove_file(endpoint);
     }

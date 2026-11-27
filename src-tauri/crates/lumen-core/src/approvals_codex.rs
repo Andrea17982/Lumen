@@ -8,6 +8,7 @@ use crate::models::{AccessMode, Activity, Provider};
 use crate::providers::{self, Invocation};
 use lumen_gatekeeper::{support, Availability, Provider as Engine, Scope};
 use serde_json::{json, Value};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -131,6 +132,33 @@ fn decline(id: &Value) -> Value {
     json!({"id": id, "result": {"decision": "decline"}})
 }
 
+// Stable across native turn IDs and noisy stdout (timings, PIDs, temporary paths).
+fn progress_evidence(item: &Value) -> Option<u64> {
+    let kind = item["type"].as_str()?;
+    let mut hash = DefaultHasher::new();
+    kind.hash(&mut hash);
+    match kind {
+        "commandExecution" => (
+            item["cwd"].as_str(),
+            item["command"].as_str()?,
+            item["exitCode"].as_i64()?,
+        )
+            .hash(&mut hash),
+        "fileChange" if item["status"] == "completed" => {
+            let changes = item["changes"].as_array().filter(|v| !v.is_empty())?;
+            changes.hash(&mut hash);
+        }
+        "mcpToolCall" if item["status"] == "completed" => (
+            item["server"].as_str(),
+            item["tool"].as_str()?,
+            &item["arguments"],
+        )
+            .hash(&mut hash),
+        _ => return None,
+    }
+    Some(hash.finish())
+}
+
 /// Normal activities for the chat, the same kinds the headless runner emits.
 fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
     let mut push = |kind: &str, t: String| {
@@ -171,7 +199,10 @@ fn activity(v: &Value, text: &mut String, emit: &mut impl FnMut(Activity)) {
                 .contains(&item["type"].as_str().unwrap_or(""))
             {
                 if let Some(id) = item["id"].as_str() {
-                    push("tool-end", json!({"id":id}).to_string());
+                    push(
+                        "tool-end",
+                        json!({"id":id,"evidence":progress_evidence(item)}).to_string(),
+                    );
                 }
             }
             match item["type"].as_str().unwrap_or("") {

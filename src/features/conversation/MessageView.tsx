@@ -64,6 +64,11 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
       {parts.images.map((path) => (
         <WorkspaceImage key={path} path={path} />
       ))}
+      {parts.notices.map((reason, i) => (
+        <p key={i} className={s.notice} role="note">
+          {t.conversationText.autopilotStopped(reason)}
+        </p>
+      ))}
       {parts.errors.map((e, i) => (
         <p key={i} className={s.error} role="note">
           {e}

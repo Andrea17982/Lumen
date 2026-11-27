@@ -176,7 +176,11 @@ pub fn resume_at_reset(
 }
 
 pub(crate) fn restore(app: crate::host::EventHub, core: &Arc<Core>) {
-    for (id, message) in core.store.quota_schedules().unwrap_or_default() {
+    let schedules = core.store.quota_schedules().unwrap_or_else(|error| {
+        eprintln!("Lumen: scheduled continuations could not be read: {error}");
+        Vec::new()
+    });
+    for (id, message) in schedules {
         if let Err(error) = resume_at_reset(
             app.clone(),
             crate::CoreRef(core),

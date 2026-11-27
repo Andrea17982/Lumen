@@ -59,6 +59,13 @@ describe('activity', () => {
     expect(parts.errors).toEqual(['Failed once']);
   });
 
+  it('shows an Autopilot stop as a notice, not as an error or a step', () => {
+    const parts = partsOf(message('Needs a credential.', [{ kind: 'autopilot-stopped', text: '{"reason":"blocked"}' }]));
+    expect(parts.notices).toEqual(['blocked']);
+    expect(parts.errors).toEqual([]);
+    expect(parts.steps).toEqual([]);
+  });
+
   it('keeps an unclosed think block as reasoning while it streams', () => {
     expect(splitReasoning('Hi <think>still going')).toEqual({ reasoning: 'still going', answer: 'Hi ' });
   });

@@ -1,7 +1,7 @@
 import type { Activity, Interaction, InteractionResult, Message } from '../../protocol/types';
 
 /** How one activity kind appears in a message. Unknown kinds become generic steps. */
-export type Role = 'step' | 'reasoning' | 'error' | 'image' | 'attachments' | 'model' | 'plan' | 'question' | 'hidden' | 'later';
+export type Role = 'step' | 'reasoning' | 'error' | 'notice' | 'image' | 'attachments' | 'model' | 'plan' | 'question' | 'hidden' | 'later';
 
 // Telemetry and state the client reads elsewhere (or not at all), never listed as steps.
 const HIDDEN = new Set([
@@ -24,6 +24,7 @@ const LATER = new Set([
 export function roleOf(kind: string): Role {
   if (kind === 'thinking') return 'reasoning';
   if (kind === 'error') return 'error';
+  if (kind === 'autopilot-stopped') return 'notice';
   if (kind === 'image') return 'image';
   if (kind === 'attachments') return 'attachments';
   if (kind === 'model') return 'model';
@@ -39,6 +40,8 @@ export interface MessageParts {
   reasoning: string;
   steps: Activity[];
   errors: string[];
+  /** Why Autopilot stopped on its own terms: blocked, stalled or limit. Not an error. */
+  notices: string[];
   images: string[];
   attachments: string[];
   model?: string;
@@ -72,7 +75,7 @@ const DIRECTIVES = /<lumen-(remember|routine)[\s\S]*?(<\/lumen-(remember|routine
 
 export function partsOf(message: Message): MessageParts {
   const split = message.role === 'assistant' ? splitReasoning(message.text.replace(DIRECTIVES, '')) : { reasoning: '', answer: message.text };
-  const parts: MessageParts = { answer: split.answer, reasoning: '', steps: [], errors: [], images: [], attachments: [], asked: [] };
+  const parts: MessageParts = { answer: split.answer, reasoning: '', steps: [], errors: [], notices: [], images: [], attachments: [], asked: [] };
   const reasoning: string[] = [];
   for (const activity of message.activity) {
     switch (roleOf(activity.kind)) {
@@ -81,6 +84,9 @@ export function partsOf(message: Message): MessageParts {
         break;
       case 'error':
         parts.errors.push(activity.text);
+        break;
+      case 'notice':
+        parts.notices.push(parse(activity.text)?.reason ?? '');
         break;
       case 'image':
         parts.images.push(activity.text);

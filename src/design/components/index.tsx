@@ -4,6 +4,7 @@ import {
   Button as AriaButton,
   Checkbox,
   CheckboxGroup,
+  ComboBox,
   Dialog as AriaDialog,
   DialogTrigger,
   FieldError,
@@ -168,6 +169,35 @@ export function Select<T extends string>({ label, value, options, onChange, isDi
         </ListBox>
       </Popover>
     </AriaSelect>
+  );
+}
+
+export function ModelSelect({ label, value, options, onChange }: { label: string; value: string; options: { id: string; label: string }[]; onChange: (v: string) => void }) {
+  return (
+    <ComboBox aria-label={label} selectedKey={value} onSelectionChange={(key) => key !== null && onChange(String(key))} defaultItems={options} defaultFilter={(text, query) => text.toLocaleLowerCase().includes(query.toLocaleLowerCase())} className={s.modelSelect} menuTrigger="focus">
+      <Input className={s.modelInput} />
+      <AriaButton className={`${s.button} ${s.modelButton}`} data-variant="plain" aria-label={label}>
+        <Icon name="chevronDown" size={14} />
+      </AriaButton>
+      <Popover className={s.popover} placement="top start" offset={4}>
+        <ListBox<{ id: string; label: string }> className={s.list} renderEmptyState={() => '—'}>
+          {(option) => (
+            <ListBoxItem id={option.id} textValue={option.label} className={s.item}>
+              {({ isSelected }) => (
+                <>
+                  {option.label}
+                  {isSelected && (
+                    <span className={s.check}>
+                      <Icon name="check" size={14} />
+                    </span>
+                  )}
+                </>
+              )}
+            </ListBoxItem>
+          )}
+        </ListBox>
+      </Popover>
+    </ComboBox>
   );
 }
 

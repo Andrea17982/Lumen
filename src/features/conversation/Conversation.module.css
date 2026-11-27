@@ -202,6 +202,13 @@
   color: var(--status-danger-text);
   white-space: pre-wrap;
 }
+.notice {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-m);
+  background: var(--status-warning-subtle);
+  color: var(--status-warning-text);
+}
 .image {
   display: block;
   max-width: 100%;

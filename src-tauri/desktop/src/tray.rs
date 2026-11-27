@@ -74,12 +74,26 @@ fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Quit stops the service, then the window. If the service cannot stop, the window stays.
+/// Quit stops the service, then the window. A service that is already gone, or that belongs to
+/// another build, does not keep the window open. If running work cannot stop, the window comes
+/// back and says why instead of ignoring the click.
 pub fn quit(app: AppHandle) {
     let bridge = app.state::<Arc<Bridge>>().inner().clone();
     tauri::async_runtime::spawn(async move {
-        if bridge.stop_service().await.is_ok() {
-            app.exit(0);
+        match bridge.stop_service().await {
+            Ok(()) => app.exit(0),
+            Err(error) if error.contains("different build") || !bridge.reachable().await => {
+                app.exit(0)
+            }
+            Err(error) => {
+                show_main(&app);
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("Lumen could not quit")
+                    .body(error)
+                    .show();
+            }
         }
     });
 }

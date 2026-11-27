@@ -44,6 +44,22 @@ async function files(dir: string): Promise<string[]> {
   return out;
 }
 
+test('an unavailable emergency pin can be replaced with Auto', async ({ page }) => {
+  const value = await daemon.client.call('get_settings') as Record<string, unknown>;
+  await daemon.client.call('save_settings', { value: { ...value, emergencyModels: { opencode: 'opencode-go/removed-model' } } });
+  await open(page);
+  await add(page, 'OpenCode');
+  const card = settings(page).getByRole('listitem', { name: 'OpenCode, OpenCode' });
+  await expect(card.getByRole('alert')).toContainText('selected emergency model is unavailable');
+  await card.getByRole('button', { name: /Emergency model/ }).click();
+  await page.getByRole('option', { name: 'Auto', exact: true }).click();
+  await expect(card.getByRole('alert')).toHaveCount(0);
+  await expect.poll(async () => ((await daemon.client.call('get_settings')) as { emergencyModels: Record<string, string> }).emergencyModels.opencode).toBeUndefined();
+  await card.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Remove' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
+});
+
 test('a CLI account is added, checked and shows quota as not reported', async ({ page }) => {
   await open(page);
   await expect(settings(page)).toContainText('No accounts yet');

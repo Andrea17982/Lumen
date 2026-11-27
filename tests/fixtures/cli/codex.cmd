@@ -1,5 +1,6 @@
 @echo off
 if "%~1"=="--version" (echo codex offline-fixture& exit /b 0)
+if "%~1"=="login" if exist "%CODEX_HOME%\signed-out-fixture" (echo Not logged in 1>&2& exit /b 1)
 if "%~1"=="login" exit /b 0
 if "%~2"=="generate-json-schema" (
   powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0schema.ps1" "%~4"

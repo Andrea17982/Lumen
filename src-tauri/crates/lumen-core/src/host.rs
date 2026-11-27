@@ -76,9 +76,10 @@ impl EventHub {
         }
         // Persist before publishing: reconnects and a killed service can recover the same text.
         let store = self.store.lock().map_err(|_| "Event store lock failed")?;
+        let mut unsaved = None;
         if event == "lumen:run" {
             if let Some(store) = store.as_ref() {
-                store.append_event(&mut payload)?;
+                unsaved = store.append_event(&mut payload).err();
             }
             crate::wire::project_activity(&mut payload);
         }
@@ -86,6 +87,16 @@ impl EventHub {
             event: event.into(),
             payload,
         });
+        // A store error must not swallow the event (a lost `done` leaves a turn looking alive):
+        // it is still published, and clients read the snapshots again to fill any gap.
+        if let Some(error) = unsaved {
+            eprintln!("Lumen: an event was not saved: {error}");
+            let _ = self.events.send(Event {
+                event: "lumen:resync".into(),
+                payload: serde_json::json!({}),
+            });
+            return Err(error);
+        }
         Ok(())
     }
 }

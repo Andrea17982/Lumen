@@ -20,6 +20,8 @@ const FIRST_RETRY: Duration = Duration::from_millis(250);
 const MAX_RETRY: Duration = Duration::from_secs(4);
 /// A spawned service needs time to open its endpoint; do not start a second one meanwhile.
 const SPAWN_GRACE: Duration = Duration::from_secs(10);
+/// The service's stderr for the latest start, so a failed start can say why.
+const SERVICE_LOG: &str = "service.log";
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
@@ -95,16 +97,23 @@ impl Bridge {
         self.client.call("__shutdown", json!({})).await.map(drop)
     }
 
+    /// Whether any service listens on this data directory's endpoint.
+    pub async fn reachable(&self) -> bool {
+        lumen_ipc::connect(&self.client.endpoint).await.is_ok()
+    }
+
     /// Runs for the life of the app: connect, relay, and on any loss reconnect without
     /// replaying anything. The client resynchronises from snapshots when it sees `connected`.
     pub async fn supervise(&self, app: AppHandle, on_connect: impl Fn(&AppHandle)) {
         let mut retry = FIRST_RETRY;
-        let mut spawned: Option<Instant> = None;
+        let mut spawned: Option<(Instant, std::process::Child)> = None;
+        let mut failure: Option<String> = None;
         let mut connected_once = false;
         loop {
             match self.subscribe().await {
                 Ok(mut io) => {
                     connected_once = true;
+                    failure = None;
                     retry = FIRST_RETRY;
                     self.set(&app, Connection::Connected);
                     on_connect(&app);
@@ -118,24 +127,41 @@ impl Bridge {
                 Err(error) => {
                     // Only start the service when nothing listens; a busy or stopping one is left alone.
                     let absent = lumen_ipc::connect(&self.client.endpoint).await.is_err();
-                    if absent && spawned.is_none_or(|at| at.elapsed() > SPAWN_GRACE) {
-                        spawned = Some(Instant::now());
-                        if let Err(spawn) = self.spawn() {
-                            self.set(
-                                &app,
-                                Connection::Failed {
-                                    detail: format!("{spawn} ({error})"),
-                                },
-                            );
-                            return;
+                    // A service that exited at startup (corrupt store, failed migration) says why
+                    // instead of leaving the window connecting forever. Lumen keeps retrying.
+                    if let Some((_, child)) = spawned.as_mut() {
+                        if let Ok(Some(status)) = child.try_wait() {
+                            if !status.success() {
+                                failure = Some(self.startup_failure(status));
+                            }
+                        }
+                    }
+                    if absent
+                        && spawned
+                            .as_ref()
+                            .is_none_or(|(at, _)| at.elapsed() > SPAWN_GRACE)
+                    {
+                        match self.spawn() {
+                            Ok(child) => spawned = Some((Instant::now(), child)),
+                            Err(spawn) => {
+                                self.set(
+                                    &app,
+                                    Connection::Failed {
+                                        detail: format!("{spawn} ({error})"),
+                                    },
+                                );
+                                return;
+                            }
                         }
                     }
                     self.set(
                         &app,
-                        if connected_once {
-                            Connection::Reconnecting
-                        } else {
-                            Connection::Connecting
+                        match &failure {
+                            Some(detail) => Connection::Failed {
+                                detail: detail.clone(),
+                            },
+                            None if connected_once => Connection::Reconnecting,
+                            None => Connection::Connecting,
                         },
                     );
                 }
@@ -154,8 +180,32 @@ impl Bridge {
         Ok(io)
     }
 
+    fn startup_failure(&self, status: std::process::ExitStatus) -> String {
+        let log = std::fs::read_to_string(self.root.join(SERVICE_LOG)).unwrap_or_default();
+        let tail: Vec<&str> = log
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .rev()
+            .take(5)
+            .collect();
+        // The banner is one line: keep the last few log lines in order, on it.
+        let reason = tail.into_iter().rev().collect::<Vec<_>>().join(" · ");
+        let code = status
+            .code()
+            .map_or_else(|| "a signal".to_string(), |c| c.to_string());
+        if reason.trim().is_empty() {
+            format!("The Lumen service stopped at startup (exit {code}).")
+        } else {
+            format!("The Lumen service stopped at startup (exit {code}): {reason}")
+        }
+    }
+
     /// The service outlives the window: it keeps running turns when the app closes.
-    fn spawn(&self) -> Result<(), String> {
+    fn spawn(&self) -> Result<std::process::Child, String> {
+        // Truncated on each start: it only needs to explain the latest one.
+        let stderr = std::fs::File::create(self.root.join(SERVICE_LOG))
+            .map(std::process::Stdio::from)
+            .unwrap_or_else(|_| std::process::Stdio::null());
         let mut command = std::process::Command::new(&self.daemon);
         command
             .arg("--data-dir")
@@ -164,7 +214,7 @@ impl Bridge {
             .arg(&self.resources)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+            .stderr(stderr);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -178,7 +228,6 @@ impl Bridge {
         }
         command
             .spawn()
-            .map(drop)
             .map_err(|e| format!("Could not start the Lumen service: {e}"))
     }
 }

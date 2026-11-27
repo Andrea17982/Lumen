@@ -33,6 +33,17 @@ async function send(page: Page, text: string) {
   await box.press('Enter');
 }
 
+test('model search filters and selects with the keyboard', async ({ page }) => {
+  await open(page);
+  const model = page.getByRole('combobox', { name: 'Model' });
+  await model.fill('haiku');
+  await expect(page.getByRole('option', { name: /haiku/i }).first()).toBeVisible();
+  await expect(page.getByRole('option', { name: /sonnet/i })).toHaveCount(0);
+  await model.press('ArrowDown');
+  await model.press('Enter');
+  await expect(model).toHaveValue(/haiku/i);
+});
+
 test('a fixture turn goes from prompt to a finished Markdown reply', async ({ page }) => {
   test.setTimeout(90_000);
   await open(page);

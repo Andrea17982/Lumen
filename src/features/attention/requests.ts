@@ -16,7 +16,7 @@ const HIDDEN = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|(?! )\p{Zs}|[\u034f\u115f\u
 
 export const agentName = (scope: Scope) => (scope.provider === 'claude' ? 'Claude' : 'Codex');
 
-export const sameScope = (a: Scope, b: Scope) =>
+const sameScope = (a: Scope, b: Scope) =>
   a.sessionId === b.sessionId && a.connectionId === b.connectionId && a.provider === b.provider && a.providerSessionId === b.providerSessionId && a.turnId === b.turnId;
 
 export type Blocker = 'expired' | 'disconnected' | 'workerGone';
@@ -89,7 +89,7 @@ export function complete(request: Interaction, answers: Record<string, string[]>
   return request.questions.every((q) => q.optional || (declined && q.id !== request.actionId) || (answers[q.id]?.length ?? 0) > 0);
 }
 
-export function parse<T>(text: string): T | null {
+function parse<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T;
   } catch {

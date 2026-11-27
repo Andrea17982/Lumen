@@ -67,6 +67,8 @@ export const it: Catalog = {
     stopping: 'Il servizio Lumen si sta arrestando. Lumen si ricollega al riavvio.',
     unconfirmed: 'Lumen non ha potuto confermare l’ultima azione. Controlla il risultato prima di inviare altro lavoro.',
     checked: 'Ho controllato',
+    syncError: (error: string) => `Lumen non è riuscito a leggere lo stato aggiornato: ${error}`,
+    retry: 'Riprova',
   },
   status: {
     idle: 'Inattiva',
@@ -96,6 +98,12 @@ export const it: Catalog = {
     diffTruncated: 'Diff accorciato',
     newMessages: 'Nuovi messaggi',
     replying: 'Lumen sta rispondendo',
+    autopilotStopped: (reason: string) =>
+      reason === 'blocked'
+        ? 'Autopilot si è fermato: la risposta qui sopra spiega cosa serve da te.'
+        : reason === 'limit'
+          ? 'Autopilot si è messo in pausa dopo 10 tentativi. Il lavoro svolto resta; invia un messaggio per proseguire.'
+          : 'Autopilot si è messo in pausa perché gli ultimi tentativi non hanno fatto nuovi progressi. Il lavoro svolto resta; invia un messaggio per proseguire.',
   },
   kinds: {
     tool: 'Strumento',
@@ -246,13 +254,15 @@ export const it: Catalog = {
     usage: 'Utilizzo',
     used: (percent) => `${percent} usato`,
     resets: (time) => `si azzera ${time}`,
+    wasReset: (time: string) => `azzerata ${time} · il nuovo consumo compare dopo il prossimo task`,
     windows: { 300: '5 ore', 10080: 'Settimana', 43200: 'Mese' } as Record<string, string>,
     minutes: (n) => (n >= 1440 ? `${Math.round(n / 1440)} giorni` : n >= 60 ? `${Math.round(n / 60)} ore` : `${n} minuti`),
     reported: (source) => `Indicato da ${source}`,
     notReported: 'Utilizzo non ancora indicato. Compare dopo la prima attività.',
     emergencyModel: 'Modello d’emergenza',
-    emergencyAuto: 'Auto (fasce curate)',
-    emergencyHelp: 'Usato solo quando ogni account Claude e ChatGPT è senza quota. Auto segue la difficoltà; un modello scelto qui viene usato sempre al suo posto.',
+    emergencyAuto: 'Auto',
+    emergencyUnavailable: 'Il modello d’emergenza selezionato non è disponibile. Scegli un altro modello oppure Auto.',
+    emergencyHelp: 'Usato quando gli account Claude e ChatGPT non sono disponibili o sono senza quota. Auto segue la difficoltà; un modello scelto qui viene usato sempre al suo posto.',
     remove: 'Rimuovi',
     removeTitle: (name) => `Rimuovere ${name}?`,
     removeBody: 'Lumen dimentica questo account e il suo profilo di accesso. Le conversazioni restano.',
@@ -479,6 +489,8 @@ export const it: Catalog = {
     policy: 'Priorità',
     policies: { budget: 'Risparmia quota', default: 'Bilanciato', quality: 'Massima qualità' },
     model: 'Modello',
+    consoleCredit: 'credito OpenCode',
+    free: 'gratis',
     effort: 'Sforzo di ragionamento',
     access: 'Accesso',
     tokens: (n: string) => `~${n} token`,

@@ -50,13 +50,14 @@ pub async fn models(
     workspace: Option<&Path>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<Vec<ModelInfo>, String> {
-    let catalog = api(workspace, "/api/model", cancel.clone()).await?;
-    let default = api(workspace, "/api/model/default", cancel.clone())
-        .await
-        .unwrap_or(Value::Null);
-    let providers = api(workspace, "/api/provider", cancel)
-        .await
-        .unwrap_or(Value::Null);
+    let (catalog, default, providers) = tokio::join!(
+        api(workspace, "/api/model", cancel.clone()),
+        api(workspace, "/api/model/default", cancel.clone()),
+        api(workspace, "/api/provider", cancel),
+    );
+    let catalog = catalog?;
+    let default = default.unwrap_or(Value::Null);
+    let providers = providers.unwrap_or(Value::Null);
     let enabled = providers.as_array().map(|rows| {
         rows.iter()
             .filter(|p| p["activation"] == "enabled")

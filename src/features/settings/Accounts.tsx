@@ -23,6 +23,7 @@ const cliName: Record<string, string> = {
   'claude-cli': 'Claude Code',
   'codex-cli': 'Codex',
   'antigravity-cli': 'Antigravity',
+  'opencode-go': 'OpenCode Go',
 };
 const isApi = (p: Provider) => p.endsWith('api');
 const SHOWN_CAPABILITIES = ['nativeResume', 'askFirst', 'cancellation', 'inputImages', 'subagents', 'fallback'] as const;
@@ -219,7 +220,7 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
 function EmergencyModel({ account, onError }: { account: Account; onError: (e: string) => void }) {
   const t = useT();
   const sync = useSyncClient();
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [pinned, setPinned] = useState('');
   useEffect(() => {
     sync.call<ModelInfo[]>('list_models', { id: account.id }).then(setModels, () => {});
@@ -228,12 +229,13 @@ function EmergencyModel({ account, onError }: { account: Account; onError: (e: s
       () => {},
     );
   }, [sync, account.id, account.provider]);
-  if (models.length === 0) return null;
+  if (!models || (models.length === 0 && !pinned)) return null;
+  const available = models.filter((m) => !m.description.includes('console credit'));
+  const missing = pinned !== '' && !available.some((m) => m.id === pinned);
   const options = [
     { id: '', label: t.accounts.emergencyAuto },
-    ...models
-      .filter((m) => !m.description.includes('console credit'))
-      .map((m) => ({ id: m.id, label: m.name })),
+    ...(missing ? [{ id: pinned, label: pinned }] : []),
+    ...available.map((m) => ({ id: m.id, label: m.name })),
   ];
   return (
     <>
@@ -248,29 +250,36 @@ function EmergencyModel({ account, onError }: { account: Account; onError: (e: s
             if (id) map[account.provider] = id;
             else delete map[account.provider];
             await sync.call('save_settings', { value: { ...value, emergencyModels: map } });
-          }, (e) => onError(String(e)));
+          }).catch((e) => {
+            setPinned(pinned);
+            onError(String(e));
+          });
         }}
       />
+      {missing && <p role="alert" className={s.help}>{t.accounts.emergencyUnavailable}</p>}
       <p className={s.help}>{t.accounts.emergencyHelp}</p>
     </>
   );
 }
 
 /** One bar per window the CLI reported. Nothing reported shows as such, not as an empty bar. */
-function Quota({ usage }: { usage?: AccountUsage }) {  const t = useT();
+function Quota({ usage }: { usage?: AccountUsage }) {
+  const t = useT();
   const locale = useLocale();
   if (!usage || usage.windows.length === 0) return <p className={s.quiet}>{t.accounts.notReported}</p>;
   return (
     <div className={s.quota}>
       {usage.windows.map((w, i) => {
         const label = t.accounts.windows[w.windowMinutes] ?? t.accounts.minutes(w.windowMinutes);
-        const used = Math.max(0, Math.min(100, w.usedPercent));
+        // The window has reset since the CLI reported it: the old figure no longer applies.
+        const expired = w.resetsAt <= Date.now();
+        const used = expired ? 0 : Math.max(0, Math.min(100, w.usedPercent));
         return (
           <div key={i} className={s.window}>
             <div className={s.windowHead}>
               <span>{w.group ? `${w.group} · ${label}` : label}</span>
               <span>
-                {t.accounts.used(formatPercent(locale, used))} · {t.accounts.resets(formatRelative(locale, w.resetsAt))}
+                {expired ? t.accounts.wasReset(formatRelative(locale, w.resetsAt)) : `${t.accounts.used(formatPercent(locale, used))} · ${t.accounts.resets(formatRelative(locale, w.resetsAt))}`}
               </span>
             </div>
             <div className={s.bar} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used)} data-high={used >= 90 || undefined}>
