@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { realpathSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -53,7 +54,8 @@ test('configures appearance, verifies CLI sign-in, opens a folder and finishes t
   await page.getByRole('button', { name: 'Continue' }).click();
   page.once('dialog', (dialog) => dialog.accept(daemon.workspace));
   await page.getByRole('button', { name: 'Choose a folder' }).click();
-  await expect(page.getByText(daemon.workspace, { exact: true })).toBeVisible();
+  // The daemon stores the canonical folder, so an 8.3 short temp path appears in full.
+  await expect(page.getByText(realpathSync.native(daemon.workspace), { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByText('Verified agents: Claude Code')).toBeVisible();
   await expect(page.getByText('Selected project: workspace')).toBeVisible();
