@@ -214,9 +214,22 @@ function Banners() {
   const synced = useSyncState((st) => st.synced);
   const sessions = useSyncState((st) => st.sessions);
   const error = useSyncState((st) => st.error);
+  const update = useSyncState((st) => st.update);
+  const [later, setLater] = useState<string | null>(null);
   return (
     <div className={s.banners}>
       <ConnectionBanner connection={connection} stale={!synced && sessions.length > 0} />
+      {update && later !== update.version && (
+        <div className={s.banner} role="status">
+          <span>{t.banner.update(update.version)}</span>
+          <Button variant="primary" onPress={() => void sync.call(update.installable ? 'update_install' : 'update_open_page').catch(() => {})}>
+            {t.banner.updateNow}
+          </Button>
+          <Button variant="secondary" onPress={() => setLater(update.version)}>
+            {t.banner.later}
+          </Button>
+        </div>
+      )}
       {error && connection.state === 'connected' && (
         <div className={s.banner} data-tone="warning" role="alert">
           <span>{t.banner.syncError(error)}</span>
@@ -240,12 +253,36 @@ function Banners() {
 
 function ConnectionBanner({ connection, stale }: { connection: Connection; stale: boolean }) {
   const t = useT();
-  if (connection.state === 'mismatch') return <p className={s.banner} data-tone="warning">{t.banner.mismatch}</p>;
+  const sync = useSyncClient();
+  const [repairing, setRepairing] = useState(false);
+  // The shell restarts the service itself: this works while the service cannot answer.
+  const repair = (
+    <Button
+      variant="secondary"
+      isDisabled={repairing}
+      onPress={() => {
+        setRepairing(true);
+        sync.call('restart_service').finally(() => setRepairing(false)).catch(() => {});
+      }}
+    >
+      {t.banner.repair}
+    </Button>
+  );
+  if (connection.state === 'mismatch')
+    return (
+      <div className={s.banner} data-tone="warning" role="alert">
+        <span>{t.banner.mismatch}</span>
+        {repair}
+      </div>
+    );
   if (connection.state === 'failed')
     return (
-      <p className={s.banner} data-tone="danger" title={connection.detail}>
-        {t.banner.failed} {connection.detail}
-      </p>
+      <div className={s.banner} data-tone="danger" role="alert" title={connection.detail}>
+        <span>
+          {t.banner.failed} {connection.detail}
+        </span>
+        {repair}
+      </div>
     );
   if (connection.state === 'reconnecting' || (connection.state === 'connected' && stale)) return <p className={s.banner}>{t.banner.stale}</p>;
   return null;

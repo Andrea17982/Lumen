@@ -24,6 +24,33 @@ pub fn receipted(command: &str) -> bool {
     )
 }
 
+/// How long a client waits for one reply. Commands that run a check, a publish, an
+/// install, a sign-in or an Orchestra step can legitimately take minutes; everything else
+/// answers from the store and a silent service must not leave the interface waiting forever.
+pub fn deadline(command: &str) -> std::time::Duration {
+    let long = matches!(
+        command,
+        "run_project_check"
+            | "publish_task"
+            | "apply_task"
+            | "discard_task"
+            | "compact_session"
+            | "plugin_install"
+            | "install_skill"
+            | "capture_screenshot"
+            | "refresh_usage"
+            | "provider_health"
+            | "account_status"
+            | "list_models"
+            | "mcp_health"
+            | "login_account"
+            | "repair"
+            | "__shutdown"
+    ) || command.starts_with("orchestra_")
+        || command.starts_with("login_");
+    std::time::Duration::from_secs(if long { 15 * 60 } else { 3 * 60 })
+}
+
 pub fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
@@ -104,6 +131,29 @@ pub struct Reply {
 pub type Stream = tokio::net::windows::named_pipe::NamedPipeClient;
 #[cfg(unix)]
 pub type Stream = tokio::net::UnixStream;
+/// The process that serves `endpoint`, after the same-user check `connect` makes. Used only by
+/// the desktop shell's Repair to stop a service that no longer answers.
+pub async fn server_pid(endpoint: &Path) -> Option<u32> {
+    let io = connect(endpoint).await.ok()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeServerProcessId};
+        let mut pid = 0;
+        // SAFETY: the handle belongs to `io`, a connected pipe that outlives this call, and
+        // `pid` is a valid out-pointer.
+        unsafe { GetNamedPipeServerProcessId(HANDLE(io.as_raw_handle()), &mut pid) }.ok()?;
+        Some(pid)
+    }
+    #[cfg(unix)]
+    {
+        io.peer_cred()
+            .ok()?
+            .pid()
+            .and_then(|p| u32::try_from(p).ok())
+    }
+}
+
 pub async fn connect(endpoint: &Path) -> Result<Stream, String> {
     #[cfg(windows)]
     {
@@ -172,25 +222,30 @@ impl Client {
         let id = receipted(command).then(|| uuid::Uuid::new_v4().to_string());
         let mut retried = false;
         loop {
-            let reply = async {
+            let reply = tokio::time::timeout(deadline(command), async {
                 let mut io = self
                     .start_request(command, args.clone(), id.clone())
                     .await?;
                 read::<Reply>(&mut io).await
-            }
+            })
             .await;
             match reply {
-                Ok(reply) => return reply.result,
-                Err(_) if id.is_some() && !retried => retried = true,
-                Err(error) => return Err(match id {
+                Ok(Ok(reply)) => return reply.result,
+                // A lost connection is retried once under the same receipt; a timeout is not,
+                // because the service may still be running the command.
+                Ok(Err(_)) if id.is_some() && !retried => retried = true,
+                Ok(Err(error)) => return Err(match id {
                     Some(id) => format!("Cannot confirm command {id}: {error}. Review its result before submitting new work."),
                     None => error,
+                }),
+                Err(_) => return Err(match id {
+                    Some(id) => format!("Cannot confirm command {id}: the service did not answer in time. Review its result before submitting new work."),
+                    None => "The Lumen service did not answer in time. Open Repair Lumen if this keeps happening.".into(),
                 }),
             }
         }
     }
 }
-
 #[cfg(windows)]
 pub mod peer {
     use windows::Win32::Security::RevertToSelf;

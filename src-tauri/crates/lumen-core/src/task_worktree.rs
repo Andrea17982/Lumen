@@ -897,6 +897,51 @@ async fn gh_blocker(dir: &Path) -> Option<String> {
 
 /// Moves the session back to its folder and removes the worktree; the branch stays unless
 /// `drop_branch`.
+const IN_USE: &str = "The task folder is in use and was not removed. Close the programs using it (editors, terminals, dev servers) and try again.";
+
+/// Fails while a program holds a file or its working directory inside the task folder.
+/// Windows refuses to rename such a folder, so a rename there and back tests it without
+/// deleting anything; removal itself would delete part of the folder before failing.
+pub(crate) async fn free(path: &Path) -> Result<(), String> {
+    // Unix removes a folder in use without complaint: there is nothing to test.
+    if cfg!(not(windows)) {
+        return Ok(());
+    }
+    let Some(name) = path.file_name() else {
+        return Ok(());
+    };
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut probe = name.to_os_string();
+    probe.push(".lumen-probe");
+    let probe = path.with_file_name(probe);
+    // A process that just ended (the agent, git) releases its handles a moment later.
+    let mut moved = false;
+    for _ in 0..30 {
+        if std::fs::rename(path, &probe).is_ok() {
+            moved = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    if !moved {
+        return Err(IN_USE.into());
+    }
+    for _ in 0..20 {
+        // Repair may have moved it back meanwhile.
+        if std::fs::rename(&probe, path).is_ok() || (path.exists() && !probe.exists()) {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    Err(format!(
+        "Lumen could not move the task folder back from {}. Rename it to {} and try again.",
+        probe.display(),
+        path.display()
+    ))
+}
+
 pub(crate) async fn finish(
     core: &Core,
     s: &Session,
@@ -905,11 +950,12 @@ pub(crate) async fn finish(
 ) -> Result<Session, String> {
     let top = Path::new(&t.top);
     let path = Path::new(&t.path);
+    // A folder held open by an editor, terminal or dev server cannot be removed on Windows. Keep
+    // the task record, the folder and the branch intact so the user can close it and try again.
+    free(path).await?;
     gitops::remove_worktree(top, path).await;
-    // A folder held open by an editor, terminal or dev server survives removal on Windows. Keep
-    // the task record and the branch so nothing is orphaned and the user can try again.
     if path.exists() {
-        return Err("The task folder is in use and was not removed. Close the programs using it (editors, terminals, dev servers) and try again.".into());
+        return Err(IN_USE.into());
     }
     let moved = core
         .store
@@ -1083,6 +1129,8 @@ pub async fn apply_task(core: crate::CoreRef<'_>, id: String) -> Result<Session,
         Some(applied) if *applied == tree => {}
         Some(_) => return Err("This task changed after Lumen copied its earlier changes into the project. Review the project folder, then Discard the task or apply the new changes by hand.".into()),
         None => {
+            // Copy nothing while the folder cannot be removed afterwards.
+            free(Path::new(&t.path)).await?;
             let patch = gitops::lane_patch(Path::new(&t.path), &t.base).await?;
             gitops::apply_patch(Path::new(&t.top), &patch).await?;
             // Recorded before removal: if the folder is in use, Apply again must not copy twice.
@@ -1771,6 +1819,104 @@ node_modules/
             .unwrap();
         assert!(!project.join("c.txt").exists());
         assert!(!Path::new(&t.path).exists());
+        assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_none());
+    }
+
+    /// Apply and Discard while a program holds the task folder: nothing is copied or deleted,
+    /// the task stays, and once the folder is free each completes exactly once.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn apply_and_discard_wait_for_a_folder_in_use() {
+        use std::os::windows::fs::OpenOptionsExt;
+        if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
+            return;
+        }
+        let _serial = SERIAL.lock().await;
+        let f = crate::test_support::Fixture::new();
+        let app = crate::host::EventHub::default();
+        let project = f.directory("project");
+        git(&project, &["init", "-q", "-b", "main"]).await;
+        std::fs::write(project.join("a.txt"), "one\n").unwrap();
+        git(&project, &["add", "."]).await;
+        git(&project, &["commit", "-qm", "init"]).await;
+        let s = f
+            .core
+            .store
+            .create(project.to_string_lossy().into())
+            .unwrap();
+        // Held the way a terminal or an editor holds it: no sharing for deletion.
+        let hold = |path: &Path| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(1)
+                .open(path)
+                .unwrap()
+        };
+        let task = |session: Session, text: &'static str| {
+            let app = app.clone();
+            let core = f.core.clone();
+            async move {
+                let moved = create(
+                    &app,
+                    &core,
+                    &session,
+                    &mut message(),
+                    text,
+                    AccessMode::FileEdits,
+                    None,
+                    true,
+                    watch::channel(false).1,
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                active(&core, &moved).unwrap()
+            }
+        };
+
+        let t = task(s.clone(), "Add the b file").await;
+        let wt = PathBuf::from(&t.path);
+        std::fs::write(wt.join("b.txt"), "b\n").unwrap();
+        let lock = hold(&wt.join("a.txt"));
+        for _ in 0..2 {
+            let error = apply_task(crate::CoreRef(&f.core), s.id.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error, IN_USE);
+            assert!(!project.join("b.txt").exists(), "nothing is copied");
+            assert!(wt.join("b.txt").is_file() && wt.join("a.txt").is_file());
+            assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_some());
+        }
+        drop(lock);
+        let back = apply_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join("b.txt"))
+                .unwrap()
+                .replace('\r', ""),
+            "b\n"
+        );
+        assert!(!wt.exists());
+        assert!(git(&project, &["branch", "--list", &t.branch])
+            .await
+            .trim()
+            .is_empty());
+
+        let t = task(back, "Try the c file").await;
+        let wt = PathBuf::from(&t.path);
+        std::fs::write(wt.join("c.txt"), "c").unwrap();
+        let lock = hold(&wt.join("c.txt"));
+        let error = discard_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error, IN_USE);
+        assert!(wt.join("c.txt").is_file(), "the task's work is kept");
+        drop(lock);
+        discard_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap();
+        assert!(!wt.exists() && !project.join("c.txt").exists());
         assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_none());
     }
 

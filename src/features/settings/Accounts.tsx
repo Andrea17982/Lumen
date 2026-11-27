@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge, Button, ConfirmDialog, Menu, Select, Switch, TextField } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
 import { formatPercent, formatRelative, formatTime, languageTag } from '../../i18n/format';
-import type { Account, AccountUsage, ModelInfo, Provider } from '../../protocol/types';
+import type { Account, AccountUsage, CliInfo, ModelInfo, Provider, SignIn } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import s from './Settings.module.css';
 
@@ -26,6 +26,9 @@ const cliName: Record<string, string> = {
   'opencode-go': 'OpenCode Go',
 };
 const isApi = (p: Provider) => p.endsWith('api');
+/** CLI agents that sign in through their official app; Ollama runs locally and APIs use a key. */
+const signsIn = (p: Provider) => !isApi(p) && p !== 'ollama';
+const ACTIVE = ['starting', 'browser', 'code', 'checking'];
 const SHOWN_CAPABILITIES = ['nativeResume', 'askFirst', 'cancellation', 'inputImages', 'subagents', 'fallback'] as const;
 
 interface Health {
@@ -51,6 +54,7 @@ export function Accounts() {
   const [health, setHealth] = useState<Health[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [adding, setAdding] = useState(false);
+  const [fresh, setFresh] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +71,7 @@ export function Accounts() {
       {accounts.length === 0 && <p className={s.quiet}>{t.accounts.none}</p>}
       <ul className={s.cards}>
         {accounts.map((a) => (
-          <AccountCard key={a.id} account={a} usage={usage.find((u) => u.accountId === a.id)} health={health.find((h) => h.accountId === a.id)} contract={contracts.find((c) => c.provider === a.provider)} onError={setError} />
+          <AccountCard key={a.id} account={a} signInNow={a.id === fresh} usage={usage.find((u) => u.accountId === a.id)} health={health.find((h) => h.accountId === a.id)} contract={contracts.find((c) => c.provider === a.provider)} onError={setError} />
         ))}
       </ul>
       <div>
@@ -90,9 +94,9 @@ export function Accounts() {
               name,
               provider,
             });
-            await sync.loadAccounts();
             // It just works: a CLI account goes straight to its official sign-in.
-            if (!isApi(provider) && provider !== 'ollama') await sync.call('login_account', { id: account.id });
+            if (signsIn(provider)) setFresh(account.id);
+            await sync.loadAccounts();
           } catch (e) {
             setError(String(e));
           }
@@ -102,7 +106,7 @@ export function Accounts() {
   );
 }
 
-function AccountCard({ account, usage, health, contract, onError }: { account: Account; usage?: AccountUsage; health?: Health; contract?: Contract; onError: (e: string) => void }) {
+function AccountCard({ account, signInNow, usage, health, contract, onError }: { account: Account; signInNow: boolean; usage?: AccountUsage; health?: Health; contract?: Contract; onError: (e: string) => void }) {
   const t = useT();
   const locale = useLocale();
   const sync = useSyncClient();
@@ -110,7 +114,11 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
   const [checking, setChecking] = useState(false);
   const [dialog, setDialog] = useState<'rename' | 'remove' | null>(null);
   const [name, setName] = useState(account.name);
+  const [cli, setCli] = useState<CliInfo | null>(null);
+  const [signing, setSigning] = useState(false);
+  const [terminal, setTerminal] = useState(false);
   const api = isApi(account.provider);
+  const cliAgent = signsIn(account.provider);
 
   async function check() {
     setChecking(true);
@@ -126,7 +134,39 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
   }
   useEffect(() => {
     sync.call<boolean>('account_status', { id: account.id }).then(setStatus, () => setStatus(false));
-  }, [sync, account.id]);
+    if (!cliAgent) return;
+    sync.call<CliInfo>('account_cli', { id: account.id }).then(setCli, () => {});
+    // A sign-in started earlier (before leaving Settings) is shown again.
+    sync.call<SignIn | null>('login_state', { id: account.id }).then((st) => st && ACTIVE.includes(st.phase) && setSigning(true), () => {});
+  }, [sync, account.id, cliAgent]);
+
+  // The terminal sign-in ends outside Lumen: check every few seconds until it is done.
+  useEffect(() => {
+    if (!terminal) return;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > 10 * 60_000) return setTerminal(false);
+      sync.call<boolean>('account_status', { id: account.id }).then((ok) => {
+        if (!ok) return;
+        setTerminal(false);
+        void check();
+      }, () => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [terminal, sync, account.id]);
+
+  async function signIn() {
+    if (cli?.inAppSignIn ?? ['claude', 'gpt'].includes(account.provider)) return setSigning(true);
+    try {
+      await sync.call('login_account', { id: account.id });
+      setTerminal(true);
+    } catch (e) {
+      onError(String(e));
+    }
+  }
+  useEffect(() => {
+    if (signInNow) void signIn();
+  }, [signInNow]);
 
   const resting = health?.state === 'cooldown' && health.until ? health.until : null;
   return (
@@ -134,12 +174,13 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
       <div className={s.cardHead}>
         <div className={s.cardTitle}>
           <strong>{account.name}</strong>
-          <span>{providerName[account.provider]}</span>
+          <span>{cli?.version ? `${providerName[account.provider]} · ${cli.version}` : providerName[account.provider]}</span>
         </div>
         {status === null || checking ? <Badge>{t.accounts.checking}</Badge> : status ? <Badge tone="success">{t.accounts.connected}</Badge> : <Badge tone="warning">{t.accounts.notConnected}</Badge>}
         <Menu
           label={t.moreActions}
           items={[
+            ...(cliAgent ? [{ id: 'signin', label: t.accounts.signInAgain }] : []),
             { id: 'rename', label: t.accounts.rename },
             {
               id: 'remove',
@@ -148,25 +189,41 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
               separatorBefore: true,
             },
           ]}
-          onAction={(id) => setDialog(id as 'rename' | 'remove')}
+          onAction={(id) => (id === 'signin' ? void signIn() : setDialog(id as 'rename' | 'remove'))}
         />
       </div>
+      {cli && !cli.installed && <p className={s.help}>{t.accounts.cliMissing(providerName[account.provider])}</p>}
       {resting && <p className={s.quiet}>{t.accounts.resting(formatTime(locale, resting))}</p>}
       {!api && account.provider !== 'ollama' && <Quota usage={usage} />}
       {account.provider === 'opencode' && <EmergencyModel account={account} onError={onError} />}
       {account.provider === 'ollama' && <OllamaState />}
       {api && <ApiSettings account={account} onError={onError} onSaved={check} />}
-      <div className={s.actions}>
-        {!api && account.provider !== 'ollama' && !status && (
-          <Button variant="primary" onPress={() => sync.call('login_account', { id: account.id }).catch((e) => onError(String(e)))}>
-            {t.accounts.signIn}
+      {signing && (
+        <SignInFlow
+          account={account}
+          onFinished={() => void check()}
+          onClose={() => setSigning(false)}
+        />
+      )}
+      {!signing && (
+        <div className={s.actions}>
+          {cliAgent && !status && cli?.installed !== false && (
+            <Button variant="primary" isDisabled={terminal} onPress={() => void signIn()}>
+              {t.accounts.signIn}
+            </Button>
+          )}
+          <Button variant="secondary" isDisabled={checking} onPress={() => void check()}>
+            {t.accounts.check}
           </Button>
-        )}
-        <Button variant="secondary" isDisabled={checking} onPress={() => void check()}>
-          {t.accounts.check}
-        </Button>
-      </div>
-      {!api && account.provider !== 'ollama' && !status && <p className={s.help}>{t.accounts.signInHelp}</p>}
+        </div>
+      )}
+      {terminal ? (
+        <p className={s.help} role="status">
+          {t.accounts.waitingTerminal}
+        </p>
+      ) : (
+        cliAgent && !status && !signing && cli?.inAppSignIn === false && <p className={s.help}>{t.accounts.signInHelp}</p>
+      )}
       {contract && (
         <details className={s.capabilities}>
           <summary>{t.accounts.can}</summary>
@@ -213,6 +270,97 @@ function AccountCard({ account, usage, health, contract, onError }: { account: A
         }
       />
     </li>
+  );
+}
+
+/**
+ * The official CLI's sign-in without a terminal: the CLI opens the provider's page, and for
+ * Claude Code the user pastes back the code that page shows. The daemon passes the code to the
+ * CLI and checks the result; nothing here keeps it.
+ */
+function SignInFlow({ account, onFinished, onClose }: { account: Account; onFinished: () => void; onClose: () => void }) {
+  const t = useT();
+  const sync = useSyncClient();
+  const [state, setState] = useState<SignIn | null>(null);
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const start = () => {
+    setError(null);
+    setCode('');
+    sync.call<SignIn>('login_start', { id: account.id }).then(setState, (e) => setError(String(e)));
+  };
+  useEffect(start, [sync, account.id]);
+  const active = state !== null && ACTIVE.includes(state.phase);
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => {
+      sync.call<SignIn | null>('login_state', { id: account.id }).then((st) => {
+        if (!st) return;
+        setState(st);
+        // Confirmed by the CLI: the card shows Connected, and the flow closes.
+        if (st.phase === 'done') {
+          onFinished();
+          onClose();
+        }
+      }, () => {});
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [active, sync, account.id]);
+  const phase = state?.phase ?? 'starting';
+  const text =
+    phase === 'browser' ? t.accounts.finishInBrowser
+    : phase === 'code' ? t.accounts.pasteCode
+    : phase === 'checking' ? t.accounts.verifying
+    : phase === 'done' ? t.accounts.signedIn
+    : phase === 'failed' ? t.accounts.signInFailed(state?.message ?? null)
+    : phase === 'cancelled' ? t.accounts.signInCancelled
+    : t.accounts.signingIn;
+  return (
+    <div className={s.api} aria-live="polite">
+      <p className={phase === 'failed' ? s.error : s.quiet} role="status">
+        {error ?? text}
+      </p>
+      {phase === 'code' && (
+        <form
+          className={s.row}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const value = code;
+            setCode('');
+            sync.call('login_code', { id: account.id, code: value }).then(
+              () => setState((st) => (st ? { ...st, phase: 'checking' } : st)),
+              (err) => setError(String(err)),
+            );
+          }}
+        >
+          <TextField label={t.accounts.code} autoComplete="off" value={code} onChange={setCode} />
+          <Button variant="primary" type="submit" isDisabled={!code.trim()}>
+            {t.accounts.continue}
+          </Button>
+        </form>
+      )}
+      <div className={s.actions}>
+        {active && state?.hasLink && (
+          <Button variant="secondary" onPress={() => sync.call('open_login_url', { id: account.id }).catch((e) => setError(String(e)))}>
+            {t.accounts.openPage}
+          </Button>
+        )}
+        {(phase === 'failed' || phase === 'cancelled' || error) && (
+          <Button variant="primary" onPress={start}>
+            {t.accounts.tryAgain}
+          </Button>
+        )}
+        {active && !error ? (
+          <Button variant="secondary" onPress={() => sync.call('login_cancel', { id: account.id }).then(onClose, (e) => setError(String(e)))}>
+            {t.cancel}
+          </Button>
+        ) : (
+          <Button variant="secondary" onPress={onClose}>
+            {t.cancel}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -288,7 +436,7 @@ function Quota({ usage }: { usage?: AccountUsage }) {
           </div>
         );
       })}
-      <p className={s.help}>{t.accounts.reported(cliName[usage.source] ?? usage.source)}</p>
+      <p className={s.help}>{t.accounts.reported(cliName[usage.source] ?? usage.source, formatRelative(locale, usage.updatedAt))}</p>
     </div>
   );
 }

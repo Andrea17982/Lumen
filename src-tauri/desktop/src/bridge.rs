@@ -45,6 +45,7 @@ pub struct Bridge {
     root: PathBuf,
     resources: PathBuf,
     state: Mutex<Connection>,
+    paused: std::sync::atomic::AtomicBool,
 }
 
 impl Bridge {
@@ -61,6 +62,7 @@ impl Bridge {
             root,
             resources,
             state: Mutex::new(Connection::Connecting),
+            paused: Default::default(),
         })
     }
 
@@ -95,6 +97,55 @@ impl Bridge {
     /// The tray's explicit Quit: the service drains and stops. Never reachable from the page.
     pub async fn stop_service(&self) -> Result<(), String> {
         self.client.call("__shutdown", json!({})).await.map(drop)
+    }
+
+    /// Repair: restart the service on this data directory. It is asked to stop first; one that
+    /// does not answer (stuck, or another build that refuses this one) is ended, but only if the
+    /// process serving the endpoint is a Lumen service of this user. The supervisor then starts
+    /// this build's service. Turns that were running are recovered as interrupted, never replayed.
+    pub async fn restart_service(&self) -> Result<(), String> {
+        // No new service starts until this one is gone, so the PID checked below stays its own.
+        self.pause(true);
+        let stopped = self.stop_quietly().await;
+        self.pause(false);
+        stopped
+    }
+
+    /// Stops the service on this data directory: asked first, ended if it does not answer.
+    pub async fn stop_quietly(&self) -> Result<(), String> {
+        let Some(pid) = lumen_ipc::server_pid(&self.client.endpoint).await else {
+            return Ok(());
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(5), self.stop_service()).await;
+        for _ in 0..40 {
+            if !self.reachable().await {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        // Still the same process serving the pipe, and a Lumen service: only then is it ended.
+        match lumen_ipc::server_pid(&self.client.endpoint).await {
+            None => return Ok(()),
+            Some(now) if now == pid && is_service(pid) => end_process(pid)?,
+            Some(_) => return Err("Another program answers on Lumen's service address. Restart the computer, then open Lumen again.".into()),
+        }
+        for _ in 0..40 {
+            if !self.reachable().await {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        Err("The Lumen service did not stop. Restart the computer, then open Lumen again.".into())
+    }
+
+    /// While an update installs, the supervisor must not start the service it is replacing.
+    pub fn pause(&self, paused: bool) {
+        self.paused
+            .store(paused, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
     }
 
     /// Whether any service listens on this data directory's endpoint.
@@ -137,6 +188,7 @@ impl Bridge {
                         }
                     }
                     if absent
+                        && !self.paused.load(std::sync::atomic::Ordering::SeqCst)
                         && spawned
                             .as_ref()
                             .is_none_or(|(at, _)| at.elapsed() > SPAWN_GRACE)
@@ -229,6 +281,60 @@ impl Bridge {
         command
             .spawn()
             .map_err(|e| format!("Could not start the Lumen service: {e}"))
+    }
+}
+
+/// Whether `pid` runs the Lumen service executable.
+fn is_service(pid: u32) -> bool {
+    let mut c = std::process::Command::new(system_tool(if cfg!(windows) {
+        "tasklist.exe"
+    } else {
+        "ps"
+    }));
+    if cfg!(windows) {
+        c.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
+    } else {
+        c.args(["-p", &pid.to_string(), "-o", "comm="]);
+    }
+    hide(&mut c);
+    c.output().is_ok_and(|o| {
+        String::from_utf8_lossy(&o.stdout)
+            .to_ascii_lowercase()
+            .contains("lumen-daemon")
+    })
+}
+
+/// Ends the service and the agent processes it started.
+fn end_process(pid: u32) -> Result<(), String> {
+    let mut c = if cfg!(windows) {
+        let mut c = std::process::Command::new(system_tool("taskkill.exe"));
+        c.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        c
+    } else {
+        // The service leads its own process group (see `spawn`).
+        let mut c = std::process::Command::new("kill");
+        c.args(["-KILL", "--", &format!("-{pid}")]);
+        c
+    };
+    hide(&mut c);
+    c.output()
+        .map(drop)
+        .map_err(|e| format!("Could not stop the Lumen service: {e}"))
+}
+
+/// Windows tools from System32, never from the app folder or the search path.
+fn system_tool(name: &str) -> std::path::PathBuf {
+    match std::env::var_os("SystemRoot") {
+        Some(root) if cfg!(windows) => std::path::Path::new(&root).join("System32").join(name),
+        _ => name.into(),
+    }
+}
+
+fn hide(_c: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        _c.creation_flags(0x0800_0000);
     }
 }
 

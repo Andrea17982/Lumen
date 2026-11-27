@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { Button, IconButton, ModelSelect, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
-import { isSessionActive, type AccessMode, type AutoPolicy, type ModelInfo, type RunOptions, type Session } from '../../protocol/types';
+import { isCancelled, isSessionActive, type AccessMode, type AutoPolicy, type ModelInfo, type RunOptions, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { visibleText } from '../attention/requests';
 import s from './Composer.module.css';
@@ -40,7 +40,8 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const running = isSessionActive(session.status);
+  // Stop is offered from the moment a message is sent: Auto may still be preparing the turn.
+  const running = isSessionActive(session.status) || sending;
 
   // Text handed back by the conversation (after a rewind) replaces what is typed.
   useEffect(() => {
@@ -133,8 +134,10 @@ ${text}` : text));
       await sync.send(session.id, sent, options);
     } catch (e) {
       // The message stays in the transcript with its error; give the text back to edit.
+      // Stopped before the turn started: nothing was recorded, so the text simply returns.
       setText(sent);
-      setError(String(e));
+      setAttachments(options.attachments ?? []);
+      if (!isCancelled(e)) setError(String(e));
     } finally {
       setSending(false);
       input.current?.focus();

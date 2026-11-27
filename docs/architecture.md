@@ -32,6 +32,7 @@ The local daemon owns storage, accounts, process and API execution, permissions,
 | `gitops.rs`, `workspace.rs`, `review.rs` | Private-index checkpoints, worktrees and Publish, diffs |
 | `execution.rs` | Content-free timing and phase snapshots |
 | `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal, quota observation |
+| `signin.rs`, `repair.rs` | Terminal-free CLI sign-in; Repair Lumen (database check and backup, stale turns, leftover task folders) |
 
 ## Turn lifecycle
 
@@ -53,6 +54,7 @@ Native continuations send only the new request plus the Lumen context that chang
 - Schema 5 adds command receipts. Older schemas upgrade in place, and a newer schema is refused. Back up the data directory before upgrading.
 - Run events reach SQLite before any client. Snapshots carry sequence numbers, so clients can deduplicate streamed events against them. An event that cannot be stored is still delivered, followed by `lumen:resync`.
 - `service.log` holds the service's error output for its latest start. The app shows its last lines when the service exits while starting.
+- `backups/` holds the newest five database copies (`VACUUM INTO`), made by Repair Lumen and before each update. `update.json` records the version the last update replaced, for going back.
 - Tool output over 16 KiB reaches clients truncated, with a `detail` digest. `activity_detail(id, message, digest)` fetches the full text. The store keeps tool output and diffs up to 1 MiB per step; longer output is cut once, with a visible marker, before it is stored or sent. One message keeps up to 8 MiB of such output; later steps in it keep their first 16,000 characters.
 - Projects are containers that do not depend on folders. Checkpoints use a private Git index.
 
@@ -77,6 +79,8 @@ Mutating commands carry a UUID: `create_session`, `send_message`, `cancel_run`, 
 - On Windows the transport is a named pipe. Remote clients are rejected, and client and server compare process-token SIDs.
 - On Unix it is a private socket directory with peer UID checks.
 - The handshake checks the protocol version and the daemon binary's SHA-256. This is a compatibility check, not protection against a malicious process running as the same user.
+- Each command has a reply deadline: 3 minutes, or 15 minutes for checks, Publish, Apply, installs, sign-in and Orchestra. A receipted command that times out is reported as unconfirmed, never retried.
+- Repair may end a service that does not answer: only the process serving this data directory's pipe, after a polite stop, and only if its executable is `lumen-daemon`.
 - There is no TCP listener. Invocation-scoped loopback MCP brokers (Moli, Code Mode) use random capabilities passed through environment variables, never through prompts or files.
 
 ## Daemon CLI

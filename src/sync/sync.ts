@@ -1,4 +1,4 @@
-import { unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace, type Account, type AccountUsage } from '../protocol/types';
+import { isCancelled, unconfirmedId, type Answers, type ApprovalDecision, type ApprovalSnapshot, type Connection, type Frame, type GatekeeperEvent, type Message, type RunOptions, type RunEvent, type Session, type Workspace, type Account, type AccountUsage, type UpdateInfo } from '../protocol/types';
 import { errorText, type Transport } from '../transport/types';
 
 /**
@@ -59,6 +59,8 @@ export interface SyncState {
   insert: { text: string; n: number } | null;
   /** Changes whenever a recurring task is added from this window. */
   routines: number;
+  /** A newer signed release, once the shell has found one. */
+  update: UpdateInfo | null;
   error?: string;
 }
 
@@ -91,7 +93,7 @@ export const PAGE = 1000;
 const TAIL = 2;
 
 export class Sync {
-  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], accounts: [], usage: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null, contributions: NO_CONTRIBUTIONS, insert: null, routines: 0 };
+  private state: SyncState = { connection: { state: 'connecting' }, synced: false, stopping: false, sessions: [], sessionsComplete: true, search: '', workspaces: [], accounts: [], usage: [], transcripts: {}, unconfirmed: [], outgoing: [], approvals: {}, questions: null, contributions: NO_CONTRIBUTIONS, insert: null, routines: 0, update: null };
   private listeners = new Set<() => void>();
   /** Events for a transcript whose snapshot is being read; applied after it, deduplicated. */
   private buffers = new Map<string, RunEvent[]>();
@@ -179,7 +181,8 @@ export class Sync {
       update({ state: 'sent' });
       this.prune(sessionId);
     } catch (error) {
-      update(unconfirmedId(String(error)) ? { state: 'unconfirmed', error: String(error) } : { state: 'failed', error: String(error) });
+      if (isCancelled(error)) this.dismiss(id);
+      else update(unconfirmedId(String(error)) ? { state: 'unconfirmed', error: String(error) } : { state: 'failed', error: String(error) });
       throw error;
     }
   }
@@ -259,6 +262,8 @@ export class Sync {
         return this.onRun(frame.payload as RunEvent);
       case 'lumen:gatekeeper':
         return this.onGatekeeper(frame.payload as GatekeeperEvent);
+      case 'lumen:update':
+        return this.set({ update: frame.payload as UpdateInfo });
       case 'lumen:usage': {
         const usage = frame.payload as AccountUsage;
         return this.set({ usage: [...this.state.usage.filter((u) => u.accountId !== usage.accountId), usage] });

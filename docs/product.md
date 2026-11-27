@@ -98,6 +98,22 @@ Classification (`autonomy.rs`) matches command words and tool names. **It is not
   - Rewind is refused when a later native turn ran outside the checkout.
 - **Rollback does not undo** databases, ignored files, remote services, files outside the project, or running processes.
 
+## Repair and updates
+
+**Settings › Maintenance** holds the two things that keep Lumen itself working.
+
+- **Repair Lumen** runs these checks:
+  - **Service.** If the service does not answer, Lumen restarts it. It asks the service to stop first. Only if that fails does it end the process serving Lumen's pipe, and only when that process is a Lumen service. The same **Repair** button appears on the banner when the service is unreachable or another version is running.
+  - **Database.** SQLite's integrity check runs, then a backup is saved in `<app-data>/backups`. The newest five backups are kept, and a damaged database is never copied over them.
+  - **Conversations.** A conversation still marked running with no turn behind it is closed as interrupted. Its work is kept, never replayed.
+  - **Agents.** Each agent's CLI is checked: installed, version, signed in.
+  - **Task folders.** Task folders whose conversation was deleted, or that could not be removed earlier, are listed with their unsaved files. Removing one needs your confirmation. Its branch stays, so committed work is not lost.
+- **Updates.** At startup and every six hours, Lumen checks the project's GitHub releases for a newer signed version.
+  - It downloads nothing until you choose **Download and install**.
+  - Lumen refuses while work is running. Otherwise it verifies the package's signature against the key built into Lumen, backs up the database, stops the service and installs. Lumen then restarts.
+  - **Go back to** reinstalls the version the last update replaced, also signed. If that version cannot read the current database, the pre-update backup is restored and the newer database is kept in the backups.
+  - The installed app updates itself. The portable ZIP and the Linux package show the new version with a link to its release page.
+
 ## Moli browser
 
 Moli is the browser bundled with Lumen: pinned v1.1.23, verified by SHA-256. All agents share it through one MCP adapter, `lumen_browser`.

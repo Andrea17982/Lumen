@@ -87,6 +87,7 @@ mod pr_watch;
 mod proc;
 mod projecttools;
 mod providers;
+mod repair;
 mod repomap;
 mod review;
 mod rlm;
@@ -96,6 +97,7 @@ mod screens;
 mod settings;
 mod shared_http;
 mod shared_tools;
+mod signin;
 mod store;
 mod task_worktree;
 #[cfg(test)]
@@ -132,6 +134,32 @@ pub struct Core {
     approvals: Option<lumen_gatekeeper::Gatekeeper>,
     /// Extra subtasks the user admitted beyond the total cap, per running Orchestra message.
     orchestra_raises: Mutex<HashMap<String, usize>>,
+    logins: Logins,
+    sign_ins: signin::SignIns,
+}
+
+/// Recent sign-in checks per account, so Auto does not ask each CLI on every message. `true`
+/// means the CLI confirmed the account is signed out. A sign-in from Lumen forgets the entry.
+#[derive(Default)]
+pub(crate) struct Logins(Mutex<HashMap<String, (std::time::Instant, bool)>>);
+impl Logins {
+    const FRESH: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+    pub(crate) fn recent(&self, id: &str) -> Option<bool> {
+        let map = self.0.lock().ok()?;
+        map.get(id)
+            .filter(|(at, _)| at.elapsed() < Self::FRESH)
+            .map(|(_, out)| *out)
+    }
+    pub(crate) fn remember(&self, id: &str, signed_out: bool) {
+        if let Ok(mut map) = self.0.lock() {
+            map.insert(id.into(), (std::time::Instant::now(), signed_out));
+        }
+    }
+    pub(crate) fn forget(&self, id: &str) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(id);
+        }
+    }
 }
 impl Core {
     fn new(
@@ -153,6 +181,8 @@ impl Core {
             catalogs: Mutex::new(HashMap::new()),
             usage_lock: Mutex::new(()),
             orchestra_raises: Mutex::new(HashMap::new()),
+            logins: Default::default(),
+            sign_ins: Default::default(),
             limits: Default::default(),
             settings: Mutex::new(prefs),
         }
@@ -514,6 +544,12 @@ fn diagnostics(core: crate::CoreRef<'_>) -> Diagnostics {
 #[crate::command]
 async fn account_status(core: crate::CoreRef<'_>, id: String) -> Result<bool, String> {
     let a = account(&core, &id)?;
+    core.logins.forget(&id);
+    signed_in(&core, &a).await
+}
+
+/// Whether the account's official app reports a usable sign-in (or, for an API, a saved key).
+pub(crate) async fn signed_in(core: &Core, a: &Account) -> Result<bool, String> {
     if a.provider.is_api() {
         return crate::api::has_key(&a.id);
     }
@@ -530,7 +566,7 @@ async fn account_status(core: crate::CoreRef<'_>, id: String) -> Result<bool, St
         return Ok(!crate::opencode::models(None, None).await?.is_empty());
     }
     let mut c = providers::command(&a.provider)?;
-    providers::isolate(&mut c, &a.provider, &config_dir(&core, &a));
+    providers::isolate(&mut c, &a.provider, &config_dir(core, a));
     c.kill_on_drop(true);
     match a.provider {
         Provider::Claude => {
@@ -557,6 +593,64 @@ async fn account_status(core: crate::CoreRef<'_>, id: String) -> Result<bool, St
         .map_err(|e| e.to_string())?;
     Ok(out.status.success())
 }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CliInfo {
+    pub installed: bool,
+    pub version: Option<String>,
+    /// Lumen can sign in without a terminal.
+    pub in_app_sign_in: bool,
+}
+
+/// The official app behind an account: whether it is installed and which version answers.
+#[crate::command]
+async fn account_cli(core: crate::CoreRef<'_>, id: String) -> Result<CliInfo, String> {
+    Ok(cli_info(&account(&core, &id)?).await)
+}
+
+pub(crate) async fn cli_info(a: &Account) -> CliInfo {
+    let in_app_sign_in = signin::supported(&a.provider);
+    if a.provider.is_api() {
+        return CliInfo {
+            installed: true,
+            version: None,
+            in_app_sign_in,
+        };
+    }
+    let Ok(mut c) = providers::command(&a.provider) else {
+        return CliInfo {
+            installed: false,
+            version: None,
+            in_app_sign_in,
+        };
+    };
+    c.arg("--version").kill_on_drop(true);
+    let version = tokio::time::timeout(std::time::Duration::from_secs(10), c.output())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .filter(|o| o.status.success())
+        .and_then(|o| version_number(&String::from_utf8_lossy(&o.stdout)));
+    CliInfo {
+        installed: true,
+        version,
+        in_app_sign_in,
+    }
+}
+/// The version number in a CLI's `--version` line ("codex-cli 0.167.0", "opencode v2.3.0").
+pub(crate) fn version_number(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .map(|w| w.trim_start_matches('v'))
+        .find(|w| {
+            w.split('.').count() >= 2
+                && w.split('.')
+                    .next()
+                    .is_some_and(|major| major.parse::<u32>().is_ok())
+        })
+        .map(|w| w.chars().take(40).collect())
+}
+
 #[crate::command]
 fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String> {
     let a = account(&core, &id)?;
@@ -567,6 +661,7 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
         .lock()
         .map_err(|_| "Catalog lock failed")?
         .remove(&id);
+    core.logins.forget(&id);
     if a.provider.is_api() {
         return Err("Use API settings to save a key in the OS keychain".into());
     }
@@ -605,22 +700,11 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
             },
             quote(&dir.to_string_lossy()),
             user_profile,
-            [
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_AUTH_TOKEN",
-                "CLAUDE_CODE_OAUTH_TOKEN",
-                "OPENAI_API_KEY",
-                "CODEX_API_KEY",
-                "CODEX_ACCESS_TOKEN",
-                "GOOGLE_API_KEY",
-                "GEMINI_API_KEY",
-                "CURSOR_API_KEY",
-                "FACTORY_API_KEY"
-            ]
-            .iter()
-            .map(|k| format!("Remove-Item Env:{k} -ErrorAction SilentlyContinue"))
-            .collect::<Vec<_>>()
-            .join("\n"),
+            providers::SIGN_IN_SECRETS
+                .iter()
+                .map(|k| format!("Remove-Item Env:{k} -ErrorAction SilentlyContinue"))
+                .collect::<Vec<_>>()
+                .join("\n"),
             quote(&exe.to_string_lossy()),
             action
         );
@@ -1185,6 +1269,15 @@ pub async fn dispatch(
         "pending_questions" => interactions::__ipc_pending_questions(app, core, args).await,
         "answer_question" => interactions::__ipc_answer_question(app, core, args).await,
         "open_connector_url" => interactions::__ipc_open_connector_url(app, core, args).await,
+        "account_cli" => __ipc_account_cli(app, core, args).await,
+        "repair" => repair::__ipc_repair(app, core, args).await,
+        "backup_database" => repair::__ipc_backup_database(app, core, args).await,
+        "repair_remove_task" => repair::__ipc_repair_remove_task(app, core, args).await,
+        "login_start" => signin::__ipc_login_start(app, core, args).await,
+        "login_state" => signin::__ipc_login_state(app, core, args).await,
+        "login_code" => signin::__ipc_login_code(app, core, args).await,
+        "login_cancel" => signin::__ipc_login_cancel(app, core, args).await,
+        "open_login_url" => signin::__ipc_open_login_url(app, core, args).await,
         "toggle_discovered_integration" => {
             __ipc_toggle_discovered_integration(app, core, args).await
         }

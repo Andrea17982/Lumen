@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -451,6 +451,8 @@ try {
     await writeFile(path.join(data, 'usage.json'), '[]');
     for (const account of [codex, secondCodex, thirdCodex, claude, secondClaude]) {
       await writeFile(path.join(data, 'accounts', account.id, 'signed-out-fixture'), '');
+      // Auto remembers sign-in checks for a few minutes; a status check from Accounts refreshes them.
+      await client.call('account_status', { id: account.id });
     }
     const signedOutSession = await client.call('create_session', { workspace: folder });
     const signedOutRoute = await client.call('send_message', {
@@ -460,6 +462,29 @@ try {
     });
     assert.equal(signedOutRoute.accountId, opencode.id, 'confirmed logout triggers emergency fallback');
     for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+
+    // Stop while Auto is still preparing (here a slow sign-in check) cancels the turn: no message
+    // is recorded and nothing starts afterwards.
+    await rm(path.join(data, 'accounts', claude.id, 'signed-out-fixture'));
+    await writeFile(path.join(data, 'accounts', claude.id, 'slow-status-fixture'), '');
+    await client.call('account_status', { id: claude.id });
+    const preparing = await client.call('create_session', { workspace: folder });
+    const pending = client
+      .call('send_message', {
+        id: preparing.id,
+        text: architecture,
+        options: { mode: 'auto', effort: '', accessMode: 'read-only' },
+      })
+      .then(
+        () => 'started',
+        (error) => String(error),
+      );
+    await sleep(700);
+    await client.call('cancel_run', { id: preparing.id });
+    assert.match(await pending, /Cancelled/, 'Stop during preparation cancels the turn');
+    assert.equal((await client.call('get_messages', { id: preparing.id })).length, 0, 'no message is recorded');
+    assert((await client.call('__status')).idle, 'nothing runs after a cancelled preparation');
+    await rm(path.join(data, 'accounts', claude.id, 'slow-status-fixture'));
   }
   await writeFile(
     path.join(workspace, 'package.json'),

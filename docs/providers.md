@@ -22,6 +22,13 @@ Lumen uses each provider only through its official interface. Subscription login
 - Cursor and Droid are always selected explicitly. OpenCode is explicit too, and the only automatic fallback: Auto uses it when every Claude and ChatGPT account is unavailable (absent, in cooldown, out of quota, or confirmed signed out), with one curated model per difficulty tier (or the single emergency model pinned in Settings). Failed or ambiguous sign-in checks do not count as signed out. Console-credit models are never automatic. None of them are Orchestra workers.
 - Ollama runs on loopback only. Lumen rejects remote hosts, proxies, redirects and cloud models, and never pulls a model automatically.
 
+### Sign-in
+
+- **Claude Code and Codex sign in without a terminal.** Settings › Accounts runs the official `claude auth login` or `codex login` with no window. The CLI opens the provider's page in your browser, and Lumen shows **Open the page again** in case it did not. Codex completes by itself. Claude Code's page shows a code: paste it into Lumen, which passes it once to the CLI's input and keeps nothing. Lumen then checks the CLI's own status; only that counts as signed in. The sign-in stops after 10 minutes.
+- **OpenCode, Antigravity, Cursor and Droid keep the terminal sign-in.** OpenCode reads its key only from an interactive terminal. Antigravity uses the sign-in of the Antigravity app, so the same Google account serves every Antigravity slot. While the terminal is open, Lumen checks every few seconds and shows the account as connected when the CLI reports it.
+- Each account shows its CLI version, whether it is signed in, its quota windows with when they reset, and when the quota was last reported. **Sign in again** is in the account's menu.
+- Auto remembers each Claude Code and Codex sign-in check for 10 minutes, so it does not ask the CLIs before every message. **Check**, a sign-in from Lumen and Repair Lumen ask again.
+
 Manual login into a slot:
 
 ```sh
