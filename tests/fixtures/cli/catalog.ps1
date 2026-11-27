@@ -46,8 +46,10 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
                 $expected = Join-Path (Get-Location).Path 'autopilot-reference.png'
                 if ($images.Count -ne 1 -or $images[0].path -ne $expected -or !(Test-Path -LiteralPath $images[0].path)) {throw 'Expected one canonical native image input'}
             }
-            if ($prompt.Contains('Continue the current user request from this native session.') -and $request.params.input.Count -ne 1) {
-                throw 'Continuation must reuse the image already carried by the native session'
+            if ($prompt.Contains('Continue the current user request from this native session.')) {
+                if ($request.params.input.Count -ne 1 -or $threadRequest.threadId -ne 'fixture-thread' -or $request.params.cwd -ne (Get-Location).Path) {
+                    throw 'Continuation must use the recorded thread and workspace without replaying attachments'
+                }
             }
             if ($prompt.Contains('CONNECTOR_FIXTURE') -and $request.params.approvalPolicy -eq 'never') {throw 'MCP consent must not be declined by the native never policy'}
             if ($prompt.Contains('AUTO_QUOTA_RESTART_FIXTURE') -or $prompt.Contains('Continue the interrupted task from the recorded work')) {

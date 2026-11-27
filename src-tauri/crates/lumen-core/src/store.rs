@@ -180,7 +180,7 @@ impl Store {
                 params![id, status, now()],
             )
         })?;
-        if matches!(status, "completed" | "error" | "interrupted") {
+        if matches!(status, "completed" | "partial" | "error" | "interrupted") {
             crate::workstate::refresh(self, id, None)?;
         }
         Ok(())

@@ -67,6 +67,8 @@ export const en = {
     stopping: 'The Lumen service is stopping. Lumen reconnects when it restarts.',
     unconfirmed: 'Lumen could not confirm your last action. Check its result before sending more work.',
     checked: 'I’ve checked',
+    syncError: (error: string) => `Lumen could not read the latest state: ${error}`,
+    retry: 'Retry',
   },
   status: {
     idle: 'Idle',
@@ -96,6 +98,12 @@ export const en = {
     diffTruncated: 'Diff shortened',
     newMessages: 'New messages',
     replying: 'Lumen is replying',
+    autopilotStopped: (reason: string) =>
+      reason === 'blocked'
+        ? 'Autopilot stopped: the reply above says what it needs from you.'
+        : reason === 'limit'
+          ? 'Autopilot paused after 10 attempts. The work so far is kept; send a message to continue.'
+          : 'Autopilot paused because the last attempts made no new progress. The work so far is kept; send a message to continue.',
   },
   kinds: {
     tool: 'Tool',
@@ -246,13 +254,15 @@ export const en = {
     usage: 'Usage',
     used: (percent: string) => `${percent} used`,
     resets: (time: string) => `resets ${time}`,
+    wasReset: (time: string) => `reset ${time} · new usage appears after the next task`,
     windows: { 300: '5 hours', 10080: 'Week', 43200: 'Month' } as Record<string, string>,
     minutes: (n: number) => (n >= 1440 ? `${Math.round(n / 1440)} days` : n >= 60 ? `${Math.round(n / 60)} hours` : `${n} minutes`),
     reported: (source: string) => `Reported by ${source}`,
     notReported: 'Usage not reported yet. It appears after the first task.',
     emergencyModel: 'Emergency model',
-    emergencyAuto: 'Auto (curated tiers)',
-    emergencyHelp: 'Used only when every Claude and ChatGPT account is out of quota. Auto follows the difficulty; a pinned model is always used instead.',
+    emergencyAuto: 'Auto',
+    emergencyUnavailable: 'The selected emergency model is unavailable. Choose another model or Auto.',
+    emergencyHelp: 'Used when Claude and ChatGPT accounts are unavailable or out of quota. Auto follows the difficulty; a pinned model is always used instead.',
     remove: 'Remove',
     removeTitle: (name: string) => `Remove ${name}?`,
     removeBody: 'Lumen forgets this account and its sign-in profile. Your conversations stay.',
@@ -479,6 +489,8 @@ export const en = {
     policy: 'Priority',
     policies: { budget: 'Save quota', default: 'Balanced', quality: 'Best quality' },
     model: 'Model',
+    consoleCredit: 'console credit',
+    free: 'free',
     effort: 'Reasoning effort',
     access: 'Access',
     tokens: (n: string) => `~${n} tokens`,

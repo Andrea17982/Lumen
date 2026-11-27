@@ -98,6 +98,8 @@ export class Sync {
   private loads = new Map<string, number>();
   private open = new Set<string>();
   private generation = 0;
+  private retries = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private refresh?: ReturnType<typeof setTimeout>;
   private pages = 1;
   private questionRefresh?: ReturnType<typeof setTimeout>;
@@ -128,7 +130,7 @@ export class Sync {
   watch(id: string) {
     if (this.open.has(id)) return;
     this.open.add(id);
-    if (this.state.connection.state === 'connected') void this.load(id);
+    if (this.state.connection.state === 'connected') this.load(id).catch((error) => this.failed(error));
   }
 
   unwatch(id: string) {
@@ -224,10 +226,27 @@ export class Sync {
     this.set({ synced: false });
     try {
       await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), ...[...this.open].map((id) => this.load(id))]);
-      if (generation === this.generation) this.set({ synced: true, error: undefined });
+      if (generation === this.generation) {
+        this.retries = 0;
+        this.set({ synced: true, error: undefined });
+      }
     } catch (error) {
-      if (generation === this.generation) this.set({ error: errorText(error) });
+      if (generation === this.generation) this.failed(error);
     }
+  }
+
+  /**
+   * A snapshot read failed: say so, and read everything again a few times with backoff while the
+   * service is connected (1, 2, 4, 8 s). After that the banner's Retry is the way forward.
+   */
+  private failed(error: unknown) {
+    this.set({ error: errorText(error) });
+    if (this.retryTimer !== undefined || this.retries >= 4 || this.state.connection.state !== 'connected') return;
+    const delay = 1000 * 2 ** this.retries++;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      if (this.state.connection.state === 'connected') void this.resync();
+    }, delay);
   }
 
   private onFrame(frame: Frame) {
@@ -306,7 +325,10 @@ ${text}` : text;
   private onConnection(connection: Connection) {
     const reconnected = connection.state === 'connected' && this.state.connection.state !== 'connected';
     this.set({ connection, ...(connection.state === 'connected' ? { stopping: false } : { synced: false }) });
-    if (reconnected) void this.resync();
+    if (reconnected) {
+      this.retries = 0;
+      void this.resync();
+    }
   }
 
   private onRun(event: RunEvent) {
@@ -318,7 +340,7 @@ ${text}` : text;
     if (buffer) return void buffer.push(event);
     // A new turn starts with a user message the stream does not carry: read the snapshot.
     if (event.kind === 'start' && !this.state.transcripts[event.sessionId]?.messages.some((m) => m.id === event.messageId)) {
-      return void this.load(event.sessionId);
+      return void this.load(event.sessionId).catch((error) => this.failed(error));
     }
     const transcript = this.state.transcripts[event.sessionId];
     if (!transcript) return;
@@ -333,7 +355,7 @@ ${text}` : text;
   private scheduleSessions() {
     clearTimeout(this.refresh);
     this.refresh = setTimeout(() => {
-      this.loadSessions().catch((error) => this.set({ error: errorText(error) }));
+      this.loadSessions().catch((error) => this.failed(error));
     }, SESSION_REFRESH_MS);
   }
 
@@ -417,7 +439,7 @@ ${text}` : text;
     try {
       return await this.call<T>(command, args);
     } finally {
-      await this.loadSessions().catch((error) => this.set({ error: errorText(error) }));
+      await this.loadSessions().catch((error) => this.failed(error));
     }
   }
 

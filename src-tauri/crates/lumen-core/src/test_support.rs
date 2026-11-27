@@ -39,6 +39,19 @@ impl Drop for Fixture {
         let temp = dunce::canonicalize(std::env::temp_dir()).unwrap();
         let root = dunce::canonicalize(&self.root).unwrap();
         assert!(root.starts_with(&temp) && root != temp);
+        // Windows releases the handles of a just-killed process tree (such as its working
+        // directory) asynchronously, so removal can briefly fail with a sharing violation.
+        for _ in 0..50 {
+            match std::fs::remove_dir_all(&root) {
+                Err(e)
+                    if e.raw_os_error() == Some(32)
+                        || e.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(100))
+                }
+                result => return result.unwrap(),
+            }
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -19,7 +19,7 @@ Lumen uses each provider only through its official interface. Subscription login
 - Lumen strips inherited API-key variables (including `CURSOR_API_KEY` and `FACTORY_API_KEY`) before launching a CLI, so billing identity never changes silently.
 - Separate directories do not prove separate identities: OS keychains can be shared.
 - Catalogs are cached for 5 minutes. Lumen accepts only model and reasoning combinations the provider advertises, and never fabricates a list.
-- Cursor and Droid are always selected explicitly. OpenCode is explicit too, and the only automatic fallback: Auto uses it after every Claude and ChatGPT account is confirmed out of quota, with one curated model per difficulty tier (or the single emergency model pinned in Settings). Console-credit models are never automatic. None of them are Orchestra workers.
+- Cursor and Droid are always selected explicitly. OpenCode is explicit too, and the only automatic fallback: Auto uses it when every Claude and ChatGPT account is unavailable (absent, in cooldown, out of quota, or confirmed signed out), with one curated model per difficulty tier (or the single emergency model pinned in Settings). Failed or ambiguous sign-in checks do not count as signed out. Console-credit models are never automatic. None of them are Orchestra workers.
 - Ollama runs on loopback only. Lumen rejects remote hosts, proxies, redirects and cloud models, and never pulls a model automatically.
 
 Manual login into a slot:

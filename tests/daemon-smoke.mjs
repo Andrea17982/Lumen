@@ -4,6 +4,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import net from 'node:net';
 import { daemonClient, sleep } from './daemon-harness.mjs';
 
 const data = await mkdtemp(path.join(tmpdir(), 'lumen-daemon-'));
@@ -19,6 +20,16 @@ let stream;
 let checkQuotaReplay;
 try {
   assert.equal((await client.ready()).idle, true, log);
+  // Probes that connect and leave at once (as the app does to find a running service) must not
+  // stop the service.
+  for (let i = 0; i < 50; i++) {
+    await new Promise((resolve) => {
+      const probe = net.createConnection(client.endpoint, () => probe.destroy());
+      probe.on('close', resolve);
+      probe.on('error', resolve);
+    });
+  }
+  assert.equal((await client.call('__status')).idle, true, 'the service survives abrupt probes');
   await assert.rejects(
     client.call('list_accounts', {}, { build: 'wrong-build' }),
     /different build/,
@@ -79,12 +90,19 @@ try {
   assert.equal((await client.call('list_sessions', { search: '', offset: 0 })).length, 17);
   if (process.platform === 'win32') {
     const codex = await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
+    const quotaHandoff = await client.call('add_account', { name: 'Handoff Claude', provider: 'claude' });
     for (const [scenario, accessMode, status, reply, attempts] of [
       ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
-      ['INCOMPLETE', 'autopilot', 'error', 'Ho ancora lavoro da fare.', ['autopilot', 'continue']],
-      ['BLOCKED', 'autopilot', 'error', 'Il servizio richiesto non risponde.', []],
+      // An Autopilot stop the assistant explains is partial work to review, never an error.
+      ['INCOMPLETE', 'autopilot', 'partial', 'Ho ancora lavoro da fare.', ['autopilot', 'continue']],
+      ['UNCONFIRMED', 'autopilot', 'partial', 'Completion still unconfirmed.', ['autopilot', 'continue']],
+      ['LOOP', 'autopilot', 'partial', 'Repeated verification 3.', ['autopilot', 'continue', 'continue', 'continue']],
+      ['LIMIT', 'autopilot', 'partial', 'New check 9 passed.', ['autopilot', ...Array(9).fill('continue')]],
+      ['BLOCKED', 'autopilot', 'partial', 'Il servizio richiesto non risponde.', []],
       ['QUESTION', 'autopilot', 'completed', 'Risposta alla domanda.', []],
+      ['DECISION', 'autopilot', 'completed', 'Priority confirmed.', []],
       ['EDIT', 'read-only', 'completed', /ho individuato il file/i, ['restricted']],
+      ['HANDOFF', 'autopilot', 'completed', 'Handoff completed.', ['autopilot', 'continue', 'continue', 'continue', 'continue']],
     ]) {
       const folder = await mkdtemp(path.join(data, 'autopilot-'));
       const attachments = [];
@@ -96,17 +114,36 @@ try {
         attachments.push(screenshot, path.join(folder, screenshot));
       }
       const { id } = await client.call('create_session', { workspace: folder });
+      const handoff = scenario === 'HANDOFF';
       await client.call('send_message', {
         id,
         text: `AUTOPILOT_FIXTURE_${scenario}`,
-        options: { mode: 'gpt', model: 'gpt-luna-fixture', effort: 'low', accessMode, attachments },
+        options: handoff
+          ? { mode: 'claude', accountId: quotaHandoff.id, model: 'sonnet', effort: 'low', accessMode }
+          : { mode: 'gpt', model: 'gpt-luna-fixture', effort: 'low', accessMode, attachments },
       });
+      if (handoff || scenario === 'DECISION') {
+        let question;
+        for (let i = 0; i < 200 && !question; i++) {
+          question = (await client.call('pending_questions')).at(-1);
+          if (!question) await sleep(100);
+        }
+        assert(question, 'Autopilot waits for the structured answer');
+        await client.call('answer_question', {
+          id: question,
+          answers: handoff ? { switch: ['Continue'] } : { priority: ['Quality'] },
+        });
+      }
       for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
       const session = (await client.call('list_sessions', { search: '', offset: 0 })).find(
         (s) => s.id === id,
       );
       assert.equal(session?.status, status, `${scenario} ${accessMode}`);
       const response = (await client.call('get_messages', { id })).at(-1);
+      const stop = { INCOMPLETE: 'stalled', UNCONFIRMED: 'stalled', LOOP: 'stalled', LIMIT: 'limit', BLOCKED: 'blocked' }[scenario];
+      const stops = response.activity.filter((a) => a.kind === 'autopilot-stopped').map((a) => JSON.parse(a.text).reason);
+      assert.deepEqual(stops, stop ? [stop] : [], `${scenario} stop reason`);
+      if (stop) assert(!response.activity.some((a) => a.kind === 'error'), `${scenario} is not an error`);
       if (typeof reply === 'string') assert.equal(response.text, reply);
       else assert.match(response.text, reply);
       const attemptsFile = path.join(folder, 'autopilot-attempts.txt');
@@ -116,12 +153,18 @@ try {
         await assert.rejects(readFile(attemptsFile), { code: 'ENOENT' });
       }
       const result = path.join(folder, 'autopilot-result.txt');
-      if (scenario === 'EDIT' && accessMode === 'autopilot') {
+      if (handoff || (scenario === 'EDIT' && accessMode === 'autopilot')) {
         assert.equal((await readFile(result, 'utf8')).trim(), 'written once');
       } else {
         await assert.rejects(readFile(result), { code: 'ENOENT' });
       }
+      if (handoff) {
+        for (let step = 1; step < 4; step++) {
+          assert.equal((await readFile(path.join(folder, `autopilot-handoff-step-${step}.txt`), 'utf8')).trim(), `step ${step}`);
+        }
+      }
     }
+    await client.call('remove_account', { id: quotaHandoff.id });
     const claude = await client.call('add_account', { name: 'Offline Claude', provider: 'claude' });
     const verification = await mkdtemp(path.join(data, 'verify-'));
     await mkdir(path.join(verification, '.lumen'));
@@ -404,6 +447,19 @@ try {
       'a pinned emergency model is the only one used',
     );
     for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+    // Fresh quota alone must not prevent fallback when all primaries are confirmed signed out.
+    await writeFile(path.join(data, 'usage.json'), '[]');
+    for (const account of [codex, secondCodex, thirdCodex, claude, secondClaude]) {
+      await writeFile(path.join(data, 'accounts', account.id, 'signed-out-fixture'), '');
+    }
+    const signedOutSession = await client.call('create_session', { workspace: folder });
+    const signedOutRoute = await client.call('send_message', {
+      id: signedOutSession.id,
+      text: architecture,
+      options: { mode: 'auto', effort: '', accessMode: 'read-only' },
+    });
+    assert.equal(signedOutRoute.accountId, opencode.id, 'confirmed logout triggers emergency fallback');
+    for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
   }
   await writeFile(
     path.join(workspace, 'package.json'),
@@ -493,6 +549,7 @@ try {
           'build/protocol authentication',
           'typed argument boundary',
           'single owner',
+          'abrupt connection probes',
           'concurrent commands',
           'lost reply and concurrent duplicate command replay without repeated effects',
           'command payload binding and receipt persistence across restart',
@@ -500,7 +557,7 @@ try {
           'connected update refusal',
           'drain and restart preserving data',
           ...(process.platform === 'win32' ? [
-            'Codex Autopilot completion and bounded native continuation',
+            'Codex Autopilot resumes while work advances, stops repeated checks or after 10 attempts as partial work, and waits for answers',
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
             'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',

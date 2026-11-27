@@ -213,9 +213,18 @@ function Banners() {
   const unconfirmed = useSyncState((st) => st.unconfirmed);
   const synced = useSyncState((st) => st.synced);
   const sessions = useSyncState((st) => st.sessions);
+  const error = useSyncState((st) => st.error);
   return (
     <div className={s.banners}>
       <ConnectionBanner connection={connection} stale={!synced && sessions.length > 0} />
+      {error && connection.state === 'connected' && (
+        <div className={s.banner} data-tone="warning" role="alert">
+          <span>{t.banner.syncError(error)}</span>
+          <Button variant="secondary" onPress={() => void sync.resync()}>
+            {t.banner.retry}
+          </Button>
+        </div>
+      )}
       {stopping && <p className={s.banner} data-tone="warning">{t.banner.stopping}</p>}
       {unconfirmed.map((u) => (
         <div key={u.id} className={s.banner} data-tone="warning" role="alert">
@@ -235,7 +244,7 @@ function ConnectionBanner({ connection, stale }: { connection: Connection; stale
   if (connection.state === 'failed')
     return (
       <p className={s.banner} data-tone="danger" title={connection.detail}>
-        {t.banner.failed}
+        {t.banner.failed} {connection.detail}
       </p>
     );
   if (connection.state === 'reconnecting' || (connection.state === 'connected' && stale)) return <p className={s.banner}>{t.banner.stale}</p>;

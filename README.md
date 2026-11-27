@@ -39,7 +39,7 @@ Orchestra and **Code Mode** are available in Settings. Code Mode groups tool cal
 
 ## Download
 
-See the [0.13.0 release](https://github.com/Andrea17982/Lumen/releases/tag/v0.13.0) for available packages and SHA-256 checksums. The release targets Windows x64 setup and portable, macOS universal, and Linux x64 (Debian and Ubuntu). Windows may warn about unsigned packages.
+See the [0.14.0 release](https://github.com/Andrea17982/Lumen/releases/tag/v0.14.0) for available packages and SHA-256 checksums. The release targets Windows x64 setup and portable, macOS universal, and Linux x64 (Debian and Ubuntu). Windows may warn about unsigned packages.
 
 ## Build from source
 

@@ -73,6 +73,26 @@ describe('apply', () => {
 });
 
 describe('Sync', () => {
+  it('shows a failed transcript read and reads again by itself instead of loading forever', async () => {
+    vi.useFakeTimers();
+    try {
+      let fail = true;
+      const daemon = fakeDaemon({ list_sessions: () => [session('completed')], get_messages: () => (fail ? Promise.reject('database is locked') : [user]) });
+      const sync = new Sync(daemon.transport);
+      sync.watch('s1');
+      await sync.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sync.getState().error).toContain('database is locked');
+      expect(sync.getState().transcripts.s1).toBeUndefined();
+      fail = false;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sync.getState().error).toBeUndefined();
+      expect(sync.getState().transcripts.s1.messages).toEqual([user]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('buffers events while the snapshot is read and applies only the newer ones', async () => {
     const snapshot = deferred<Message[]>();
     const daemon = fakeDaemon({ list_sessions: () => [session('running')], get_messages: () => snapshot.promise });

@@ -665,9 +665,23 @@ fn login_account(core: crate::CoreRef<'_>, id: String) -> Result<PathBuf, String
 }
 
 #[crate::command]
-fn cancel_run(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
-    if let Some(tx) = core.jobs.lock().map_err(|_| "Jobs lock failed")?.get(&id) {
+fn cancel_run(
+    app: crate::host::EventHub,
+    core: crate::CoreRef<'_>,
+    id: String,
+) -> Result<(), String> {
+    // Held until the end so a turn cannot register between the check and the status write.
+    let jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+    if let Some(tx) = jobs.get(&id) {
         let _ = tx.send(true);
+        return Ok(());
+    }
+    // No job owns this conversation, yet it still reads as active (a lost final status write or a
+    // task that ended abnormally): Stop must still end it rather than do nothing.
+    let session = core.store.session(&id)?;
+    if matches!(session.status.as_str(), "running" | "waiting" | "queued") {
+        core.store.status(&id, "interrupted")?;
+        event(&app, &id, "", "done", "interrupted");
     }
     Ok(())
 }
@@ -1292,13 +1306,15 @@ pub fn open(root: PathBuf, resources: PathBuf, app: host::EventHub) -> Result<Ar
     app.attach(core.store.clone());
     host::resources(resources.clone());
     browser::resources(resources);
-    host::autostart(
-        &core.root,
-        core.settings
-            .lock()
-            .map_err(|_| "Settings lock failed")?
-            .open_at_login,
-    )?;
+    // A login item blocked by policy or antivirus must not keep the service from starting.
+    let open_at_login = core
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock failed")?
+        .open_at_login;
+    if let Err(error) = host::autostart(&core.root, open_at_login) {
+        eprintln!("Lumen: {error}");
+    }
     if let Some(keeper) = core.approvals.clone() {
         relay_approvals(app.clone(), keeper);
     }

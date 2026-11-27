@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { Button, IconButton, Select } from '../../design/components';
+import { Button, IconButton, ModelSelect, Select } from '../../design/components';
 import { formatNumber } from '../../i18n/format';
 import { useLocale, useT } from '../../i18n';
 import { isSessionActive, type AccessMode, type AutoPolicy, type ModelInfo, type RunOptions, type Session } from '../../protocol/types';
@@ -283,7 +283,7 @@ ${text}` : text));
             <Select compact label={t.composer.policy} value={policy} options={POLICIES.map((p) => ({ id: p, label: t.composer.policies[p] }))} onChange={setPolicy} />
           ) : (
             <>
-              {models.length > 0 && model && <Select compact label={t.composer.model} value={model} options={models.map((m) => ({ id: m.id, label: m.description === 'OpenCode · console credit' ? `${m.name} · console credit` : m.description === 'OpenCode · free' ? `${m.name} · free` : m.name }))} onChange={(id) => {
+              {models.length > 0 && model && <ModelSelect label={t.composer.model} value={model} options={models.map((m) => ({ id: m.id, label: m.description === 'OpenCode · console credit' ? `${m.name} · ${t.composer.consoleCredit}` : m.description === 'OpenCode · free' ? `${m.name} · ${t.composer.free}` : m.name }))} onChange={(id) => {
                 setModel(id);
                 setEffort(models.find((m) => m.id === id)?.defaultEffort ?? '');
               }} />}

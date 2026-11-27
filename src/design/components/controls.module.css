@@ -153,6 +153,8 @@ textarea.input {
   transition: background-color var(--duration-normal) var(--ease-standard);
 }
 .thumb {
+  /* A span: without this it stays inline and its size is ignored, leaving no visible thumb. */
+  display: block;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -352,6 +354,42 @@ textarea.input {
 }
 
 /* ---------- Toolbar select, hidden label ---------- */
+.modelSelect {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--radius-m);
+}
+.modelSelect:hover {
+  background: var(--surface-hover);
+}
+/* Same type and color as the toolbar's other selects; long names end in an ellipsis. */
+.modelInput {
+  width: 15rem;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-m);
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  outline: none;
+}
+.modelInput:focus {
+  color: var(--text-primary);
+}
+.modelSelect:focus-within {
+  box-shadow: var(--focus-ring);
+}
+.modelButton {
+  width: auto;
+  padding: 0 var(--space-2) 0 var(--space-1);
+}
+.modelButton[data-hovered] {
+  background: transparent;
+}
 .compactSelect {
   gap: var(--space-1);
   padding: 0 var(--space-2);

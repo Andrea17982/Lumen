@@ -30,17 +30,17 @@ Automated checks, live observations and open limits. Evidence for earlier versio
 
 | Run | Result |
 | --- | --- |
-| Automatic, gpt-oss 20B local, 50 paired runs | 45 → 50 successes, none lost. Many-call edits: tokens −45%, round-trips −42%. [Results](../reports/bench/2026-11-23/summary.md) |
-| Automatic, Claude Code (Haiku), 18 paired runs | 14 → 16 correct. Uncached tokens −56% overall, −81% on large reads. [Results](../reports/bench/2026-11-23/summary.md#t3--cli-in-automatico) |
+| Automatic, gpt-oss 20B local, 50 paired runs | 45 → 50 successes, none lost. Many-call edits: tokens −45%, round-trips −42%. [Results](https://github.com/Andrea17982/Lumen/blob/v0.13.0/reports/bench/2026-11-23/summary.md) |
+| Automatic, Claude Code (Haiku), 18 paired runs | 14 → 16 correct. Uncached tokens −56% overall, −81% on large reads. [Results](https://github.com/Andrea17982/Lumen/blob/v0.13.0/reports/bench/2026-11-23/summary.md#t3--cli-in-automatico) |
 | Codex | 18/18 → 14/18 with more tokens, so Codex keeps direct tools. |
-| Always mode, Claude Code, large results | Uncached tokens −90%, answers 1/3 → 2/3. [Results](../reports/bench/2026-11-22/summary.md) |
-| Qwen3-Coder 30B local | Gains on repeated edits, loses on log filtering. Never calls `llm()`. [Results](../reports/bench/2026-11-18/summary.md) |
+| Always mode, Claude Code, large results | Uncached tokens −90%, answers 1/3 → 2/3. [Results](https://github.com/Andrea17982/Lumen/blob/v0.13.0/reports/bench/2026-11-22/summary.md) |
+| Qwen3-Coder 30B local | Gains on repeated edits, loses on log filtering. Never calls `llm()`. [Results](https://github.com/Andrea17982/Lumen/blob/v0.13.0/reports/bench/2026-11-18/summary.md) |
 
 Paid APIs have not been measured. No configuration passes the gate for making Code Mode always-on.
 
 ## Codex correction benchmark
 
-Two paired synthetic tasks on Codex GPT‑6.2 Sol at low effort used 79.7% fewer input tokens outside cache after verification output was compacted. Both arms passed all 11 acceptance checks. [Method, token counts and limits](release-notes/0.13.0.md#codex-benchmark).
+Two paired synthetic tasks on Codex GPT‑6.2 Sol at low effort used 79.7% fewer input tokens outside cache after verification output was compacted. Both arms passed all 11 acceptance checks. [Method, token counts and limits](https://github.com/Andrea17982/Lumen/releases/tag/v0.13.0).
 
 ## Earlier live observations
 

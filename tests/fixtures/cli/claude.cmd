@@ -1,6 +1,7 @@
 @echo off
 setlocal
 set fixtureDir=%~dp0
+if "%~1"=="auth" if exist "%CLAUDE_CONFIG_DIR%\signed-out-fixture" (echo {"loggedIn":false,"authMethod":"none"}& exit /b 1)
 if "%~1"=="auth" exit /b 0
 if "%~1"=="--version" (echo claude offline-fixture& exit /b 0)
 set LUMEN_FIXTURE_SESSION=

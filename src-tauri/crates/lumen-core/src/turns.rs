@@ -25,6 +25,34 @@ pub(crate) fn note(
     });
 }
 
+/// A turn task that panics must not leave its conversation running, with Stop unable to end it:
+/// release the job and close the turn as an error. The panic message goes to the service log.
+pub(crate) fn supervise(
+    app: crate::host::EventHub,
+    core: Arc<Core>,
+    id: String,
+    cancel: watch::Receiver<bool>,
+    task: tokio::task::JoinHandle<()>,
+) {
+    tokio::spawn(async move {
+        if !task.await.is_err_and(|e| e.is_panic()) {
+            return;
+        }
+        // Only the panicked turn's own job: a newer turn of the conversation is left alone.
+        let Ok(mut jobs) = core.jobs.lock() else {
+            return;
+        };
+        if jobs
+            .get(&id)
+            .is_some_and(|tx| tx.subscribe().same_channel(&cancel))
+        {
+            jobs.remove(&id);
+            let _ = core.store.status(&id, "error");
+            event(&app, &id, "", "done", "error");
+        }
+    });
+}
+
 #[crate::command]
 pub async fn send_message(
     app: crate::host::EventHub,
@@ -102,7 +130,60 @@ pub(crate) async fn submit(
     let budget = options.auto_policy == AutoPolicy::Budget;
     let quality = options.auto_policy == AutoPolicy::Quality;
     let cross_provider = budget && requested.is_none();
-    let primary_down = primary_unavailable(&core, &accounts, &usage, now());
+    let mut signed_out = std::collections::HashSet::new();
+    if options.mode == "auto"
+        && requested.is_none()
+        && accounts.iter().any(|a| a.provider == Provider::Opencode)
+    {
+        let mut checks = tokio::task::JoinSet::new();
+        for a in accounts
+            .iter()
+            .filter(|a| matches!(a.provider, Provider::Claude | Provider::Gpt))
+        {
+            let mut command = match providers::command(&a.provider) {
+                Ok(command) => command,
+                Err(_) => continue,
+            };
+            providers::isolate(&mut command, &a.provider, &config_dir(&core, a));
+            command.kill_on_drop(true);
+            match a.provider {
+                Provider::Claude => {
+                    command.args(["auth", "status"]);
+                }
+                Provider::Gpt => {
+                    command.args(["login", "status"]);
+                }
+                _ => unreachable!(),
+            }
+            let provider = a.provider.clone();
+            let id = a.id.clone();
+            checks.spawn(async move {
+                let output =
+                    tokio::time::timeout(std::time::Duration::from_secs(5), command.output())
+                        .await
+                        .ok()?
+                        .ok()?;
+                confirmed_logout(
+                    &provider,
+                    output.status.success(),
+                    &output.stdout,
+                    &output.stderr,
+                )
+                .then_some(id)
+            });
+        }
+        while let Some(result) = checks.join_next().await {
+            if let Ok(Some(id)) = result {
+                signed_out.insert(id);
+            }
+        }
+    }
+    let routing_accounts: Vec<_> = accounts
+        .iter()
+        .filter(|a| !signed_out.contains(&a.id))
+        .cloned()
+        .collect();
+    let primary_down = primary_unavailable(&core, &routing_accounts, &usage, now());
     let opencode = requested.is_none()
         && accounts.iter().any(|a| a.provider == Provider::Opencode)
         && (budget || primary_down);
@@ -120,7 +201,8 @@ pub(crate) async fn submit(
     let available = accounts
         .iter()
         .filter(|a| {
-            (!matches!(a.provider, Provider::Cursor | Provider::Droid))
+            !signed_out.contains(&a.id)
+                && (!matches!(a.provider, Provider::Cursor | Provider::Droid))
                 && (!a.provider.is_api() || crate::api::eligible(&core.root, a))
                 && !core.limits.cooling(&a.id, now())
                 && !usage
@@ -408,11 +490,15 @@ pub(crate) async fn submit(
     let core = core.clone();
     let returned = plan.clone();
     let auto_answer = options.mode == "auto" && options.access() != AccessMode::Autopilot;
-    tokio::spawn(crate::interactions::AUTO_ANSWER.scope(auto_answer, async move {
+    let task_app = app.clone();
+    let task_rx = rx.clone();
+    let task_core = core.clone();
+    let task_id = id.clone();
+    let task = tokio::spawn(crate::interactions::AUTO_ANSWER.scope(auto_answer, async move {
         let mut cancelled = rx.clone();
         let permit = tokio::select! {biased;_=cancelled.changed()=>None,p=core.slots.clone().acquire_owned()=>p.ok()};
         let last_id;
-        let result = {
+        let status = {
             let mid = crate::models::id();
             last_id = mid.clone();
             let mut output = Message {
@@ -593,20 +679,16 @@ pub(crate) async fn submit(
                     &format!("Could not save conversation: {e}"),
                 );
             }
-            r
+            finished_status(&r, &output)
         };
         drop(permit);
-        let status = match &result {
-            Ok(()) => "completed",
-            Err(e) if e == "Cancelled" => "interrupted",
-            Err(_) => "error",
-        };
         let _ = core.store.status(&id, status);
         if let Ok(mut j) = core.jobs.lock() {
             j.remove(&id);
         }
         event(&app, &id, &last_id, "done", status);
     }));
+    supervise(task_app, task_core, task_id, task_rx, task);
     Ok(returned)
 }
 
@@ -776,6 +858,21 @@ async fn balance_model_account(
         }
     }
     selected
+}
+
+fn confirmed_logout(provider: &Provider, success: bool, stdout: &[u8], stderr: &[u8]) -> bool {
+    if success {
+        return false;
+    }
+    match provider {
+        Provider::Claude => serde_json::from_slice::<serde_json::Value>(stdout)
+            .ok()
+            .is_some_and(|v| v["loggedIn"] == false && v["authMethod"] == "none"),
+        Provider::Gpt => [stdout, stderr]
+            .iter()
+            .any(|s| std::str::from_utf8(s).is_ok_and(|s| s.trim() == "Not logged in")),
+        _ => false,
+    }
 }
 
 /// No Claude or ChatGPT account could run a turn right now: none configured, in cooldown, or
@@ -1058,7 +1155,7 @@ pub(crate) async fn stage_with(
         visible,
         resume,
         &mut replay_guard,
-        false,
+        None,
         &[],
     )
     .await
@@ -1079,7 +1176,7 @@ async fn stage_observed(
     visible: bool,
     resume: Option<&Resume>,
     replay_guard: &mut ResumeReplayGuard,
-    check_completion: bool,
+    mut progress: Option<&mut AutopilotProgress>,
     images: &[PathBuf],
 ) -> Result<String, String> {
     let config = config_dir(core, a);
@@ -1111,7 +1208,7 @@ async fn stage_observed(
     let full_prompt = prompt;
     let prompt = resume.map(|r| r.prompt.as_str()).unwrap_or(prompt);
     let completion_prompt;
-    let prompt = if check_completion {
+    let prompt = if progress.is_some() {
         completion_prompt = format!("{prompt}\n\n{AUTOPILOT_COMPLETION}");
         &completion_prompt
     } else {
@@ -1257,6 +1354,9 @@ async fn stage_observed(
         |activity| {
             // Observe before lifecycle events are discarded or activity is compacted.
             replay_guard.observe(&activity);
+            if let Some(progress) = progress.as_deref_mut() {
+                progress.observe(&activity);
+            }
             // Timing signals carry no provider content and do not add IPC/SQLite writes.
             // The existing snapshot checkpoint/finish publishes the accumulated offsets.
             if matches!(activity.kind.as_str(), "latency" | "code-metrics") {
@@ -1366,7 +1466,7 @@ async fn stage_observed(
                 visible,
                 None,
                 replay_guard,
-                check_completion,
+                progress,
                 images,
             ))
             .await;
@@ -1493,7 +1593,9 @@ where
         return Err(e);
     }
     let _ = core.store.status(&id, "waiting");
-    tokio::spawn(async move {
+    let (task_app, task_core, task_id, task_rx) =
+        (app.clone(), core.clone(), id.clone(), rx.clone());
+    let task = tokio::spawn(async move {
         let mut cancelled = rx.clone();
         let permit = tokio::select! {biased;_=cancelled.changed()=>None,p=core.slots.clone().acquire_owned()=>p.ok()};
         let mid = crate::models::id();
@@ -1527,17 +1629,14 @@ where
             note(&app, &id, &mut output, "error", friendly(e));
         }
         let _ = core.store.save_message(&id, &output);
-        let status = match &result {
-            Ok(()) => "completed",
-            Err(e) if e == "Cancelled" => "interrupted",
-            Err(_) => "error",
-        };
+        let status = finished_status(&result, &output);
         let _ = core.store.status(&id, status);
         if let Ok(mut j) = core.jobs.lock() {
             j.remove(&id);
         }
         event(&app, &id, &mid, "done", status);
     });
+    supervise(task_app, task_core, task_id, task_rx, task);
     Ok(())
 }
 
@@ -1546,29 +1645,91 @@ const AUTOPILOT_COMPLETION: &str = "Lumen Autopilot completion check. When the u
     For UI issues, inspect any supplied screenshots and identify the exact element and interaction state before editing. \
     Verify the reported behavior through the relevant interaction when feasible, and say what you actually observed. \
     A source change or a Git diff alone does not verify a visual result. If you believe the requested state already exists, verify it against the user's evidence before closing the task. \
-    Put exactly one of these markers at the end of your final answer: <!-- lumen-autopilot: done --> for a satisfied request (including questions and verified no-ops), \
-    <!-- lumen-autopilot: blocked --> for a concrete blocker that a user decision in this conversation cannot resolve, or \
-    <!-- lumen-autopilot: continue --> if authorized work remains and you can safely proceed.";
+    Put exactly one of these markers at the end of your final answer: <!-- lumen-autopilot: done --> when the requested work is delivered (including questions and verified no-ops), \
+    even if a check could not run here or a limit remains: then name what was not verified or is missing, and why. \
+    <!-- lumen-autopilot: continue --> if authorized work remains that you can do yourself now; before that marker, state what remains and the next action. \
+    <!-- lumen-autopilot: blocked --> only when the requested work itself cannot proceed without something only the user can provide or do outside this conversation; say exactly what is needed. \
+    Ask decisions with the structured question tool instead of stopping.";
 
-const AUTOPILOT_CONTINUE: &str = "Continue the current user request from this native session. Check the actual state and the existing tool results. Complete only the remaining authorized work. Preserve user decisions, approval outcomes and existing changes. Never repeat external or irreversible actions with an uncertain outcome. If a user decision is needed, ask using the structured question tool. Explain an actual blocker if you cannot proceed safely.";
+const AUTOPILOT_CONTINUE: &str = "Continue the current user request from this native session. Use existing tool results and take the next unfinished step. Reuse passing checks unless their inputs changed. Preserve user decisions, approval outcomes and existing changes. Never repeat external or irreversible actions with an uncertain outcome. If a user decision is needed, ask using the structured question tool. Explain an actual blocker if you cannot proceed safely.";
+
+/// Activity kind for an Autopilot run that stopped on its own terms: the assistant explained a
+/// blocker, the run stopped advancing, or it reached the attempt cap. The reply and its work are
+/// kept; the session ends `partial` for the user to review, not as an error.
+const AUTOPILOT_STOPPED: &str = "autopilot-stopped";
+
+/// Autonomous loops are always bounded: completion markers can be missing and models can stall.
+const AUTOPILOT_MAX_ATTEMPTS: usize = 10;
+
+fn autopilot_stop(
+    app: &crate::host::EventHub,
+    s: &Session,
+    out: &mut Message,
+    account: Account,
+    reason: &str,
+) -> (String, Account) {
+    note(
+        app,
+        &s.id,
+        out,
+        AUTOPILOT_STOPPED,
+        serde_json::json!({ "reason": reason }).to_string(),
+    );
+    (out.text.clone(), account)
+}
+
+/// Session status when a turn ends.
+fn finished_status(result: &Result<(), String>, output: &Message) -> &'static str {
+    match result {
+        Ok(()) if output.activity.iter().any(|a| a.kind == AUTOPILOT_STOPPED) => "partial",
+        Ok(()) => "completed",
+        Err(e) if e == "Cancelled" => "interrupted",
+        Err(_) => "error",
+    }
+}
+
+#[derive(Default)]
+struct AutopilotProgress {
+    seen: std::collections::HashSet<u64>,
+    advanced: bool,
+    retried_stall: bool,
+}
+
+impl AutopilotProgress {
+    fn observe(&mut self, activity: &Activity) {
+        if !matches!(activity.kind.as_str(), "tool-end" | "interaction-result") {
+            return;
+        }
+        let Ok(row) = serde_json::from_str::<serde_json::Value>(&activity.text) else {
+            return;
+        };
+        if let Some(id) = row["evidence"].as_u64() {
+            self.advanced |= self.seen.insert(id);
+        } else if row["kind"] == "question" && row["cancelled"] != true {
+            self.advanced = true;
+        }
+    }
+}
 
 #[derive(PartialEq, Eq)]
 enum AutopilotOutcome {
     Done,
     Blocked,
-    Unfinished,
+    Continue,
+    Unconfirmed,
 }
 
 fn autopilot_outcome(text: &str) -> (&str, AutopilotOutcome) {
     let text = text.trim_end();
     let Some((body, status)) = text.rsplit_once("<!-- lumen-autopilot: ") else {
-        return (text, AutopilotOutcome::Unfinished);
+        return (text, AutopilotOutcome::Unconfirmed);
     };
     let outcome = match status {
         "done -->" if !body.trim().is_empty() => AutopilotOutcome::Done,
         "blocked -->" if !body.trim().is_empty() => AutopilotOutcome::Blocked,
-        "done -->" | "blocked -->" | "continue -->" => AutopilotOutcome::Unfinished,
-        _ => return (text, AutopilotOutcome::Unfinished),
+        "continue -->" if !body.trim().is_empty() => AutopilotOutcome::Continue,
+        "done -->" | "blocked -->" | "continue -->" => AutopilotOutcome::Unconfirmed,
+        _ => return (text, AutopilotOutcome::Unconfirmed),
     };
     (body.trim_end(), outcome)
 }
@@ -1601,6 +1762,8 @@ async fn stage_fallback(
     let mut attempted = std::collections::HashSet::new();
     let mut first = true;
     let mut continuation = None;
+    let mut progress = AutopilotProgress::default();
+    let mut checked_attempts = 0;
     let mut partial = String::new();
     loop {
         attempted.insert(current.id.clone());
@@ -1641,13 +1804,14 @@ async fn stage_fallback(
             true,
             continuation.as_ref().or(if first { resume } else { None }),
             &mut guard,
-            check_completion,
+            check_completion.then_some(&mut progress),
             &images,
         )
         .await;
         first = false;
         let error = match result {
             Ok(text) if check_completion => {
+                checked_attempts += 1;
                 let (body, outcome) = autopilot_outcome(&text);
                 out.text = if body.is_empty() {
                     std::mem::take(&mut partial)
@@ -1655,26 +1819,35 @@ async fn stage_fallback(
                     body.to_owned()
                 };
                 event(app, &s.id, &out.id, "replace", &out.text);
-                match outcome {
-                    AutopilotOutcome::Done => return Ok((out.text.clone(), current)),
-                    AutopilotOutcome::Blocked => return Err(
-                        "Autopilot could not finish the request. See the assistant's explanation."
-                            .into(),
-                    ),
-                    AutopilotOutcome::Unfinished if continuation.is_some() || options.resume_only => return Err(
-                        "Autopilot could not confirm completion after continuing in the native session. Review the recorded work."
-                            .into(),
-                    ),
-                    AutopilotOutcome::Unfinished => {}
+                if outcome == AutopilotOutcome::Done {
+                    return Ok((out.text.clone(), current));
                 }
+                // A Stop wins over any stop reason the assistant gave.
                 if *cancel.borrow() {
                     return Err("Cancelled".into());
                 }
+                // The assistant explained why it stopped: its reply is the outcome, not a
+                // Lumen or provider failure.
+                if outcome == AutopilotOutcome::Blocked {
+                    return Ok(autopilot_stop(app, s, out, current, "blocked"));
+                }
+                let advanced = std::mem::take(&mut progress.advanced);
+                if !advanced && progress.retried_stall {
+                    return Ok(autopilot_stop(app, s, out, current, "stalled"));
+                }
+                if checked_attempts >= AUTOPILOT_MAX_ATTEMPTS {
+                    return Ok(autopilot_stop(app, s, out, current, "limit"));
+                }
+                progress.retried_stall = !advanced;
                 let mut next = continue_reply(
                     out,
                     &current,
                     &s.workspace,
-                    AUTOPILOT_CONTINUE.into(),
+                    if advanced {
+                        AUTOPILOT_CONTINUE.into()
+                    } else {
+                        format!("{AUTOPILOT_CONTINUE} The previous attempt showed no new tool results. Use the existing evidence to finish, try a different step, or report what prevents further work.")
+                    },
                 )
                 .ok_or(
                     "Autopilot could not confirm completion and the native session is unavailable.",
@@ -2395,6 +2568,10 @@ async fn run_plan(
         .await
     };
     out.text = draft;
+    // A stopped Autopilot run hands control back to the user: no repair turns or audits after it.
+    if out.activity.iter().any(|a| a.kind == AUTOPILOT_STOPPED) {
+        return Ok(());
+    }
     let mut verification = verify_draft(out).await?;
     if plan.strategy == "review" {
         draft = out.text.clone();
@@ -3365,6 +3542,124 @@ mod resume_tests {
             std::slice::from_ref(&claude),
             &[],
             at
+        ));
+    }
+
+    #[test]
+    fn autopilot_markers_need_an_explanation() {
+        let (body, outcome) = autopilot_outcome("Need a key.\n<!-- lumen-autopilot: blocked -->\n");
+        assert_eq!(body, "Need a key.");
+        assert!(outcome == AutopilotOutcome::Blocked);
+        assert!(
+            autopilot_outcome("<!-- lumen-autopilot: blocked -->").1
+                == AutopilotOutcome::Unconfirmed
+        );
+        assert!(
+            autopilot_outcome("Done. <!-- lumen-autopilot: done -->").1 == AutopilotOutcome::Done
+        );
+        assert!(
+            autopilot_outcome("Next: build. <!-- lumen-autopilot: continue -->").1
+                == AutopilotOutcome::Continue
+        );
+        assert!(autopilot_outcome("No marker").1 == AutopilotOutcome::Unconfirmed);
+        assert!(
+            autopilot_outcome("x <!-- lumen-autopilot: maybe -->").1
+                == AutopilotOutcome::Unconfirmed
+        );
+    }
+
+    #[test]
+    fn an_explained_autopilot_stop_is_partial_not_an_error() {
+        let mut reply = Message {
+            id: "m".into(),
+            role: "assistant".into(),
+            text: "Needs a credential.".into(),
+            activity: vec![],
+        };
+        assert_eq!(finished_status(&Ok(()), &reply), "completed");
+        assert_eq!(
+            finished_status(&Err("Cancelled".into()), &reply),
+            "interrupted"
+        );
+        assert_eq!(
+            finished_status(&Err("Codex turn failed".into()), &reply),
+            "error"
+        );
+        reply.activity.push(Activity {
+            kind: AUTOPILOT_STOPPED.into(),
+            text: r#"{"reason":"blocked"}"#.into(),
+        });
+        assert_eq!(finished_status(&Ok(()), &reply), "partial");
+        assert_eq!(
+            finished_status(&Err("Codex turn failed".into()), &reply),
+            "error"
+        );
+    }
+
+    #[test]
+    fn autopilot_progress_counts_only_new_evidence() {
+        let mut progress = AutopilotProgress::default();
+        let tool = |text: &str| Activity {
+            kind: "tool-end".into(),
+            text: text.into(),
+        };
+        progress.observe(&tool(r#"{"id":"a","evidence":7}"#));
+        assert!(std::mem::take(&mut progress.advanced));
+        progress.observe(&tool(r#"{"id":"b","evidence":7}"#));
+        progress.observe(&tool(r#"{"id":"c","evidence":null}"#));
+        assert!(
+            !progress.advanced,
+            "a repeated check or a step without evidence is not progress"
+        );
+        progress.observe(&Activity {
+            kind: "interaction-result".into(),
+            text: r#"{"kind":"question","cancelled":true}"#.into(),
+        });
+        assert!(!progress.advanced);
+        progress.observe(&Activity {
+            kind: "interaction-result".into(),
+            text: r#"{"kind":"question"}"#.into(),
+        });
+        assert!(progress.advanced);
+    }
+
+    #[test]
+    fn logout_requires_unambiguous_provider_evidence() {
+        assert!(confirmed_logout(
+            &Provider::Claude,
+            false,
+            br#"{"loggedIn":false,"authMethod":"none"}"#,
+            b""
+        ));
+        assert!(confirmed_logout(
+            &Provider::Gpt,
+            false,
+            b"",
+            b"Not logged in\n"
+        ));
+        assert!(!confirmed_logout(
+            &Provider::Claude,
+            false,
+            b"network error",
+            b""
+        ));
+        assert!(!confirmed_logout(
+            &Provider::Claude,
+            false,
+            br#"{"loggedIn":false}"#,
+            b""
+        ));
+        assert!(!confirmed_logout(
+            &Provider::Gpt,
+            false,
+            b"",
+            b"Not logged in: network error"
+        ));
+        assert!(!confirmed_logout(
+            &Provider::Gpt,
+            true,
+            b"Not logged in",
+            b""
         ));
     }
 

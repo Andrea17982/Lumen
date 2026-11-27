@@ -11,7 +11,7 @@ export type AppSettings = Record<string, unknown> & { orchestra: boolean; codeMo
 export type Language = 'system' | 'en' | 'it';
 
 /** Reads the daemon's settings and saves a change merged into the latest copy. */
-export function useAppSettings() {
+function useAppSettings() {
   const sync = useSyncClient();
   const [value, setValue] = useState<AppSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
