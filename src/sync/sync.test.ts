@@ -294,6 +294,15 @@ describe('Sync', () => {
     expect(sync.getState().approvals.other).toBeUndefined();
   });
 
+  it('still syncs when the onboarding state cannot be read, and shows no welcome', async () => {
+    const daemon = fakeDaemon({ list_sessions: () => [], onboarding_state: () => Promise.reject('Unknown command onboarding_state') });
+    const sync = new Sync(daemon.transport);
+    await sync.start();
+    await settle();
+    expect(sync.getState().synced).toBe(true);
+    expect(sync.getState().onboarding).toBeUndefined();
+  });
+
   it('shows an unreadable approval journal as an error, not as no approvals', async () => {
     const daemon = fakeDaemon({ list_sessions: () => [], get_messages: () => [], pending_questions: () => [], gatekeeper_snapshot: () => Promise.reject('unavailable: The approval journal could not be opened.') });
     const sync = new Sync(daemon.transport);

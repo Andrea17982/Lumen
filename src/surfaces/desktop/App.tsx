@@ -178,15 +178,15 @@ function Shell({ preferences }: { preferences: Preferences }) {
         <Banners />
         {tour !== null && <Tour index={tour} onStep={setTour} root={tourRoot} onClose={closeTour} />}
         {tour === null && !settings && onboarding?.existing && onboarding.setup === 'pending' && welcome !== false && (
-          <aside className={welcomeStyles.invite} aria-label={t.welcome.invite}>
-            <span>{t.welcome.invite}</span>
+          <div className={welcomeStyles.invite} role="region" aria-labelledby="welcome-invite">
+            <span id="welcome-invite">{t.welcome.invite}</span>
             <Button variant="plain" onPress={() => setWelcome(true)}>{t.welcome.reopen}</Button>
             <IconButton icon="close" label={t.welcome.dismiss} onPress={() => {
               setInviteError(false);
               void sync.updateOnboarding('skipSetup').catch(() => setInviteError(true));
             }} />
             {inviteError && <span role="alert">{t.welcome.saveError}</span>}
-          </aside>
+          </div>
         )}
         {settings || tourSection ? (
           <Settings key={tourSection ?? 'settings'} initialSection={tourSection} preferences={preferences} onClose={() => { setSettings(false); if (tourSection) closeTour(); }} onWelcome={() => { setTour(null); setWelcome(true); }} onTour={() => { setSettings(false); setTour(0); }} leading={hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />} />

@@ -33,10 +33,15 @@ export function Tour({ index, onStep, root, onClose }: { index: number; onStep: 
     };
     setFound(false);
     find();
-    const observer = new MutationObserver(find);
+    // Streaming output mutates the window often: look again at most once per frame.
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; find(); });
+    });
     observer.observe(area, { childList: true, subtree: true });
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(frame);
       target?.removeAttribute('data-tour-highlight');
     };
   }, [index, root]);

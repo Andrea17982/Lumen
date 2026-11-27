@@ -78,7 +78,7 @@
   border-top: 1px solid var(--separator);
   padding-top: var(--space-4);
 }
-.actions button { min-height: 36px; }
+.actions button { min-height: max(36px, var(--control-height)); }
 .space { flex: 1; }
 
 .appearance {

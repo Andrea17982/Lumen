@@ -3,7 +3,8 @@ import { Mark } from '../../brand/Logo';
 import { Button } from '../../design/components';
 import { Icon } from '../../design/icons';
 import { useT } from '../../i18n';
-import type { Account, OnboardingAgent, Provider, Workspace } from '../../protocol/types';
+import { isCancelled, type Account, type OnboardingAgent, type Provider, type Workspace } from '../../protocol/types';
+import { errorText } from '../../transport/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { folderName } from '../sessions/sessions';
 import { providerName, SignInFlow } from '../settings/Accounts';
@@ -57,7 +58,8 @@ export function Welcome({ preferences, project, onProject, onClose }: { preferen
   const t = useT();
   const w = t.welcome;
   const sync = useSyncClient();
-  const connected = useSyncState((state) => state.connection.state === 'connected');
+  const connection = useSyncState((state) => state.connection.state);
+  const connected = connection === 'connected';
   const [step, setStep] = useState(0);
   const [agents, setAgents] = useState<OnboardingAgent[] | null>(null);
   const [scan, setScan] = useState(0);
@@ -80,7 +82,7 @@ export function Welcome({ preferences, project, onProject, onClose }: { preferen
       (results) => { if (active) setAgents(results); },
       () => { if (active) { setScanError(true); setAgents(null); } },
     ).finally(() => { if (active) setScanning(false); });
-    return () => { active = false; };
+    return () => { active = false; setScanning(false); };
   }, [step, scan, connected, sync]);
 
   function move(next: number) {
@@ -102,7 +104,7 @@ export function Welcome({ preferences, project, onProject, onClose }: { preferen
         setTerminal(true);
       }
     } catch (e) {
-      setError(String(e));
+      if (!isCancelled(e)) setError(errorText(e));
     } finally {
       setScan((value) => value + 1);
       setBusy(false);
@@ -119,7 +121,7 @@ export function Welcome({ preferences, project, onProject, onClose }: { preferen
       setPicked(added);
       onProject(added.id);
     } catch (e) {
-      setError(String(e));
+      if (!isCancelled(e)) setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -165,7 +167,7 @@ export function Welcome({ preferences, project, onProject, onClose }: { preferen
       {step === 2 && (
         <>
           <div className={s.scan}>
-            <span role="status">{!connected ? w.unknown : scanning || (!agents && !scanError) ? w.checking : terminal ? w.terminal : ''}</span>
+            <span role="status">{!connected ? t.connection[connection] : scanning || (!agents && !scanError) ? w.checking : terminal ? w.terminal : agents ? w.found(agents.filter((agent) => agent.installed).length) : ''}</span>
             <Button variant="secondary" icon="repeat" isDisabled={scanning || busy || !connected} onPress={() => setScan((value) => value + 1)}>{w.check}</Button>
           </div>
           {scanError && <p role="alert" className={s.error}>{w.checkFailed}</p>}

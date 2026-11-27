@@ -230,7 +230,7 @@ export class Sync {
     const generation = ++this.generation;
     this.set({ synced: false });
     try {
-      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), this.updateOnboarding(), ...[...this.open].map((id) => this.load(id))]);
+      await Promise.all([this.loadSessions(), this.loadQuestions().catch(() => this.set({ questions: null })), this.loadAccounts(), this.loadContributions(), this.updateOnboarding().catch(() => undefined), ...[...this.open].map((id) => this.load(id))]);
       if (generation === this.generation) {
         this.retries = 0;
         this.set({ synced: true, error: undefined });

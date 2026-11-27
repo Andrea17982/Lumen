@@ -293,6 +293,7 @@ export const it: Catalog = {
     check: 'Verifica di nuovo',
     checking: 'Ricerca degli agenti installati…',
     checkFailed: 'Lumen non è riuscito a verificare gli agenti. Riprova o continua la configurazione.',
+    found: (installed) => (installed === 1 ? '1 agente installato' : `${installed} agenti installati`),
     installed: 'Installato',
     missing: 'Non installato',
     unconfigured: 'Nessun account aggiunto',

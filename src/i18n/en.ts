@@ -293,6 +293,7 @@ export const en = {
     check: 'Check again',
     checking: 'Checking installed agents…',
     checkFailed: 'Lumen couldn’t check the agents. Try again or continue setup.',
+    found: (installed: number) => (installed === 1 ? '1 agent installed' : `${installed} agents installed`),
     installed: 'Installed',
     missing: 'Not installed',
     unconfigured: 'No account added',
