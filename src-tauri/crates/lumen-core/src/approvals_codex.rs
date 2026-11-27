@@ -132,6 +132,30 @@ fn decline(id: &Value) -> Value {
     json!({"id": id, "result": {"decision": "decline"}})
 }
 
+/// A message from a sub-agent thread the native agent spawned (`spawn_agent`). Codex streams
+/// child threads on the same connection. They are not this turn's scope: their notifications
+/// are shown through the parent's collab items, and their requests are declined, never approved.
+fn foreign_thread(message: &Value, scope: &Scope) -> bool {
+    message["params"]["threadId"]
+        .as_str()
+        .is_some_and(|thread| thread != scope.provider_session_id)
+}
+
+/// The reply that refuses a request from another thread without granting anything.
+fn refuse_foreign(message: &Value) -> Value {
+    match message["method"].as_str().unwrap_or("") {
+        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => {
+            decline(&message["id"])
+        }
+        "mcpServer/elicitation/request" => {
+            json!({"id":message["id"],"result":{"action":"cancel","content":null}})
+        }
+        _ => {
+            json!({"id":message["id"],"error":{"code":-32601,"message":"Requests from sub-agent threads are not supported; no permissions granted"}})
+        }
+    }
+}
+
 // Stable across native turn IDs and noisy stdout (timings, PIDs, temporary paths).
 fn progress_evidence(item: &Value) -> Option<u64> {
     let kind = item["type"].as_str()?;
@@ -603,6 +627,21 @@ async fn handle(
 ) -> Result<Option<Result<String, String>>, String> {
     let scope = scope.as_ref().ok_or("No approval scope")?;
     let method = message["method"].as_str().unwrap_or("");
+    if foreign_thread(message, scope) {
+        if message.get("id").is_some() && !method.is_empty() {
+            emit(Activity {
+                kind: "tool".into(),
+                text: format!("Declined: {method}\nThe request came from a sub-agent thread"),
+            });
+            wire.out
+                .send(refuse_foreign(message))
+                .await
+                .map_err(|_| "Codex closed its input")?;
+        }
+        // A child's item and turn events must not reach the gatekeeper, the answer text or
+        // the end of this turn.
+        return Ok(None);
+    }
     if message.get("id").is_some() && !method.is_empty() {
         if method == "mcpServer/elicitation/request" {
             let request = crate::connectors::validate_scope(
@@ -811,6 +850,58 @@ mod tests {
             "tool-a"
         );
     }
+    fn scope() -> Scope {
+        Scope {
+            session_id: "chat".into(),
+            connection_id: "conn".into(),
+            provider: Engine::Codex,
+            provider_session_id: "parent".into(),
+            turn_id: "turn".into(),
+        }
+    }
+
+    /// Codex streams spawned sub-agent threads on the parent connection. Their events once
+    /// failed the parent turn with "Approval belongs to another Codex thread or turn".
+    #[test]
+    fn sub_agent_threads_are_foreign_and_never_approved() {
+        let s = scope();
+        let child = |method: &str| json!({"method":method,"params":{"threadId":"child","turnId":"t2","item":{"id":"i","type":"commandExecution"}}});
+        for method in [
+            "item/started",
+            "item/completed",
+            "turn/completed",
+            "item/agentMessage/delta",
+        ] {
+            assert!(foreign_thread(&child(method), &s), "{method}");
+        }
+        assert!(!foreign_thread(
+            &json!({"method":"item/started","params":{"threadId":"parent","turnId":"turn"}}),
+            &s
+        ));
+        // Thread-less notifications (account, rate limits) stay with the turn.
+        assert!(!foreign_thread(
+            &json!({"method":"account/rateLimits/updated","params":{}}),
+            &s
+        ));
+
+        let request = |method: &str| json!({"id":9,"method":method,"params":{"threadId":"child"}});
+        assert_eq!(
+            refuse_foreign(&request("item/commandExecution/requestApproval")),
+            decline(&json!(9))
+        );
+        assert_eq!(
+            refuse_foreign(&request("item/fileChange/requestApproval")),
+            decline(&json!(9))
+        );
+        assert_eq!(
+            refuse_foreign(&request("mcpServer/elicitation/request"))["result"]["action"],
+            "cancel"
+        );
+        let question = refuse_foreign(&request("item/tool/requestUserInput"));
+        assert!(question.get("result").is_none());
+        assert_eq!(question["error"]["code"], -32601);
+    }
+
     #[test]
     fn maps_protocol_items_to_chat_activity() {
         let mut text = String::new();
