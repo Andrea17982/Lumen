@@ -32,8 +32,14 @@ Run the relevant [development checks](docs/development.md#checks) from the repo 
 
 ## Claude tooling (`.claude/`)
 
-- **Hook:** `rustfmt` runs on every `.rs` file after Edit/Write; a syntax error is reported back.
-- **Review agents** (adapted from ECC, MIT, see `.claude/ECC-LICENSE`): use `rust-reviewer` after non-trivial Rust changes, `security-reviewer` for the security-sensitive areas below, and `silent-failure-hunter` for error handling and recovery paths. Their findings are input: verify them before acting.
+- **Hook:** `rustfmt` runs on every `.rs` file after Edit/Write; a syntax error is reported back. Edit files with Edit/Write, not scripts or shell redirection, so the hook runs.
+- **Review agents** (adapted from ECC, MIT, see `.claude/ECC-LICENSE`). Before a PR, run the ones that match the diff, in parallel:
+  - `rust-reviewer` for non-trivial Rust changes.
+  - `typescript-reviewer` and `react-reviewer` together for non-trivial client changes (`src/`, `.tsx`); `typescript-reviewer` alone for `tests/` and `scripts/`.
+  - `security-reviewer` for the security-sensitive areas below.
+  - `silent-failure-hunter` for error handling and recovery paths (cancel, timeout, crash, repair, update).
+  - `pr-test-analyzer` for a feature or a fix, to find untested behaviour.
+  Their findings are input: verify each against the code before acting, and say which ones you rejected and why.
 - **Skills:** `verification-loop` before declaring a feature done or opening a PR, `rust-testing` when writing tests, `security-review` for input, auth and secrets, `moli` for all web browsing (bundled headless browser, no Chrome). Do not add the dependencies they suggest (rstest, mockall, proptest, criterion) without the owner's approval.
 
 ## Rules
