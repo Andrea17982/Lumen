@@ -27,9 +27,16 @@ async function open(page: Page, account: string | null, mode = 'ask') {
   await page.goto(daemon.url());
   await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
   if (account) {
-    await page.getByRole('button', { name: /Agent/ }).click();
-    await page.getByRole('option', { name: account }).click();
-    await expect(page.getByRole('button', { name: /Model/ })).toBeVisible();
+    // On a slow runner the option can be pressed while the list is still opening, and the
+    // choice does not take: choose again until the agent and its model picker show.
+    const agent = page.getByRole('button', { name: /Agent/ });
+    await expect(async () => {
+      if (!(await agent.textContent())?.includes(account)) {
+        await agent.click();
+        await page.getByRole('option', { name: account }).click({ timeout: 5_000 });
+      }
+      await expect(page.getByRole('button', { name: /Model/ })).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
   }
   return chat;
 }
