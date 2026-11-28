@@ -37,6 +37,8 @@ export const en = {
   clearSearch: 'Clear search',
   cancel: 'Cancel',
   moreActions: 'More actions',
+  exportConversation: 'Export conversation…',
+  exported: (path: string) => `Conversation saved to ${path}`,
   rename: 'Rename',
   pin: 'Pin',
   delete: 'Delete',

@@ -3,13 +3,14 @@
 // daemon: tests own its lifetime, so they can kill and restart it.
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
+import path from 'node:path';
 import { sleep } from '../daemon-harness.mjs';
 
 // Copied from src-tauri/desktop/src/main.rs (PANEL_CSP).
 const PANEL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
 
 /** @param {Awaited<ReturnType<typeof import('../daemon-harness.mjs').daemonClient>>} client */
-export async function startBridge(client, { origin }) {
+export async function startBridge(client, { origin, exportDir = null }) {
   const token = randomBytes(24).toString('hex');
   const listeners = new Set();
   let connection = { state: 'connecting' };
@@ -84,6 +85,15 @@ export async function startBridge(client, { origin }) {
       if (typeof command !== 'string') return res.writeHead(400, cors).end();
       // Like the shell, never let the page stop or update the service.
       if (command.startsWith('__') && command !== '__status') return json({ error: `Unknown command ${command}` });
+      // The shell's Save dialog: the file always lands in `exportDir`, whatever the page asks.
+      if (command === 'export_session') {
+        if (!exportDir) return json({ ok: null });
+        const file = path.join(exportDir, 'conversation.txt');
+        return client.call('export_session', { id: args?.id, path: file }).then(
+          () => json({ ok: { path: file } }),
+          (error) => json({ error: error.message }),
+        );
+      }
       return client.call(command, args).then(
         (ok) => json({ ok }),
         (error) => json({ error: error.message }),

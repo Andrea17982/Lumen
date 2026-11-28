@@ -129,6 +129,21 @@ try {
     for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
     const resumed = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
     assert.match(resumed.text.trim(), /^DAEMON_RESUMED(?: <!-- lumen-autopilot: done -->)?$/);
+    // A resumed Claude session can first close a stopped background task with an empty
+    // result. That result is not the answer: the turn waits for the reply to this request.
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_STALE_TASK_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const afterStale = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(afterStale.text.trim(), /^STALE_TASK_ANSWERED(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(afterStale.activity.filter((a) => a.kind === 'error')));
+    // The process stays open in both cases below: the turn must end on the result, not on exit.
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_NO_REPLAY_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const noReplay = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(noReplay.text.trim(), /^NO_REPLAY_ANSWERED(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(noReplay.activity.filter((a) => a.kind === 'error')));
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_STALE_ERROR_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const staleError = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.ok(staleError.activity.some((a) => a.kind === 'error' && a.text.includes('STALE_ERROR_REPORTED')), JSON.stringify(staleError.activity.map((a) => a.kind)));
     for (const [scenario, accessMode, status, reply, attempts] of [
       ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
       // An Autopilot stop the assistant explains is partial work to review, never an error.

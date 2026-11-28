@@ -14,6 +14,33 @@ use tokio::{
 fn response(id: &Value, result: Value) -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":result}})
 }
+/// The empty successful result a resumed session sends when it closes queued work, such as
+/// the notice for a background task the previous process left running (Claude Code 2.1.327).
+fn stale_result(value: &Value) -> bool {
+    value["type"] == "result"
+        && value["is_error"] != true
+        && value["result"].as_str().unwrap_or("").trim().is_empty()
+}
+#[cfg(test)]
+mod stale_tests {
+    use super::stale_result;
+    use serde_json::json;
+    #[test]
+    fn only_an_empty_success_is_queued_work() {
+        assert!(stale_result(
+            &json!({"type":"result","subtype":"success","is_error":false,"num_turns":0,"result":""})
+        ));
+        assert!(!stale_result(
+            &json!({"type":"result","is_error":true,"result":"You've hit your usage limit"})
+        ));
+        assert!(!stale_result(
+            &json!({"type":"result","is_error":false,"result":"The answer"})
+        ));
+        assert!(!stale_result(
+            &json!({"type":"assistant","message":{"content":[]}})
+        ));
+    }
+}
 fn connector_status(value: &Value) -> Vec<Activity> {
     if value["type"] != "system" || value["subtype"] != "init" {
         return vec![];
@@ -87,6 +114,8 @@ pub async fn execute(
         "stream-json".into(),
         "--permission-prompt-tool".into(),
         "stdio".into(),
+        // The CLI echoes the prompt when it starts it: the turn's result is the one after it.
+        "--replay-user-messages".into(),
     ]);
     if input.access == AccessMode::Ask {
         if let Some(model) = input.model {
@@ -232,10 +261,17 @@ pub async fn execute(
             }
         }).await.map_err(|_|"Claude did not initialize in time".to_string())??;
         crate::execution::signal(&mut emit, "protocol-ready");
-        tx.send(crate::providers::wire_prompt(&crate::models::Provider::Claude, input.prompt)).await.map_err(|_|"Claude closed its input")?;
+        let prompt_id = uuid::Uuid::new_v4().to_string();
+        let mut prompt = crate::providers::wire_prompt(&crate::models::Provider::Claude, input.prompt);
+        prompt["uuid"] = json!(prompt_id);
+        tx.send(prompt).await.map_err(|_|"Claude closed its input")?;
         crate::execution::signal(&mut emit, "request-enqueued");
         let mut text = String::new();
         let mut initialized = false;
+        // A resumed session can first finish work queued before this request, such as the
+        // notice for a background task the previous process left running. Its empty result
+        // is not this turn's answer.
+        let mut started = false;
         loop {
             let line = tokio::select! { biased; _=cancel.changed()=>return Err("Cancelled".into()), _=failed.changed()=>return Err("Claude input delivery failed; the turn was stopped".into()), r=lines.next_line()=>r.map_err(|e|e.to_string())? };
             let Some(line) = line else { return Err("Claude exited before completing the turn".into()); };
@@ -269,6 +305,11 @@ pub async fn execute(
                 }
                 continue;
             }
+            if value["type"] == "user" && value["uuid"] == prompt_id.as_str() && !started {
+                started = true;
+                // Output of queued earlier work is not part of this answer.
+                text.clear();
+            }
             if init {
                 if value["session_id"] != native_id { return Err("Claude started a different session than requested".into()); }
                 initialized = true;
@@ -277,6 +318,12 @@ pub async fn execute(
                 if value["type"] == "result" {
                     return Err("Claude returned a result before confirming the requested session".into());
                 }
+                continue;
+            }
+            // Before Claude starts this request, only an empty success closes queued work.
+            // An error still ends the turn, and a CLI that never echoes the prompt still
+            // finishes with its answer.
+            if !started && stale_result(&value) {
                 continue;
             }
             for status in connector_status(&value) {emit(status);}

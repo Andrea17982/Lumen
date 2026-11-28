@@ -2,6 +2,8 @@
 // to a finished Markdown reply, Stop, and shortened tool output with "Show all".
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { sleep } from '../daemon-harness.mjs';
 import { startDaemon } from './daemon-fixture';
 
@@ -108,6 +110,26 @@ test('Ctrl+Enter sends queued work after the active turn, even after reload', as
   await expect(log.getByRole('article')).toHaveCount(6);
   await expect(log.getByRole('article').nth(2)).toContainText('Second message only once');
   await expect(log.getByRole('article').nth(4)).toContainText('Third message only once');
+});
+
+test('Export conversation saves every message with its full tool output and diagnostics', async ({ page }) => {
+  test.setTimeout(90_000);
+  await open(page);
+  await send(page, 'LARGE_TOOL_FIXTURE');
+  const reply = page.getByRole('log').getByRole('article').last();
+  await expect(reply.getByText('Large tool fixture done.')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('main').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Export conversation…' }).click();
+  const saved = path.join(daemon.data, 'conversation.txt');
+  await expect(page.getByRole('status').filter({ hasText: `Conversation saved to ${saved}` })).toBeVisible();
+  const text = await readFile(saved, 'utf8');
+  expect(text.startsWith('Lumen conversation export')).toBe(true);
+  expect(text).toContain('=== 1 · You · ');
+  expect(text).toContain('LARGE_TOOL_FIXTURE');
+  expect(text).toContain('Large tool fixture done.');
+  // Not the shortened view: the whole tool output, and the execution diagnostics.
+  expect(text).toContain('LARGE_TOOL_END');
+  expect(text).toContain('[execution]');
 });
 
 test('a shortened tool output shows everything on request', async ({ page }) => {

@@ -37,6 +37,8 @@ export const it: Catalog = {
   clearSearch: 'Cancella ricerca',
   cancel: 'Annulla',
   moreActions: 'Altre azioni',
+  exportConversation: 'Esporta conversazione…',
+  exported: (path) => `Conversazione salvata in ${path}`,
   rename: 'Rinomina',
   pin: 'Fissa',
   delete: 'Elimina',

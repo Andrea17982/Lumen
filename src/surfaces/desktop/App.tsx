@@ -115,6 +115,8 @@ function Shell({ preferences }: { preferences: Preferences }) {
   }, [project, projectId]);
   const connected = useSyncState((st) => st.connection.state === 'connected');
   const [error, setError] = useState<string | null>(null);
+  // Bound to the conversation it is about: an export that finishes after a switch shows nothing.
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const busy = !!session && isSessionActive(session.status);
 
   const hide = (value: boolean) => {
@@ -157,6 +159,19 @@ function Shell({ preferences }: { preferences: Preferences }) {
       choose(next.id);
     } catch (e) {
       setError(String(e));
+    }
+  }
+
+  // The shell asks where to save; the service writes every message with its tool calls,
+  // errors and diagnostics. Cancelling the dialog changes nothing.
+  async function exportConversation(target: Session) {
+    setError(null);
+    setNotice(null);
+    try {
+      const saved = await sync.call<{ path: string } | null>('export_session', { id: target.id, title: sessionTitle(target, t.untitled) });
+      if (saved) setNotice({ id: target.id, text: t.exported(saved.path) });
+    } catch (e) {
+      setError(errorText(e));
     }
   }
 
@@ -205,12 +220,25 @@ function Shell({ preferences }: { preferences: Preferences }) {
               <StatusBadge status={session.status} />
               <span className={s.spacer} />
               <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(details === 'project' ? null : 'project')} />
-              <Menu label={t.moreActions} items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }, { id: 'routines', label: t.routines.title }]} onAction={(id) => id === 'routines' ? setDetails(details === 'routines' ? null : 'routines') : void compact(session.id)} />
+              <Menu
+                label={t.moreActions}
+                items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }, { id: 'routines', label: t.routines.title }, { id: 'export', label: t.exportConversation, isDisabled: !connected }]}
+                onAction={(id) => {
+                  if (id === 'routines') setDetails(details === 'routines' ? null : 'routines');
+                  else if (id === 'export') void exportConversation(session);
+                  else if (id === 'compact') void compact(session.id);
+                }}
+              />
             </header>
             {preferences.taskActions && <WorktreeBar key={session.id} session={session} />}
             {error && (
               <p className={s.headerError} role="alert">
                 {error}
+              </p>
+            )}
+            {notice?.id === session.id && (
+              <p className={s.headerNotice} role="status">
+                {notice.text}
               </p>
             )}
             <div className={s.body}>

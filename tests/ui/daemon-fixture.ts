@@ -22,7 +22,7 @@ export async function startDaemon(origin: string, { welcome = false } = {}) {
     await client.call('onboarding_state', { action: 'skipSetup' });
     await client.call('add_workspace', { name: 'Fixture', folder: workspace });
   }
-  const bridge = await startBridge(client, { origin });
+  const bridge = await startBridge(client, { origin, exportDir: data });
   const stopped = () => new Promise((resolve) => (daemon.exitCode !== null || daemon.signalCode !== null ? resolve(null) : daemon.once('exit', resolve)));
   return {
     client,

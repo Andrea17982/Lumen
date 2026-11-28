@@ -15,8 +15,25 @@ if (!$PromptText) {
             if ($promptText.Contains('CLAUDE_SUBAGENT_FIXTURE')) {
                 Emit @{type='system';subtype='init';session_id='foreign-session'}
             }
+            if ($promptText.Contains('CLAUDE_STALE_TASK_FIXTURE')) {
+                # Recorded from Claude Code 2.1.327: a resumed session first closes the notice for
+                # a background task the previous process left running, with an empty result.
+                Emit @{type='system';subtype='task_notification';session_id=$env:LUMEN_FIXTURE_SESSION;status='stopped'}
+                Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
+                Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=0;result=''}
+            }
+            if ($promptText.Contains('CLAUDE_STALE_ERROR_FIXTURE')) {
+                Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
+                Emit @{type='result';subtype='error_during_execution';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$true;result='STALE_ERROR_REPORTED'}
+                Start-Sleep -Seconds 30
+                exit 0
+            }
             Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
             Emit @{type='rate_limit_event';rate_limit_info=@{unifiedWindows=@{five_hour=@{utilization=0.20;resetsAt=[DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()};seven_day=@{utilization=0.90;resetsAt=[DateTimeOffset]::UtcNow.AddMinutes(15).ToUnixTimeSeconds()}}}}
+            # --replay-user-messages: the CLI echoes the prompt, with its uuid, when it starts it.
+            if ($user.uuid -and !$promptText.Contains('CLAUDE_NO_REPLAY_FIXTURE')) {
+                Emit @{type='user';isReplay=$true;uuid=$user.uuid;session_id=$env:LUMEN_FIXTURE_SESSION;message=@{role='user';content=$promptText}}
+            }
         } else { $promptText = $firstLine + "`n" + [Console]::In.ReadToEnd() }
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
@@ -44,6 +61,17 @@ if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('CODEX_SUBAGEN
     Emit @{method='turn/completed';params=@{threadId='child-thread';turnId='child-turn';turn=@{id='child-turn';status='failed';error=@{message='CHILD_RESULT'}}}}
     Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='parent-text';type='agentMessage';text='PARENT_RESULT <!-- lumen-autopilot: done -->'}}}
     Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_NO_REPLAY_FIXTURE')) {
+    # A CLI that does not echo the prompt: its answer still ends the turn.
+    Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=1;result='NO_REPLAY_ANSWERED <!-- lumen-autopilot: done -->'}
+    Start-Sleep -Seconds 30
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_STALE_TASK_FIXTURE')) {
+    Emit @{type='assistant';session_id=$env:LUMEN_FIXTURE_SESSION;message=@{role='assistant';content=@(@{type='text';text='STALE_TASK_ANSWERED'})}}
+    Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=1;result='STALE_TASK_ANSWERED <!-- lumen-autopilot: done -->'}
     exit 0
 }
 if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_RESUME_FIXTURE')) {

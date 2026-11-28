@@ -130,6 +130,7 @@ Classification (`autonomy.rs`) matches command words and tool names. **It is not
   - Lumen refuses while work is running. Otherwise it verifies the package's signature against the key built into Lumen, backs up the database, stops the service and installs. Lumen then restarts.
   - **Go back to** reinstalls the version the last update replaced, also signed. If that version cannot read the current database, the pre-update backup is restored and the newer database is kept in the backups.
   - The installed app updates itself. The portable ZIP and the Linux package show the new version with a link to its release page.
+- **Export conversation…** in a conversation's More actions menu saves the whole conversation as a `.txt` file where you choose: each message, every tool call with its full output, errors and the execution diagnostics Lumen recorded. Agents cannot produce this themselves, because only the service keeps that history.
 
 ## Moli browser
 

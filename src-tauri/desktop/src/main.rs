@@ -61,6 +61,21 @@ async fn daemon_call(
                 .await
                 .map(|_| Value::Null)
         }
+        // The user picks the file in the system dialog: a path from the page is never used.
+        "export_session" => {
+            let id = args["id"]
+                .as_str()
+                .ok_or("Missing conversation")?
+                .to_owned();
+            let name = export_name(args["title"].as_str().unwrap_or_default());
+            let Some(path) = save_txt(&app, name).await? else {
+                return Ok(Value::Null);
+            };
+            bridge
+                .call("export_session", json!({"id": id, "path": path}))
+                .await?;
+            return Ok(json!({ "path": path }));
+        }
         _ => {}
     }
     // A screen capture must not show Lumen itself: the window steps aside for a moment.
@@ -273,6 +288,63 @@ async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     Some(folder.to_string_lossy().into_owned())
 }
 
+/// A file name from a conversation title: letters, digits, spaces, `.`, `-` and `_` only,
+/// with no leading or trailing dot.
+fn export_name(title: &str) -> String {
+    let clean: String = title
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '.' | '-' | '_'))
+        .take(80)
+        .collect();
+    let clean = clean.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    format!(
+        "{}.txt",
+        if clean.is_empty() {
+            "Lumen conversation"
+        } else {
+            clean
+        }
+    )
+}
+
+/// The system Save dialog for a text file; None when the user cancels.
+/// Ok(None) only when the user cancels; a dialog that fails is an error the page shows.
+async fn save_txt(app: &tauri::AppHandle, name: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(name)
+        .add_filter("Text", &["txt"])
+        .save_file(move |file| {
+            let _ = tx.send(file);
+        });
+    let Some(file) = rx
+        .await
+        .map_err(|_| "The Save dialog closed unexpectedly")?
+    else {
+        return Ok(None);
+    };
+    let file = file
+        .into_path()
+        .map_err(|_| "Choose a file on this computer")?;
+    Ok(Some(with_txt(file).to_string_lossy().into_owned()))
+}
+
+/// The dialog's filter does not force an extension: a name typed without `.txt` gets one.
+fn with_txt(file: PathBuf) -> PathBuf {
+    if file
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("txt"))
+    {
+        file
+    } else {
+        let mut name = file.into_os_string();
+        name.push(".txt");
+        PathBuf::from(name)
+    }
+}
+
 /// A system notification, only while the window is not in front: in front, the page shows it.
 #[tauri::command]
 fn notify(app: tauri::AppHandle, title: String, body: String) {
@@ -428,4 +500,30 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("Could not start Lumen");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{export_name, with_txt};
+    use std::path::PathBuf;
+
+    #[test]
+    fn export_names_keep_only_safe_characters() {
+        assert_eq!(
+            export_name("Riprendiamo Lumen dalla 0.17. Sono rilasciate"),
+            "Riprendiamo Lumen dalla 0.17. Sono rilasciate.txt"
+        );
+        assert_eq!(export_name(r#"..\..\evil:name*?"#), "evilname.txt");
+        assert_eq!(export_name("  "), "Lumen conversation.txt");
+        assert_eq!(export_name(&"a".repeat(200)).len(), 84);
+    }
+
+    #[test]
+    fn a_saved_name_always_ends_in_txt() {
+        let txt = |p: &str| with_txt(PathBuf::from(p));
+        assert_eq!(txt(r"C:\x\chat.txt"), PathBuf::from(r"C:\x\chat.txt"));
+        assert_eq!(txt(r"C:\x\chat.TXT"), PathBuf::from(r"C:\x\chat.TXT"));
+        assert_eq!(txt(r"C:\x\chat"), PathBuf::from(r"C:\x\chat.txt"));
+        assert_eq!(txt(r"C:\x\chat.md"), PathBuf::from(r"C:\x\chat.md.txt"));
+    }
 }

@@ -126,9 +126,13 @@
 .spacer {
   flex: 1;
 }
-.headerError {
+.headerError,
+.headerNotice {
   margin: 0;
   padding: var(--space-2) var(--space-6);
   color: var(--status-danger);
   font-size: var(--text-s);
+}
+.headerNotice {
+  color: var(--text-secondary);
 }
