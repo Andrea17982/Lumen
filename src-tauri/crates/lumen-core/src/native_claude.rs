@@ -239,6 +239,7 @@ pub async fn execute(
     let init_id = uuid::Uuid::new_v4().to_string();
     tx.send(json!({"type":"control_request","request_id":init_id,"request":{"subtype":"initialize","forwardSubagentText":true}})).await.map_err(|_| "Claude closed its input")?;
     let mut jobs = tokio::task::JoinSet::new();
+    let delivering = std::sync::Arc::new(tokio::sync::RwLock::new(()));
     let result = async {
         // Verify the installed CLI acknowledges the control protocol before starting inference.
         tokio::time::timeout(std::time::Duration::from_secs(60), async {
@@ -358,8 +359,11 @@ pub async fn execute(
                     let message = json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"approve","arguments":request}});
                     let pending = approvals.keeper.request_claude(&scope,&message)?;
                     let tx = tx.clone();
+                    let delivering = delivering.clone();
                     jobs.spawn(async move {
                         if let Ok(delivery) = pending.wait().await {
+                            // Held until the outcome is recorded, so the end of the turn cannot cut in between.
+                            let _delivering = delivering.read_owned().await;
                             if !approvals.keeper.delivery_is_current(&delivery).unwrap_or(false) { return; }
                             let decision = delivery.response["result"]["content"][0]["text"].as_str().and_then(|s|serde_json::from_str::<Value>(s).ok()).unwrap_or(json!({"behavior":"deny","message":"Invalid approval response"}));
                             let sent = tx.deliver(response(&id,decision)).await;
@@ -394,6 +398,8 @@ pub async fn execute(
             }
         }
     }.await;
+    // A decision already being written finishes recording its outcome; a later one stays undelivered.
+    let _closed = tokio::time::timeout(std::time::Duration::from_secs(2), delivering.write()).await;
     jobs.abort_all();
     if let (Some(approvals), Some(scope)) = (&input.approvals, &scope) {
         let _ = approvals.keeper.disconnect(scope, "Claude turn finished");
