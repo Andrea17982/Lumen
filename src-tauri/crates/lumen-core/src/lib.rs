@@ -1377,6 +1377,7 @@ pub async fn dispatch(
         "list_routines" => routines::__ipc_list_routines(app, core, args).await,
         "delete_routine" => routines::__ipc_delete_routine(app, core, args).await,
         "resume_at_reset" => quota_resume::__ipc_resume_at_reset(app, core, args).await,
+        "continue_elsewhere" => quota_resume::__ipc_continue_elsewhere(app, core, args).await,
         "add_account" => __ipc_add_account(app, core, args).await,
         "remove_account" => __ipc_remove_account(app, core, args).await,
         "diagnostics" => __ipc_diagnostics(app, core, args).await,

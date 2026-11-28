@@ -6,6 +6,7 @@ import { filesOf, opening, partsOf, stepBody, stepTitle, type MessageParts } fro
 import { blocks, StreamingBlocks } from './blocks';
 import { CodeBlock, Markdown } from './Markdown';
 import { NoGitCard, OrchestraCard } from '../orchestra/Orchestra';
+import { quotaText, switchText, type QuotaStop } from '../attention/quota';
 import { orchestraOf } from '../orchestra/state';
 import { Notes } from './Notes';
 import { RewindButton } from './Rewind';
@@ -69,6 +70,7 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
           {t.conversationText.autopilotStopped(reason)}
         </p>
       ))}
+      {parts.quota && <QuotaNote stop={parts.quota} />}
       {parts.errors.map((e, i) => (
         <p key={i} className={s.error} role="note">
           {e}
@@ -78,6 +80,18 @@ export const MessageView = memo(function MessageView({ message, live }: { messag
   );
 });
 
+/** Why the reply stopped on a quota, in the user's language; the provider's own words follow. */
+function QuotaNote({ stop }: { stop: QuotaStop }) {
+  const t = useT();
+  const { summary, detail } = quotaText(t, stop);
+  return (
+    <div className={s.notice} role="note">
+      <p>{summary}</p>
+      {detail && <p className={s.noticeDetail}>{detail}</p>}
+    </div>
+  );
+}
+
 /** What the agent asked and what it was told. Open questions are answered above the composer. */
 function Asked({ asked }: { asked: MessageParts['asked'] }) {
   const t = useT();
@@ -85,10 +99,12 @@ function Asked({ asked }: { asked: MessageParts['asked'] }) {
     <dl className={s.asked}>
       {asked.flatMap(({ request, result }) =>
         request.questions.map((q) => {
-          const answer = result?.cancelled ? t.attention.closed : result ? (result.answers[q.id]?.join(', ') ?? (q.secret ? t.attention.notSaved : '—')) : '…';
+          const quota = request.kind === 'quota-fallback' ? request.quota : undefined;
+          const word = (answer: string) => (quota && Object.hasOwn(t.quota.options, answer) ? t.quota.options[answer] : answer);
+          const answer = result?.cancelled ? t.attention.closed : result ? (result.answers[q.id]?.map(word).join(', ') ?? (q.secret ? t.attention.notSaved : '—')) : '…';
           return (
             <div key={`${request.id}:${q.id}`}>
-              <dt>{q.question}</dt>
+              <dt>{quota ? switchText(t, quota) : q.question}</dt>
               <dd>{answer}</dd>
             </div>
           );

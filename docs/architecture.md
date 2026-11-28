@@ -33,7 +33,7 @@ The local daemon owns storage, accounts, process and API execution, permissions,
 | `task_worktree.rs`, `pr_watch.rs` | A conversation's task worktree, Publish/Apply/Discard, follow-up of published pull requests |
 | `code_mode.rs`, `code_mcp.rs`, `rlm.rs` | Code Mode: turn-local JavaScript, its MCP helper, nested `llm()` queries |
 | `plugins.rs` | Plugin manifests, declared permissions, plugin MCP servers |
-| `quota_resume.rs`, `routines.rs`, `command_receipts.rs` | One continuation after a quota reset, recurring tasks, command receipts |
+| `quota_resume.rs`, `routines.rs`, `command_receipts.rs` | One continuation after a quota reset or on an equivalent model elsewhere, recurring tasks, command receipts |
 | `connectors.rs`, `repomap.rs`, `layers.rs`, `media.rs`, `screens.rs` | MCP user input, repository symbol map, cross-layer change review, response links and images, screenshots |
 | `execution.rs` | Content-free timing and phase snapshots |
 | `settings.rs`, `host.rs`, `usage.rs`, `limits.rs` | Preferences, event journal, quota observation |
@@ -65,7 +65,7 @@ Native continuations send only the new request plus the Lumen context that chang
 
 ## Command receipts
 
-Mutating commands carry a UUID: `create_session`, `send_message`, `cancel_run`, `answer_question`, `gatekeeper_decide`, `resume_at_reset`, and Orchestra answer, approve, cancel, resume and raise.
+Mutating commands carry a UUID: `create_session`, `send_message`, `cancel_run`, `answer_question`, `gatekeeper_decide`, `resume_at_reset`, `continue_elsewhere`, and Orchestra answer, approve, cancel, resume and raise.
 
 - The daemon commits a claim before dispatch and the reply before delivery.
 - After a transport failure a client retries once with the same UUID. The same UUID with different arguments is rejected.

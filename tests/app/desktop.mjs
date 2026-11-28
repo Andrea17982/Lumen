@@ -140,6 +140,7 @@ try {
     .catch(() => null);
   await client.call('__shutdown').catch(() => {});
   for (let i = 0; pid && i < 50 && alive(pid); i++) await sleep(100);
-  await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-  if (probe) await rm(probe, { recursive: true, force: true });
+  // A cleanup failure is reported, but never hides the failure that ended the test.
+  await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch((e) => console.error(`Could not remove ${data}: ${e.message}`));
+  if (probe) await rm(probe, { recursive: true, force: true }).catch((e) => console.error(`Could not remove ${probe}: ${e.message}`));
 }

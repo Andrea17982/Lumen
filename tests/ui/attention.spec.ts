@@ -13,9 +13,10 @@ const CLAUDE = 'Claude fixture';
 const CODEX = 'Codex fixture';
 const SECRET = 'fixture-secret-value';
 let daemon: Awaited<ReturnType<typeof startDaemon>>;
+let claudeId = '';
 test.beforeAll(async ({ baseURL }) => {
   daemon = await startDaemon(new URL(baseURL!).origin);
-  await daemon.client.call('add_account', { name: CLAUDE, provider: 'claude' });
+  claudeId = ((await daemon.client.call('add_account', { name: CLAUDE, provider: 'claude' })) as { id: string }).id;
   await daemon.client.call('add_account', { name: CODEX, provider: 'gpt' });
 });
 test.afterAll(async () => daemon?.close());
@@ -169,6 +170,33 @@ test('a reply stopped by the quota resumes once, on request, when the quota rese
   await expect(page.getByRole('log').getByText('RESUME_AFTER_QUOTA_OK')).toBeVisible({ timeout: 30_000 });
   expect((await readFile(path.join(daemon.workspace, 'quota-reset-attempts.txt'), 'utf8')).trim().split(/\r?\n/)).toEqual(['initial', 'resume']);
   await expect(resume).toHaveCount(0);
+});
+
+test('a quota stop reads in Italian and can continue on the equivalent model of another provider', async ({ page }) => {
+  test.setTimeout(90_000);
+  const chat = (await daemon.client.call('create_session', { workspace: daemon.workspace })) as { id: string };
+  await daemon.client.call('set_session_access_mode', { id: chat.id, mode: 'ask' });
+  await daemon.client.call('send_message', { id: chat.id, text: 'QUOTA_RESET_FIXTURE QUOTA_ELSEWHERE_UI', options: { mode: 'claude', accountId: claudeId, effort: '', accessMode: 'ask' } });
+  const italian = daemon.url().replace('locale=en', 'locale=it');
+  expect(italian).toContain('locale=it');
+  await page.goto(italian);
+  await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
+  const region = page.getByRole('region', { name: 'Richiede la tua attenzione' });
+  const elsewhere = region.getByRole('button', { name: new RegExp(`^Continua con .+ · ${CODEX}$`) });
+  await expect(elsewhere).toBeVisible({ timeout: 30_000 });
+  await expect(region.getByRole('button', { name: /Riprendi al ripristino della quota/ })).toBeVisible();
+  // The stop reads in the app's language; the provider's own words follow, marked as its message.
+  const note = page.getByRole('log').getByRole('note').filter({ hasText: 'Claude Code ha esaurito la quota.' });
+  await expect(note).toContainText('Lumen non ha inviato di nuovo la richiesta');
+  await expect(note).toContainText("Messaggio di Claude Code: You've hit your 5-hour usage limit");
+  await expect(page.getByRole('log').getByText(/^Rate limit reached/)).toHaveCount(0);
+  expect(await seriousViolations(page)).toEqual([]);
+  await elsewhere.click();
+  await expect(page.getByRole('log').getByText('CONTINUED_ON_CODEX')).toBeVisible({ timeout: 30_000 });
+  // A new turn elsewhere, not a replay: the Claude edit stays as it was.
+  const attempts = (await readFile(path.join(daemon.workspace, 'quota-reset-attempts.txt'), 'utf8')).trim().split(/\r?\n/);
+  expect(attempts.slice(-2)).toEqual(['initial', 'codex']);
+  await expect(elsewhere).toHaveCount(0);
 });
 
 test('rewind shows what it undoes and gives the prompt back to edit', async ({ page }) => {

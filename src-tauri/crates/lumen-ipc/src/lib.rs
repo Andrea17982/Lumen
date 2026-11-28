@@ -17,6 +17,7 @@ pub fn receipted(command: &str) -> bool {
             | "answer_question"
             | "gatekeeper_decide"
             | "resume_at_reset"
+            | "continue_elsewhere"
             | "orchestra_answer"
             | "orchestra_approve"
             | "orchestra_cancel"

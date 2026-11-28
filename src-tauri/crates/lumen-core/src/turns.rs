@@ -1825,6 +1825,97 @@ fn autopilot_outcome(text: &str) -> (&str, AutopilotOutcome) {
     (body.trim_end(), outcome)
 }
 
+/// Why a quota stop did not continue on its own, as facts the client words in the user's
+/// language. `detail` is the provider's own message.
+fn quota_stop(
+    app: &crate::host::EventHub,
+    s: &Session,
+    out: &mut Message,
+    account: &Account,
+    model: Option<&str>,
+    reason: &str,
+    detail: &str,
+) {
+    note(
+        app,
+        &s.id,
+        out,
+        "quota-stop",
+        serde_json::json!({"provider":account.provider,"account":account.name,"model":model,"reason":reason,"detail":detail}).to_string(),
+    );
+}
+
+/// Another account that can take this task at the same model tier: subscriptions first, a
+/// different provider before a second account of the same one. Accounts that are cooling,
+/// exhausted, already tried or unable to ask first in Ask mode are left out.
+async fn equivalent_elsewhere(
+    core: &Core,
+    current: &Account,
+    target: i32,
+    effort: &str,
+    access: AccessMode,
+    attempted: &std::collections::HashSet<String>,
+    cancel: &watch::Receiver<bool>,
+) -> Result<Option<(Account, ModelInfo, String)>, String> {
+    let usage = crate::read_usage(core)?;
+    let mut alternatives = core
+        .store
+        .accounts()?
+        .into_iter()
+        .filter(|b| {
+            b.id != current.id
+                && !attempted.contains(&b.id)
+                && can_take_over(core, b, access, &usage)
+        })
+        .collect::<Vec<_>>();
+    alternatives.sort_by_key(|b| (b.provider.fallback_rank(), b.provider == current.provider));
+    for candidate in alternatives {
+        match models_for(core, &candidate, false, Some(cancel.clone())).await {
+            Ok(models) => {
+                if let Some(selected) = router::select_tier(&models, target) {
+                    let effort = resolve_effort(selected, effort);
+                    let selected = selected.clone();
+                    return Ok(Some((candidate, selected, effort)));
+                }
+            }
+            Err(e) => eprintln!(
+                "Lumen: models of account {} unavailable for a quota fallback: {e}",
+                candidate.id
+            ),
+        }
+        if *cancel.borrow() {
+            return Err("Cancelled".into());
+        }
+    }
+    Ok(None)
+}
+
+/// Whether an account may take over a task stopped by another account's quota: a subscription or
+/// eligible API account in the Auto chain, not cooling or exhausted, and able to ask first when
+/// the conversation is in Ask.
+pub(crate) fn can_take_over(
+    core: &Core,
+    b: &Account,
+    access: AccessMode,
+    usage: &[AccountUsage],
+) -> bool {
+    !matches!(
+        b.provider,
+        Provider::Opencode | Provider::Cursor | Provider::Droid
+    ) && (!b.provider.is_api() || crate::api::eligible(&core.root, b))
+        && !core.limits.cooling(&b.id, now())
+        && !usage
+            .iter()
+            .find(|u| u.account_id == b.id)
+            .and_then(|u| router::usage_pressure(u, now()))
+            .is_some_and(|p| p >= 1000.0)
+        && (access != AccessMode::Ask
+            || crate::adapter_contract::contract(&b.provider)
+                .ask_first
+                .support
+                == crate::adapter_contract::Support::Available)
+}
+
 /// On a rate limit, cool the account; switch once only before observed work.
 #[allow(clippy::too_many_arguments)]
 async fn stage_fallback(
@@ -1985,81 +2076,96 @@ async fn stage_fallback(
                 );
             }
             let detail = error.strip_prefix(limits::RATE_LIMIT).unwrap_or(&error);
+            quota_stop(
+                app,
+                s,
+                out,
+                &current,
+                current_model.as_deref(),
+                "model-access",
+                detail,
+            );
             return Err(format!("Claude Code rejected {} with a spending or model-access limit. Lumen could not verify an account quota limit. {detail}", current_model.as_deref().unwrap_or("the selected model")));
         }
-        let reset = crate::quota_resume::reset_at(core, &current.id, &error);
+        let (reset, estimated) = crate::quota_resume::reset(core, &current.id, &error);
         core.limits.cool(&current.id, reset);
+        // A spending cap does not reset with a quota window: nothing to resume at.
         if !limits::is_spend_limit(&error) {
-            note(app, &s.id, out, "quota-reset", serde_json::json!({"at":reset,"accountId":current.id,"model":current_model,"effort":current_effort}).to_string());
+            note(app, &s.id, out, "quota-reset", serde_json::json!({"at":reset,"estimated":estimated,"accountId":current.id,"model":current_model,"effort":current_effort}).to_string());
         }
         core.store.save_message(&s.id, out)?;
-        if continuation.is_some()
+        let detail = error
+            .strip_prefix(limits::RATE_LIMIT)
+            .unwrap_or(&error)
+            .to_owned();
+        let resumed = continuation.is_some()
             || resume
                 .and_then(|r| r.replay.as_ref())
-                .is_some_and(|o| o.resume_only)
-        {
-            return Err(error);
-        }
-        if !guard.before_work(&out.text, *cancel.borrow()) {
-            return Err(format!("{error}. Lumen did not replay: work or output was already observed. Inspect the recorded work before retrying."));
-        }
-        if !core
+                .is_some_and(|o| o.resume_only);
+        let observed = resumed || !guard.before_work(&out.text, *cancel.borrow());
+        let fallback = core
             .settings
             .lock()
             .map(|s| s.auto_fallback)
-            .unwrap_or(true)
-        {
-            return Err(error);
-        }
-        let usage = crate::read_usage(core)?;
-        let mut alternatives = core
-            .store
-            .accounts()?
-            .into_iter()
-            .filter(|b| {
-                (!matches!(
-                    b.provider,
-                    Provider::Opencode | Provider::Cursor | Provider::Droid
-                )) && (!b.provider.is_api() || crate::api::eligible(&core.root, b))
-                    && !attempted.contains(&b.id)
-                    && !core.limits.cooling(&b.id, now())
-                    && !usage
-                        .iter()
-                        .find(|u| u.account_id == b.id)
-                        .and_then(|u| router::usage_pressure(u, now()))
-                        .is_some_and(|p| p >= 1000.0)
-                    && (access != AccessMode::Ask
-                        || crate::adapter_contract::contract(&b.provider)
-                            .ask_first
-                            .support
-                            == crate::adapter_contract::Support::Available)
-            })
-            .collect::<Vec<_>>();
-        alternatives.sort_by_key(|b| (b.provider.fallback_rank(), b.provider == current.provider));
-        let mut next = None;
-        for candidate in alternatives {
-            if let Ok(models) = models_for(core, &candidate, false, Some(cancel.clone())).await {
-                if let Some(selected) = router::select_tier(&models, target) {
-                    next = Some((candidate, selected.clone()));
-                    break;
-                }
+            .unwrap_or(true);
+        if observed || !fallback {
+            // Work was already observed, or switching alone is off: nothing is sent again by
+            // itself. The user may still choose to continue the task with an equivalent model.
+            // Only a proposal: failing to find one never hides why the reply stopped.
+            let alternative =
+                equivalent_elsewhere(core, &current, target, effort, access, &attempted, &cancel)
+                    .await
+                    .unwrap_or_else(|e| {
+                        if e != "Cancelled" {
+                            eprintln!("Lumen: no equivalent model could be proposed: {e}");
+                        }
+                        None
+                    });
+            if let Some((account, model, effort)) = &alternative {
+                note(app, &s.id, out, "quota-alternative", serde_json::json!({"accountId":account.id,"account":account.name,"provider":account.provider,"model":model.id,"modelName":model.name,"effort":effort,"weaker":router::model_tier(model) < target || account.provider == Provider::Ollama}).to_string());
             }
-            if *cancel.borrow() {
-                return Err("Cancelled".into());
-            }
+            quota_stop(
+                app,
+                s,
+                out,
+                &current,
+                current_model.as_deref(),
+                if observed { "observed" } else { "fallback-off" },
+                &detail,
+            );
+            core.store.save_message(&s.id, out)?;
+            return Err(if observed && !resumed {
+                format!("{error}. Lumen did not replay: work or output was already observed. Inspect the recorded work before retrying.")
+            } else {
+                error
+            });
         }
-        let Some((candidate, selected)) = next else {
+        core.store.save_message(&s.id, out)?;
+        let Some((candidate, selected, next_effort)) =
+            equivalent_elsewhere(core, &current, target, effort, access, &attempted, &cancel)
+                .await?
+        else {
+            quota_stop(
+                app,
+                s,
+                out,
+                &current,
+                current_model.as_deref(),
+                "no-alternative",
+                &detail,
+            );
+            core.store.save_message(&s.id, out)?;
             return Err(format!(
                 "{error}. No other available account can handle this request."
             ));
         };
-        let next_effort = resolve_effort(&selected, effort);
-        let warning =
-            if router::model_tier(&selected) < target || candidate.provider == Provider::Ollama {
-                " This task may need a stronger model; expect a possible drop in quality."
-            } else {
-                ""
-            };
+        let weaker =
+            router::model_tier(&selected) < target || candidate.provider == Provider::Ollama;
+        let warning = if weaker {
+            " This task may need a stronger model; expect a possible drop in quality."
+        } else {
+            ""
+        };
         let question = crate::interactions::Question {
             id: "switch".into(), header: "Provider limit".into(),
             question: format!("{} ({}) is out of credits or rate limited. Send the same request to {} · {} ({})?{}", current.provider.binary(), current.name, selected.name, if next_effort.is_empty() { "provider default" } else { &next_effort }, candidate.name, warning),
@@ -2067,7 +2173,16 @@ async fn stage_fallback(
             multi_select: false, secret: false, optional: false,
         };
         let connection = crate::interactions::Connection::default();
-        let (activity, receive) = connection.ask(vec![question], "quota-fallback".into())?;
+        let (mut activity, receive) = connection.ask(vec![question], "quota-fallback".into())?;
+        // The facts behind the question, so the client can word it in the user's language.
+        if let Some(mut value) = (activity.kind == "interaction")
+            .then(|| serde_json::from_str::<serde_json::Value>(&activity.text).ok())
+            .flatten()
+        {
+            value["kind"] = "quota-fallback".into();
+            value["quota"] = serde_json::json!({"provider":current.provider,"account":current.name,"toProvider":candidate.provider,"toAccount":candidate.name,"model":selected.name,"effort":next_effort,"weaker":weaker});
+            activity.text = value.to_string();
+        }
         note(app, &s.id, out, &activity.kind, activity.text);
         core.store.save_message(&s.id, out)?;
         let mut cancelled = cancel.clone();

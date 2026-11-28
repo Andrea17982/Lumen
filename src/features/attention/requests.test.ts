@@ -121,7 +121,7 @@ describe('recovery', () => {
   ];
 
   it('offers one resume at the quota reset only for a stopped reply with a native session', () => {
-    expect(recovery(stopped(quota), 'error')).toEqual({ kind: 'quota', at: 1_800_000, messageId: 'm2' });
+    expect(recovery(stopped(quota), 'error')).toEqual({ kind: 'quota', messageId: 'm2', resume: { at: 1_800_000, estimated: false }, elsewhere: null });
     expect(recovery(stopped(quota.filter((a) => a.kind !== 'native')), 'error')).toBeNull();
     expect(recovery(stopped(quota), 'running')).toBeNull();
   });
@@ -132,7 +132,25 @@ describe('recovery', () => {
     const resumed = [...waiting, { kind: 'quota-scheduled', text: JSON.stringify({ at: 1_800_000, state: 'resuming' }) }];
     expect(recovery(stopped(resumed), 'completed')).toBeNull();
     const cancelled = [...waiting, { kind: 'quota-scheduled', text: JSON.stringify({ at: 1_800_000, state: 'cancelled' }) }];
-    expect(recovery(stopped(cancelled), 'interrupted')).toEqual({ kind: 'quota', at: 1_800_000, messageId: 'm2' });
+    expect(recovery(stopped(cancelled), 'interrupted')).toEqual({ kind: 'quota', messageId: 'm2', resume: { at: 1_800_000, estimated: false }, elsewhere: null });
+  });
+
+  it('offers the proposed equivalent model elsewhere, with or without a native session', () => {
+    const proposal = { accountId: 'b', account: 'Claude', provider: 'claude', model: 'opus', modelName: 'Opus 5.5', effort: 'high', weaker: false };
+    const elsewhere = [...quota.filter((a) => a.kind !== 'native'), { kind: 'quota-alternative', text: JSON.stringify(proposal) }];
+    expect(recovery(stopped(elsewhere), 'error')).toEqual({ kind: 'quota', messageId: 'm2', resume: null, elsewhere: proposal });
+    const both = recovery(stopped([...quota, { kind: 'quota-alternative', text: JSON.stringify(proposal) }]), 'error');
+    expect(both).toMatchObject({ kind: 'quota', resume: { at: 1_800_000 }, elsewhere: proposal });
+    expect(recovery(stopped(elsewhere), 'running')).toBeNull();
+    // A finished reply offers nothing, and a partial proposal row never names an action.
+    expect(recovery(stopped(elsewhere), 'completed')).toBeNull();
+    const partial = [...quota.filter((a) => a.kind !== 'native'), { kind: 'quota-alternative', text: JSON.stringify({ accountId: 'b', model: 'opus' }) }];
+    expect(recovery(stopped(partial), 'error')).toBeNull();
+  });
+
+  it('marks a reset time Lumen had to estimate', () => {
+    const estimated = quota.map((a) => (a.kind === 'quota-reset' ? { ...a, text: JSON.stringify({ at: 1_800_000, estimated: true }) } : a));
+    expect(recovery(stopped(estimated), 'error')).toMatchObject({ resume: { at: 1_800_000, estimated: true } });
   });
 
   it('says an interrupted reply was kept and not continued', () => {

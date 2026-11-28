@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../protocol/types';
+import { it as it_ } from '../../i18n/it';
+import { quotaText } from '../attention/quota';
 import { filesOf, partsOf, roleOf, splitReasoning, stepBody, stepTitle } from './activity';
 
 const message = (text: string, activity: Message['activity']): Message => ({ id: 'm', role: 'assistant', text, activity, eventSeq: 0 });
@@ -64,6 +66,49 @@ describe('activity', () => {
     expect(parts.notices).toEqual(['blocked']);
     expect(parts.errors).toEqual([]);
     expect(parts.steps).toEqual([]);
+  });
+
+  it('words a quota stop in the user’s language in place of the daemon’s English error', () => {
+    const stop = { provider: 'gpt', model: 'gpt-6.2', reason: 'observed', detail: 'You’ve hit your usage limit. Try again at 1:18 PM.' };
+    const parts = partsOf(
+      message('Partial work.', [
+        { kind: 'error', text: 'A tool failed' },
+        { kind: 'quota-reset', text: '{"at":1}' },
+        { kind: 'quota-alternative', text: '{"accountId":"b"}' },
+        { kind: 'quota-stop', text: JSON.stringify(stop) },
+        { kind: 'adapter-error', text: '{"schemaVersion":1,"category":"quota","message":"Rate limit reached"}' },
+        { kind: 'error', text: 'Rate limit reached: You’ve hit your usage limit. Lumen did not replay.' },
+      ]),
+    );
+    expect(parts.quota).toEqual(stop);
+    expect(parts.errors).toEqual(['A tool failed']);
+    expect(parts.steps).toEqual([]);
+    expect(quotaText(it_, parts.quota!)).toEqual({
+      summary: 'Codex ha esaurito la quota. Lumen non ha inviato di nuovo la richiesta perché il lavoro o la risposta erano già iniziati. Il lavoro fatto finora resta.',
+      detail: 'Messaggio di Codex: You’ve hit your usage limit. Try again at 1:18 PM.',
+    });
+  });
+
+  it('keeps the daemon error when the quota note is malformed or the error is not the one after it', () => {
+    const failure = { kind: 'adapter-error', text: '{"category":"quota"}' };
+    const malformed = partsOf(message('', [{ kind: 'quota-stop', text: '{"provider":"gpt"}' }, failure, { kind: 'error', text: 'Rate limit reached' }]));
+    expect(malformed.quota).toBeUndefined();
+    expect(malformed.errors).toEqual(['Rate limit reached']);
+    const apart = partsOf(
+      message('', [{ kind: 'quota-stop', text: '{"provider":"gpt","reason":"observed","detail":""}' }, failure, { kind: 'tool', text: 'x' }, { kind: 'error', text: 'Later failure' }]),
+    );
+    expect(apart.errors).toEqual(['Later failure']);
+  });
+
+  it('keeps every error when the failure was not a quota', () => {
+    const parts = partsOf(
+      message('', [
+        { kind: 'quota-stop', text: '{"provider":"gpt","reason":"observed","detail":""}' },
+        { kind: 'adapter-error', text: '{"category":"failed"}' },
+        { kind: 'error', text: 'Process exited' },
+      ]),
+    );
+    expect(parts.errors).toEqual(['Process exited']);
   });
 
   it('keeps an unclosed think block as reasoning while it streams', () => {

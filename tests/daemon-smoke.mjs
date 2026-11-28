@@ -178,6 +178,14 @@ try {
       );
       assert.equal(session?.status, status, `${scenario} ${accessMode}`);
       const response = (await client.call('get_messages', { id })).at(-1);
+      if (handoff) {
+        // The switch question carries its facts, so the client can word it in the user's language.
+        const asked = JSON.parse(response.activity.find((a) => a.kind === 'interaction').text);
+        assert.equal(asked.kind, 'quota-fallback');
+        assert.equal(asked.quota.provider, 'claude');
+        assert.equal(asked.quota.account, quotaHandoff.name);
+        assert.equal(typeof asked.quota.model, 'string');
+      }
       const stop = { INCOMPLETE: 'stalled', UNCONFIRMED: 'stalled', LOOP: 'stalled', LIMIT: 'limit', BLOCKED: 'blocked' }[scenario];
       const stops = response.activity.filter((a) => a.kind === 'autopilot-stopped').map((a) => JSON.parse(a.text).reason);
       assert.deepEqual(stops, stop ? [stop] : [], `${scenario} stop reason`);
@@ -365,6 +373,67 @@ try {
     assert.equal(await read(finished.workspace, 'quota-finished.txt'), 'finished');
     await assert.rejects(read(project.folder, 'quota-effect.txt'), { code: 'ENOENT' });
     await assert.rejects(read(workspace, 'quota-effect.txt'), { code: 'ENOENT' });
+
+    // A quota stop after observed work offers an equivalent model elsewhere. Choosing it starts a
+    // new turn there that reads the recorded work; the Codex edit is not made again.
+    const elsewhereOrigin = await mkdtemp(path.join(data, 'quota-elsewhere-'));
+    git(elsewhereOrigin, 'init', '-q', '-b', 'main');
+    await writeFile(path.join(elsewhereOrigin, 'elsewhere-project.txt'), 'Project marker');
+    git(elsewhereOrigin, 'add', 'elsewhere-project.txt');
+    git(elsewhereOrigin, '-c', 'user.name=Lumen Fixture', '-c', 'user.email=lumen@example.invalid', 'commit', '-qm', 'Fixture project');
+    await client.call('add_workspace', { name: 'Elsewhere project', folder: elsewhereOrigin });
+    const elsewhereCodex = await client.call('add_account', { name: 'Elsewhere Codex', provider: 'gpt' });
+    const elsewhere = await client.call('create_session', { workspace: elsewhereOrigin });
+    const elsewhereStatus = async (expected) => {
+      for (let i = 0; i < 240; i++) {
+        const current = (await client.call('list_sessions', { search: '', offset: 0 })).find((s) => s.id === elsewhere.id);
+        if (current?.status === expected) return current;
+        await sleep(100);
+      }
+      assert.fail(`Expected ${expected}`);
+    };
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'autopilot' });
+    await client.call('send_message', {
+      id: elsewhere.id,
+      text: 'Make the change. QUOTA_ELSEWHERE_FIXTURE',
+      options: { mode: 'gpt', accountId: elsewhereCodex.id, effort: 'high', accessMode: 'autopilot' },
+    });
+    const stopped = await elsewhereStatus('error');
+    const elsewhereReply = (await client.call('get_messages', { id: elsewhere.id })).at(-1);
+    const activity = (kind) => {
+      const row = elsewhereReply.activity.findLast((step) => step.kind === kind);
+      assert(row, `the stopped reply records ${kind}`);
+      return JSON.parse(row.text);
+    };
+    const elsewhereStop = activity('quota-stop');
+    assert.equal(elsewhereStop.reason, 'observed');
+    assert.equal(elsewhereStop.provider, 'gpt');
+    assert.match(elsewhereStop.detail, /try again at 1:18 PM/);
+    const elsewhereReset = activity('quota-reset');
+    assert.equal(elsewhereReset.estimated, false, 'the stated clock time must not fall back to 15 minutes');
+    const stated = new Date(elsewhereReset.at);
+    assert.deepEqual([stated.getHours(), stated.getMinutes()], [13, 18], 'the reset is the stated 1:18 PM, local time');
+    assert.ok(elsewhereReset.at > Date.now());
+    const proposal = activity('quota-alternative');
+    assert.equal(proposal.provider, 'claude');
+    assert.notEqual(proposal.accountId, elsewhereCodex.id);
+    // Narrower permissions since the stop: nothing starts, and the proposal stays for later.
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'read-only' });
+    await assert.rejects(client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id }), /permissions changed/);
+    assert.equal((await client.call('get_messages', { id: elsewhere.id })).at(-1).id, elsewhereReply.id);
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'autopilot' });
+    await client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id });
+    const continued = await elsewhereStatus('completed');
+    assert.equal(await read(continued.workspace, 'elsewhere-effect.txt'), 'once');
+    assert.equal(await read(continued.workspace, 'elsewhere-finished.txt'), 'claude');
+    const after = await client.call('get_messages', { id: elsewhere.id });
+    assert.equal(after.find((m) => m.id === elsewhereReply.id).text, 'Recorded the Codex half.');
+    assert.match(after.at(-1).text, /Finished on Claude/);
+    assert.equal(stopped.workspace, continued.workspace);
+    // The proposal belongs to the stopped reply only.
+    await assert.rejects(client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id }), /latest interrupted reply/);
+    // Its cooldown would steer the routing checks below.
+    await client.call('remove_account', { id: elsewhereCodex.id });
 
     const secondCodex = await client.call('add_account', { name: 'Second Offline Codex', provider: 'gpt' });
     const secondClaude = await client.call('add_account', { name: 'Second Offline Claude', provider: 'claude' });
@@ -641,6 +710,7 @@ try {
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
             'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',
+            'A quota stop states the provider reset time and continues on an equivalent model elsewhere without replay',
             'Auto falls back to the OpenCode Go emergency model only when every Claude and ChatGPT account is out of quota',
           ] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',

@@ -209,6 +209,15 @@
   background: var(--status-warning-subtle);
   color: var(--status-warning-text);
 }
+.notice p {
+  margin: 0;
+}
+.notice .noticeDetail {
+  margin-top: var(--space-1);
+  font-size: var(--text-s);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .image {
   display: block;
   max-width: 100%;

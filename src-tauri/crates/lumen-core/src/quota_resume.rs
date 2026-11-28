@@ -3,17 +3,25 @@ use crate::{models::*, turns, Core};
 use std::sync::Arc;
 use tokio::sync::watch;
 
-pub fn reset_at(core: &Core, account: &str, error: &str) -> i64 {
+/// When the account can work again, and whether that time is only Lumen's estimate. Every
+/// exhausted window must reset, and the provider's own message counts as one of them.
+pub fn reset(core: &Core, account: &str, error: &str) -> (i64, bool) {
     let current = now();
-    crate::read_usage(core)
+    let windows = crate::read_usage(core)
         .unwrap_or_default()
         .iter()
         .filter(|u| u.account_id == account)
         .flat_map(|u| &u.windows)
         .filter(|w| w.used_percent >= 100.0 && w.resets_at > current)
         .map(|w| w.resets_at)
-        .max()
-        .unwrap_or_else(|| crate::limits::unlock_at(error, current))
+        .max();
+    // Lumen waits a week at most: a later or misread time is shown as an estimate.
+    let week = current + 7 * 24 * 3_600_000;
+    match windows.max(crate::limits::stated_reset(error, current)) {
+        Some(at) if at <= week => (at, false),
+        Some(_) => (week, true),
+        None => (current + 15 * 60_000, true),
+    }
 }
 
 #[crate::command]
@@ -175,6 +183,111 @@ pub fn resume_at_reset(
     Ok(())
 }
 
+const CONTINUE_ELSEWHERE: &str = "Prosegui. The previous agent stopped on a quota limit. Continue the interrupted task from the recorded work and the current files; do not repeat steps that are already done, preserve existing changes and finish the requested deliverables, including the build if requested.";
+
+/// The user's explicit choice after a quota stop: a new turn on the equivalent model Lumen
+/// proposed on another account. It reads the conversation and the files as they are; nothing
+/// the stopped reply did is replayed.
+#[crate::command]
+pub async fn continue_elsewhere(
+    app: crate::host::EventHub,
+    core: crate::CoreRef<'_>,
+    id: String,
+    message: String,
+) -> Result<Plan, String> {
+    let core = core.inner().clone();
+    let session = core.store.session(&id)?;
+    let history = core.store.messages(&id)?;
+    let output = history
+        .last()
+        .filter(|m| m.role == "assistant" && m.id == message)
+        .ok_or("Only the latest interrupted reply can continue on another model")?;
+    // The proposal belongs to a reply that stopped on a quota and has not been resumed since.
+    let stopped = output.activity.iter().any(|a| a.kind == "quota-stop")
+        && output.activity.iter().any(|a| a.kind == "error")
+        && !output
+            .activity
+            .iter()
+            .rev()
+            .find(|a| a.kind == "quota-scheduled")
+            .is_some_and(|a| !a.text.contains("\"cancelled\""));
+    if !stopped {
+        return Err("This reply did not stop on a quota, or it is already resuming".into());
+    }
+    let proposal = output
+        .activity
+        .iter()
+        .rev()
+        .find(|a| a.kind == "quota-alternative")
+        .ok_or("No equivalent model was proposed for this reply")?;
+    let proposal: serde_json::Value =
+        serde_json::from_str(&proposal.text).map_err(|_| "Invalid proposed model")?;
+    let account = crate::account(
+        &core,
+        proposal["accountId"]
+            .as_str()
+            .ok_or("Missing proposed account")?,
+    )?;
+    // Proposed when the reply stopped; the account and its model must still qualify now.
+    let usage = crate::read_usage(&core)?;
+    if !turns::can_take_over(&core, &account, session.access_mode, &usage) {
+        return Err(
+            "The proposed account cannot take this task now; choose another model in the composer"
+                .into(),
+        );
+    }
+    let model = proposal["model"]
+        .as_str()
+        .ok_or("Missing proposed model")?
+        .to_owned();
+    if !crate::models_for(&core, &account, false, None)
+        .await?
+        .iter()
+        .any(|m| m.id == model)
+    {
+        return Err(
+            "The proposed model is no longer available; choose another model in the composer"
+                .into(),
+        );
+    }
+    let request = history
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .ok_or("Missing request")?;
+    let mut options: RunOptions = serde_json::from_str(
+        &request
+            .activity
+            .iter()
+            .find(|a| a.kind == "run-options")
+            .ok_or("This older turn has no saved execution options; continue manually")?
+            .text,
+    )
+    .map_err(|_| "Invalid saved execution options")?;
+    if options.access() != session.access_mode {
+        return Err(
+            "Conversation permissions changed since the interrupted turn; continue manually".into(),
+        );
+    }
+    options.mode = account.provider.id();
+    options.account_id = Some(account.id);
+    options.model = Some(model);
+    options.effort = proposal["effort"].as_str().unwrap_or("").into();
+    options.attachments.clear();
+    options.audit_of = None;
+    options.resume_only = false;
+    turns::submit(
+        app,
+        core,
+        id,
+        CONTINUE_ELSEWHERE.into(),
+        options,
+        None,
+        None,
+    )
+    .await
+}
+
 pub(crate) fn restore(app: crate::host::EventHub, core: &Arc<Core>) {
     let schedules = core.store.quota_schedules().unwrap_or_else(|error| {
         eprintln!("Lumen: scheduled continuations could not be read: {error}");
@@ -208,7 +321,16 @@ mod tests {
         let time = now();
         let usage = serde_json::json!([{"accountId":"a","updatedAt":time,"source":"manual","windows":[{"usedPercent":100,"resetsAt":time+1000,"windowMinutes":300},{"usedPercent":100,"resetsAt":time+5000,"windowMinutes":10080},{"usedPercent":20,"resetsAt":time+9000,"windowMinutes":60}]}]);
         std::fs::write(f.root.join("usage.json"), usage.to_string()).unwrap();
-        assert_eq!(reset_at(&f.core, "a", "Resets in 1 second"), time + 5000);
+        assert_eq!(
+            reset(&f.core, "a", "Resets in 1 second"),
+            (time + 5000, false)
+        );
+        // The provider's stated time wins over an earlier window; nothing stated is an estimate.
+        assert!(reset(&f.core, "a", "Resets in 1 hour").0 >= time + 3_600_000);
+        assert!(reset(&f.core, "b", "Try again later.").1);
+        // A stated time past a week is waited for a week at most, as an estimate.
+        let (at, estimated) = reset(&f.core, "b", "Try again at Dec 3rd, 2200 1:18 PM.");
+        assert!(estimated && at <= now() + 7 * 24 * 3_600_000);
     }
 
     #[tokio::test]

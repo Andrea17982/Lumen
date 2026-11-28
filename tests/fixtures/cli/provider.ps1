@@ -116,6 +116,29 @@ if ($Provider -eq 'claude' -and $promptText.Contains('AUTOPILOT_FIXTURE_HANDOFF'
     Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
     exit 0
 }
+if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'elsewhere-project.txt')) {
+    if ($env:LUMEN_FIXTURE_RESUME -eq 'true') {throw 'Continuing elsewhere must not resume the Codex session'}
+    Add-Content -LiteralPath 'elsewhere-effect.txt' -Value 'once'
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='elsewhere-write';type='fileChange';changes=@(@{path='elsewhere-effect.txt';kind='add'})}}}
+    Emit @{method='item/agentMessage/delta';params=@{threadId='fixture-thread';turnId='fixture-turn';itemId='elsewhere-partial';delta='Recorded the Codex half.'}}
+    # Codex states its reset as a local clock time, not as a delay.
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turn=@{id='fixture-turn';status='failed';error=@{message="You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 1:18 PM."}}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('The previous agent stopped on a quota limit')) {
+    if (!$promptText.Contains('QUOTA_ELSEWHERE_FIXTURE') -or !$promptText.Contains('Recorded the Codex half.')) {throw 'Expected the conversation and the partial reply'}
+    if (@(Get-Content -LiteralPath 'elsewhere-effect.txt').Count -ne 1) {throw 'The Codex edit must exist exactly once'}
+    Set-Content -LiteralPath 'elsewhere-finished.txt' -Value 'claude'
+    Emit @{type='result';is_error=$false;result='Finished on Claude. <!-- lumen-autopilot: done -->'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('The previous agent stopped on a quota limit') -and $promptText.Contains('QUOTA_ELSEWHERE_UI')) {
+    if (@(Get-Content -LiteralPath 'quota-reset-effect.txt').Count -lt 1) {throw 'The Claude edit must already exist'}
+    Add-Content -LiteralPath 'quota-reset-attempts.txt' -Value 'codex'
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='elsewhere-answer';type='agentMessage';text='CONTINUED_ON_CODEX'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
 if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'auto-quota-project.txt')) {
     $initial = $promptText.Contains('AUTO_QUOTA_RESTART_FIXTURE')
     $resume = $env:LUMEN_FIXTURE_RESUME -eq 'true'

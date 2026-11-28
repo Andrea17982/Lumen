@@ -1,4 +1,5 @@
 import { isSessionActive, type ApprovalRequest, type ApprovalSession, type Interaction, type InteractionResult, type Message, type Scope } from '../../protocol/types';
+import { alternativeOf, type QuotaAlternative } from './quota';
 
 /**
  * Invisible formatting and control characters shown as escapes, so a command cannot hide a
@@ -97,24 +98,39 @@ function parse<T>(text: string): T | null {
   }
 }
 
-export type Recovery = { kind: 'quota'; at: number; messageId: string } | { kind: 'scheduled'; at: number } | { kind: 'interrupted' };
+export type Recovery =
+  | {
+      kind: 'quota';
+      messageId: string;
+      /** Resume the same native session once at the reset. */
+      resume: { at: number; estimated: boolean } | null;
+      /** Continue the task in a new turn on the equivalent model Lumen proposed elsewhere. */
+      elsewhere: QuotaAlternative | null;
+    }
+  | { kind: 'scheduled'; at: number }
+  | { kind: 'interrupted' };
 
 /**
  * What the latest reply offers after it stopped. A quota stop with a native session can resume
- * once at the reset, on request; any other interruption is shown and never continued by itself.
+ * once at the reset, and one with a proposed equivalent model can continue there, each on
+ * request; any other interruption is shown and never continued by itself.
  */
 export function recovery(messages: readonly Message[], status: string): Recovery | null {
   const last = messages.at(-1);
   if (!last || last.role !== 'assistant') return null;
-  const latest = (kind: string) => {
+  const latest = <T = { at?: unknown; state?: unknown; estimated?: unknown }>(kind: string) => {
     const row = last.activity.findLast((a) => a.kind === kind);
-    return row ? parse<{ at?: unknown; state?: unknown }>(row.text) : null;
+    return row ? parse<T>(row.text) : null;
   };
   const scheduled = latest('quota-scheduled');
   if (status === 'waiting' && scheduled?.state === 'waiting' && typeof scheduled.at === 'number') return { kind: 'scheduled', at: scheduled.at };
   if (isSessionActive(status)) return null;
+  // Only a reply that ended in an error or an interruption can still be recovered.
+  const stoppedOnQuota = (status === 'error' || status === 'interrupted') && last.activity.some((a) => a.kind === 'error') && scheduled?.state !== 'resuming';
   const reset = latest('quota-reset');
-  const resumable = last.activity.some((a) => a.kind === 'native') && last.activity.some((a) => a.kind === 'error');
-  if (reset && typeof reset.at === 'number' && resumable && reset.at > 0 && scheduled?.state !== 'resuming') return { kind: 'quota', at: reset.at, messageId: last.id };
+  const native = last.activity.some((a) => a.kind === 'native');
+  const resume = stoppedOnQuota && native && reset && typeof reset.at === 'number' && reset.at > 0 ? { at: reset.at, estimated: reset.estimated === true } : null;
+  const elsewhere = stoppedOnQuota ? alternativeOf(latest<unknown>('quota-alternative')) : null;
+  if (resume || elsewhere) return { kind: 'quota', messageId: last.id, resume, elsewhere };
   return status === 'interrupted' ? { kind: 'interrupted' } : null;
 }
