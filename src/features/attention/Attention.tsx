@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../design/components';
 import { Icon } from '../../design/icons';
 import { useLocale, useT } from '../../i18n';
@@ -7,6 +7,7 @@ import type { Locale } from '../../i18n';
 import { isSessionActive, type Session } from '../../protocol/types';
 import { useSyncClient, useSyncState } from '../../sync/react';
 import { openQuestions, recovery, shown, type Recovery } from './requests';
+import { elsewhereLabel } from './quota';
 import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
 import s from './Attention.module.css';
@@ -90,7 +91,8 @@ function RecoveryCard({ recovery, session }: { recovery: Recovery; session: Sess
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blocked = useSyncState((st) => st.unconfirmed.some((u) => u.sessionId === session.id));
-  const run = (command: string, args: Record<string, unknown>) => {
+  const help = useId();
+  const run =(command: string, args: Record<string, unknown>) => {
     setWorking(true);
     setError(null);
     sync
@@ -116,11 +118,27 @@ function RecoveryCard({ recovery, session }: { recovery: Recovery; session: Sess
       ) : (
         <>
           <div className={s.actions}>
-            <Button variant="primary" isDisabled={working || blocked} onPress={() => run('resume_at_reset', { id: session.id, message: recovery.messageId })}>
-              {t.recovery.quotaReset(when(locale, recovery.at))}
-            </Button>
+            {recovery.resume && (
+              <Button variant="primary" aria-describedby={`${help}-resume`} isDisabled={working || blocked} onPress={() => run('resume_at_reset', { id: session.id, message: recovery.messageId })}>
+                {(recovery.resume.estimated ? t.recovery.quotaResetEstimated : t.recovery.quotaReset)(when(locale, recovery.resume.at))}
+              </Button>
+            )}
+            {recovery.elsewhere && (
+              <Button variant={recovery.resume ? 'secondary' : 'primary'} aria-describedby={`${help}-elsewhere`} isDisabled={working || blocked} onPress={() => run('continue_elsewhere', { id: session.id, message: recovery.messageId })}>
+                {elsewhereLabel(t, recovery.elsewhere)}
+              </Button>
+            )}
           </div>
-          <p className={s.meta}>{t.recovery.quotaHelp}</p>
+          {recovery.resume && (
+            <p id={`${help}-resume`} className={s.meta}>
+              {t.recovery.quotaHelp}
+            </p>
+          )}
+          {recovery.elsewhere && (
+            <p id={`${help}-elsewhere`} className={s.meta}>
+              {recovery.elsewhere.weaker ? `${t.recovery.elsewhereHelp} ${t.recovery.elsewhereWeaker}` : t.recovery.elsewhereHelp}
+            </p>
+          )}
         </>
       )}
       {error && (

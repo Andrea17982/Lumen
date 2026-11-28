@@ -40,9 +40,8 @@
   --row-height: 32px;
 
   /* Motion. */
-  --duration-fast: 120ms;
-  --duration-normal: 200ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-duration: 200ms;
+  --motion: var(--motion-duration) cubic-bezier(0.2, 0, 0, 1);
 
   --sidebar-width: 264px;
   --conversation-width: 760px;
@@ -55,8 +54,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --duration-fast: 0ms;
-    --duration-normal: 0ms;
+    --motion-duration: 0ms;
   }
 }
 

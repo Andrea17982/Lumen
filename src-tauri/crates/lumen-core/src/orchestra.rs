@@ -1501,7 +1501,7 @@ pub async fn execute(
     if !st.read_only && top.is_none() {
         return Err("Orchestra needs a Git repository in the conversation's current folder to apply changes. Change the conversation folder or initialize the repository.".into());
     }
-    let lock = turns::workspace_lock(core, s)?;
+    let lock = turns::workspace_lock(core, s).await?;
     let other_sessions = turns::conversations_on_workspace(core, s);
     if !other_sessions.is_empty() && !st.read_only {
         turns::note(

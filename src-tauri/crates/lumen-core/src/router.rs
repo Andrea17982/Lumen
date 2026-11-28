@@ -729,7 +729,7 @@ pub fn review_partner<'a>(accounts: &'a [Account], writer: &Account) -> Option<&
 }
 /// Model class: fast, balanced, flagship, frontier. Unknown named models are balanced.
 pub fn model_tier(m: &ModelInfo) -> i32 {
-    let name = format!("{} {}", m.id, m.name).to_lowercase();
+    let name = format!("{} {}", m.resolved_model(), m.name).to_lowercase();
     let belongs_to = |families: &[&str]| {
         name.split(|c: char| !c.is_alphanumeric())
             .any(|word| families.contains(&word))
@@ -750,16 +750,64 @@ fn is_alias(m: &ModelInfo) -> bool {
 }
 /// Closest catalog model to a class; named models beat aliases, then catalog defaults break ties.
 pub fn select_tier(models: &[ModelInfo], target: i32) -> Option<&ModelInfo> {
-    // Terra is also acceptable for small tasks, but prefer Luna when present.
-    models.iter().min_by_key(|m| {
-        let tier = model_tier(m);
-        (
-            (tier - target).abs(),
-            tier < target,
-            is_alias(m),
-            !m.is_default,
-        )
-    })
+    let mut latest = std::collections::HashMap::new();
+    let versioned: Vec<_> = models
+        .iter()
+        .map(|model| (model, model_version(model)))
+        .collect();
+    for (model, version) in &versioned {
+        if let Some((family, version)) = version {
+            let newest = latest
+                .entry((*family, model_tier(model)))
+                .or_insert(version);
+            *newest = (*newest).max(version);
+        }
+    }
+    versioned
+        .iter()
+        .filter(|(model, version)| {
+            version.as_ref().is_none_or(|(family, version)| {
+                latest.get(&(*family, model_tier(model))) == Some(&version)
+            })
+        })
+        .map(|(model, _)| *model)
+        .min_by_key(|m| {
+            let tier = model_tier(m);
+            (
+                tier == 3 && target < 3,
+                (tier - target).abs(),
+                tier < target,
+                is_alias(m),
+                !m.is_default,
+            )
+        })
+}
+
+fn model_version(model: &ModelInfo) -> Option<(&'static str, Vec<u16>)> {
+    const FAMILIES: &[&str] = &[
+        "opus", "sonnet", "haiku", "fable", "mythos", "astra", "sol", "terra", "luna",
+    ];
+    let id = model.resolved_model().to_ascii_lowercase();
+    let words: Vec<_> = id.split(|c: char| !c.is_ascii_alphanumeric()).collect();
+    let index = words.iter().position(|word| FAMILIES.contains(word))?;
+    let family = FAMILIES
+        .iter()
+        .copied()
+        .find(|family| *family == words[index])?;
+    let version: Vec<_> = words[index + 1..]
+        .iter()
+        .take_while(|s| s.len() <= 3)
+        .map_while(|s| s.parse::<u16>().ok())
+        .collect();
+    let version = if version.is_empty() && words.first() == Some(&"gpt") {
+        words[1..index]
+            .iter()
+            .map_while(|s| s.parse::<u16>().ok())
+            .collect()
+    } else {
+        version
+    };
+    (!version.is_empty()).then_some((family, version))
 }
 /// Use catalog IDs, never manufacture a model name unavailable to the account.
 #[cfg(test)]
@@ -1153,6 +1201,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, name)| ModelInfo {
+                resolved_id: None,
                 id: name.to_string(),
                 name: name.to_string(),
                 description: String::new(),
@@ -1235,6 +1284,29 @@ mod tests {
         ));
         assert_eq!(totals[0], 32);
         assert!(totals[1] >= 15 && totals[4] >= 8, "{totals:?}");
+    }
+
+    #[test]
+    fn latest_catalog_versions_are_used_without_a_frontier_upgrade() {
+        let mut models = catalog(&["fable-5-2", "astra", "fable-5-10", "opus-5-9", "opus-5-10"]);
+        models[0].is_default = true;
+        models[3].is_default = true;
+        for _ in 0..models.len() {
+            assert_ne!(select_tier(&models, 3).unwrap().id, "fable-5-2");
+            assert_eq!(select_tier(&models, 2).unwrap().id, "opus-5-10");
+            models.rotate_left(1);
+        }
+        let mut aliases = catalog(&["fable", "claude-fable-5-9"]);
+        aliases[0].resolved_id = Some("claude-fable-5-10".into());
+        assert_eq!(select_tier(&aliases, 3).unwrap().id, "fable");
+        aliases[0].resolved_id = Some("claude-fable-5-8".into());
+        assert_eq!(select_tier(&aliases, 3).unwrap().id, "claude-fable-5-9");
+        assert_eq!(
+            select_tier(&catalog(&["gpt-6.2-sol", "gpt-6.10-sol"]), 2)
+                .unwrap()
+                .id,
+            "gpt-6.10-sol"
+        );
     }
 
     #[test]
@@ -1476,6 +1548,7 @@ mod tests {
     #[test]
     fn named_models_beat_catalog_aliases() {
         let m = |id: &str, name: &str, default: bool| ModelInfo {
+            resolved_id: None,
             id: id.into(),
             name: name.into(),
             description: String::new(),

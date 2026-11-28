@@ -98,6 +98,7 @@ test('conversations are renamed, pinned, reordered, moved and deleted from the s
 });
 
 test('the project panel saves notes to LUMEN.md, and the sidebar hides with Ctrl+B', async ({ page }) => {
+  await daemon.client.call('create_session', { workspace: daemon.workspace });
   await page.goto(daemon.url());
   await page.getByRole('button', { name: /^Project: / }).click();
   await page.getByRole('menuitem', { name: 'Fixture' }).click();
@@ -108,12 +109,31 @@ test('the project panel saves notes to LUMEN.md, and the sidebar hides with Ctrl
   await panel.getByRole('button', { name: 'Save notes' }).click();
   await expect(panel.getByText('Saved', { exact: true })).toBeVisible();
   expect(await readFile(path.join(daemon.workspace, 'LUMEN.md'), 'utf8')).toContain('Use pnpm. Never push to main.');
-  await expect(panel.getByText('Nothing recorded yet.')).toBeVisible();
+  await expect(panel.getByText('No checks found in this project.')).toBeVisible();
+  await expect(panel.getByText('Nothing recorded yet.')).toHaveCount(0);
   expect(await seriousViolations(page)).toEqual([]);
+  const before = await page.getByRole('button', { name: 'Hide sidebar' }).boundingBox();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.keyboard.press('Control+b');
   await expect(nav(page)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show sidebar' }).click();
+  const toggle = page.getByRole('button', { name: 'Show sidebar' });
+  expect(await toggle.boundingBox()).toEqual(before);
+  await toggle.click();
   await expect(nav(page)).toBeVisible();
+  const compose = page.getByRole('textbox', { name: 'Describe what you want to do' });
+  const newTask = page.getByRole('button', { name: 'New task' });
+  const badge = page.locator('main > header [data-tone]');
+  const radius = () => compose.evaluate((el) => getComputedStyle(el.parentElement!).borderTopLeftRadius);
+  expect(await radius()).toBe('6px');
+  await expect(newTask).toHaveCSS('border-top-left-radius', '6px');
+  await expect(badge).toHaveCSS('border-top-left-radius', '6px');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('radio', { name: 'General' }).click({ force: true });
+  await page.getByRole('radio', { name: 'Satin' }).click({ force: true });
+  await page.getByRole('button', { name: 'Back to the conversation' }).click();
+  expect(await radius()).toBe('10px');
+  await expect(newTask).toHaveCSS('border-top-left-radius', '10px');
+  await expect(badge).toHaveCSS('border-top-left-radius', '10px');
 });
 
 test('500 conversations: search finds one at once, and the rest come a page at a time', async ({ page }) => {

@@ -77,6 +77,7 @@ pub fn previous(messages: &[Message]) -> Option<Verdict> {
                 .unwrap_or(&activity.text)
                 .trim();
             let model = crate::models::ModelInfo {
+                resolved_id: None,
                 id: name.into(),
                 name: String::new(),
                 description: String::new(),

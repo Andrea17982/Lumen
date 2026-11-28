@@ -694,7 +694,7 @@ async fn exchange(reader: &mut BufReader<TcpStream>, value: Value) -> Value {
         .unwrap()
 }
 
-async fn initialize_mcp(reader: &mut BufReader<TcpStream>) {
+async fn initialize_mcp(reader: &mut BufReader<TcpStream>) -> Value {
     let reply=exchange(reader,json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}})).await;
     assert_eq!(reply["result"]["protocolVersion"], "2025-06-18");
     mcp::write_frame(
@@ -703,12 +703,34 @@ async fn initialize_mcp(reader: &mut BufReader<TcpStream>) {
     )
     .await
     .unwrap();
-    let tools = exchange(
+    exchange(
         reader,
         json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
     )
-    .await;
-    assert_eq!(tools["result"]["tools"][0]["name"], "approve");
+    .await
+}
+
+#[tokio::test]
+async fn claude_native_screen_bridge_does_not_expose_approval() {
+    let k = keeper();
+    let s = scope(&k, Provider::Claude);
+    let endpoint = mcp::ClaudeEndpoint::bind(k, s)
+        .await
+        .unwrap()
+        .screens_only();
+    let mut reader = mcp_client(&endpoint).await;
+    let task = tokio::spawn(endpoint.serve());
+    let tools = initialize_mcp(&mut reader).await;
+    let names: Vec<_> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["list_screens", "capture_screen"]);
+    let rejected = exchange(&mut reader, fixture("bash")).await;
+    assert_eq!(rejected["error"]["code"], -32601);
+    task.abort();
 }
 
 #[tokio::test]
@@ -720,7 +742,8 @@ async fn real_mcp_transport_roundtrip_and_partial_frames_preserve_decisions() {
         .unwrap();
     let mut reader = mcp_client(&endpoint).await;
     let task = tokio::spawn(endpoint.serve());
-    initialize_mcp(&mut reader).await;
+    let tools = initialize_mcp(&mut reader).await;
+    assert_eq!(tools["result"]["tools"][0]["name"], "approve");
     let mut events = k.subscribe();
     mcp::write_frame(reader.get_mut(), &fixture("bash"))
         .await

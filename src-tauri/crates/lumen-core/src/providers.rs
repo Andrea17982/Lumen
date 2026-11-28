@@ -859,25 +859,22 @@ pub fn invocation_args(
                     ["--dangerously-skip-permissions", "--tools", "default"].map(str::to_owned),
                 );
             } else {
-                // Planning, subagents and the read-only git/verification commands let the model
+                // Planning and the read-only git/verification commands let the model
                 // check its own work. Bash is offered, but dontAsk only lets the listed command
                 // prefixes run; anything else is refused without a prompt.
                 let (tools, allowed) = if access == AccessMode::FileEdits {
                     (
-                        "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Agent,AskUserQuestion,Bash",
+                        "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,AskUserQuestion,Bash",
                         format!(
-                            "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,Task,Agent,{},{}",
+                            "Read,Glob,Grep,Edit,Write,NotebookEdit,TodoWrite,{},{}",
                             READ_COMMANDS.join(","),
                             CHECK_COMMANDS.join(",")
                         ),
                     )
                 } else {
                     (
-                        "Read,Glob,Grep,TodoWrite,Task,Agent,AskUserQuestion,Bash",
-                        format!(
-                            "Read,Glob,Grep,TodoWrite,Task,Agent,{}",
-                            READ_COMMANDS.join(",")
-                        ),
+                        "Read,Glob,Grep,TodoWrite,AskUserQuestion,Bash",
+                        format!("Read,Glob,Grep,TodoWrite,{}", READ_COMMANDS.join(",")),
                     )
                 };
                 args.extend(
@@ -897,7 +894,10 @@ pub fn invocation_args(
             // Autopilot must expose the native toolset and the user's native policies.
             // A wrapper-wide deny rule otherwise silently defeats full access.
             if access != AccessMode::Autopilot {
-                args.extend(["--disallowedTools".into(), DENY.join(",")]);
+                args.extend([
+                    "--disallowedTools".into(),
+                    [DENY.as_slice(), &["Agent", "Task"]].concat().join(","),
+                ]);
             }
             if !effort.is_empty() {
                 args.extend(["--effort".into(), effort.into()]);
@@ -1284,6 +1284,14 @@ mod tests {
         let i = ro.iter().position(|a| a == "--allowedTools").unwrap();
         assert!(ro[i + 1].contains("Bash(git diff:*)"));
         assert!(!ro[i + 1].contains("Edit") && !ro[i + 1].contains("cargo"));
+        for profile in [&args, &ro] {
+            let i = profile
+                .iter()
+                .position(|a| a == "--disallowedTools")
+                .unwrap();
+            let denied: Vec<_> = profile[i + 1].split(',').collect();
+            assert!(denied.contains(&"Agent") && denied.contains(&"Task"));
+        }
     }
     #[test]
     fn claude_reports_input_tokens_including_cache() {

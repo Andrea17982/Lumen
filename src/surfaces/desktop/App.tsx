@@ -11,7 +11,6 @@ import type { Language, Preferences } from '../../features/settings/General';
 import { Settings } from '../../features/settings/Settings';
 import { Welcome } from '../../features/welcome/Welcome';
 import { Tour } from '../../features/welcome/Tour';
-import welcomeStyles from '../../features/welcome/Welcome.module.css';
 import { WorktreeBar } from '../../features/worktree/Worktree';
 import { usePluginThemeStyle } from '../../features/settings/useThemeStyle';
 import { useNotifications } from './notifications';
@@ -32,6 +31,7 @@ export function App() {
     const saved = remembered('lumen.language');
     return saved === 'en' || saved === 'it' ? saved : 'system';
   });
+  const [taskActions, chooseTaskActions] = useState(() => remembered('lumen.taskActions') === 'on');
   // Tests pin the language in the URL; otherwise the saved choice or the system's.
   const query = new URLSearchParams(location.search).get('locale');
   const locale: Locale = query === 'it' || query === 'en' ? query : language === 'system' ? systemLocale() : language;
@@ -44,7 +44,10 @@ export function App() {
   };
   return (
     <I18nProvider locale={locale}>
-      <Shell preferences={{ appearance, setAppearance, language, setLanguage }} />
+      <Shell preferences={{ appearance, setAppearance, language, setLanguage, taskActions, setTaskActions: (on) => {
+        chooseTaskActions(on);
+        remember('lumen.taskActions', on ? 'on' : null);
+      } }} />
     </I18nProvider>
   );
 }
@@ -77,7 +80,7 @@ function Shell({ preferences }: { preferences: Preferences }) {
   const [outsideList, setOutsideList] = useState<Session | null>(null);
   const [projectId, setProjectId] = useState<string | null>(() => remembered('lumen.project'));
   const [hidden, setHidden] = useState(() => remembered('lumen.sidebar') === 'hidden');
-  const [details, setDetails] = useState(false);
+  const [details, setDetails] = useState<'project' | 'routines' | null>(null);
   const [settings, setSettings] = useState(false);
   const [welcome, setWelcome] = useState<boolean | null>(null);
   const [tour, setTour] = useState<number | null>(null);
@@ -112,6 +115,8 @@ function Shell({ preferences }: { preferences: Preferences }) {
   }, [project, projectId]);
   const connected = useSyncState((st) => st.connection.state === 'connected');
   const [error, setError] = useState<string | null>(null);
+  // Bound to the conversation it is about: an export that finishes after a switch shows nothing.
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const busy = !!session && isSessionActive(session.status);
 
   const hide = (value: boolean) => {
@@ -157,6 +162,19 @@ function Shell({ preferences }: { preferences: Preferences }) {
     }
   }
 
+  // The shell asks where to save; the service writes every message with its tool calls,
+  // errors and diagnostics. Cancelling the dialog changes nothing.
+  async function exportConversation(target: Session) {
+    setError(null);
+    setNotice(null);
+    try {
+      const saved = await sync.call<{ path: string } | null>('export_session', { id: target.id, title: sessionTitle(target, t.untitled) });
+      if (saved) setNotice({ id: target.id, text: t.exported(saved.path) });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
   function closeWelcome(startTour: boolean) {
     setWelcome(false);
     setSettings(false);
@@ -173,12 +191,17 @@ function Shell({ preferences }: { preferences: Preferences }) {
 
   return (
     <div className={s.window} data-sidebar={hidden ? 'hidden' : undefined} ref={tourRoot}>
-      {!hidden && <Sidebar project={project} selected={selected} onSelect={choose} onProject={openProject} onHide={() => hide(true)} onSettings={() => setSettings(!settings)} footer={<ConnectionStatus />} />}
+      <div className={s.sidebarToggle}>
+        <LogoButton label={hidden ? t.sidebar.show : t.sidebar.hide} onPress={() => hide(!hidden)} />
+      </div>
+      <div className={s.sidebarLane} inert={hidden} aria-hidden={hidden || undefined}>
+        <Sidebar project={project} selected={selected} onSelect={choose} onProject={openProject} hidden={hidden} onSettings={() => setSettings(!settings)} footer={<ConnectionStatus />} />
+      </div>
       <main className={s.main} ref={main} tabIndex={-1}>
         <Banners />
         {tour !== null && <Tour index={tour} onStep={setTour} root={tourRoot} onClose={closeTour} />}
         {tour === null && !settings && onboarding?.existing && onboarding.setup === 'pending' && welcome !== false && (
-          <div className={welcomeStyles.invite} role="region" aria-labelledby="welcome-invite">
+          <div className={s.banner} role="region" aria-labelledby="welcome-invite">
             <span id="welcome-invite">{t.welcome.invite}</span>
             <Button variant="plain" onPress={() => setWelcome(true)}>{t.welcome.reopen}</Button>
             <IconButton icon="close" label={t.welcome.dismiss} onPress={() => {
@@ -189,37 +212,44 @@ function Shell({ preferences }: { preferences: Preferences }) {
           </div>
         )}
         {settings || tourSection ? (
-          <Settings key={tourSection ?? 'settings'} initialSection={tourSection} preferences={preferences} onClose={() => { setSettings(false); if (tourSection) closeTour(); }} onWelcome={() => { setTour(null); setWelcome(true); }} onTour={() => { setSettings(false); setTour(0); }} leading={hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />} />
+          <Settings key={tourSection ?? 'settings'} initialSection={tourSection} preferences={preferences} onClose={() => { setSettings(false); if (tourSection) closeTour(); }} onWelcome={() => { setTour(null); setWelcome(true); }} onTour={() => { setSettings(false); setTour(0); }} />
         ) : session ? (
           <>
             <header className={s.header}>
-              {hidden && <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />}
               <h1>{sessionTitle(session, t.untitled)}</h1>
               <StatusBadge status={session.status} />
               <span className={s.spacer} />
-              <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(!details)} />
-              <Menu label={t.moreActions} items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }]} onAction={() => void compact(session.id)} />
+              <IconButton icon="folder" label={t.project.open} onPress={() => setDetails(details === 'project' ? null : 'project')} />
+              <Menu
+                label={t.moreActions}
+                items={[{ id: 'compact', label: t.recovery.compact, isDisabled: !connected || busy }, { id: 'routines', label: t.routines.title }, { id: 'export', label: t.exportConversation, isDisabled: !connected }]}
+                onAction={(id) => {
+                  if (id === 'routines') setDetails(details === 'routines' ? null : 'routines');
+                  else if (id === 'export') void exportConversation(session);
+                  else if (id === 'compact') void compact(session.id);
+                }}
+              />
             </header>
-            <WorktreeBar key={session.id} session={session} />
+            {preferences.taskActions && <WorktreeBar key={session.id} session={session} />}
             {error && (
               <p className={s.headerError} role="alert">
                 {error}
+              </p>
+            )}
+            {notice?.id === session.id && (
+              <p className={s.headerNotice} role="status">
+                {notice.text}
               </p>
             )}
             <div className={s.body}>
               <div className={s.column}>
                 <Conversation key={session.id} session={session} />
               </div>
-              {details && <ProjectPanel key={session.id} session={session} onClose={() => setDetails(false)} />}
+              {details && <ProjectPanel key={details === 'routines' ? session.id : project?.folder ?? session.workspace} session={session} folder={project?.folder ?? session.workspace} routines={details === 'routines'} onClose={() => setDetails(null)} />}
             </div>
           </>
         ) : (
           <>
-            {hidden && (
-              <header className={s.header}>
-                <LogoButton label={t.sidebar.show} onPress={() => hide(false)} />
-              </header>
-            )}
             <p className={s.empty}>{project ? t.chooseSession : t.sidebar.noProjects}</p>
           </>
         )}

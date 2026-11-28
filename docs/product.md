@@ -51,7 +51,8 @@ Every Orchestra run ends with **Team result by Lumen**. Lumen writes this summar
 
   In the other modes every question waits for you.
 - **Quota.** Exhausted or cooling accounts are excluded before routing. A runtime quota error offers the next model and asks before sending. It warns when that model is weaker. Once work has been observed, Lumen never replays it: partial output stays, and the account cools down.
-- **Resume at quota reset.** This schedules one native continuation with the same account, model and permissions. The local service keeps it across window closes and restarts.
+- **Resume at quota reset.** This schedules one native continuation with the same account, model and permissions. The local service keeps it across window closes and restarts. The time is the one the provider states, such as Codex's "try again at 1:18 PM" or Claude Code's "resets 3pm". When the provider gives none, the button says the time is an estimate.
+- **Continue on an equivalent model.** After a quota stop, Lumen can propose the same tier on another account, preferring another provider, for example Opus after GPT. Choosing it starts a new turn there with the same permissions. That turn reads the conversation and the files as they are, and nothing already done is sent again.
 - **Continuation.** "Prosegui" inherits the previous task class. A weaker model requires your consent.
 - **Codex Autopilot.** Lumen continues unfinished work in the same native thread while it observes new tool evidence. Repeated operations with the same outcome do not extend the run. It tries once to recover when progress stalls and pauses for your answer to any structured question. A run stops after 10 attempts at most. When the agent reports a blocker, progress stalls or the limit is reached, the reply and its work are kept, a note says why it stopped and the conversation is marked **Partial**: send a message to continue. Errors are reserved for real failures of Lumen or the provider.
 
@@ -65,13 +66,15 @@ A large Auto task that writes files runs in the conversation's own worktree. Sma
   - `.env*` and `*.local*` files up to 1 MB are copied in.
   - Dependencies are installed from the lockfile, in Autopilot only.
 - **Commit after checks.** Every turn that ends without failing checks is committed. The message ends with `Generated-by: Lumen`.
-- **Publish** shows you the remote, base, branch, title and body, then pushes and opens a pull request with `gh`. **Apply** copies the changes into the folder. **Discard** deletes the worktree and its branch.
+- Enable **Show Publish PR and Undo changes** in **Settings › General**. **Publish PR** pushes the task branch to the GitHub repository configured as `origin` and opens or updates its pull request. **Undo changes** returns the conversation to the project and shows where the branch and task files are kept for recovery.
 - **After Publish**, Lumen checks the pull request every minute.
   - Failed CI and change requests from people with write access come back as a correction turn. CI logs and review text are passed as data, not instructions.
   - Lumen stops after three rounds or after a correction that produces no commit.
   - It merges once all checks are green. When branch protection blocks the merge, it enables GitHub auto-merge instead.
 
 Publish needs an `origin` remote and a signed-in GitHub CLI.
+
+Press **Ctrl+Enter** to queue a message while a turn is active. Lumen starts queued messages in order after a successful turn. After Stop or an interruption, use **Return to composer** to recover a queued message.
 
 ## Memory, recipes, recurring tasks
 
@@ -127,6 +130,7 @@ Classification (`autonomy.rs`) matches command words and tool names. **It is not
   - Lumen refuses while work is running. Otherwise it verifies the package's signature against the key built into Lumen, backs up the database, stops the service and installs. Lumen then restarts.
   - **Go back to** reinstalls the version the last update replaced, also signed. If that version cannot read the current database, the pre-update backup is restored and the newer database is kept in the backups.
   - The installed app updates itself. The portable ZIP and the Linux package show the new version with a link to its release page.
+- **Export conversation…** in a conversation's More actions menu saves the whole conversation as a `.txt` file where you choose: each message, every tool call with its full output, errors and the execution diagnostics Lumen recorded. Agents cannot produce this themselves, because only the service keeps that history.
 
 ## Moli browser
 

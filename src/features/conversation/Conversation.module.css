@@ -36,7 +36,7 @@
 .message[data-role='user'] .userText {
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-sunken);
   line-height: var(--leading-body);
   white-space: pre-wrap;
@@ -53,7 +53,7 @@
 .attachments li {
   padding: 1px var(--space-2);
   border: 1px solid var(--separator);
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   color: var(--text-secondary);
   font: var(--text-s) var(--font-mono);
 }
@@ -73,7 +73,7 @@
   gap: var(--space-2);
   min-width: 0;
   cursor: default;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   outline: none;
 }
 .reasoning > summary:focus-visible,
@@ -87,7 +87,7 @@
   content: '›';
   display: inline-block;
   width: 10px;
-  transition: transform var(--duration-fast) var(--ease-standard);
+  transition: transform var(--motion);
 }
 .reasoning[open] > summary::before,
 .steps[open] > summary::before,
@@ -142,7 +142,7 @@
 .truncated button,
 .fileButton {
   border: 0;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   padding: 2px var(--space-2);
   background: var(--surface-hover);
   color: var(--text-primary);
@@ -185,11 +185,11 @@
 }
 .diff [data-line='add'] {
   background: var(--status-success-subtle);
-  color: var(--status-success-text);
+  color: color-mix(in oklch, var(--status-success-text) 65%, var(--text-primary));
 }
 .diff [data-line='remove'] {
   background: var(--status-danger-subtle);
-  color: var(--status-danger-text);
+  color: color-mix(in oklch, var(--status-danger-text) 65%, var(--text-primary));
 }
 .diff [data-line='hunk'] {
   color: var(--text-tertiary);
@@ -209,6 +209,15 @@
   background: var(--status-warning-subtle);
   color: var(--status-warning-text);
 }
+.notice p {
+  margin: 0;
+}
+.notice .noticeDetail {
+  margin-top: var(--space-1);
+  font-size: var(--text-s);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .image {
   display: block;
   max-width: 100%;
@@ -222,7 +231,7 @@
   transform: translateX(-50%);
   padding: var(--space-1) var(--space-4);
   border: 1px solid var(--border-control);
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
   box-shadow: var(--shadow-raised);
   color: var(--text-primary);
@@ -257,7 +266,7 @@
   min-height: var(--control-height);
   margin-top: var(--space-1);
   opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-standard);
+  transition: opacity var(--motion);
 }
 .message:hover .messageActions,
 .messageActions:focus-within {

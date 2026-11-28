@@ -5,7 +5,7 @@
   margin: var(--space-2) 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-control);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
 }
 .card[data-state='closed'] {

@@ -19,6 +19,7 @@ pub fn models() -> Vec<ModelInfo> {
 fn from_settings(settings: &Value) -> Vec<ModelInfo> {
     let configured = settings["sessionDefaultSettings"]["model"].as_str();
     let mut rows = vec![ModelInfo {
+        resolved_id: None,
         id: DEFAULT_MODEL.into(),
         name: match configured {
             Some(m) if valid(m) => format!("Droid default ({m})"),
@@ -36,6 +37,7 @@ fn from_settings(settings: &Value) -> Vec<ModelInfo> {
     {
         if valid(id) && !rows.iter().any(|m| m.id == id) {
             rows.push(ModelInfo {
+                resolved_id: None,
                 id: id.into(),
                 name: id.into(),
                 description: "From your Droid settings".into(),

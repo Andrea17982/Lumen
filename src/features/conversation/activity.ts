@@ -1,4 +1,5 @@
 import type { Activity, Interaction, InteractionResult, Message } from '../../protocol/types';
+import { quotaStopOf, type QuotaStop } from '../attention/quota';
 
 /** How one activity kind appears in a message. Unknown kinds become generic steps. */
 export type Role = 'step' | 'reasoning' | 'error' | 'notice' | 'image' | 'attachments' | 'model' | 'plan' | 'question' | 'hidden' | 'later';
@@ -10,7 +11,7 @@ const HIDDEN = new Set([
   'latency', 'provider-event', 'pid', 'session', 'auto-assignment', 'tool-end', 'class', 'route',
   'code-metrics', 'start', 'done', 'status', 'workspace', 'task-worktree', 'tool-start', 'window',
   // Shown with the question it answers; quota rows feed the recovery card above the composer.
-  'interaction-result', 'quota-reset', 'quota-scheduled',
+  'interaction-result', 'quota-reset', 'quota-scheduled', 'quota-stop', 'quota-alternative',
 ]);
 // Rendered by later milestones: Orchestra (M7), quota and cost (M6),
 // memory and recipes (M8). Until then they stay out of the step list rather than show raw JSON.
@@ -49,6 +50,8 @@ export interface MessageParts {
   why?: string;
   /** Questions the agent asked in this reply, with what was answered (secret answers are not kept). */
   asked: { request: Interaction; result?: InteractionResult }[];
+  /** Why the reply stopped on a quota, worded by the client in place of the daemon's English error. */
+  quota?: QuotaStop;
 }
 
 const THINK = /<(think|thinking)>/i;
@@ -77,13 +80,20 @@ export function partsOf(message: Message): MessageParts {
   const split = message.role === 'assistant' ? splitReasoning(message.text.replace(DIRECTIVES, '')) : { reasoning: '', answer: message.text };
   const parts: MessageParts = { answer: split.answer, reasoning: '', steps: [], errors: [], notices: [], images: [], attachments: [], asked: [] };
   const reasoning: string[] = [];
+  const stop = message.activity.findLast((a) => a.kind === 'quota-stop');
+  parts.quota = (stop && quotaStopOf(parse(stop.text))) || undefined;
+  // The turn's final error comes right after its quota failure record; the quota note replaces
+  // that one row only.
+  let afterQuotaFailure = false;
   for (const activity of message.activity) {
+    const replaced = afterQuotaFailure && activity.kind === 'error';
+    afterQuotaFailure = activity.kind === 'adapter-error' && !!parts.quota && parse(activity.text)?.category === 'quota';
     switch (roleOf(activity.kind)) {
       case 'reasoning':
         reasoning.push(activity.text);
         break;
       case 'error':
-        parts.errors.push(activity.text);
+        if (!replaced) parts.errors.push(activity.text);
         break;
       case 'notice':
         parts.notices.push(parse(activity.text)?.reason ?? '');

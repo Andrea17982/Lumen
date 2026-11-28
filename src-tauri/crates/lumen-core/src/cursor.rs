@@ -26,6 +26,7 @@ fn parse_models(text: &str) -> Vec<ModelInfo> {
                 return None;
             }
             Some(ModelInfo {
+                resolved_id: None,
                 id: id.into(),
                 name: name.trim().into(),
                 description: "Cursor native profile · Autopilot only".into(),

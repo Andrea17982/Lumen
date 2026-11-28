@@ -332,6 +332,7 @@ pub async fn models(a: &Account, dir: &Path) -> Result<Vec<ModelInfo>, String> {
                 continue;
             }
             rows.push(ModelInfo {
+                resolved_id: None,
                 id: id.into(),
                 name: m["display_name"]
                     .as_str()

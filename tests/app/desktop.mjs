@@ -4,7 +4,7 @@
 // opens a Lumen window on the desktop for about half a minute.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { daemonClient, sleep } from '../daemon-harness.mjs';
@@ -19,6 +19,10 @@ requireBuilds();
 const data = await mkdtemp(path.join(tmpdir(), 'lumen-app-'));
 const workspace = path.join(data, 'workspace');
 await mkdir(workspace);
+const git = (...args) => execFileSync('git', ['-c', 'user.name=Lumen Test', '-c', 'user.email=test@example.invalid', ...args], { cwd: workspace, windowsHide: true });
+git('init', '-q', '-b', 'main');
+git('commit', '--allow-empty', '-qm', 'Fixture');
+git('branch', 'feat-crash');
 const client = await daemonClient(data, daemonPath);
 const checks = [];
 let app;
@@ -36,16 +40,27 @@ try {
   const account = await client.call('add_account', { name: 'App fixture', provider: 'claude' });
   await client.call('add_workspace', { name: 'Fixture', folder: workspace });
   const chat = await client.call('create_session', { workspace });
+  const options = { mode: 'claude', accountId: account.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: false };
   await client.call('send_message', {
     id: chat.id,
-    text: 'DAEMON_TURN_FIXTURE',
-    options: { mode: 'claude', accountId: account.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: false },
+    text: 'DAEMON_TURN_FIXTURE on branch feat-crash',
+    options: { ...options, mode: 'auto' },
   });
   // create_session emits no event: the session appears when its turn starts.
   await browser.until("return document.querySelectorAll('nav li').length", (n) => n === 1, 'session in the sidebar');
   await browser.click('nav li button');
   const log = "return document.querySelector('[role=log]')?.innerText ?? ''";
   await browser.until(log, (t) => t.includes('DAEMON_PARTIAL'), 'streamed partial reply');
+  await client.call('queue_message', { id: chat.id, text: 'Saved while the daemon is active', options });
+  for (let i = 0; i < 100; i++) {
+    const messages = await client.call('get_messages', { id: chat.id });
+    if (messages.at(-1)?.text === 'DAEMON_PARTIAL') break;
+    if (i === 99) assert.fail('partial reply did not reach the store');
+    await sleep(50);
+  }
+  const task = await client.call('task_worktree_status', { id: chat.id, preview: false });
+  assert(task?.path && task.path !== workspace, 'the turn runs in its own worktree');
+  const owned = JSON.parse(await readFile(path.join(task.path, 'daemon-owned-pids.json'), 'utf8'));
   checks.push('daemon events reach the window through the shell relay');
 
   execFileSync('taskkill', ['/PID', String(first.pid), '/F'], { stdio: 'ignore', windowsHide: true });
@@ -55,6 +70,8 @@ try {
   await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'reconnection');
   const restarted = await client.call('__status');
   assert.notEqual(restarted.pid, first.pid);
+  for (let i = 0; i < 100 && owned.some(alive); i++) await sleep(50);
+  assert(owned.every((pid) => !alive(pid)), 'the adapter and its child stopped');
   const text = await browser.run(log);
   assert.equal(text.split('DAEMON_PARTIAL').length - 1, 1, text);
   checks.push('after a service crash the shell restarts it, and the window shows the partial reply once and the turn interrupted');
@@ -64,9 +81,17 @@ try {
   browser = app.browser;
   await browser.until(status, (s) => s === 'Connected' || s === 'Connesso', 'connection after reopening');
   await browser.until("return document.querySelector('nav button[aria-current=page]')?.textContent", (s) => s?.includes('DAEMON_TURN_FIXTURE'), 'restored conversation in its project');
+  const queued = await client.call('queued_messages', { id: chat.id });
+  assert.equal(queued[0]?.text, 'Saved while the daemon is active');
+  assert.equal(queued[0]?.starting, false);
+  await client.call('take_queued_message', { id: chat.id, message: queued[0].id });
   await browser.until(log, (t) => t.split('DAEMON_PARTIAL').length - 1 === 1, 'restored partial transcript');
   assert.equal((await client.call('__status')).pid, restarted.pid);
-  checks.push('reopening the shell restores the selected conversation and partial output without relaunching the daemon');
+  assert.equal((await client.call('task_worktree_status', { id: chat.id, preview: false })).path, task.path);
+  await client.call('send_message', { id: chat.id, text: 'DAEMON_RESUME_FIXTURE', options });
+  await browser.until(log, (t) => t.includes('DAEMON_RESUMED'), 'continued in the recovered worktree');
+  assert.equal((await readFile(path.join(task.path, 'daemon-effect.txt'), 'utf8')).trim(), 'once');
+  checks.push('reopening the shell restores the selected conversation and partial output, and a follow-up preserves the single effect in the same worktree');
 
   // A plugin panel served by lumen-plugin: tries to reach the shell's IPC. Tauri's own invoke
   // falls back to postMessage when the panel's CSP blocks fetch, so this covers both paths.
@@ -115,6 +140,7 @@ try {
     .catch(() => null);
   await client.call('__shutdown').catch(() => {});
   for (let i = 0; pid && i < 50 && alive(pid); i++) await sleep(100);
-  await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-  if (probe) await rm(probe, { recursive: true, force: true });
+  // A cleanup failure is reported, but never hides the failure that ended the test.
+  await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch((e) => console.error(`Could not remove ${data}: ${e.message}`));
+  if (probe) await rm(probe, { recursive: true, force: true }).catch((e) => console.error(`Could not remove ${probe}: ${e.message}`));
 }

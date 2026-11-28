@@ -4,6 +4,54 @@ use std::{path::Path, sync::Mutex};
 
 pub struct Store(Mutex<Connection>);
 impl Store {
+    pub(crate) fn queue_message(
+        &self,
+        session: &str,
+        id: &str,
+        text: &str,
+        options: &str,
+    ) -> Result<(), String> {
+        let inserted = self.with(|c| c.execute("INSERT INTO queued_messages(id,session,text,options) SELECT ?1,?2,?3,?4 WHERE (SELECT count(*) FROM queued_messages WHERE session=?2)<20", params![id,session,text,options]))?;
+        if inserted == 0 {
+            return Err("This conversation already has 20 queued messages".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn queued_messages(
+        &self,
+        session: &str,
+    ) -> Result<Vec<crate::message_queue::Queued>, String> {
+        self.with(|c| {
+            let mut q = c.prepare(
+                "SELECT id,text,claimed=1 FROM queued_messages WHERE session=?1 ORDER BY rowid",
+            )?;
+            let rows = q.query_map([session], |r| {
+                Ok(crate::message_queue::Queued {
+                    id: r.get(0)?,
+                    text: r.get(1)?,
+                    starting: r.get(2)?,
+                })
+            })?;
+            rows.collect()
+        })
+    }
+    pub(crate) fn take_queued_message(
+        &self,
+        session: &str,
+        id: &str,
+    ) -> Result<(String, String), String> {
+        self.with(|c| c.query_row("UPDATE queued_messages SET claimed=2 WHERE session=?1 AND id=?2 AND claimed!=1 RETURNING text,options", params![session,id], |r|Ok((r.get(0)?,r.get(1)?))).optional())?.ok_or_else(|| "This message is already starting or has been removed".into())
+    }
+    pub(crate) fn claim_next_message(
+        &self,
+        session: &str,
+    ) -> Result<Option<(String, String, String)>, String> {
+        self.with(|c| c.query_row("UPDATE queued_messages SET claimed=1 WHERE rowid=(SELECT rowid FROM queued_messages WHERE session=?1 AND claimed=0 ORDER BY rowid LIMIT 1) RETURNING id,text,options", [session], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional())
+    }
+    pub(crate) fn release_queued_message(&self, id: &str) -> Result<(), String> {
+        self.with(|c| c.execute("UPDATE queued_messages SET claimed=0 WHERE id=?1", [id]))
+            .map(|_| ())
+    }
     // T3 Code's insert-if-absent receipt pattern; source and MIT notice: command_receipts.rs.
     pub(crate) fn claim_command(
         &self,
@@ -354,6 +402,7 @@ impl Store {
             let result=(|| {
                 let live=checkpoint_live(c,s,&m.id,&activities)?;
                 c.execute(sql,params![m.id,s,m.role,m.text,activity,now()])?;
+                if insert_only { c.execute("DELETE FROM queued_messages WHERE id=?1 AND session=?2",params![m.id,s])?; }
                 c.execute("INSERT INTO message_sequences(message,seq) VALUES(?1,coalesce((SELECT max(seq) FROM host_events WHERE session=?2 AND message=?1),0)) ON CONFLICT(message) DO UPDATE SET seq=max(seq,excluded.seq)",params![m.id,s])?;
                 c.execute("DELETE FROM host_events WHERE session=?1 AND message=?2 AND seq<=(SELECT seq FROM message_sequences WHERE message=?2)",params![s,m.id])?;
                 for payload in live {
@@ -501,6 +550,24 @@ impl Store {
     pub fn remove_account(&self, id: &str) -> Result<(), String> {
         self.with(|c| c.execute("DELETE FROM accounts WHERE id=?", [id]))?;
         Ok(())
+    }
+    pub(crate) fn claude_models(&self, id: &str) -> Result<Option<ClaudeModels>, String> {
+        self.with(|c| {
+            c.query_row(
+                "SELECT fable,mythos FROM claude_models WHERE account=?1",
+                [id],
+                |r| {
+                    Ok(ClaudeModels {
+                        fable: r.get(0)?,
+                        mythos: r.get(1)?,
+                    })
+                },
+            )
+            .optional()
+        })
+    }
+    pub(crate) fn save_claude_models(&self, id: &str, models: ClaudeModels) -> Result<(), String> {
+        self.with(|c| c.execute("INSERT INTO claude_models VALUES(?1,?2,?3) ON CONFLICT(account) DO UPDATE SET fable=excluded.fable,mythos=excluded.mythos", params![id,models.fable,models.mythos])).map(|_| ())
     }
     pub fn rename_account(&self, id: &str, name: &str) -> Result<(), String> {
         self.with(|c| c.execute("UPDATE accounts SET name=?2 WHERE id=?1", params![id, name]))?;

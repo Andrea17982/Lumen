@@ -91,6 +91,59 @@ try {
   if (process.platform === 'win32') {
     const codex = await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
     const quotaHandoff = await client.call('add_account', { name: 'Handoff Claude', provider: 'claude' });
+    for (const [account, model, scenario] of [
+      [quotaHandoff, 'sonnet', 'CLAUDE_SUBAGENT_FIXTURE'],
+      [codex, 'gpt-luna-fixture', 'CODEX_SUBAGENT_FIXTURE'],
+    ]) {
+      const delegated = await client.call('create_session', { workspace });
+      await client.call('send_message', {
+        id: delegated.id,
+        text: scenario,
+        options: { mode: account.provider, accountId: account.id, model, effort: 'low', accessMode: 'autopilot' },
+      });
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+      const delegatedReply = (await client.call('get_messages', { id: delegated.id })).at(-1);
+      assert.match(delegatedReply.text.trim(), /^PARENT_RESULT(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(delegatedReply.activity.filter((a) => a.kind === 'error')));
+    }
+    const stoppedFolder = await mkdtemp(path.join(data, 'stop-child-'));
+    const stoppedChat = await client.call('create_session', { workspace: stoppedFolder });
+    const stopOptions = { mode: 'claude', accountId: quotaHandoff.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: false };
+    await client.call('send_message', { id: stoppedChat.id, text: 'DAEMON_TURN_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100; i++) {
+      const messages = await client.call('get_messages', { id: stoppedChat.id });
+      if (messages.at(-1)?.text.includes('DAEMON_PARTIAL')) break;
+      if (i === 99) assert.fail('partial reply did not reach the store');
+      await sleep(50);
+    }
+    await client.call('cancel_run', { id: stoppedChat.id });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const stoppedReply = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.equal(stoppedReply.text.trim(), 'DAEMON_PARTIAL');
+    const stoppedSession = (await client.call('list_sessions', { search: '', offset: 0 })).find((session) => session.id === stoppedChat.id);
+    assert.equal(stoppedSession.status, 'interrupted');
+    const owned = JSON.parse(await readFile(path.join(stoppedFolder, 'daemon-owned-pids.json'), 'utf8'));
+    for (const pid of owned) {
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    }
+    await client.call('send_message', { id: stoppedChat.id, text: 'DAEMON_RESUME_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const resumed = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(resumed.text.trim(), /^DAEMON_RESUMED(?: <!-- lumen-autopilot: done -->)?$/);
+    // A resumed Claude session can first close a stopped background task with an empty
+    // result. That result is not the answer: the turn waits for the reply to this request.
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_STALE_TASK_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const afterStale = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(afterStale.text.trim(), /^STALE_TASK_ANSWERED(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(afterStale.activity.filter((a) => a.kind === 'error')));
+    // The process stays open in both cases below: the turn must end on the result, not on exit.
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_NO_REPLAY_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const noReplay = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(noReplay.text.trim(), /^NO_REPLAY_ANSWERED(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(noReplay.activity.filter((a) => a.kind === 'error')));
+    await client.call('send_message', { id: stoppedChat.id, text: 'CLAUDE_STALE_ERROR_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const staleError = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.ok(staleError.activity.some((a) => a.kind === 'error' && a.text.includes('STALE_ERROR_REPORTED')), JSON.stringify(staleError.activity.map((a) => a.kind)));
     for (const [scenario, accessMode, status, reply, attempts] of [
       ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
       // An Autopilot stop the assistant explains is partial work to review, never an error.
@@ -140,6 +193,14 @@ try {
       );
       assert.equal(session?.status, status, `${scenario} ${accessMode}`);
       const response = (await client.call('get_messages', { id })).at(-1);
+      if (handoff) {
+        // The switch question carries its facts, so the client can word it in the user's language.
+        const asked = JSON.parse(response.activity.find((a) => a.kind === 'interaction').text);
+        assert.equal(asked.kind, 'quota-fallback');
+        assert.equal(asked.quota.provider, 'claude');
+        assert.equal(asked.quota.account, quotaHandoff.name);
+        assert.equal(typeof asked.quota.model, 'string');
+      }
       const stop = { INCOMPLETE: 'stalled', UNCONFIRMED: 'stalled', LOOP: 'stalled', LIMIT: 'limit', BLOCKED: 'blocked' }[scenario];
       const stops = response.activity.filter((a) => a.kind === 'autopilot-stopped').map((a) => JSON.parse(a.text).reason);
       assert.deepEqual(stops, stop ? [stop] : [], `${scenario} stop reason`);
@@ -164,6 +225,16 @@ try {
         }
       }
     }
+    const spend = await client.call('create_session', { workspace });
+    await client.call('send_message', { id: spend.id, text: 'CLAUDE_SPEND_FIXTURE', options: { ...stopOptions, model: 'opus' } });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(100);
+    const spendReply = (await client.call('get_messages', { id: spend.id })).at(-1);
+    assert.match(JSON.stringify(spendReply.activity), /could not verify an account quota limit/);
+    assert.ok(!spendReply.activity.some((step) => step.kind === 'quota-reset'));
+    const afterSpend = await client.call('list_models', { id: quotaHandoff.id, refresh: true });
+    assert.ok(!afterSpend.some((model) => model.id === 'opus'));
+    assert.ok(!afterSpend.some((model) => model.id === 'claude-opus-5-5'));
+    assert.ok(afterSpend.some((model) => model.id === 'sonnet'));
     await client.call('remove_account', { id: quotaHandoff.id });
     const claude = await client.call('add_account', { name: 'Offline Claude', provider: 'claude' });
     const verification = await mkdtemp(path.join(data, 'verify-'));
@@ -317,6 +388,67 @@ try {
     assert.equal(await read(finished.workspace, 'quota-finished.txt'), 'finished');
     await assert.rejects(read(project.folder, 'quota-effect.txt'), { code: 'ENOENT' });
     await assert.rejects(read(workspace, 'quota-effect.txt'), { code: 'ENOENT' });
+
+    // A quota stop after observed work offers an equivalent model elsewhere. Choosing it starts a
+    // new turn there that reads the recorded work; the Codex edit is not made again.
+    const elsewhereOrigin = await mkdtemp(path.join(data, 'quota-elsewhere-'));
+    git(elsewhereOrigin, 'init', '-q', '-b', 'main');
+    await writeFile(path.join(elsewhereOrigin, 'elsewhere-project.txt'), 'Project marker');
+    git(elsewhereOrigin, 'add', 'elsewhere-project.txt');
+    git(elsewhereOrigin, '-c', 'user.name=Lumen Fixture', '-c', 'user.email=lumen@example.invalid', 'commit', '-qm', 'Fixture project');
+    await client.call('add_workspace', { name: 'Elsewhere project', folder: elsewhereOrigin });
+    const elsewhereCodex = await client.call('add_account', { name: 'Elsewhere Codex', provider: 'gpt' });
+    const elsewhere = await client.call('create_session', { workspace: elsewhereOrigin });
+    const elsewhereStatus = async (expected) => {
+      for (let i = 0; i < 240; i++) {
+        const current = (await client.call('list_sessions', { search: '', offset: 0 })).find((s) => s.id === elsewhere.id);
+        if (current?.status === expected) return current;
+        await sleep(100);
+      }
+      assert.fail(`Expected ${expected}`);
+    };
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'autopilot' });
+    await client.call('send_message', {
+      id: elsewhere.id,
+      text: 'Make the change. QUOTA_ELSEWHERE_FIXTURE',
+      options: { mode: 'gpt', accountId: elsewhereCodex.id, effort: 'high', accessMode: 'autopilot' },
+    });
+    const stopped = await elsewhereStatus('error');
+    const elsewhereReply = (await client.call('get_messages', { id: elsewhere.id })).at(-1);
+    const activity = (kind) => {
+      const row = elsewhereReply.activity.findLast((step) => step.kind === kind);
+      assert(row, `the stopped reply records ${kind}`);
+      return JSON.parse(row.text);
+    };
+    const elsewhereStop = activity('quota-stop');
+    assert.equal(elsewhereStop.reason, 'observed');
+    assert.equal(elsewhereStop.provider, 'gpt');
+    assert.match(elsewhereStop.detail, /try again at 1:18 PM/);
+    const elsewhereReset = activity('quota-reset');
+    assert.equal(elsewhereReset.estimated, false, 'the stated clock time must not fall back to 15 minutes');
+    const stated = new Date(elsewhereReset.at);
+    assert.deepEqual([stated.getHours(), stated.getMinutes()], [13, 18], 'the reset is the stated 1:18 PM, local time');
+    assert.ok(elsewhereReset.at > Date.now());
+    const proposal = activity('quota-alternative');
+    assert.equal(proposal.provider, 'claude');
+    assert.notEqual(proposal.accountId, elsewhereCodex.id);
+    // Narrower permissions since the stop: nothing starts, and the proposal stays for later.
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'read-only' });
+    await assert.rejects(client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id }), /permissions changed/);
+    assert.equal((await client.call('get_messages', { id: elsewhere.id })).at(-1).id, elsewhereReply.id);
+    await client.call('set_session_access_mode', { id: elsewhere.id, mode: 'autopilot' });
+    await client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id });
+    const continued = await elsewhereStatus('completed');
+    assert.equal(await read(continued.workspace, 'elsewhere-effect.txt'), 'once');
+    assert.equal(await read(continued.workspace, 'elsewhere-finished.txt'), 'claude');
+    const after = await client.call('get_messages', { id: elsewhere.id });
+    assert.equal(after.find((m) => m.id === elsewhereReply.id).text, 'Recorded the Codex half.');
+    assert.match(after.at(-1).text, /Finished on Claude/);
+    assert.equal(stopped.workspace, continued.workspace);
+    // The proposal belongs to the stopped reply only.
+    await assert.rejects(client.call('continue_elsewhere', { id: elsewhere.id, message: elsewhereReply.id }), /latest interrupted reply/);
+    // Its cooldown would steer the routing checks below.
+    await client.call('remove_account', { id: elsewhereCodex.id });
 
     const secondCodex = await client.call('add_account', { name: 'Second Offline Codex', provider: 'gpt' });
     const secondClaude = await client.call('add_account', { name: 'Second Offline Claude', provider: 'claude' });
@@ -588,9 +720,12 @@ try {
           'drain and restart preserving data',
           ...(process.platform === 'win32' ? [
             'Codex Autopilot resumes while work advances, stops repeated checks or after 10 attempts as partial work, and waits for answers',
+            'Claude and Codex deny child requests and wait for the parent result',
+            'Stop terminates owned children and a follow-up preserves the existing effect',
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
             'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',
+            'A quota stop states the provider reset time and continues on an equivalent model elsewhere without replay',
             'Auto falls back to the OpenCode Go emergency model only when every Claude and ChatGPT account is out of quota',
           ] : []),
           'hard crash cleans owned descendants and preserves unrelated processes',

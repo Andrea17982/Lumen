@@ -38,7 +38,7 @@ export function WelcomeFrame({ step, children, footer }: { step: number; childre
   );
 }
 
-export function AppearancePreview({ preferences }: { preferences: Preferences }) {
+export function AppearancePreview({ preferences }: Parameters<typeof AppearanceFields>[0]) {
   const t = useT();
   return (
     <div className={s.appearance}>

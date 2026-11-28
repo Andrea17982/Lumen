@@ -12,25 +12,90 @@ if (!$PromptText) {
             Emit @{type='control_response';response=@{subtype='success';request_id=$initialize.request_id;response=@{}}}
             $user = [Console]::In.ReadLine() | ConvertFrom-Json
             $promptText = $user.message.content
+            if ($promptText.Contains('CLAUDE_SUBAGENT_FIXTURE')) {
+                Emit @{type='system';subtype='init';session_id='foreign-session'}
+            }
+            if ($promptText.Contains('CLAUDE_STALE_TASK_FIXTURE')) {
+                # Recorded from Claude Code 2.1.327: a resumed session first closes the notice for
+                # a background task the previous process left running, with an empty result.
+                Emit @{type='system';subtype='task_notification';session_id=$env:LUMEN_FIXTURE_SESSION;status='stopped'}
+                Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
+                Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=0;result=''}
+            }
+            if ($promptText.Contains('CLAUDE_STALE_ERROR_FIXTURE')) {
+                Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
+                Emit @{type='result';subtype='error_during_execution';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$true;result='STALE_ERROR_REPORTED'}
+                Start-Sleep -Seconds 30
+                exit 0
+            }
             Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
             Emit @{type='rate_limit_event';rate_limit_info=@{unifiedWindows=@{five_hour=@{utilization=0.20;resetsAt=[DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()};seven_day=@{utilization=0.90;resetsAt=[DateTimeOffset]::UtcNow.AddMinutes(15).ToUnixTimeSeconds()}}}}
+            # --replay-user-messages: the CLI echoes the prompt, with its uuid, when it starts it.
+            if ($user.uuid -and !$promptText.Contains('CLAUDE_NO_REPLAY_FIXTURE')) {
+                Emit @{type='user';isReplay=$true;uuid=$user.uuid;session_id=$env:LUMEN_FIXTURE_SESSION;message=@{role='user';content=$promptText}}
+            }
         } else { $promptText = $firstLine + "`n" + [Console]::In.ReadToEnd() }
     } else { $promptText = [Console]::In.ReadToEnd() }
 }
 if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
 }
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_SUBAGENT_FIXTURE')) {
+    Emit @{type='control_request';request_id='child-permission';request=@{subtype='can_use_tool';agent_id='worker';tool_name='Write';input=@{file_path='child.txt'}}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.request_id -ne 'child-permission' -or $answer.response.response.behavior -ne 'deny') {throw 'Expected denial for the child'}
+    Emit @{type='result';session_id='foreign-session';is_error=$true;result='FOREIGN_RESULT'}
+    Emit @{type='result';parent_tool_use_id='agent-call';is_error=$true;result='CHILD_RESULT'}
+    Emit @{type='result';is_error=$false;result='PARENT_RESULT <!-- lumen-autopilot: done -->'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_SPEND_FIXTURE')) {
+    Emit @{type='result';is_error=$true;result='You have hit your monthly spend limit. Switch to another model.'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('CODEX_SUBAGENT_FIXTURE')) {
+    Emit @{id='child-permission';method='item/fileChange/requestApproval';params=@{threadId='child-thread';turnId='child-turn';itemId='child-file'}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.id -ne 'child-permission' -or $answer.result.decision -ne 'decline') {throw 'Expected denial for the child'}
+    Emit @{method='item/completed';params=@{threadId='child-thread';turnId='child-turn';item=@{id='child-text';type='agentMessage';text='CHILD_RESULT'}}}
+    Emit @{method='turn/completed';params=@{threadId='child-thread';turnId='child-turn';turn=@{id='child-turn';status='failed';error=@{message='CHILD_RESULT'}}}}
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='parent-text';type='agentMessage';text='PARENT_RESULT <!-- lumen-autopilot: done -->'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_NO_REPLAY_FIXTURE')) {
+    # A CLI that does not echo the prompt: its answer still ends the turn.
+    Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=1;result='NO_REPLAY_ANSWERED <!-- lumen-autopilot: done -->'}
+    Start-Sleep -Seconds 30
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_STALE_TASK_FIXTURE')) {
+    Emit @{type='assistant';session_id=$env:LUMEN_FIXTURE_SESSION;message=@{role='assistant';content=@(@{type='text';text='STALE_TASK_ANSWERED'})}}
+    Emit @{type='result';subtype='success';session_id=$env:LUMEN_FIXTURE_SESSION;is_error=$false;num_turns=1;result='STALE_TASK_ANSWERED <!-- lumen-autopilot: done -->'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_RESUME_FIXTURE')) {
+    if (@(Get-Content -LiteralPath 'daemon-effect.txt').Count -ne 1) {throw 'The recorded effect must already exist exactly once'}
+    if ($env:LUMEN_FIXTURE_RESUME -ne 'true' -or (Get-Content -LiteralPath 'daemon-native.txt' -Raw).Trim() -ne $env:LUMEN_FIXTURE_SESSION) {throw 'Expected the original native session'}
+    Emit @{type='result';is_error=$false;result='DAEMON_RESUMED <!-- lumen-autopilot: done -->'}
+    exit 0
+}
 if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_TURN_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-effect.txt') -Value 'once'
+    Set-Content -LiteralPath 'daemon-native.txt' -Value $env:LUMEN_FIXTURE_SESSION
     Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='daemon-write';name='Write';input=@{file_path='daemon-effect.txt'}})}}
-    Emit @{type='stream_event';event=@{delta=@{text='DAEMON_PARTIAL'}}}
     $ownedChild = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -WindowStyle Hidden -PassThru
     Set-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-owned-pids.json') -Value (ConvertTo-Json -Compress @($PID, $ownedChild.Id))
-    Start-Sleep -Seconds 12
+    Emit @{type='stream_event';parent_tool_use_id='daemon-child';event=@{delta=@{text='Child started'}}}
+    Emit @{type='stream_event';event=@{delta=@{text='DAEMON_PARTIAL'}}}
+    Start-Sleep -Seconds 1
+    Emit @{type='stream_event';parent_tool_use_id='daemon-child';event=@{delta=@{text='Child waiting'}}}
+    Start-Sleep -Seconds 11
     Emit @{type='result';is_error=$false;result='DAEMON_PARTIAL completed'}
     exit 0
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($promptText.Contains('QUEUE_FIXTURE')) { Start-Sleep -Seconds 5 }
 if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ACCOUNT_GATEWAY_FIXTURE')) {
     $gateway = Get-Content -LiteralPath (Join-Path (Get-Location).Path 'native-owner.json') -Raw | ConvertFrom-Json
     & node (Join-Path $PSScriptRoot 'native-account-client.mjs') $gateway.executable $gateway.profile (Get-Location).Path
@@ -77,6 +142,29 @@ if ($Provider -eq 'gpt' -and $promptText.Contains('CONNECTOR_FIXTURE')) {
 $autopilotContinuation = $promptText.Contains('Continue the current user request from this native session.')
 if ($Provider -eq 'claude' -and $promptText.Contains('AUTOPILOT_FIXTURE_HANDOFF')) {
     Emit @{type='result';is_error=$true;result="You've hit your usage limit. Resets in 30 minutes."}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'elsewhere-project.txt')) {
+    if ($env:LUMEN_FIXTURE_RESUME -eq 'true') {throw 'Continuing elsewhere must not resume the Codex session'}
+    Add-Content -LiteralPath 'elsewhere-effect.txt' -Value 'once'
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='elsewhere-write';type='fileChange';changes=@(@{path='elsewhere-effect.txt';kind='add'})}}}
+    Emit @{method='item/agentMessage/delta';params=@{threadId='fixture-thread';turnId='fixture-turn';itemId='elsewhere-partial';delta='Recorded the Codex half.'}}
+    # Codex states its reset as a local clock time, not as a delay.
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turn=@{id='fixture-turn';status='failed';error=@{message="You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 1:18 PM."}}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('The previous agent stopped on a quota limit')) {
+    if (!$promptText.Contains('QUOTA_ELSEWHERE_FIXTURE') -or !$promptText.Contains('Recorded the Codex half.')) {throw 'Expected the conversation and the partial reply'}
+    if (@(Get-Content -LiteralPath 'elsewhere-effect.txt').Count -ne 1) {throw 'The Codex edit must exist exactly once'}
+    Set-Content -LiteralPath 'elsewhere-finished.txt' -Value 'claude'
+    Emit @{type='result';is_error=$false;result='Finished on Claude. <!-- lumen-autopilot: done -->'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('The previous agent stopped on a quota limit') -and $promptText.Contains('QUOTA_ELSEWHERE_UI')) {
+    if (@(Get-Content -LiteralPath 'quota-reset-effect.txt').Count -lt 1) {throw 'The Claude edit must already exist'}
+    Add-Content -LiteralPath 'quota-reset-attempts.txt' -Value 'codex'
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='elsewhere-answer';type='agentMessage';text='CONTINUED_ON_CODEX'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
     exit 0
 }
 if ($Provider -eq 'gpt' -and $AppServer -and (Test-Path -LiteralPath 'auto-quota-project.txt')) {

@@ -71,7 +71,7 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
 }
 .cardHead {
@@ -121,7 +121,7 @@
   height: 6px;
   margin-top: var(--space-1);
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--radius-m);
   background: var(--surface-sunken);
 }
 .bar span {
@@ -168,7 +168,7 @@
 .option {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
 }
 .status {
@@ -222,7 +222,7 @@
   padding: 0;
   list-style: none;
   border: 1px solid var(--separator);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
 }
 .rows li {

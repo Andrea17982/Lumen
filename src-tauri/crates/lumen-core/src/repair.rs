@@ -249,7 +249,10 @@ async fn leftovers(core: &Core) -> Vec<Leftover> {
             .and_then(|n| n.to_str())
             .unwrap_or_default()
             .to_string();
-        let conversation = core.store.session(&id).is_ok();
+        let session_record = core.store.session(&id).ok();
+        let active = session_record
+            .as_ref()
+            .and_then(|s| crate::task_worktree::active(core, s));
         let task = crate::task_worktree::load(core, &id);
         let Ok(entries) = std::fs::read_dir(&session) else {
             continue;
@@ -262,17 +265,23 @@ async fn leftovers(core: &Core) -> Vec<Leftover> {
             // The same folder however its path was written (case, `\?\` prefix).
             let same = |p: &str| dunce::canonicalize(p).ok() == dunce::canonicalize(&folder).ok();
             let current = task.as_ref().filter(|t| same(&t.path));
-            if conversation && current.is_some() {
+            if active.as_ref().is_some_and(|t| same(&t.path)) {
                 continue;
             }
             // Unknown (git failed, broken worktree link) is not "nothing to lose": the
             // confirmation says so.
-            let changes = gitops::changed_paths(&folder).await.ok().map(|c| c.len());
+            let changes = match (
+                gitops::changed_paths(&folder).await,
+                gitops::ignored_paths(&folder).await,
+            ) {
+                (Ok(changes), Ok(ignored)) => Some(changes.len() + ignored),
+                _ => None,
+            };
             found.push(Leftover {
                 path: folder.to_string_lossy().into_owned(),
                 branch: current.map(|t| t.branch.clone()),
                 changes,
-                conversation,
+                conversation: session_record.is_some(),
             });
         }
     }

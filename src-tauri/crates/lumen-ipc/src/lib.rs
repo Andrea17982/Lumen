@@ -12,10 +12,12 @@ pub fn receipted(command: &str) -> bool {
         command,
         "create_session"
             | "send_message"
+            | "queue_message"
             | "cancel_run"
             | "answer_question"
             | "gatekeeper_decide"
             | "resume_at_reset"
+            | "continue_elsewhere"
             | "orchestra_answer"
             | "orchestra_approve"
             | "orchestra_cancel"

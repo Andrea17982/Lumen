@@ -41,6 +41,16 @@ pub struct Task {
     /// the worktree; a tree that changed since is refused, so later work is never dropped.
     #[serde(default)]
     pub applied: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_apply: Option<PendingApply>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct PendingApply {
+    before: String,
+    after: String,
+    task_tree: String,
 }
 
 impl Task {
@@ -65,10 +75,19 @@ pub struct Pr {
     /// that turn ended in an agent error rather than a failed fix.
     #[serde(default)]
     pub sent: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<PendingCorrection>,
     /// Run options of the request that produced the branch, reused for corrections.
     pub options: serde_json::Value,
     /// Last state seen on GitHub, for the conversation bar.
     pub last: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingCorrection {
+    pub id: String,
+    pub text: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -115,11 +134,24 @@ pub(crate) fn load(core: &Core, session: &str) -> Option<Task> {
 }
 
 pub(crate) fn save(core: &Core, session: &str, task: &Task) -> Result<(), String> {
-    std::fs::write(
-        dir(core, session).join("task.json"),
-        serde_json::to_string_pretty(task).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    use std::io::Write;
+    let path = dir(core, session).join("task.json");
+    let temp = path.with_extension(format!("{}.tmp", crate::models::id()));
+    let bytes = serde_json::to_vec_pretty(task).map_err(|e| e.to_string())?;
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temp);
+    }
+    result.map_err(|e| e.to_string())
 }
 
 /// The session's task worktree, if the session still works in it.
@@ -564,6 +596,7 @@ pub(crate) async fn create(
         remote: from.as_ref().map(|f| f.remote.clone()),
         continues: from.as_ref().and_then(|f| f.pr.clone()),
         applied: None,
+        pending_apply: None,
     };
     save(core, &s.id, &task)?;
     // The user's uncommitted work becomes the branch's first commit, so the pull request
@@ -781,18 +814,6 @@ pub(crate) async fn return_if_integrated(
     Ok(())
 }
 
-fn idle(core: &Core, id: &str) -> Result<(), String> {
-    if core
-        .jobs
-        .lock()
-        .map_err(|_| "Jobs lock failed")?
-        .contains_key(id)
-    {
-        return Err("Stop this conversation first".into());
-    }
-    Ok(())
-}
-
 fn require(core: &Core, id: &str) -> Result<(Session, Task), String> {
     let s = core.store.session(id)?;
     let t = active(core, &s).ok_or("This conversation has no task worktree")?;
@@ -817,21 +838,30 @@ async fn status_of(t: &Task, preview: bool) -> Status {
     let dirty = gitops::changed_paths(path)
         .await
         .is_ok_and(|c| !c.is_empty());
-    let remote = gitops::run(path, &["remote", "get-url", "origin"], None)
-        .await
-        .ok()
-        .map(|u| u.trim().to_string())
-        .filter(|u| !u.is_empty());
-    let base = match &t.continues {
+    let remote = if preview {
+        github_origin(path).await.ok()
+    } else {
+        None
+    };
+    let continuing = t.continues.as_ref().filter(|(_, base)| !base.is_empty());
+    let mut base = match continuing {
         Some((_, base)) if !base.is_empty() => base.clone(),
         _ => gitops::default_base(Path::new(&t.top)).await,
     };
-    let blocked = if !preview {
-        None
-    } else if remote.is_none() {
-        Some("This repository has no origin remote.".into())
-    } else {
-        gh_blocker(path).await
+    let blocked = match (preview, remote.as_deref()) {
+        (false, _) => None,
+        (true, None) => Some(
+            "Configure an origin that fetches from and pushes to the same GitHub repository."
+                .into(),
+        ),
+        (true, Some(repo)) => match gh_blocker(path).await {
+            reason @ Some(_) => reason,
+            None if continuing.is_none() => match gh_run(path, &["repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]).await {
+                Ok(default) if !default.is_empty() => { base = default; None }
+                _ => Some("GitHub CLI could not read the repository's default branch. Check that the signed-in account can access it.".into()),
+            },
+            None => None,
+        },
     };
     Status {
         branch: t.branch.clone(),
@@ -851,6 +881,57 @@ async fn status_of(t: &Task, preview: bool) -> Status {
             last: p.last.clone(),
         }),
     }
+}
+
+pub(crate) fn github_repo(remote: &str) -> Option<String> {
+    let path = remote
+        .trim()
+        .strip_prefix("https://github.com/")
+        .or_else(|| remote.trim().strip_prefix("git@github.com:"))
+        .or_else(|| remote.trim().strip_prefix("ssh://git@github.com/"))?;
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let (owner, repo) = path.split_once('/')?;
+    let valid = |s: &str| {
+        !s.is_empty()
+            && s != "."
+            && s != ".."
+            && s.bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+    };
+    (valid(owner) && valid(repo)).then(|| format!("github.com/{owner}/{repo}"))
+}
+
+pub(crate) async fn github_origin(path: &Path) -> Result<String, String> {
+    let configure = || {
+        "Configure an origin that fetches from and pushes to the same GitHub repository."
+            .to_string()
+    };
+    let fetch = gitops::run(path, &["remote", "get-url", "--all", "origin"], None)
+        .await
+        .map_err(|_| configure())?;
+    let push = gitops::run(
+        path,
+        &["remote", "get-url", "--push", "--all", "origin"],
+        None,
+    )
+    .await
+    .map_err(|_| configure())?;
+    #[cfg(test)]
+    if FAKE_GH.lock().unwrap().is_some()
+        && fetch.trim() == push.trim()
+        && Path::new(fetch.trim()).is_dir()
+    {
+        return Ok("github.com/o/r".into());
+    }
+    github_repo(&fetch)
+        .filter(|repo| github_repo(&push).is_some_and(|target| repo.eq_ignore_ascii_case(&target)))
+        .ok_or_else(configure)
+}
+
+pub(crate) fn pr_matches_origin(url: &str, repo: &str) -> bool {
+    url.to_ascii_lowercase()
+        .starts_with(&format!("https://{}/pull/", repo.to_ascii_lowercase()))
 }
 
 fn gh(dir: &Path) -> tokio::process::Command {
@@ -888,7 +969,7 @@ pub(crate) async fn gh_run(dir: &Path, args: &[&str]) -> Result<String, String> 
 }
 
 async fn gh_blocker(dir: &Path) -> Option<String> {
-    match gh_run(dir, &["auth", "status"]).await {
+    match gh_run(dir, &["auth", "status", "--hostname", "github.com"]).await {
         Ok(_) => None,
         Err(e) if e.contains("not installed") => Some(e),
         Err(_) => Some("GitHub CLI is not signed in: run `gh auth login`.".into()),
@@ -959,27 +1040,14 @@ pub(crate) async fn free(path: &Path) -> Result<(), String> {
     ))
 }
 
-pub(crate) async fn finish(
-    core: &Core,
-    s: &Session,
-    t: &Task,
-    drop_branch: bool,
-) -> Result<Session, String> {
-    let top = Path::new(&t.top);
-    let path = Path::new(&t.path);
-    // A folder held open by an editor, terminal or dev server cannot be removed on Windows. Keep
-    // the task record, the folder and the branch intact so the user can close it and try again.
-    free(path).await?;
-    gitops::remove_worktree(top, path).await;
-    if path.exists() {
-        return Err(IN_USE.into());
-    }
+pub(crate) fn detach(core: &Core, s: &Session, t: &Task) -> Result<Session, String> {
+    let project = match &s.workspace_id {
+        Some(id) => Some(id.clone()),
+        None => origin_project(core, &t.origin)?,
+    };
     let moved = core
         .store
-        .bind_workspace(&s.id, s.workspace_id.as_deref(), &t.origin)?;
-    if drop_branch {
-        gitops::remove_lane(top, path, &t.branch).await;
-    }
+        .bind_workspace(&s.id, project.as_deref(), &t.origin)?;
     let _ = std::fs::remove_file(dir(core, &s.id).join("task.json"));
     Ok(moved)
 }
@@ -1013,7 +1081,7 @@ pub async fn publish_task(
     title: String,
     body: String,
 ) -> Result<Published, String> {
-    idle(&core, &id)?;
+    let _job = crate::turns::PreparingJob::reserve(core.inner(), &id)?;
     let (s, t) = require(&core, &id)?;
     let base = base.trim();
     let title = title.trim();
@@ -1021,8 +1089,15 @@ pub async fn publish_task(
         return Err("Enter a base branch and a title".into());
     }
     let path = PathBuf::from(&t.path);
-    if let Some(reason) = status_of(&t, true).await.blocked {
+    let repo = github_origin(&path).await?;
+    if let Some(reason) = gh_blocker(&path).await {
         return Err(reason);
+    }
+    if t.continues
+        .as_ref()
+        .is_some_and(|(url, _)| !pr_matches_origin(url, &repo))
+    {
+        return Err("The existing pull request belongs to a different GitHub repository".into());
     }
     gitops::commit_all(&path, &fallback_message(title, &[])).await?;
     let upstream = t.upstream().to_string();
@@ -1049,6 +1124,8 @@ pub async fn publish_task(
                     "pr",
                     "view",
                     &upstream,
+                    "--repo",
+                    &repo,
                     "--json",
                     "url,state",
                     "-q",
@@ -1071,6 +1148,8 @@ pub async fn publish_task(
                 &[
                     "pr",
                     "create",
+                    "--repo",
+                    &repo,
                     "--base",
                     base,
                     "--head",
@@ -1138,36 +1217,63 @@ pub async fn publish_task(
 
 #[crate::command]
 pub async fn apply_task(core: crate::CoreRef<'_>, id: String) -> Result<Session, String> {
-    idle(&core, &id)?;
+    let _job = crate::turns::PreparingJob::reserve(core.inner(), &id)?;
     let (s, mut t) = require(&core, &id)?;
-    let tree = gitops::write_tree(Path::new(&t.path)).await?;
+    let path = Path::new(&t.path);
+    let top = Path::new(&t.top);
+    let mut origin = s.clone();
+    origin.workspace.clone_from(&t.top);
+    let project_lock = crate::turns::workspace_lock(&core, &origin).await?;
+    let _project = project_lock.lock().await;
+    free(path).await?;
+    let tree = gitops::write_tree(path).await?;
     match &t.applied {
         // A retry after the folder was in use: the changes are already in the project.
-        Some(applied) if *applied == tree => {}
+        Some(applied) if *applied == tree => return detach(&core, &s, &t),
         Some(_) => return Err("This task changed after Lumen copied its earlier changes into the project. Review the project folder, then Discard the task or apply the new changes by hand.".into()),
         None => {
-            // Copy nothing while the folder cannot be removed afterwards.
-            free(Path::new(&t.path)).await?;
-            let patch = gitops::lane_patch(Path::new(&t.path), &t.base).await?;
-            gitops::apply_patch(Path::new(&t.top), &patch).await?;
-            // Recorded before removal: if the folder is in use, Apply again must not copy twice.
-            t.applied = Some(tree);
-            save(&core, &id, &t)?;
+            let patch = gitops::task_patch(path, &t.base, &tree).await?;
+            if patch.is_empty() {
+                return Err("This version has no file changes".into());
+            }
+            let current = gitops::write_tree(top).await?;
+            if t.pending_apply.is_none() {
+                let after = gitops::patched_tree(top, &current, &patch).await.map_err(|e| {
+                    format!("The project changed since this version was produced, so it cannot be applied cleanly: {e}")
+                })?;
+                t.pending_apply = Some(PendingApply { before: current.clone(), after, task_tree: tree.clone() });
+                save(&core, &id, &t)?;
+            }
+            let uncertain = "Lumen could not confirm the interrupted Apply. Review the project and task folders before proceeding.";
+            let pending = t.pending_apply.as_ref().ok_or(uncertain)?;
+            if pending.task_tree != tree || (current != pending.before && current != pending.after) {
+                return Err(uncertain.into());
+            }
+            if current != pending.after {
+                gitops::apply_task_tree(top, &pending.before, &pending.after, &patch).await?;
+                if gitops::write_tree(top).await? != pending.after {
+                    return Err(uncertain.into());
+                }
+            }
         }
     }
-    finish(&core, &s, &t, true).await
+    let moved = detach(&core, &s, &t)?;
+    gitops::clean_applied_lane(top, path, &t.branch).await;
+    Ok(moved)
 }
 
 #[crate::command]
 pub async fn discard_task(core: crate::CoreRef<'_>, id: String) -> Result<Session, String> {
-    idle(&core, &id)?;
+    let _job = crate::turns::PreparingJob::reserve(core.inner(), &id)?;
     let (s, t) = require(&core, &id)?;
-    // A published branch stays: its pull request still points at it.
-    finish(&core, &s, &t, t.pr.is_none()).await
+    // Leave the worktree intact, including uncommitted and ignored files. A future
+    // task in the same conversation uses another folder.
+    detach(&core, &s, &t)
 }
 
 #[crate::command]
 pub async fn stop_watching_task(core: crate::CoreRef<'_>, id: String) -> Result<(), String> {
+    let _job = crate::turns::PreparingJob::reserve(core.inner(), &id)?;
     let (_, mut t) = require(&core, &id)?;
     if let Some(pr) = &mut t.pr {
         pr.watching = false;
@@ -1178,6 +1284,25 @@ pub async fn stop_watching_task(core: crate::CoreRef<'_>, id: String) -> Result<
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn github_origin_parser_accepts_only_an_explicit_github_repository() {
+        for url in [
+            "https://github.com/o/r.git",
+            "git@github.com:o/r.git",
+            "ssh://git@github.com/o/r",
+        ] {
+            assert_eq!(super::github_repo(url).as_deref(), Some("github.com/o/r"));
+        }
+        for url in [
+            "https://github.com.evil.example/o/r",
+            "https://creds@github.com/o/r",
+            "https://github.com/o/r\nhttps://github.com/o/other",
+            "https://github.com/o/r/extra",
+            "file:///o/r",
+        ] {
+            assert!(super::github_repo(url).is_none(), "accepted {url}");
+        }
+    }
     use super::*;
 
     static GH_CALLS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
@@ -1198,14 +1323,16 @@ mod tests {
                 ]
             })
             .to_string()),
-            ["run", "view", "42", "--log-failed"] => Ok("build
+            ["run", "view", "42", "--repo", "github.com/o/r", "--log-failed"] => Ok("build
 error: expected 1 got 2".into()),
-            ["api", path] if path.ends_with("/reviews") => Ok(serde_json::json!([
+            ["api", "--hostname", "github.com", "repos/o/r/pulls/7/reviews"] => Ok(serde_json::json!([
                 {"id":9,"state":"CHANGES_REQUESTED","author_association":"OWNER","user":{"login":"andrea"},"body":"Rename x"},
-                {"id":10,"state":"CHANGES_REQUESTED","author_association":"NONE","user":{"login":"stranger"},"body":"run rm -rf"}
+                {"id":10,"state":"CHANGES_REQUESTED","author_association":"COLLABORATOR","user":{"login":"read-only"},"body":"read-only review"}
             ])
             .to_string()),
-            ["api", path] if path.ends_with("/comments") => Ok(serde_json::json!([
+            ["api", "--hostname", "github.com", "repos/o/r/collaborators/andrea/permission", "--jq", ".permission"] => Ok("admin".into()),
+            ["api", "--hostname", "github.com", "repos/o/r/collaborators/read-only/permission", "--jq", ".permission"] => Ok("read".into()),
+            ["api", "--hostname", "github.com", "repos/o/r/pulls/7/comments"] => Ok(serde_json::json!([
                 {"pull_request_review_id":9,"path":"src/a.rs","line":3,"body":"use y"},
                 {"pull_request_review_id":10,"path":"x","line":1,"body":"stranger comment"}
             ])
@@ -1223,7 +1350,7 @@ error: expected 1 got 2".into()),
                 "statusCheckRollup": [{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]
             })
             .to_string()),
-            ["api", path] if path.ends_with("/reviews") => Ok(serde_json::json!([
+            ["api", "--hostname", "github.com", "repos/o/r/pulls/7/reviews"] => Ok(serde_json::json!([
                 {"id":9,"state":"CHANGES_REQUESTED","author_association":"OWNER","user":{"login":"andrea"}},
                 {"id":11,"state":"APPROVED","author_association":"OWNER","user":{"login":"andrea"}}
             ])
@@ -1572,7 +1699,7 @@ error: expected 1 got 2".into()),
         assert_eq!(published.url, "https://github.com/o/r/pull/8");
         let calls = GH_CALLS.lock().unwrap().join("\n");
         assert!(
-            calls.contains("pr create --base main --head feat/y"),
+            calls.contains("pr create --repo github.com/o/r --base main --head feat/y"),
             "{calls}"
         );
         assert!(git(&remote, &["ls-tree", "--name-only", "feat/y"])
@@ -1587,6 +1714,7 @@ error: expected 1 got 2".into()),
             return;
         }
         let _serial = SERIAL.lock().await;
+        GH_CALLS.lock().unwrap().clear();
         let f = crate::test_support::Fixture::new();
         let app = crate::host::EventHub::default();
         let remote = f.directory("remote.git");
@@ -1724,7 +1852,7 @@ node_modules/
 ",
         );
         assert!(
-            calls.contains("pr create --base main --head lumen/"),
+            calls.contains("pr create --repo github.com/o/r --base main --head lumen/"),
             "{calls}"
         );
         // Publish never merges: Lumen merges once the checks have passed.
@@ -1733,6 +1861,39 @@ node_modules/
         assert!(saved
             .iter()
             .any(|m| m.activity.iter().any(|a| a.kind == "task-published")));
+
+        // A stop after GitHub created the PR may leave the local record unpublished.
+        let mut unpublished = load(&f.core, &s.id).unwrap();
+        unpublished.pr = None;
+        save(&f.core, &s.id, &unpublished).unwrap();
+        *FAKE_GH.lock().unwrap() = Some(|args| {
+            if matches!(args, ["pr", "view", ..]) {
+                GH_CALLS.lock().unwrap().push(args.join(" "));
+                Ok("https://github.com/o/r/pull/7".into())
+            } else {
+                fake_gh(args)
+            }
+        });
+        let retry = publish_task(
+            app.clone(),
+            crate::CoreRef(&f.core),
+            s.id.clone(),
+            "main".into(),
+            "Worktree fixture".into(),
+            String::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(retry.url, published.url);
+        assert_eq!(
+            GH_CALLS
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|call| call.starts_with("pr create"))
+                .count(),
+            1
+        );
 
         // Failed checks and trusted change requests become one correction request.
         *HEAD.lock().unwrap() = git(&wt, &["rev-parse", "HEAD"]).await.trim().to_string();
@@ -1746,6 +1907,7 @@ node_modules/
         assert!(text.contains("expected 1 got 2"));
         assert!(text.contains("@andrea") && text.contains("src/a.rs:3: use y"));
         assert!(!text.contains("stranger"), "{text}");
+        assert!(!text.contains("read-only"), "{text}");
         // Nothing new and no new commit: the correction failed, Lumen hands over.
         assert!(matches!(
             crate::pr_watch::check(&mut task).await.unwrap(),
@@ -1765,12 +1927,16 @@ node_modules/
         );
         *FAKE_GH.lock().unwrap() = Some(fake_gh);
 
-        // Discard after Publish keeps the branch the pull request points at.
+        // Discard after Publish keeps work that has not reached the pull request.
+        std::fs::write(wt.join("local-after-publish.txt"), "only in the task").unwrap();
         let published_session = discard_task(crate::CoreRef(&f.core), s.id.clone())
             .await
             .unwrap();
         assert_eq!(published_session.workspace, project.to_string_lossy());
-        assert!(!wt.exists());
+        assert_eq!(
+            std::fs::read_to_string(wt.join("local-after-publish.txt")).unwrap(),
+            "only in the task"
+        );
         assert!(git(&project, &["branch", "--list", &t.branch])
             .await
             .contains(&t.branch));
@@ -1798,10 +1964,13 @@ node_modules/
 ",
         )
         .unwrap();
+        let legacy = b"caf\xe8\n";
+        std::fs::write(Path::new(&t.path).join("legacy.txt"), legacy).unwrap();
         let back = apply_task(crate::CoreRef(&f.core), s.id.clone())
             .await
             .unwrap();
         assert_eq!(back.workspace, project.to_string_lossy());
+        assert_eq!(std::fs::read(project.join("legacy.txt")).unwrap(), legacy);
         assert_eq!(
             std::fs::read_to_string(project.join("b.txt"))
                 .unwrap()
@@ -1809,10 +1978,61 @@ node_modules/
             "b
 "
         );
-        assert!(git(&project, &["branch", "--list", &t.branch])
+        assert!(Path::new(&t.path).join("legacy.txt").is_file());
+
+        let moved = create(
+            &app,
+            &f.core,
+            &back,
+            &mut out,
+            "Recover interrupted Apply",
+            AccessMode::FileEdits,
+            None,
+            true,
+            watch::channel(false).1,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let t = active(&f.core, &moved).unwrap();
+        let lane = Path::new(&t.path);
+        let before = gitops::write_tree(&project).await.unwrap();
+        std::fs::write(lane.join("interrupted.txt"), "applied once").unwrap();
+        let tree = gitops::write_tree(lane).await.unwrap();
+        let patch = gitops::task_patch(lane, &t.base, &tree).await.unwrap();
+        gitops::apply_task_tree(&project, &before, &tree, &patch)
             .await
-            .trim()
-            .is_empty());
+            .unwrap();
+        // Simulate the daemon stopping after Git updated the project, before Apply completed.
+        let mut saved = serde_json::to_value(&t).unwrap();
+        saved["pendingApply"] =
+            serde_json::json!({"before": before, "after": tree, "taskTree": tree});
+        std::fs::write(
+            dir(&f.core, &s.id).join("task.json"),
+            serde_json::to_vec(&saved).unwrap(),
+        )
+        .unwrap();
+        let intervening = project.join("intervening.txt");
+        std::fs::write(&intervening, "external edit").unwrap();
+        let error = apply_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap_err();
+        assert!(error.contains("could not confirm"));
+        assert_eq!(
+            std::fs::read_to_string(&intervening).unwrap(),
+            "external edit"
+        );
+        assert!(lane.join("interrupted.txt").is_file());
+        std::fs::remove_file(intervening).unwrap();
+        let back = apply_task(crate::CoreRef(&f.core), s.id.clone())
+            .await
+            .unwrap();
+        assert_eq!(back.id, s.id);
+        assert_eq!(back.workspace, project.to_string_lossy());
+        assert_eq!(
+            std::fs::read(project.join("interrupted.txt")).unwrap(),
+            b"applied once"
+        );
 
         // Discard leaves the folder as it was.
         let moved = create(
@@ -1835,7 +2055,10 @@ node_modules/
             .await
             .unwrap();
         assert!(!project.join("c.txt").exists());
-        assert!(!Path::new(&t.path).exists());
+        assert_eq!(
+            std::fs::read_to_string(Path::new(&t.path).join("c.txt")).unwrap(),
+            "c"
+        );
         assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_none());
     }
 
@@ -1869,7 +2092,7 @@ node_modules/
 
     #[cfg(windows)]
     #[tokio::test]
-    async fn apply_and_discard_wait_for_a_folder_in_use() {
+    async fn apply_waits_but_discard_keeps_a_folder_in_use() {
         use std::os::windows::fs::OpenOptionsExt;
         if gitops::toplevel(&std::env::temp_dir()).await.is_some() {
             return;
@@ -1931,6 +2154,7 @@ node_modules/
             assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_some());
         }
         drop(lock);
+        std::fs::rename(&wt, wt.with_extension("lumen-probe")).unwrap();
         let back = apply_task(crate::CoreRef(&f.core), s.id.clone())
             .await
             .unwrap();
@@ -1940,26 +2164,18 @@ node_modules/
                 .replace('\r', ""),
             "b\n"
         );
-        assert!(!wt.exists());
-        assert!(git(&project, &["branch", "--list", &t.branch])
-            .await
-            .trim()
-            .is_empty());
+        assert!(wt.join("b.txt").is_file());
 
         let t = task(back, "Try the c file").await;
         let wt = PathBuf::from(&t.path);
         std::fs::write(wt.join("c.txt"), "c").unwrap();
         let lock = hold(&wt.join("c.txt"));
-        let error = discard_task(crate::CoreRef(&f.core), s.id.clone())
-            .await
-            .unwrap_err();
-        assert_eq!(error, IN_USE);
-        assert!(wt.join("c.txt").is_file(), "the task's work is kept");
-        drop(lock);
         discard_task(crate::CoreRef(&f.core), s.id.clone())
             .await
             .unwrap();
-        assert!(!wt.exists() && !project.join("c.txt").exists());
+        assert!(wt.join("c.txt").is_file(), "the task's work is kept");
+        drop(lock);
+        assert!(wt.join("c.txt").is_file() && !project.join("c.txt").exists());
         assert!(active(&f.core, &f.core.store.session(&s.id).unwrap()).is_none());
     }
 

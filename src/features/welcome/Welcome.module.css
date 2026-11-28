@@ -30,7 +30,7 @@
 .brand svg circle {
   transform-box: fill-box;
   transform-origin: center;
-  animation: ember 620ms var(--ease-standard) both;
+  animation: ember var(--motion) both;
 }
 @keyframes ember {
   from { transform: scale(0.35); opacity: 0.45; }
@@ -42,7 +42,7 @@
 .progress span {
   width: clamp(9px, 2.2vw, 27px);
   height: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-m);
   background: var(--border-control);
 }
 .progress [data-reached='true'] { background: var(--accent); }
@@ -50,7 +50,7 @@
 .step {
   min-height: 240px;
   padding: var(--space-8) 0;
-  animation: appear var(--duration-normal) var(--ease-standard) both;
+  animation: appear var(--motion) both;
 }
 @keyframes appear {
   from { opacity: 0.5; transform: translateY(5px); }
@@ -90,7 +90,7 @@
 .fields { display: grid; gap: var(--space-3); }
 .preview {
   background: var(--surface-sunken);
-  border-radius: 14px;
+  border-radius: var(--radius-m);
   overflow: hidden;
 }
 .previewChrome {
@@ -103,7 +103,7 @@
 .previewComposer {
   margin: var(--space-4);
   padding: var(--space-3);
-  border-radius: 12px;
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
   color: var(--text-secondary);
   font-size: var(--text-s);
@@ -161,7 +161,7 @@
 .account [data-ready='true'] { color: var(--status-success); }
 .error { color: var(--status-danger); }
 
-.tour, .invite {
+.tour {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -182,12 +182,12 @@
   color: var(--text-secondary);
   padding: var(--space-1) var(--space-2);
   background: var(--surface-raised);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
 }
 :global([data-tour-highlight]) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-m);
 }
 
 @media (max-width: 600px) {

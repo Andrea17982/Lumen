@@ -4,6 +4,7 @@ import { Icon } from '../../design/icons';
 import { useT } from '../../i18n';
 import type { Answers, Interaction } from '../../protocol/types';
 import { collect, complete, visibleText, type QuestionState } from './requests';
+import { switchText } from './quota';
 import s from './Attention.module.css';
 
 /**
@@ -18,10 +19,12 @@ export function QuestionCard({ request, state, onAnswer, onOpenSignIn }: { reque
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connector = request.kind === 'connector';
+  // Lumen's own quota question: worded here from its facts, answered only with its options.
+  const quota = request.kind === 'quota-fallback' ? request.quota : undefined;
   const answers = collect(request, chosen, typed);
   const enabled = state === 'open' && !sent && !working;
   const server = connector ? request.questions.find((q) => q.id === request.actionId)?.header : undefined;
-  const title = connector ? (server ? t.attention.connector(visibleText(server)) : t.attention.connectorAny) : request.questions.length > 1 ? t.attention.questions : t.attention.question;
+  const title = quota ? t.quota.switchTitle : connector ? (server ? t.attention.connector(visibleText(server)) : t.attention.connectorAny) : request.questions.length > 1 ? t.attention.questions : t.attention.question;
 
   async function submit() {
     if (!enabled || !complete(request, answers)) return;
@@ -65,13 +68,19 @@ export function QuestionCard({ request, state, onAnswer, onOpenSignIn }: { reque
       )}
       {request.questions.map((q) => {
         const action = connector && q.id === request.actionId;
-        const label = (
+        const label = quota ? (
+          <span>{switchText(t, quota)}</span>
+        ) : (
           <>
             {q.header && !action && <span className={s.header}>{visibleText(q.header)} </span>}
             <span>{visibleText(action ? q.question.split('\n').slice(1).join('\n') || q.question : q.question)}</span>
             {q.optional && <span className={s.optional}> {t.attention.optional}</span>}
           </>
         );
+        const optionLabel = (option: string) =>
+          quota && Object.hasOwn(t.quota.options, option) ? t.quota.options[option] : action && Object.hasOwn(t.attention.actions, option) ? t.attention.actions[option] : visibleText(option);
+        const optionHelp = (option: string, description: string) =>
+          quota && Object.hasOwn(t.quota.optionHelp, option) ? t.quota.optionHelp[option] : description ? visibleText(description) : undefined;
         return (
           <div key={q.id} className={s.question}>
             {q.options.length > 0 ? (
@@ -80,7 +89,7 @@ export function QuestionCard({ request, state, onAnswer, onOpenSignIn }: { reque
                 multiple={q.multiSelect}
                 isDisabled={!enabled}
                 value={chosen[q.id] ?? []}
-                choices={q.options.map((o) => ({ id: o.label, label: action && Object.hasOwn(t.attention.actions, o.label) ? t.attention.actions[o.label] : visibleText(o.label), description: o.description ? visibleText(o.description) : undefined }))}
+                choices={q.options.map((o) => ({ id: o.label, label: optionLabel(o.label), description: optionHelp(o.label, o.description) }))}
                 onChange={(v) => {
                   setChosen((c) => ({ ...c, [q.id]: v }));
                   // One answer: choosing an option replaces a typed one.
@@ -90,7 +99,7 @@ export function QuestionCard({ request, state, onAnswer, onOpenSignIn }: { reque
             ) : (
               <p className={s.questionText}>{label}</p>
             )}
-            {!action && (
+            {!action && !quota && (
               <TextField
                 label={q.secret ? t.attention.secretAnswer : q.options.length ? t.attention.otherAnswer : t.attention.yourAnswer}
                 type={q.secret ? 'password' : 'text'}

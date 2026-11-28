@@ -226,9 +226,19 @@ export interface Question {
 export interface Interaction {
   id: string;
   questions: Question[];
-  kind?: 'connector' | 'permission';
+  kind?: 'connector' | 'permission' | 'quota-fallback';
   /** For connectors: the question whose answer is Accept, Decline or Cancel. */
   actionId?: string;
+  /** For a quota fallback: the facts the client words in the user's language. */
+  quota?: {
+    provider: Provider;
+    account: string;
+    toProvider: Provider;
+    toAccount: string;
+    model: string;
+    effort: string;
+    weaker: boolean;
+  };
   /** For a connector's sign-in page: its origin, shown before opening it. */
   urlOrigin?: string;
   worker?: Worker | null;

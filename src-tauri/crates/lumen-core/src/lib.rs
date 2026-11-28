@@ -78,6 +78,7 @@ pub async fn serve_native_account(
 mod compete_corpus;
 #[cfg(test)]
 mod handoff_corpus;
+mod message_queue;
 mod native_claude;
 mod ollama;
 mod ollama_agent;
@@ -116,6 +117,7 @@ use std::{
 };
 use tokio::sync::{watch, Semaphore};
 
+mod export;
 mod onboarding;
 
 pub struct Core {
@@ -244,6 +246,17 @@ async fn models_for(
     refresh: bool,
     cancel: Option<watch::Receiver<bool>>,
 ) -> Result<Vec<ModelInfo>, String> {
+    let access = if a.provider == Provider::Claude {
+        Some(core.store.claude_models(&a.id)?.unwrap_or_default())
+    } else {
+        None
+    };
+    let allowed = |m: &ModelInfo| {
+        access.is_none_or(|access| access.allows(m))
+            && core
+                .limits
+                .eligible_model(&a.id, m.resolved_model(), crate::models::now())
+    };
     if !refresh {
         if let Some((at, models)) = core
             .catalogs
@@ -252,7 +265,7 @@ async fn models_for(
             .get(&a.id)
         {
             if at.elapsed().as_secs() < 300 {
-                return Ok(models.clone());
+                return Ok(models.iter().filter(|m| allowed(m)).cloned().collect());
             }
         }
     }
@@ -270,7 +283,7 @@ async fn models_for(
         .lock()
         .map_err(|_| "Catalog lock failed")?
         .insert(a.id.clone(), (std::time::Instant::now(), models.clone()));
-    Ok(models)
+    Ok(models.into_iter().filter(allowed).collect())
 }
 async fn models_in(
     core: &Core,
@@ -301,6 +314,29 @@ async fn list_models(
         workspace.as_deref().unwrap_or(""),
     )
     .await
+}
+
+#[crate::command]
+fn get_claude_models(
+    core: crate::CoreRef<'_>,
+    id: String,
+) -> Result<Option<models::ClaudeModels>, String> {
+    if account(&core, &id)?.provider != Provider::Claude {
+        return Err("Choose a Claude Code account".into());
+    }
+    core.store.claude_models(&id)
+}
+
+#[crate::command]
+fn set_claude_models(
+    core: crate::CoreRef<'_>,
+    id: String,
+    value: models::ClaudeModels,
+) -> Result<(), String> {
+    if account(&core, &id)?.provider != Provider::Claude {
+        return Err("Choose a Claude Code account".into());
+    }
+    core.store.save_claude_models(&id, value)
 }
 #[crate::command]
 fn list_workspaces(core: crate::CoreRef<'_>) -> Result<Vec<Workspace>, String> {
@@ -1309,6 +1345,7 @@ pub async fn dispatch(
         "answer_question" => interactions::__ipc_answer_question(app, core, args).await,
         "open_connector_url" => interactions::__ipc_open_connector_url(app, core, args).await,
         "account_cli" => __ipc_account_cli(app, core, args).await,
+        "export_session" => export::__ipc_export_session(app, core, args).await,
         "onboarding_state" => onboarding::__ipc_onboarding_state(app, core, args).await,
         "onboarding_agents" => onboarding::__ipc_onboarding_agents(app, core, args).await,
         "repair" => repair::__ipc_repair(app, core, args).await,
@@ -1342,12 +1379,16 @@ pub async fn dispatch(
         "list_routines" => routines::__ipc_list_routines(app, core, args).await,
         "delete_routine" => routines::__ipc_delete_routine(app, core, args).await,
         "resume_at_reset" => quota_resume::__ipc_resume_at_reset(app, core, args).await,
+        "continue_elsewhere" => quota_resume::__ipc_continue_elsewhere(app, core, args).await,
         "add_account" => __ipc_add_account(app, core, args).await,
         "remove_account" => __ipc_remove_account(app, core, args).await,
         "diagnostics" => __ipc_diagnostics(app, core, args).await,
         "account_status" => __ipc_account_status(app, core, args).await,
         "login_account" => __ipc_login_account(app, core, args).await,
         "send_message" => turns::__ipc_send_message(app, core, args).await,
+        "queue_message" => message_queue::__ipc_queue_message(app, core, args).await,
+        "queued_messages" => message_queue::__ipc_queued_messages(app, core, args).await,
+        "take_queued_message" => message_queue::__ipc_take_queued_message(app, core, args).await,
         "rewind_preview" => turns::__ipc_rewind_preview(app, core, args).await,
         "rewind" => turns::__ipc_rewind(app, core, args).await,
         "compact_session" => turns::__ipc_compact_session(app, core, args).await,
@@ -1390,6 +1431,8 @@ pub async fn dispatch(
         "mcp_add" => __ipc_mcp_add(app, core, args).await,
         "mcp_remove" => __ipc_mcp_remove(app, core, args).await,
         "list_models" => __ipc_list_models(app, core, args).await,
+        "get_claude_models" => __ipc_get_claude_models(app, core, args).await,
+        "set_claude_models" => __ipc_set_claude_models(app, core, args).await,
         "rename_account" => __ipc_rename_account(app, core, args).await,
         "list_workspaces" => __ipc_list_workspaces(app, core, args).await,
         "add_workspace" => __ipc_add_workspace(app, core, args).await,

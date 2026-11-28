@@ -244,6 +244,8 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   danger,
+  closeOnConfirm = true,
+  isConfirmDisabled,
   onConfirm,
 }: {
   trigger?: ReactNode;
@@ -254,6 +256,8 @@ export function ConfirmDialog({
   confirmLabel: string;
   cancelLabel: string;
   danger?: boolean;
+  closeOnConfirm?: boolean;
+  isConfirmDisabled?: boolean;
   onConfirm: () => void;
 }) {
   const overlay = (
@@ -263,16 +267,17 @@ export function ConfirmDialog({
             {({ close }) => (
               <>
                 <Heading slot="title">{title}</Heading>
-                {typeof body === 'string' ? <p>{body}</p> : body}
+                {typeof body === 'string' ? <Text elementType="p" slot="description">{body}</Text> : body}
                 <div className={s.dialogActions}>
                   <Button variant="secondary" onPress={close} autoFocus>
                     {cancelLabel}
                   </Button>
                   <Button
                     variant={danger ? 'danger' : 'primary'}
+                    isDisabled={isConfirmDisabled}
                     onPress={() => {
                       onConfirm();
-                      close();
+                      if (closeOnConfirm) close();
                     }}
                   >
                     {confirmLabel}

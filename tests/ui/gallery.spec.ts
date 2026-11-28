@@ -19,12 +19,13 @@ for (const style of styles)
   for (const theme of themes)
     for (const view of views)
       test(`axe: ${view} in ${style}/${theme} has no serious violations`, async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
         await open(page, { style, theme, view });
         expect(await seriousViolations(page)).toEqual([]);
       });
 
 test('axe: Italian and Windows high contrast', async ({ page }) => {
-  await page.emulateMedia({ forcedColors: 'active' });
+  await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
   for (const view of views) {
     await open(page, { view, locale: 'it' });
     expect(await seriousViolations(page), view).toEqual([]);

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { LogoButton } from '../../brand/Logo';
 import { Button, ConfirmDialog, IconButton, Menu, SearchField, Select, TextField } from '../../design/components';
 import { Icon } from '../../design/icons';
 import { useT } from '../../i18n';
@@ -14,7 +13,7 @@ type Dialog = { kind: 'delete' | 'move'; session: Session } | { kind: 'renamePro
  * Projects and their conversations. One project is open at a time, as in the gallery mock: its
  * conversations are listed by day, and the project itself is switched at the bottom.
  */
-export function Sidebar({ project, selected, onSelect, onProject, onHide, onSettings, footer }: { project: Workspace | null; selected: string | null; onSelect: (id: string | null) => void; onProject: (id: string | null) => void; onHide: () => void; onSettings: () => void; footer: ReactNode }) {
+export function Sidebar({ project, selected, onSelect, onProject, hidden, onSettings, footer }: { project: Workspace | null; selected: string | null; onSelect: (id: string | null) => void; onProject: (id: string | null) => void; hidden: boolean; onSettings: () => void; footer: ReactNode }) {
   const t = useT();
   const sync = useSyncClient();
   const all = useSyncState((st) => st.sessions);
@@ -39,6 +38,7 @@ export function Sidebar({ project, selected, onSelect, onProject, onHide, onSett
 
   // Ctrl+K searches, Ctrl+N starts a task in the open project.
   useEffect(() => {
+    if (hidden) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() === 'k') {
@@ -92,7 +92,6 @@ export function Sidebar({ project, selected, onSelect, onProject, onHide, onSett
   return (
     <aside ref={root} className={s.sidebar} aria-label={t.sessions}>
       <div className={s.brand}>
-        <LogoButton label={t.sidebar.hide} onPress={onHide} />
         <span className={s.spacer} />
         <IconButton icon="gear" label={t.settings.open} onPress={onSettings} />
       </div>

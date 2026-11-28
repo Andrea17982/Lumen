@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Button, ConfirmDialog, Menu, Select, Switch, TextField } from '../../design/components';
 import { useLocale, useT } from '../../i18n';
 import { formatPercent, formatRelative, formatTime, languageTag } from '../../i18n/format';
@@ -19,6 +19,8 @@ export const providerName: Record<Provider, string> = {
   googleapi: 'Google API',
 };
 const providerOptions = (Object.keys(providerName) as Provider[]).map((id) => ({ id, label: providerName[id] }));
+type ClaudeModels = { fable: boolean; mythos: boolean };
+type ClaudeModelsRequest = { account: Account; value: ClaudeModels | null };
 const cliName: Record<string, string> = {
   'claude-cli': 'Claude Code',
   'codex-cli': 'Codex',
@@ -56,6 +58,17 @@ export function Accounts() {
   const [adding, setAdding] = useState(false);
   const [fresh, setFresh] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<ClaudeModelsRequest[]>([]);
+  const openClaudeModels = useCallback(async (account: Account, userInitiated: boolean) => {
+    try {
+      const value = await sync.call<ClaudeModels | null>('get_claude_models', { id: account.id });
+      if (userInitiated || !value) setRequests((current) => current.some((r) => r.account.id === account.id) ? current : [...current, { account, value }]);
+      return true;
+    } catch (e) {
+      setError(String(e));
+      return false;
+    }
+  }, [sync]);
 
   useEffect(() => {
     sync.call<Health[]>('provider_health').then(setHealth, () => {});
@@ -71,7 +84,7 @@ export function Accounts() {
       {accounts.length === 0 && <p className={s.quiet}>{t.accounts.none}</p>}
       <ul className={s.cards}>
         {accounts.map((a) => (
-          <AccountCard key={a.id} account={a} signInNow={a.id === fresh} usage={usage.find((u) => u.accountId === a.id)} health={health.find((h) => h.accountId === a.id)} contract={contracts.find((c) => c.provider === a.provider)} onError={setError} />
+          <AccountCard key={a.id} account={a} signInNow={a.id === fresh} usage={usage.find((u) => u.accountId === a.id)} health={health.find((h) => h.accountId === a.id)} contract={contracts.find((c) => c.provider === a.provider)} onError={setError} openClaudeModels={openClaudeModels} />
         ))}
       </ul>
       <div>
@@ -102,11 +115,12 @@ export function Accounts() {
           }
         }}
       />
+      {requests[0] && !adding && <ClaudeModelDialog key={requests[0].account.id} request={requests[0]} onClose={() => setRequests((current) => current.slice(1))} />}
     </div>
   );
 }
 
-function AccountCard({ account, signInNow, usage, health, contract, onError }: { account: Account; signInNow: boolean; usage?: AccountUsage; health?: Health; contract?: Contract; onError: (e: string) => void }) {
+function AccountCard({ account, signInNow, usage, health, contract, onError, openClaudeModels }: { account: Account; signInNow: boolean; usage?: AccountUsage; health?: Health; contract?: Contract; onError: (e: string) => void; openClaudeModels: (account: Account, userInitiated: boolean) => Promise<boolean> }) {
   const t = useT();
   const locale = useLocale();
   const sync = useSyncClient();
@@ -118,6 +132,7 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
   const [signing, setSigning] = useState(false);
   const [terminal, setTerminal] = useState(false);
   const [terminalTimedOut, setTerminalTimedOut] = useState(false);
+  const checkedModels = useRef(false);
   const api = isApi(account.provider);
   const cliAgent = signsIn(account.provider);
 
@@ -185,6 +200,11 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
   useEffect(() => {
     if (signInNow) void signIn();
   }, [signInNow]);
+  useEffect(() => {
+    if (account.provider !== 'claude' || !status || checking || signing || checkedModels.current) return;
+    checkedModels.current = true;
+    void openClaudeModels(account, false).then((ok) => { checkedModels.current = ok; });
+  }, [account, status, checking, signing, openClaudeModels]);
 
   const resting = health?.state === 'cooldown' && health.until ? health.until : null;
   return (
@@ -199,6 +219,7 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
           label={t.moreActions}
           items={[
             ...(cliAgent ? [{ id: 'signin', label: t.accounts.signInAgain }] : []),
+            ...(account.provider === 'claude' ? [{ id: 'claude-models', label: t.accounts.claudeModels }] : []),
             { id: 'rename', label: t.accounts.rename },
             {
               id: 'remove',
@@ -207,7 +228,11 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
               separatorBefore: true,
             },
           ]}
-          onAction={(id) => (id === 'signin' ? void signIn() : setDialog(id as 'rename' | 'remove'))}
+          onAction={(id) => {
+            if (id === 'signin') void signIn();
+            else if (id === 'claude-models') void openClaudeModels(account, true);
+            else setDialog(id as 'rename' | 'remove');
+          }}
         />
       </div>
       {cli && !cli.installed && <p className={s.help}>{t.accounts.cliMissing(providerName[account.provider])}</p>}
@@ -293,6 +318,37 @@ function AccountCard({ account, signInNow, usage, health, contract, onError }: {
       />
     </li>
   );
+}
+
+function ClaudeModelDialog({ request, onClose }: { request: ClaudeModelsRequest; onClose: () => void }) {
+  const t = useT();
+  const sync = useSyncClient();
+  const [value, setValue] = useState<ClaudeModels>(request.value ?? { fable: false, mythos: false });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return <ConfirmDialog
+    isOpen
+    onOpenChange={(open) => { if (!open && !saving) onClose(); }}
+    title={t.accounts.claudeModelsFor(request.account.name)}
+    body={<div className={s.fields}>
+      <p className={s.help}>{t.accounts.claudeModelsHelp}</p>
+      <Switch isDisabled={saving} isSelected={value.fable} onChange={(fable) => setValue((current) => ({ ...current, fable }))}>{t.accounts.includeFable}</Switch>
+      <Switch isDisabled={saving} isSelected={value.mythos} onChange={(mythos) => setValue((current) => ({ ...current, mythos }))}>{t.accounts.includeMythos}</Switch>
+      {error && <p className={s.error} role="alert">{error}</p>}
+    </div>}
+    confirmLabel={t.accounts.save}
+    cancelLabel={t.cancel}
+    closeOnConfirm={false}
+    isConfirmDisabled={saving}
+    onConfirm={() => {
+      setSaving(true);
+      setError(null);
+      void sync.call('set_claude_models', { id: request.account.id, value }).then(onClose, (e) => {
+        setSaving(false);
+        setError(String(e));
+      });
+    }}
+  />;
 }
 
 const TERMINAL_WAIT = 10 * 60_000;
