@@ -38,9 +38,11 @@ export interface Preferences {
   setAppearance: (next: Partial<Appearance>) => void;
   language: Language;
   setLanguage: (next: Language) => void;
+  taskActions: boolean;
+  setTaskActions: (on: boolean) => void;
 }
 
-export function AppearanceFields({ preferences }: { preferences: Preferences }) {
+export function AppearanceFields({ preferences }: { preferences: Pick<Preferences, 'appearance' | 'setAppearance' | 'language' | 'setLanguage'> }) {
   const t = useT();
   const { appearance, setAppearance, language, setLanguage } = preferences;
   return (
@@ -65,6 +67,9 @@ export function General({ preferences }: { preferences: Preferences }) {
         <div className={s.fields}>
           <AppearanceFields preferences={preferences} />
         </div>
+        <Switch isSelected={preferences.taskActions} onChange={preferences.setTaskActions}>
+          {t.general.taskActions}
+        </Switch>
       </div>
       {value && (
         <>

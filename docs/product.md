@@ -65,13 +65,15 @@ A large Auto task that writes files runs in the conversation's own worktree. Sma
   - `.env*` and `*.local*` files up to 1 MB are copied in.
   - Dependencies are installed from the lockfile, in Autopilot only.
 - **Commit after checks.** Every turn that ends without failing checks is committed. The message ends with `Generated-by: Lumen`.
-- **Publish** shows you the remote, base, branch, title and body, then pushes and opens a pull request with `gh`. **Apply** copies the changes into the folder. **Discard** deletes the worktree and its branch.
+- Enable **Show Publish PR and Undo changes** in **Settings › General**. **Publish PR** pushes the task branch to the GitHub repository configured as `origin` and opens or updates its pull request. **Undo changes** returns the conversation to the project and shows where the branch and task files are kept for recovery.
 - **After Publish**, Lumen checks the pull request every minute.
   - Failed CI and change requests from people with write access come back as a correction turn. CI logs and review text are passed as data, not instructions.
   - Lumen stops after three rounds or after a correction that produces no commit.
   - It merges once all checks are green. When branch protection blocks the merge, it enables GitHub auto-merge instead.
 
 Publish needs an `origin` remote and a signed-in GitHub CLI.
+
+Press **Ctrl+Enter** to queue a message while a turn is active. Lumen starts queued messages in order after a successful turn. After Stop or an interruption, use **Return to composer** to recover a queued message.
 
 ## Memory, recipes, recurring tasks
 

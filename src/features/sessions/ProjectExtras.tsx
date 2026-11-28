@@ -48,7 +48,6 @@ export function Routines({ session }: { session: Session }) {
   };
   return (
     <section className={s.section}>
-      <h3>{t.routines.title}</h3>
       <ul className={s.log}>
         {list.map((r) => (
           <li key={r.id}>
@@ -88,15 +87,15 @@ interface Result {
 }
 
 /** The project's own checks (tests, lint, build), found by the daemon and run on request. */
-export function Checks({ session }: { session: Session }) {
+export function Checks({ folder }: { folder: string }) {
   const t = useT();
   const sync = useSyncClient();
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, Result | string>>({});
   useEffect(() => {
-    sync.call<Check[]>('project_checks', { folder: session.workspace }).then(setChecks, () => setChecks([]));
-  }, [sync, session.workspace]);
+    sync.call<Check[]>('project_checks', { folder }).then(setChecks, () => setChecks([]));
+  }, [sync, folder]);
   if (!checks) return null;
   const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
   const shown = checks.filter((c) => !c.playtest);
@@ -118,7 +117,7 @@ export function Checks({ session }: { session: Session }) {
                   onPress={() => {
                     setRunning(c.id);
                     sync
-                      .call<Result>('run_project_check', { folder: session.workspace, id: c.id, command: c.command, cwd: c.cwd })
+                      .call<Result>('run_project_check', { folder, id: c.id, command: c.command, cwd: c.cwd })
                       .then(
                         (r) => setResults((all) => ({ ...all, [c.id]: r })),
                         (e) => setResults((all) => ({ ...all, [c.id]: String(e) })),
@@ -137,7 +136,7 @@ export function Checks({ session }: { session: Session }) {
                     {visibleText(result.output.slice(-4000))}
                   </pre>
                   {result.links.slice(0, 8).map((l) => (
-                    <button key={`${l.file}:${l.line}`} type="button" className={s.link} onClick={() => void sync.call('open_source_location', { folder: session.workspace, file: l.file, line: l.line }).catch(() => {})}>
+                    <button key={`${l.file}:${l.line}`} type="button" className={s.link} onClick={() => void sync.call('open_source_location', { folder, file: l.file, line: l.line }).catch(() => {})}>
                       {visibleText(l.file)}:{l.line}
                     </button>
                   ))}

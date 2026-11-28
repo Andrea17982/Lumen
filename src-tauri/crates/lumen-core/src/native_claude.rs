@@ -74,6 +74,8 @@ pub async fn execute(
             "--include-partial-messages",
             "--permission-mode",
             "default",
+            "--disallowedTools",
+            "Agent,Task",
         ]
         .map(String::from)
         .to_vec()
@@ -135,7 +137,8 @@ pub async fn execute(
         let owned = approvals.keeper.start_worker_session(&approvals.chat, Engine::Claude, &native_id, &uuid::Uuid::new_v4().to_string(), &cwd, Availability::Available { version:"native stdio".into(), evidence:"Local connection; model execution requires the installed CLI initialization acknowledgement".into() }, approvals.worker.clone())?;
         let endpoint =
             lumen_gatekeeper::mcp::ClaudeEndpoint::bind(approvals.keeper.clone(), owned.clone())
-                .await?;
+                .await?
+                .screens_only();
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         args.extend([
             "--mcp-config".into(),
@@ -232,17 +235,53 @@ pub async fn execute(
         tx.send(crate::providers::wire_prompt(&crate::models::Provider::Claude, input.prompt)).await.map_err(|_|"Claude closed its input")?;
         crate::execution::signal(&mut emit, "request-enqueued");
         let mut text = String::new();
+        let mut initialized = false;
         loop {
             let line = tokio::select! { biased; _=cancel.changed()=>return Err("Cancelled".into()), _=failed.changed()=>return Err("Claude input delivery failed; the turn was stopped".into()), r=lines.next_line()=>r.map_err(|e|e.to_string())? };
             let Some(line) = line else { return Err("Claude exited before completing the turn".into()); };
             if line.len() > 16*1024*1024 { return Err("Claude sent an oversized protocol message".into()); }
             let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
             questions.drain(&mut emit);
-            if value["type"] == "system" && value["subtype"] == "init" && value["session_id"] != native_id { return Err("Claude started a different session than requested".into()); }
+            let request = &value["request"];
+            let child = ["parent_tool_use_id", "parent_agent_id", "agent_id"]
+                .iter()
+                .any(|field| !value[*field].is_null() || !request[*field].is_null());
+            let foreign = [value["session_id"].as_str(), request["session_id"].as_str()]
+                .into_iter()
+                .flatten()
+                .any(|id| id != native_id);
+            let init = value["type"] == "system" && value["subtype"] == "init";
+            if child || foreign {
+                if value["type"] == "control_request" {
+                    let decision = if request["subtype"] == "elicitation" {
+                        json!({"action":"cancel","content":null})
+                    } else {
+                        json!({"behavior":"deny","message":"Lumen does not approve requests from sub-agents"})
+                    };
+                    tokio::select! { biased;
+                        _ = cancel.changed() => return Err("Cancelled".into()),
+                        sent = tx.send(response(&value["request_id"], decision)) => sent.map_err(|_| "Claude closed its input")?,
+                    }
+                } else if value["parent_tool_use_id"].is_string() {
+                    for activity in providers::normalize(&Provider::Claude, &value) {
+                        emit(activity);
+                    }
+                }
+                continue;
+            }
+            if init {
+                if value["session_id"] != native_id { return Err("Claude started a different session than requested".into()); }
+                initialized = true;
+            }
+            if !initialized {
+                if value["type"] == "result" {
+                    return Err("Claude returned a result before confirming the requested session".into());
+                }
+                continue;
+            }
             for status in connector_status(&value) {emit(status);}
             if value["type"] == "control_request" {
                 let id = value["request_id"].clone();
-                let request = &value["request"];
                 if request["subtype"] == "elicitation" {
                     let normalized=json!({"serverName":request["mcp_server_name"],"message":request["message"],"mode":request["mode"].as_str().unwrap_or("form"),"url":request["url"],"elicitationId":request["elicitation_id"],"requestedSchema":request["requested_schema"]});
                     let pending=crate::connectors::Request::parse(&normalized).and_then(|parsed|questions.ask_connector(parsed.clone(),id.to_string()).map(|(activity,receive)|(parsed,activity,receive)));

@@ -31,6 +31,7 @@ async function accessible(page: Page) {
 test('an account signs in without a terminal and shows its CLI', async ({ page }) => {
   await openSettings(page, 'Accounts');
   const card = settings(page).getByRole('listitem', { name: /Claude fixture/ });
+  await page.getByRole('alertdialog', { name: 'Models included in Claude fixture' }).getByRole('button', { name: 'Save' }).click();
   await expect(card).toContainText('Claude Code');
   await card.getByRole('button', { name: 'More actions' }).click();
   await page.getByRole('menuitem', { name: 'Sign in again' }).click();

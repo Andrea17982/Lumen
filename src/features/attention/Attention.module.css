@@ -19,7 +19,7 @@
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--border-control);
-  border-radius: var(--radius-l);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
   box-shadow: var(--shadow-raised);
 }
@@ -47,7 +47,7 @@
 .exact pre {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: var(--surface-sunken);
   font: var(--text-s) / 1.5 var(--font-mono);
   white-space: pre-wrap;
@@ -74,7 +74,7 @@
   color: var(--text-secondary);
   font-size: var(--text-s);
   cursor: default;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
 }
 .exact > summary:focus-visible,
 .diff > summary:focus-visible {

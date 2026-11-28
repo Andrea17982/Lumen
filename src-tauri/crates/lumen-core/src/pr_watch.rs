@@ -129,6 +129,16 @@ pub(crate) async fn check(task: &mut Task) -> Result<Step, String> {
     let Some(pr) = task.pr.as_mut() else {
         return Ok(Step::Wait(String::new()));
     };
+    let (pr_repo, number) = pr
+        .url
+        .rsplit_once("/pull/")
+        .ok_or("Invalid GitHub pull request URL")?;
+    let repo = task_worktree::github_repo(pr_repo)
+        .filter(|_| number.parse::<u64>().is_ok())
+        .ok_or("Invalid GitHub pull request URL")?;
+    let owner_repo = repo
+        .strip_prefix("github.com/")
+        .ok_or("Invalid GitHub repository")?;
     let view: Value = serde_json::from_str(
         &task_worktree::gh_run(
             path,
@@ -164,10 +174,16 @@ pub(crate) async fn check(task: &mut Task) -> Result<Step, String> {
             continue;
         }
         let log = match run_id(&url) {
-            Some(id) => task_worktree::gh_run(path, &["run", "view", id, "--log-failed"])
-                .await
-                .unwrap_or_default(),
-            None => String::new(),
+            Some(id)
+                if url
+                    .strip_prefix(pr_repo)
+                    .is_some_and(|suffix| suffix.starts_with("/actions/runs/")) =>
+            {
+                task_worktree::gh_run(path, &["run", "view", id, "--repo", &repo, "--log-failed"])
+                    .await
+                    .unwrap_or_default()
+            }
+            _ => String::new(),
         };
         let log = tail(&log, LOG_TAIL);
         sections.push(if log.is_empty() {
@@ -177,31 +193,57 @@ pub(crate) async fn check(task: &mut Task) -> Result<Step, String> {
         });
         keys.push(key);
     }
-    let number = pr.url.rsplit('/').next().unwrap_or_default().to_string();
     let reviews: Value = task_worktree::gh_run(
         path,
         &[
             "api",
-            &format!("repos/{{owner}}/{{repo}}/pulls/{number}/reviews"),
+            "--hostname",
+            "github.com",
+            &format!("repos/{owner_repo}/pulls/{number}/reviews"),
         ],
     )
     .await
     .ok()
     .and_then(|r| serde_json::from_str(&r).ok())
     .unwrap_or(Value::Null);
-    let requested: Vec<&Value> = reviews
+    let mut requested = vec![];
+    for review in reviews
         .as_array()
         .into_iter()
         .flatten()
         .filter(|r| r["state"] == "CHANGES_REQUESTED" && trusted(r))
         .filter(|r| !pr.handled.contains(&format!("review:{}", r["id"])))
-        .collect();
+    {
+        let Some(login) = review["user"]["login"]
+            .as_str()
+            .filter(|s| !s.is_empty() && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'))
+        else {
+            continue;
+        };
+        let permission = task_worktree::gh_run(
+            path,
+            &[
+                "api",
+                "--hostname",
+                "github.com",
+                &format!("repos/{owner_repo}/collaborators/{login}/permission"),
+                "--jq",
+                ".permission",
+            ],
+        )
+        .await?;
+        if matches!(permission.as_str(), "write" | "maintain" | "admin") {
+            requested.push(review);
+        }
+    }
     if !requested.is_empty() {
         let comments: Value = task_worktree::gh_run(
             path,
             &[
                 "api",
-                &format!("repos/{{owner}}/{{repo}}/pulls/{number}/comments"),
+                "--hostname",
+                "github.com",
+                &format!("repos/{owner_repo}/pulls/{number}/comments"),
             ],
         )
         .await
@@ -317,6 +359,17 @@ async fn push(core: &Core, session: &str, task: &Task) -> Result<(), String> {
     .and_then(|n| n.trim().parse::<u32>().ok())
     .unwrap_or(0);
     if ahead > 0 {
+        let repo = task_worktree::github_origin(path).await?;
+        if !task
+            .pr
+            .as_ref()
+            .is_some_and(|pr| task_worktree::pr_matches_origin(&pr.url, &repo))
+        {
+            return Err(
+                "The task origin no longer matches its pull request. Lumen kept the local commits."
+                    .into(),
+            );
+        }
         gitops::run(
             path,
             &[
@@ -341,11 +394,26 @@ async fn push(core: &Core, session: &str, task: &Task) -> Result<(), String> {
 }
 
 async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> Result<(), String> {
-    let Some(mut task) = task_worktree::load(core, session) else {
+    let Ok(job) = crate::turns::PreparingJob::reserve(core, session) else {
+        return Ok(());
+    };
+    let Ok(s) = core.store.session(session) else {
+        return Ok(());
+    };
+    let Some(mut task) = task_worktree::active(core, &s) else {
         return Ok(());
     };
     if !task.pr.as_ref().is_some_and(|p| p.watching) {
         return Ok(());
+    }
+    if core.store.session(session)?.access_mode == crate::models::AccessMode::ReadOnly {
+        if let Some(pr) = &mut task.pr {
+            pr.last = "Paused · conversation is read only".into();
+        }
+        return task_worktree::save(core, session, &task);
+    }
+    if task.pr.as_ref().is_some_and(|p| p.pending.is_some()) {
+        return submit_correction(app, core, session, task, job).await;
     }
     if correction_errored(&core.store.messages(session)?) {
         // The agent failed to run (not a failed fix): the same reports go out again, and
@@ -359,6 +427,9 @@ async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> R
     push(core, session, &task).await?;
     let step = check(&mut task).await?;
     let s = core.store.session(session)?;
+    if task_worktree::active(core, &s).is_none() {
+        return Ok(());
+    }
     match step {
         Step::Wait(last) => {
             if let Some(pr) = &mut task.pr {
@@ -405,12 +476,12 @@ async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> R
             task_worktree::save(core, session, &task)
         }
         Step::Merged => {
-            task_worktree::finish(core, &s, &task, true).await?;
+            task_worktree::detach(core, &s, &task)?;
             tell(
                 app,
                 core,
                 session,
-                "Lumen · the pull request was merged. This conversation is back in the project folder.",
+                &format!("Lumen · the pull request was merged. This conversation is back in the project folder. Task files are kept at {}.", task.path),
             );
             Ok(())
         }
@@ -441,28 +512,75 @@ async fn tick(app: &crate::host::EventHub, core: &Arc<Core>, session: &str) -> R
             task_worktree::save(core, session, &task)
         }
         Step::Fix(text) => {
-            let options = task
-                .pr
-                .as_ref()
-                .and_then(|p| serde_json::from_value::<RunOptions>(p.options.clone()).ok())
-                .ok_or("The pull request has no saved run options")?;
             if let Some(pr) = &mut task.pr {
                 pr.last = format!("Correcting (round {} of {ROUNDS})", pr.rounds);
+                pr.pending = Some(task_worktree::PendingCorrection {
+                    id: crate::models::id(),
+                    text,
+                });
             }
             task_worktree::save(core, session, &task)?;
-            crate::turns::submit(
-                app.clone(),
-                core.clone(),
-                session.into(),
-                text,
-                options,
-                None,
-                None,
-            )
-            .await
-            .map(|_| ())
+            submit_correction(app, core, session, task, job).await
         }
     }
+}
+
+async fn submit_correction(
+    app: &crate::host::EventHub,
+    core: &Arc<Core>,
+    session: &str,
+    task: task_worktree::Task,
+    job: crate::turns::PreparingJob,
+) -> Result<(), String> {
+    let pr = task.pr.as_ref().ok_or("No pull request to correct")?;
+    let pending = pr
+        .pending
+        .as_ref()
+        .ok_or("No pending pull request correction")?;
+    let accepted = core
+        .store
+        .messages(session)?
+        .iter()
+        .any(|message| message.id == pending.id);
+    if !accepted {
+        let mut options = serde_json::from_value::<RunOptions>(pr.options.clone())
+            .map_err(|error| error.to_string())?;
+        let access = core.store.session(session)?.access_mode;
+        if access == crate::models::AccessMode::ReadOnly {
+            return Err("A pull request correction is pending. Enable file edits in the conversation to resume it.".into());
+        }
+        options.access_mode = Some(match (options.access(), access) {
+            (original, current) if original == current => current,
+            (original, crate::models::AccessMode::Autopilot) => original,
+            (crate::models::AccessMode::Autopilot, current) => current,
+            _ => return Err("The conversation's access mode changed. Review the pending pull request correction.".into()),
+        });
+        crate::turns::submit(
+            app.clone(),
+            core.clone(),
+            session.into(),
+            pending.text.clone(),
+            options,
+            Some(pending.id.clone()),
+            Some(job.receiver()),
+        )
+        .await?;
+        job.handoff();
+    }
+    let Some(mut current) = task_worktree::load(core, session) else {
+        return Ok(());
+    };
+    if let Some(pr) = &mut current.pr {
+        if pr
+            .pending
+            .as_ref()
+            .is_some_and(|current| current.id == pending.id)
+        {
+            pr.pending = None;
+            task_worktree::save(core, session, &current)?;
+        }
+    }
+    Ok(())
 }
 
 /// Every minute, follows each watched pull request whose conversation is idle.
@@ -486,7 +604,12 @@ pub(crate) fn start(app: crate::host::EventHub, core: &Arc<Core>) {
                     continue;
                 }
                 if let Err(e) = tick(&app, &core, &session).await {
-                    if let Some(mut task) = task_worktree::load(&core, &session) {
+                    if let Some(mut task) = core
+                        .store
+                        .session(&session)
+                        .ok()
+                        .and_then(|s| task_worktree::active(&core, &s))
+                    {
                         if let Some(pr) = &mut task.pr {
                             pr.last = format!("GitHub unavailable: {}", tail(&e, 200));
                         }

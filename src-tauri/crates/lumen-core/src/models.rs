@@ -114,11 +114,41 @@ pub enum AccessMode {
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_id: Option<String>,
     pub name: String,
     pub description: String,
     pub efforts: Vec<String>,
     pub default_effort: String,
     pub is_default: bool,
+}
+impl ModelInfo {
+    pub fn resolved_model(&self) -> &str {
+        self.resolved_id.as_deref().unwrap_or(&self.id)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct ClaudeModels {
+    pub fable: bool,
+    pub mythos: bool,
+}
+impl ClaudeModels {
+    pub fn allows(self, model: &ModelInfo) -> bool {
+        let allows = |text: &str| {
+            text.split(|c: char| !c.is_ascii_alphanumeric())
+                .all(|word| match word.to_ascii_lowercase().as_str() {
+                    "fable" => self.fable,
+                    "mythos" => self.mythos,
+                    _ => true,
+                })
+        };
+        allows(&model.id)
+            && model
+                .resolved_id
+                .as_deref()
+                .map_or_else(|| allows(&model.name), allows)
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

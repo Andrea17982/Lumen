@@ -15,7 +15,8 @@ let skill: string;
 let plugin: string;
 test.beforeAll(async ({ baseURL }) => {
   daemon = await startDaemon(new URL(baseURL!).origin);
-  await daemon.client.call('add_account', { name: 'Claude fixture', provider: 'claude' });
+  const account = await daemon.client.call('add_account', { name: 'Claude fixture', provider: 'claude' }) as { id: string };
+  await daemon.client.call('set_claude_models', { id: account.id, value: { fable: false, mythos: false } });
   skill = path.join(daemon.data, 'fixture-skill');
   await mkdir(skill);
   await writeFile(path.join(skill, 'SKILL.md'), '---\nname: fixture-skill\ndescription: A test skill.\n---\nDo nothing.\n');
@@ -148,7 +149,7 @@ test('a plugin is installed after showing what it asks, and its panel stays in i
   expect(chat.id).toBeTruthy();
 });
 
-test('/every schedules a recurring task that can be stopped from the project panel', async ({ page }) => {
+test('/every schedules a recurring task that can be stopped from the conversation menu', async ({ page }) => {
   await daemon.client.call('create_session', { workspace: daemon.workspace });
   await page.goto(daemon.url());
   await page.getByRole('navigation').getByRole('listitem').first().getByRole('button').first().click();
@@ -163,12 +164,13 @@ test('/every schedules a recurring task that can be stopped from the project pan
   await box.fill('/every 1d check outdated dependencies');
   await box.press('Enter');
   await expect(page.getByRole('status').filter({ hasText: 'Recurring task scheduled.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Project details' }).click();
+  await page.locator('main header').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Recurring tasks' }).click();
   const panel = page.getByRole('complementary').filter({ hasText: 'Recurring tasks' });
   await expect(panel).toContainText('Every 1d');
   await expect(panel).toContainText('check outdated dependencies');
   await panel.getByRole('button', { name: 'Stop' }).click();
-  await expect(panel.getByText('Recurring tasks')).toHaveCount(0);
+  await expect(panel.getByText('check outdated dependencies')).toHaveCount(0);
 });
 
 test('a finished reply notifies, and can be kept as a recipe', async ({ page }) => {

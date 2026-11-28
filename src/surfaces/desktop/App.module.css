@@ -1,11 +1,36 @@
 .window {
+  position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
+  transition: grid-template-columns var(--motion);
 }
 .window[data-sidebar='hidden'] {
-  grid-template-columns: 1fr;
+  grid-template-columns: 0px minmax(0, 1fr);
+}
+.sidebarToggle {
+  position: absolute;
+  z-index: 1;
+  inset: var(--space-2) auto auto var(--space-4);
+}
+.sidebarLane {
+  overflow: clip;
+  min-height: 0;
+}
+.sidebarLane > aside {
+  width: var(--sidebar-width);
+  height: 100%;
+  transition: transform var(--motion);
+}
+.window[data-sidebar='hidden'] .sidebarLane > aside {
+  transform: translateX(-100%);
+}
+.window[data-sidebar='hidden'] .main > header,
+.window[data-sidebar='hidden'] .main > section > header,
+.window[data-sidebar='hidden'] .main > .banner,
+.window[data-sidebar='hidden'] .banner:first-child {
+  padding-inline-start: calc(var(--space-4) + var(--control-height) + var(--space-2));
 }
 .body {
   display: flex;
@@ -56,8 +81,8 @@
 .header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--separator);
 }
 .header h1 {
@@ -66,7 +91,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--weight-semibold) var(--text-l) / 1.3 var(--font-display);
+  font: var(--weight-semibold) var(--text-m) / 1.3 var(--font-display);
 }
 .banners:empty {
   display: none;

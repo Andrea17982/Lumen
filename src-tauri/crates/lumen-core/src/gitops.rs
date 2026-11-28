@@ -317,9 +317,13 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
     // As in Hermes Agent's rollback, the state being replaced is kept first, so a restore
     // can itself be undone from `refs/lumen/checkpoints/before-restore-*`.
     let current_tree = checkpoint(top, &format!("before-restore-{}", crate::models::id())).await?;
+    checkout_changes(top, &current_tree, tree).await
+}
+
+async fn checkout_changes(top: &Path, current_tree: &str, tree: &str) -> Result<usize, String> {
     // Only the paths that differ are touched: rewriting every file made a restore of a
     // 50,000-file checkout take minutes (T3 Code's checkpoint timeouts).
-    let diff = run(
+    let diff = run_io(
         top,
         &[
             "diff-tree",
@@ -327,12 +331,15 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
             "-z",
             "--name-status",
             "--no-renames",
-            &current_tree,
+            current_tree,
             tree,
         ],
         None,
+        None,
     )
     .await?;
+    let diff =
+        String::from_utf8(diff).map_err(|_| "Git reported a path that is not valid UTF-8")?;
     let mut fields = diff.split('\0').filter(|s| !s.is_empty());
     let (mut removed, mut paths) = (vec![], vec![]);
     while let (Some(status), Some(path)) = (fields.next(), fields.next()) {
@@ -343,10 +350,13 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
         }
     }
     let changed = removed.len() + paths.len();
+    let (mut exact, filters) = attributed(top, &paths).await?;
     for extra in &removed {
         let path = top.join(extra);
-        if path.starts_with(top) {
-            let _ = std::fs::remove_file(&path);
+        if let Err(error) = std::fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(format!("Cannot remove {}: {error}", path.display()));
+            }
         }
     }
     let index = temp_index(top);
@@ -355,19 +365,25 @@ pub async fn restore(top: &Path, tree: &str) -> Result<usize, String> {
             return Ok(());
         }
         run(top, &["read-tree", tree], Some(&index)).await?;
-        let (_, filters) = attributed(top, &paths).await?;
         let mut checkout = neutral(&filters);
         checkout.extend(["checkout-index", "-f", "-z", "--stdin"].map(String::from));
         let list: String = paths.iter().map(|p| format!("{p}\0")).collect();
         run_io(top, &argv(&checkout), Some(&index), Some(list.into_bytes())).await?;
         // Attributes as of the snapshot, now that its own .gitattributes is back on disk.
-        let (exact, _) = attributed(top, &paths).await?;
+        exact.extend(attributed(top, &paths).await?.0);
+        exact.sort_unstable();
+        exact.dedup();
         // Snapshot bytes of attributed files were stored unconverted: write them back as-is.
         for path in exact {
+            let destination = top.join(&path);
+            if std::fs::symlink_metadata(&destination)
+                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            {
+                continue;
+            }
             let spec = format!("{tree}:{path}");
             let blob = run_io(top, &["cat-file", "blob", &spec], None, None).await?;
-            std::fs::write(top.join(&path), blob)
-                .map_err(|e| format!("Cannot restore {path}: {e}"))?;
+            std::fs::write(destination, blob).map_err(|e| format!("Cannot restore {path}: {e}"))?;
         }
         Ok::<_, String>(())
     }
@@ -473,6 +489,24 @@ pub async fn lane_patch(path: &Path, base: &str) -> Result<String, String> {
     run(path, &["diff", "--binary", "--no-color", base, &now], None).await
 }
 
+pub(crate) async fn task_patch(path: &Path, base: &str, tree: &str) -> Result<Vec<u8>, String> {
+    run_io(
+        path,
+        &[
+            "diff",
+            "--binary",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            base,
+            tree,
+        ],
+        None,
+        None,
+    )
+    .await
+}
+
 pub async fn apply_patch(top: &Path, patch: &str) -> Result<(), String> {
     if patch.trim().is_empty() {
         return Err("This version has no file changes".into());
@@ -490,10 +524,84 @@ pub async fn apply_patch(top: &Path, patch: &str) -> Result<(), String> {
     result
 }
 
+pub(crate) async fn apply_task_tree(
+    top: &Path,
+    before: &str,
+    after: &str,
+    patch: &[u8],
+) -> Result<(), String> {
+    // Git detects incompatible files. The raw checkout preserves bytes even under attributes.
+    run_io(
+        top,
+        &["-c", "core.autocrlf=false", "apply", "--check", "-"],
+        None,
+        Some(patch.to_vec()),
+    )
+    .await
+    .map_err(|e| format!("The project changed since this version was produced, so it cannot be applied cleanly: {e}"))?;
+    if write_tree(top).await? != before {
+        return Err("The project changed while Lumen was preparing Apply. The task folder is kept for review.".into());
+    }
+    checkout_changes(top, before, after).await.map(|_| ())
+}
+
+/// Apply to a private index to predict the resulting project tree without touching its files.
+pub(crate) async fn patched_tree(top: &Path, before: &str, patch: &[u8]) -> Result<String, String> {
+    let index = temp_index(top);
+    let result = async {
+        run(top, &["read-tree", before], Some(&index)).await?;
+        run_io(
+            top,
+            &["apply", "--cached", "--whitespace=nowarn", "-"],
+            Some(&index),
+            Some(patch.to_vec()),
+        )
+        .await?;
+        run(top, &["write-tree"], Some(&index))
+            .await
+            .map(|tree| tree.trim().to_string())
+    }
+    .await;
+    let _ = std::fs::remove_file(index);
+    result
+}
+
 pub async fn remove_lane(top: &Path, path: &Path, branch: &str) {
     remove_worktree(top, path).await;
     let _ = run(top, &["branch", "-D", branch], None).await;
     let _ = run(top, &["worktree", "prune"], None).await;
+}
+
+/// Applied worktrees may still contain ignored files. Keep those for explicit recovery.
+pub(crate) async fn clean_applied_lane(top: &Path, path: &Path, branch: &str) {
+    if ignored_paths(path).await != Ok(0) {
+        return;
+    }
+    if let Err(error) = run(top, &["worktree", "remove", &path.to_string_lossy()], None).await {
+        eprintln!(
+            "Could not clean up applied worktree {}: {error}",
+            path.display()
+        );
+    } else if let Err(error) = run(top, &["branch", "-D", branch], None).await {
+        eprintln!("Could not remove applied task branch {branch}: {error}");
+    }
+}
+
+pub(crate) async fn ignored_paths(path: &Path) -> Result<usize, String> {
+    run(
+        path,
+        &[
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+            "-z",
+        ],
+        None,
+    )
+    .await
+    .map(|paths| paths.split_terminator('\0').count())
 }
 
 /// Removes a worktree folder and keeps its branch.
@@ -632,6 +740,24 @@ mod tests {
 
     fn bytes(top: &Path, p: &str) -> Vec<u8> {
         std::fs::read(top.join(p)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn task_apply_preserves_bytes_under_checkout_attributes() {
+        let Some(top) = setup().await else { return };
+        std::fs::write(top.join(".gitattributes"), "*.txt text eol=crlf\n").unwrap();
+        let before = write_tree(&top).await.unwrap();
+        std::fs::write(top.join("legacy.txt"), b"caf\xe8\n").unwrap();
+        let tree = write_tree(&top).await.unwrap();
+        let patch = task_patch(&top, &before, &tree).await.unwrap();
+        std::fs::remove_file(top.join("legacy.txt")).unwrap();
+        let after = patched_tree(&top, &before, &patch).await.unwrap();
+        apply_task_tree(&top, &before, &after, &patch)
+            .await
+            .unwrap();
+        assert_eq!(bytes(&top, "legacy.txt"), b"caf\xe8\n");
+        assert_eq!(write_tree(&top).await.unwrap(), after);
+        let _ = std::fs::remove_dir_all(top);
     }
 
     /// Scale probe for T3 Code's checkpoint timeouts: checkpoint, preview and restore on a

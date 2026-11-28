@@ -83,9 +83,12 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {
         }
     } elseif ($request.request.subtype -eq 'initialize') {
         Emit @{type='control_response';response=@{subtype='success';request_id=$request.request_id;response=@{models=@(
-            @{value='opus';displayName='Opus fixture';supportedEffortLevels=@('low','medium','high','xhigh','max')},
+            @{value='opus';resolvedModel='claude-opus-5-5';displayName='Opus fixture';supportedEffortLevels=@('low','medium','high','xhigh','max')},
+            @{value='claude-opus-5-5';displayName='Opus 5.5 fixture';supportedEffortLevels=@('low','medium','high','xhigh','max')},
             @{value='sonnet';displayName='Sonnet fixture';supportedEffortLevels=@('low','medium','high')},
-            @{value='haiku';displayName='Haiku fixture';supportedEffortLevels=@('low','medium','high')}
+            @{value='haiku';displayName='Haiku fixture';supportedEffortLevels=@('low','medium','high')},
+            @{value='fable';resolvedModel='claude-fable-5-2';displayName='Fable fixture';supportedEffortLevels=@('low','high','max')},
+            @{value='claude-mythos-5-2';displayName='Mythos fixture';supportedEffortLevels=@('low','high','max')}
         )}}}
     }
 }

@@ -64,6 +64,9 @@ pub fn run(c: &mut Connection) -> Result<(), String> {
             )?;
             tx.pragma_update(None, "user_version", next)?;
         }
+        // Additive metadata. Older binaries can open the same database without dropping the queue.
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS queued_messages(id TEXT PRIMARY KEY,session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,text TEXT NOT NULL,options TEXT NOT NULL,claimed INTEGER NOT NULL DEFAULT 0); CREATE INDEX IF NOT EXISTS queued_messages_session ON queued_messages(session); UPDATE queued_messages SET claimed=0 WHERE claimed=1;")?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS claude_models(account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,fable INTEGER NOT NULL,mythos INTEGER NOT NULL);")?;
         Ok(())
     };
     apply()

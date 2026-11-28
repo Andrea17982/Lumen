@@ -13,8 +13,7 @@
   gap: var(--space-1);
   align-items: baseline;
 }
-.branch code,
-.facts code {
+.branch code {
   font-family: var(--font-mono);
 }
 .quiet {
@@ -40,26 +39,4 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--status-danger-text);
-}
-.fields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-  font-size: var(--text-s);
-}
-.facts div {
-  display: contents;
-}
-.facts dt {
-  color: var(--text-secondary);
-}
-.facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }

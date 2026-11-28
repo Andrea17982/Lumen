@@ -76,10 +76,38 @@ test('Stop cancels a running turn and the daemon reports it', async ({ page }) =
   await open(page);
   await send(page, 'SLOW_FIXTURE please wait');
   await expect(page.locator('main header')).toContainText('Running', { timeout: 15_000 });
+  const box = page.getByRole('textbox', { name: 'Describe what you want to do' });
+  await box.fill('Held after Stop');
+  await box.press('Control+Enter');
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toContainText('Held after Stop');
   await sleep(500);
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.locator('main header')).toContainText(/Interrupted|Stopped/, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toContainText('Held after Stop');
+  await page.getByRole('button', { name: 'Return to composer' }).click();
+  await expect(box).toHaveValue('Held after Stop');
+});
+
+test('Ctrl+Enter sends queued work after the active turn, even after reload', async ({ page }) => {
+  test.setTimeout(90_000);
+  await open(page);
+  await send(page, 'QUEUE_FIXTURE first message');
+  await expect(page.locator('main header')).toContainText('Running');
+  const box = page.getByRole('textbox', { name: 'Describe what you want to do' });
+  await box.fill('Second message only once');
+  await box.press('Control+Enter');
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toContainText('Second message only once');
+  await box.fill('Third message only once');
+  await box.press('Control+Enter');
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toContainText('Third message only once');
+  await page.reload();
+  const log = page.getByRole('log');
+  await expect(log.getByText('Third message only once', { exact: true })).toHaveCount(1);
+  await expect(page.locator('main header')).toContainText('Done');
+  await expect(log.getByRole('article')).toHaveCount(6);
+  await expect(log.getByRole('article').nth(2)).toContainText('Second message only once');
+  await expect(log.getByRole('article').nth(4)).toContainText('Third message only once');
 });
 
 test('a shortened tool output shows everything on request', async ({ page }) => {

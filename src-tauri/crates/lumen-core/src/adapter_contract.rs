@@ -195,7 +195,9 @@ pub fn contract(provider: &Provider) -> AdapterContract {
         input_images: if provider.is_api() || matches!(provider, Provider::Opencode | Provider::Cursor | Provider::Droid | Provider::Ollama) {
             unavailable("No native image-input payload is integrated. Text attachments and tool-produced previews remain available.")
         } else { limited("Image support depends on the selected native model and its official tool surface.") },
-        subagents: if matches!(provider, Provider::Claude | Provider::Gpt) {
+        subagents: if *provider == Provider::Claude {
+            limited("Native subagents are available in Autopilot. Lumen declines permission requests from a subagent.")
+        } else if *provider == Provider::Gpt {
             limited("Native agent behavior follows its runtime and task permissions; Lumen does not promise cross-provider parity.")
         } else if *provider == Provider::Opencode {
             limited("Native subagents may run in Autopilot. Disabled for Ask first and restricted profiles because custom agents do not inherit parent permissions.")

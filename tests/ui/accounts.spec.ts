@@ -65,6 +65,19 @@ test('a CLI account is added, checked and shows quota as not reported', async ({
   await expect(settings(page)).toContainText('No accounts yet');
   await add(page, 'Claude Code');
   const card = settings(page).getByRole('listitem', { name: 'Claude Code, Claude Code' });
+  const plans = page.getByRole('alertdialog', { name: 'Models included in Claude Code' });
+  const fable = plans.getByRole('switch', { name: 'Includes Fable' });
+  const mythos = plans.getByRole('switch', { name: 'Includes Mythos' });
+  await expect(plans).toBeVisible();
+  await expect(fable).not.toBeChecked();
+  await expect(mythos).not.toBeChecked();
+  const [account] = await daemon.client.call('list_accounts') as { id: string }[];
+  const catalog = async () => (await daemon.client.call('list_models', { id: account.id }) as { id: string }[]).map((m) => m.id);
+  expect(await catalog()).not.toContain('fable');
+  await fable.press('Space');
+  await plans.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(catalog).toContain('fable');
+  expect(await catalog()).not.toContain('claude-mythos-5-2');
   // The fixture CLI reports a signed-in account and no usage: absent, never an empty bar.
   await expect(card.getByText('Connected')).toBeVisible();
   await expect(card).toContainText('Usage not reported yet');
@@ -76,8 +89,15 @@ test('a CLI account is added, checked and shows quota as not reported', async ({
 });
 
 test('an account is renamed and removed with confirmation', async ({ page }) => {
+  await daemon.stop();
+  await daemon.restart();
   await open(page);
   const card = settings(page).getByRole('listitem', { name: /^Claude Code,/ });
+  await card.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Models included in the plan' }).click();
+  await expect(page.getByRole('switch', { name: 'Includes Fable' })).toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Includes Mythos' })).not.toBeChecked();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
   await card.getByRole('button', { name: 'More actions' }).click();
   await page.getByRole('menuitem', { name: 'Rename' }).click();
   await page.getByRole('alertdialog').getByRole('textbox', { name: 'Name' }).fill('Work');

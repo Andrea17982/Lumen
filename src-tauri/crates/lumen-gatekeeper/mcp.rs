@@ -21,6 +21,7 @@ pub struct ClaudeEndpoint {
     keeper: Gatekeeper,
     scope: Scope,
     ready: watch::Sender<bool>,
+    permissions: bool,
 }
 
 impl ClaudeEndpoint {
@@ -46,7 +47,13 @@ impl ClaudeEndpoint {
             keeper,
             scope,
             ready,
+            permissions: true,
         })
+    }
+
+    pub fn screens_only(mut self) -> Self {
+        self.permissions = false;
+        self
     }
 
     /// True after the actual MCP client initializes and discovers the tool.
@@ -79,7 +86,9 @@ impl ClaudeEndpoint {
             Ok(()) => "Claude MCP connection closed",
             Err(_) => "Claude MCP transport failed; verify provider process state",
         };
-        self.keeper.disconnect(&self.scope, reason)?;
+        if self.permissions {
+            self.keeper.disconnect(&self.scope, reason)?;
+        }
         result
     }
 
@@ -132,6 +141,7 @@ impl ClaudeEndpoint {
                     let method = message.get("method").and_then(Value::as_str).unwrap_or("");
                     if method == "notifications/cancelled" {
                         if !ready { return Err("MCP cancellation before initialization".into()); }
+                        if !self.permissions { continue; }
                         let id = message["params"].get("requestId").ok_or("Missing MCP cancellation ID")?;
                         self.keeper.cancel_wire(&self.scope, id)?;
                         continue;
@@ -154,7 +164,9 @@ impl ClaudeEndpoint {
                         "ping" if initialized => json!({"jsonrpc":"2.0","id":id,"result":{}}),
                         "tools/list" if ready => {
                             self.ready.send_replace(true);
-                            json!({"jsonrpc":"2.0","id":id,"result":{"tools":[permission_tool(),list_screens_tool(),capture_screen_tool()]}})
+                            let mut tools = vec![list_screens_tool(), capture_screen_tool()];
+                            if self.permissions { tools.insert(0, permission_tool()); }
+                            json!({"jsonrpc":"2.0","id":id,"result":{"tools":tools}})
                         }
                         "tools/call" if ready => {
                             let tool_name = message["params"]["name"].as_str().unwrap_or("");
@@ -174,6 +186,8 @@ impl ClaudeEndpoint {
                                     Ok((path, data)) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":format!("Screenshot saved to {path}")},{"type":"image","data":data,"mimeType":"image/jpeg"}]} }),
                                     Err(error) => json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":error}],"isError":true} }),
                                 }
+                            } else if !self.permissions {
+                                rpc_error(id, -32601, "Unsupported MCP tool")
                             } else {
                             match self.keeper.request_claude(&self.scope, &message) {
                                 Ok(pending) => {

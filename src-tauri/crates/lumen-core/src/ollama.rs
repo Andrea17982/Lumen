@@ -150,6 +150,7 @@ pub async fn catalog(pinned: &str) -> Result<Vec<ModelInfo>, String> {
     Ok(models
         .iter()
         .map(|model| ModelInfo {
+            resolved_id: None,
             id: model.name.clone(),
             name: model.name.clone(),
             description: format!("Local · {}", model.size),

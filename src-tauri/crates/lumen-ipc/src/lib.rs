@@ -12,6 +12,7 @@ pub fn receipted(command: &str) -> bool {
         command,
         "create_session"
             | "send_message"
+            | "queue_message"
             | "cancel_run"
             | "answer_question"
             | "gatekeeper_decide"

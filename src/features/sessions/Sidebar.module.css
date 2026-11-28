@@ -5,7 +5,7 @@
   gap: var(--space-2);
   min-width: 0;
   min-height: 0;
-  padding: var(--space-3) var(--space-2) var(--space-2);
+  padding: var(--space-2);
   background: var(--surface-chrome);
   border-right: 1px solid var(--separator);
 }
@@ -45,7 +45,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
 }
 .row:hover,
 .row:focus-within {
@@ -63,7 +63,7 @@
   min-height: var(--row-height);
   padding: 0 var(--space-1) 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: transparent;
   color: var(--text-primary);
   text-align: left;
@@ -100,7 +100,7 @@
   height: var(--row-height);
   padding: 0 var(--space-3);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: var(--surface-raised);
   color: var(--text-primary);
   outline: none;
@@ -118,10 +118,7 @@
   width: 10px;
   height: 10px;
   opacity: 1;
-  background: none;
-  border: 1.5px solid var(--accent);
-  border-right-color: transparent;
-  animation: spin 900ms linear infinite;
+  background: var(--accent);
 }
 .status[data-tone='needsYou'] {
   opacity: 1;
@@ -131,20 +128,10 @@
   opacity: 1;
   background: var(--status-warning);
 }
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .status[data-tone='running'] {
-    animation: none;
-  }
-}
 .badge {
   flex: none;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   background: var(--accent);
   color: var(--text-on-accent);
   font-size: var(--text-xs);

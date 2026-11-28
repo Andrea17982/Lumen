@@ -82,9 +82,21 @@ pub struct Health {
 #[derive(Default)]
 pub struct Limits {
     cooldown: Mutex<HashMap<String, i64>>,
+    model_cooldown: Mutex<HashMap<(String, String), i64>>,
     turns: Mutex<HashMap<String, Vec<i64>>>,
 }
 impl Limits {
+    pub fn cool_model(&self, account: &str, model: &str, until: i64) {
+        if let Ok(mut cooldown) = self.model_cooldown.lock() {
+            cooldown.insert((account.into(), model.into()), until);
+        }
+    }
+    pub fn eligible_model(&self, account: &str, model: &str, now: i64) -> bool {
+        self.model_cooldown.lock().is_ok_and(|mut cooldown| {
+            cooldown.retain(|_, until| *until > now);
+            !cooldown.contains_key(&(account.into(), model.into()))
+        })
+    }
     pub fn record_turn(&self, account: &str, now: i64) {
         if let Ok(mut t) = self.turns.lock() {
             let v = t.entry(account.into()).or_default();

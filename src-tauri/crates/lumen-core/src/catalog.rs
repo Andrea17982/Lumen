@@ -37,6 +37,11 @@ pub fn parse_models(provider: &Provider, rows: &Value) -> Vec<ModelInfo> {
             };
             Some(ModelInfo {
                 id: id.into(),
+                resolved_id: v["resolvedModel"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|resolved| !resolved.is_empty() && *resolved != id)
+                    .map(str::to_owned),
                 name: v["displayName"].as_str().unwrap_or(id).into(),
                 description: v["description"].as_str().unwrap_or("").into(),
                 efforts,
@@ -150,6 +155,7 @@ pub(crate) async fn discover_observed(
                 .filter(|line| !line.is_empty() && !line.starts_with('#'))
                 .filter(|line| !tabbed || line.contains('\t'))
                 .map(|line| ModelInfo {
+                    resolved_id: None,
                     id: line
                         .split_whitespace()
                         .next()

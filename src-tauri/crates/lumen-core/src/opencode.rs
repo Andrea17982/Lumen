@@ -129,6 +129,7 @@ fn model_from(
         .to_owned();
     let is_default = default["providerID"] == provider && default["id"] == v["id"];
     Some(ModelInfo {
+        resolved_id: None,
         id,
         name: v["name"].as_str().unwrap_or(provider).into(),
         description: description.into(),
@@ -334,6 +335,7 @@ mod tests {
 
     fn model(id: &str) -> ModelInfo {
         ModelInfo {
+            resolved_id: None,
             id: id.into(),
             name: id.into(),
             description: GO.into(),

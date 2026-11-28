@@ -76,11 +76,36 @@ pub async fn send_message(
 
 /// The job a turn registers while it prepares: released on any early return, handed to the
 /// turn task once it starts. Only its own entry is removed, never a newer turn's.
-struct PreparingJob {
+pub(crate) struct PreparingJob {
     core: Arc<Core>,
     id: String,
     rx: watch::Receiver<bool>,
     armed: bool,
+}
+impl PreparingJob {
+    pub(crate) fn receiver(&self) -> watch::Receiver<bool> {
+        self.rx.clone()
+    }
+    pub(crate) fn handoff(mut self) {
+        self.armed = false;
+    }
+    pub(crate) fn reserve(core: &Arc<Core>, id: &str) -> Result<Self, String> {
+        let (tx, rx) = watch::channel(false);
+        let mut jobs = core.jobs.lock().map_err(|_| "Jobs lock failed")?;
+        if core.stopping.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("Lumen is stopping".into());
+        }
+        if jobs.contains_key(id) {
+            return Err("Stop this conversation first".into());
+        }
+        jobs.insert(id.into(), tx);
+        Ok(Self {
+            core: core.clone(),
+            id: id.into(),
+            rx,
+            armed: true,
+        })
+    }
 }
 impl Drop for PreparingJob {
     fn drop(&mut self) {
@@ -399,6 +424,17 @@ pub(crate) async fn submit(
     } else {
         let a = account(&core, &plan.account_id)?;
         let models = models_in(&core, &a, false, None, &session.workspace).await?;
+        if a.provider == Provider::Claude && plan.model.as_deref().is_none_or(str::is_empty) {
+            plan.model = Some(
+                models
+                    .iter()
+                    .find(|model| model.is_default)
+                    .or_else(|| router::select_tier(&models, 1))
+                    .ok_or("No model is enabled for this Claude Code account")?
+                    .id
+                    .clone(),
+            );
+        }
         crate::catalog::validate(&models, plan.model.as_deref(), &plan.effort)?;
     }
     if options.mode != "auto" {
@@ -729,6 +765,9 @@ pub(crate) async fn submit(
             j.remove(&id);
         }
         event(&app, &id, &last_id, "done", status);
+        if status == "completed" {
+            crate::message_queue::advance(app, core, id);
+        }
     }));
     supervise(task_app, task_core, task_id, task_rx, task);
     Ok(returned)
@@ -1427,6 +1466,16 @@ async fn stage_observed(
             }
             if activity.kind == "session" {
                 native = Some(activity.text);
+                if visible {
+                    out.activity.retain(|item| item.kind != "native");
+                    out.activity.push(Activity {
+                        kind: "native".into(),
+                        text: serde_json::json!({"account":a.id,"session":native,"workspace":s.workspace,"context_revision":context_revision}).to_string(),
+                    });
+                    if let Err(error) = core.store.save_message(&s.id, out) {
+                        eprintln!("Could not save the native session for recovery: {error}");
+                    }
+                }
                 return;
             }
             if activity.kind == "usage" || activity.kind == "window" {
@@ -1920,6 +1969,24 @@ async fn stage_fallback(
         if !limits::is_rate_limit(&error) {
             return Err(error);
         }
+        if current.provider == Provider::Claude && limits::is_spend_limit(&error) {
+            if let Some(model) = current_model.as_deref() {
+                let resolved = core.catalogs.lock().ok().and_then(|catalogs| {
+                    let (_, models) = catalogs.get(&current.id)?;
+                    models
+                        .iter()
+                        .find(|m| m.id == model)
+                        .map(|m| m.resolved_model().to_owned())
+                });
+                core.limits.cool_model(
+                    &current.id,
+                    resolved.as_deref().unwrap_or(model),
+                    now() + 15 * 60_000,
+                );
+            }
+            let detail = error.strip_prefix(limits::RATE_LIMIT).unwrap_or(&error);
+            return Err(format!("Claude Code rejected {} with a spending or model-access limit. Lumen could not verify an account quota limit. {detail}", current_model.as_deref().unwrap_or("the selected model")));
+        }
         let reset = crate::quota_resume::reset_at(core, &current.id, &error);
         core.limits.cool(&current.id, reset);
         if !limits::is_spend_limit(&error) {
@@ -2299,18 +2366,20 @@ pub async fn prompt_estimate(core: crate::CoreRef<'_>, id: String) -> Result<usi
     prompt_tokens(&core, &s)
 }
 
-pub(crate) fn workspace_lock(
+pub(crate) async fn workspace_lock(
     core: &Core,
     s: &Session,
 ) -> Result<Arc<tokio::sync::Mutex<()>>, String> {
+    let workspace = std::path::Path::new(&s.workspace);
+    let top = gitops::toplevel(workspace).await;
+    let canonical = dunce::canonicalize(top.as_deref().unwrap_or(workspace))
+        .map_err(|_| "The conversation folder is no longer available")?
+        .to_string_lossy()
+        .into_owned();
     let mut locks = core
         .workspace_locks
         .lock()
         .map_err(|_| "Workspace lock failed")?;
-    let canonical = dunce::canonicalize(&s.workspace)
-        .map_err(|_| "The conversation folder is no longer available")?
-        .to_string_lossy()
-        .into_owned();
     let key = if cfg!(windows) {
         canonical.to_lowercase()
     } else {
@@ -2513,7 +2582,7 @@ async fn run_plan(
     }
 
     crate::execution::phase(app, &s.id, out, "workspace");
-    let lock = workspace_lock(core, s)?;
+    let lock = workspace_lock(core, s).await?;
     let other_sessions = conversations_on_workspace(core, s);
     if !other_sessions.is_empty() && options.access() != AccessMode::ReadOnly {
         note(
@@ -3003,7 +3072,7 @@ pub async fn rewind(
             other_sessions.join(", ")
         ));
     }
-    let lock = workspace_lock(&core, &initial)?;
+    let lock = workspace_lock(&core, &initial).await?;
     let _guard = lock.lock().await;
     let other_sessions = checkout_conflicts(&core, &initial, &scope, None);
     if !other_sessions.is_empty() {
@@ -3458,6 +3527,7 @@ mod resume_tests {
 
     fn catalog_with(name: &str) -> Vec<ModelInfo> {
         vec![ModelInfo {
+            resolved_id: None,
             id: name.into(),
             name: name.into(),
             description: String::new(),

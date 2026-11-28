@@ -12,13 +12,12 @@ const SECTIONS: Section[] = ['accounts', 'general', 'extensions', 'maintenance']
 const VIEWS: Record<Section, (p: Preferences) => ReactNode> = { accounts: () => <Accounts />, general: (p) => <General preferences={p} />, extensions: () => <Extensions />, maintenance: () => <Maintenance /> };
 
 /** Settings replace the conversation in the main area: a few sections, few options each. */
-export function Settings({ onClose, leading, preferences, initialSection = 'accounts', onWelcome, onTour }: { onClose: () => void; leading?: ReactNode; preferences: Preferences; initialSection?: Section; onWelcome: () => void; onTour: () => void }) {
+export function Settings({ onClose, preferences, initialSection = 'accounts', onWelcome, onTour }: { onClose: () => void; preferences: Preferences; initialSection?: Section; onWelcome: () => void; onTour: () => void }) {
   const t = useT();
   const [section, setSection] = useState<Section>(initialSection);
   return (
     <section className={s.settings} aria-labelledby="settings-title">
       <header className={s.header}>
-        {leading}
         <IconButton icon="close" label={t.settings.close} onPress={onClose} />
         <h1 id="settings-title">{t.settings.title}</h1>
       </header>

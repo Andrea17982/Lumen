@@ -12,6 +12,9 @@ if (!$PromptText) {
             Emit @{type='control_response';response=@{subtype='success';request_id=$initialize.request_id;response=@{}}}
             $user = [Console]::In.ReadLine() | ConvertFrom-Json
             $promptText = $user.message.content
+            if ($promptText.Contains('CLAUDE_SUBAGENT_FIXTURE')) {
+                Emit @{type='system';subtype='init';session_id='foreign-session'}
+            }
             Emit @{type='system';subtype='init';session_id=$env:LUMEN_FIXTURE_SESSION}
             Emit @{type='rate_limit_event';rate_limit_info=@{unifiedWindows=@{five_hour=@{utilization=0.20;resetsAt=[DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()};seven_day=@{utilization=0.90;resetsAt=[DateTimeOffset]::UtcNow.AddMinutes(15).ToUnixTimeSeconds()}}}}
         } else { $promptText = $firstLine + "`n" + [Console]::In.ReadToEnd() }
@@ -20,17 +23,51 @@ if (!$PromptText) {
 if ($Provider -eq 'claude' -and $promptText.Contains('PROMPT_BUDGET_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'context-payloads.jsonl') -Value (ConvertTo-Json -Compress -Depth 4 @{prompt=$promptText;workspace=(Get-Location).Path;resume=$env:LUMEN_FIXTURE_RESUME}) -Encoding utf8
 }
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_SUBAGENT_FIXTURE')) {
+    Emit @{type='control_request';request_id='child-permission';request=@{subtype='can_use_tool';agent_id='worker';tool_name='Write';input=@{file_path='child.txt'}}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.response.request_id -ne 'child-permission' -or $answer.response.response.behavior -ne 'deny') {throw 'Expected denial for the child'}
+    Emit @{type='result';session_id='foreign-session';is_error=$true;result='FOREIGN_RESULT'}
+    Emit @{type='result';parent_tool_use_id='agent-call';is_error=$true;result='CHILD_RESULT'}
+    Emit @{type='result';is_error=$false;result='PARENT_RESULT <!-- lumen-autopilot: done -->'}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_SPEND_FIXTURE')) {
+    Emit @{type='result';is_error=$true;result='You have hit your monthly spend limit. Switch to another model.'}
+    exit 0
+}
+if ($Provider -eq 'gpt' -and $AppServer -and $promptText.Contains('CODEX_SUBAGENT_FIXTURE')) {
+    Emit @{id='child-permission';method='item/fileChange/requestApproval';params=@{threadId='child-thread';turnId='child-turn';itemId='child-file'}}
+    $answer = [Console]::In.ReadLine() | ConvertFrom-Json
+    if ($answer.id -ne 'child-permission' -or $answer.result.decision -ne 'decline') {throw 'Expected denial for the child'}
+    Emit @{method='item/completed';params=@{threadId='child-thread';turnId='child-turn';item=@{id='child-text';type='agentMessage';text='CHILD_RESULT'}}}
+    Emit @{method='turn/completed';params=@{threadId='child-thread';turnId='child-turn';turn=@{id='child-turn';status='failed';error=@{message='CHILD_RESULT'}}}}
+    Emit @{method='item/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';item=@{id='parent-text';type='agentMessage';text='PARENT_RESULT <!-- lumen-autopilot: done -->'}}}
+    Emit @{method='turn/completed';params=@{threadId='fixture-thread';turnId='fixture-turn';turn=@{id='fixture-turn';status='completed'}}}
+    exit 0
+}
+if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_RESUME_FIXTURE')) {
+    if (@(Get-Content -LiteralPath 'daemon-effect.txt').Count -ne 1) {throw 'The recorded effect must already exist exactly once'}
+    if ($env:LUMEN_FIXTURE_RESUME -ne 'true' -or (Get-Content -LiteralPath 'daemon-native.txt' -Raw).Trim() -ne $env:LUMEN_FIXTURE_SESSION) {throw 'Expected the original native session'}
+    Emit @{type='result';is_error=$false;result='DAEMON_RESUMED <!-- lumen-autopilot: done -->'}
+    exit 0
+}
 if ($Provider -eq 'claude' -and $promptText.Contains('DAEMON_TURN_FIXTURE')) {
     Add-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-effect.txt') -Value 'once'
+    Set-Content -LiteralPath 'daemon-native.txt' -Value $env:LUMEN_FIXTURE_SESSION
     Emit @{type='assistant';message=@{content=@(@{type='tool_use';id='daemon-write';name='Write';input=@{file_path='daemon-effect.txt'}})}}
-    Emit @{type='stream_event';event=@{delta=@{text='DAEMON_PARTIAL'}}}
     $ownedChild = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -WindowStyle Hidden -PassThru
     Set-Content -LiteralPath (Join-Path (Get-Location).Path 'daemon-owned-pids.json') -Value (ConvertTo-Json -Compress @($PID, $ownedChild.Id))
-    Start-Sleep -Seconds 12
+    Emit @{type='stream_event';parent_tool_use_id='daemon-child';event=@{delta=@{text='Child started'}}}
+    Emit @{type='stream_event';event=@{delta=@{text='DAEMON_PARTIAL'}}}
+    Start-Sleep -Seconds 1
+    Emit @{type='stream_event';parent_tool_use_id='daemon-child';event=@{delta=@{text='Child waiting'}}}
+    Start-Sleep -Seconds 11
     Emit @{type='result';is_error=$false;result='DAEMON_PARTIAL completed'}
     exit 0
 }
 if ($promptText.Contains('SLOW_FIXTURE')) { Start-Sleep -Seconds 60 }
+if ($promptText.Contains('QUEUE_FIXTURE')) { Start-Sleep -Seconds 5 }
 if ($Provider -eq 'claude' -and $promptText.Contains('CLAUDE_ACCOUNT_GATEWAY_FIXTURE')) {
     $gateway = Get-Content -LiteralPath (Join-Path (Get-Location).Path 'native-owner.json') -Raw | ConvertFrom-Json
     & node (Join-Path $PSScriptRoot 'native-account-client.mjs') $gateway.executable $gateway.profile (Get-Location).Path

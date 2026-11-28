@@ -63,7 +63,7 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   outline: none;
 }
 .link:focus-visible {
@@ -74,7 +74,7 @@
 }
 .inlineCode {
   padding: 1px 4px;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: var(--surface-sunken);
   font: 0.92em var(--font-mono);
 }
@@ -102,7 +102,7 @@
 }
 .code button {
   border: 0;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   padding: 2px var(--space-2);
   background: transparent;
   color: var(--text-secondary);

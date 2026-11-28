@@ -91,6 +91,44 @@ try {
   if (process.platform === 'win32') {
     const codex = await client.call('add_account', { name: 'Offline Codex', provider: 'gpt' });
     const quotaHandoff = await client.call('add_account', { name: 'Handoff Claude', provider: 'claude' });
+    for (const [account, model, scenario] of [
+      [quotaHandoff, 'sonnet', 'CLAUDE_SUBAGENT_FIXTURE'],
+      [codex, 'gpt-luna-fixture', 'CODEX_SUBAGENT_FIXTURE'],
+    ]) {
+      const delegated = await client.call('create_session', { workspace });
+      await client.call('send_message', {
+        id: delegated.id,
+        text: scenario,
+        options: { mode: account.provider, accountId: account.id, model, effort: 'low', accessMode: 'autopilot' },
+      });
+      for (let i = 0; i < 200 && !(await client.call('__status')).idle; i++) await sleep(100);
+      const delegatedReply = (await client.call('get_messages', { id: delegated.id })).at(-1);
+      assert.match(delegatedReply.text.trim(), /^PARENT_RESULT(?: <!-- lumen-autopilot: done -->)?$/, JSON.stringify(delegatedReply.activity.filter((a) => a.kind === 'error')));
+    }
+    const stoppedFolder = await mkdtemp(path.join(data, 'stop-child-'));
+    const stoppedChat = await client.call('create_session', { workspace: stoppedFolder });
+    const stopOptions = { mode: 'claude', accountId: quotaHandoff.id, model: 'sonnet', effort: 'low', accessMode: 'autopilot', autoReview: false };
+    await client.call('send_message', { id: stoppedChat.id, text: 'DAEMON_TURN_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100; i++) {
+      const messages = await client.call('get_messages', { id: stoppedChat.id });
+      if (messages.at(-1)?.text.includes('DAEMON_PARTIAL')) break;
+      if (i === 99) assert.fail('partial reply did not reach the store');
+      await sleep(50);
+    }
+    await client.call('cancel_run', { id: stoppedChat.id });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const stoppedReply = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.equal(stoppedReply.text.trim(), 'DAEMON_PARTIAL');
+    const stoppedSession = (await client.call('list_sessions', { search: '', offset: 0 })).find((session) => session.id === stoppedChat.id);
+    assert.equal(stoppedSession.status, 'interrupted');
+    const owned = JSON.parse(await readFile(path.join(stoppedFolder, 'daemon-owned-pids.json'), 'utf8'));
+    for (const pid of owned) {
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    }
+    await client.call('send_message', { id: stoppedChat.id, text: 'DAEMON_RESUME_FIXTURE', options: stopOptions });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(50);
+    const resumed = (await client.call('get_messages', { id: stoppedChat.id })).at(-1);
+    assert.match(resumed.text.trim(), /^DAEMON_RESUMED(?: <!-- lumen-autopilot: done -->)?$/);
     for (const [scenario, accessMode, status, reply, attempts] of [
       ['EDIT', 'autopilot', 'completed', 'Modifica eseguita.', ['autopilot', 'continue']],
       // An Autopilot stop the assistant explains is partial work to review, never an error.
@@ -164,6 +202,16 @@ try {
         }
       }
     }
+    const spend = await client.call('create_session', { workspace });
+    await client.call('send_message', { id: spend.id, text: 'CLAUDE_SPEND_FIXTURE', options: { ...stopOptions, model: 'opus' } });
+    for (let i = 0; i < 100 && !(await client.call('__status')).idle; i++) await sleep(100);
+    const spendReply = (await client.call('get_messages', { id: spend.id })).at(-1);
+    assert.match(JSON.stringify(spendReply.activity), /could not verify an account quota limit/);
+    assert.ok(!spendReply.activity.some((step) => step.kind === 'quota-reset'));
+    const afterSpend = await client.call('list_models', { id: quotaHandoff.id, refresh: true });
+    assert.ok(!afterSpend.some((model) => model.id === 'opus'));
+    assert.ok(!afterSpend.some((model) => model.id === 'claude-opus-5-5'));
+    assert.ok(afterSpend.some((model) => model.id === 'sonnet'));
     await client.call('remove_account', { id: quotaHandoff.id });
     const claude = await client.call('add_account', { name: 'Offline Claude', provider: 'claude' });
     const verification = await mkdtemp(path.join(data, 'verify-'));
@@ -588,6 +636,8 @@ try {
           'drain and restart preserving data',
           ...(process.platform === 'win32' ? [
             'Codex Autopilot resumes while work advances, stops repeated checks or after 10 attempts as partial work, and waits for answers',
+            'Claude and Codex deny child requests and wait for the parent result',
+            'Stop terminates owned children and a follow-up preserves the existing effect',
             'Compact verification evidence survives repair, independent review and account handoff',
             'Auto selects a sufficient model from another catalog',
             'Auto resumes the same model, effort and worktree after quota and a daemon crash without replay',

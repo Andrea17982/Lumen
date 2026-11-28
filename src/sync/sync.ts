@@ -60,6 +60,7 @@ export interface SyncState {
   insert: { text: string; n: number } | null;
   /** Changes whenever a recurring task is added from this window. */
   routines: number;
+  messageQueue?: Record<string, { revision: number; error?: string }>;
   /** A newer signed release, once the shell has found one. */
   update: UpdateInfo | null;
   onboarding?: OnboardingState;
@@ -172,9 +173,8 @@ export class Sync {
     return this.state.unconfirmed.some((u) => u.sessionId === sessionId);
   }
 
-  async send(sessionId: string, text: string, options: RunOptions): Promise<void> {
+  async send(sessionId: string, text: string, options: RunOptions, id: string = crypto.randomUUID()): Promise<void> {
     if (this.blocked(sessionId)) throw 'Check the result of the last action before sending more work';
-    const id = crypto.randomUUID();
     const update = (patch: Partial<Outgoing>) => this.set({ outgoing: this.state.outgoing.map((o) => (o.id === id ? { ...o, ...patch } : o)) });
     this.set({ outgoing: [...this.state.outgoing, { id, sessionId, text, state: 'sending' }] });
     try {
@@ -349,6 +349,8 @@ ${text}` : text;
   }
 
   private onRun(event: RunEvent) {
+    if (event.kind === 'queue-error') this.messageQueueChanged(event.sessionId, event.text);
+    if (event.kind === 'queue-change') this.messageQueueChanged(event.sessionId);
     // Session status is not persisted per event: the list is the truth, so read it again.
     if (!event.messageId || event.kind === 'start' || event.kind === 'status' || event.kind === 'done') this.scheduleSessions();
     if (QUESTION_KINDS.has(event.kind)) this.scheduleQuestions();
@@ -367,6 +369,11 @@ ${text}` : text;
     if (next === transcript) return;
     this.set({ transcripts: { ...this.state.transcripts, [event.sessionId]: next } });
     if (next.messages.length !== transcript.messages.length) this.prune(event.sessionId);
+  }
+
+  messageQueueChanged(id: string, error?: string) {
+    const current = this.state.messageQueue;
+    this.set({ messageQueue: { ...current, [id]: { revision: (current?.[id]?.revision ?? 0) + 1, error } } });
   }
 
   private scheduleSessions() {

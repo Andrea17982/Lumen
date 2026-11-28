@@ -13,6 +13,7 @@ const POLICIES: AutoPolicy[] = ['budget', 'default', 'quality'];
 const MAX_IMAGE = 24 * 1024 * 1024;
 // /every <interval> [HH:MM] <task>: the daemon parses the interval and the time.
 const EVERY = /^\/every(?:\s+(\S+))?(?:\s+(\d{1,2}:\d{2})(?=\s))?(?:\s+([\s\S]+))?$/i;
+type Queued = { id: string; text: string; starting: boolean };
 
 /**
  * Sends work to the daemon. Choices are run options for the next message; access mode belongs to
@@ -38,10 +39,21 @@ export function Composer({ session, draft }: { session: Session; draft?: { text:
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [queued, setQueued] = useState<Queued[]>([]);
+  const [restored, setRestored] = useState<string>();
+  const [queueing, setQueueing] = useState(false);
+  const queueState = useSyncState((st) => st.messageQueue?.[session.id]);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   // Stop is offered from the moment a message is sent: Auto may still be preparing the turn.
   const running = isSessionActive(session.status) || sending;
+
+  useEffect(() => {
+    if (!connected) return;
+    let live = true;
+    sync.call<Queued[]>('queued_messages', { id: session.id }).then((items) => { if (live) setQueued(items); }, (e) => { if (live) setError(String(e)); });
+    return () => { live = false; };
+  }, [sync, connected, session.id, session.status, queueState]);
 
   // Text handed back by the conversation (after a rewind) replaces what is typed.
   useEffect(() => {
@@ -100,15 +112,34 @@ ${text}` : text));
   }, [text]);
 
   const current = models.find((m) => m.id === model);
-  const canSend = connected && !blocked && !sending && !running && text.trim().length > 0 && (route === AUTO || !!model);
+  const ready = connected && !blocked && !queueing && text.trim().length > 0 && (route === AUTO || (!!account && !!current));
+  const canSend = ready && !running;
 
-  async function send() {
-    if (!canSend) return;
+  async function send(queue = false) {
+    if (!ready || (!queue && running)) return;
     const options: RunOptions =
       route === AUTO
         ? { mode: AUTO, effort: '', autoPolicy: policy, accessMode: session.accessMode, attachments }
         : { mode: account!.provider, accountId: account!.id, model, effort, accessMode: session.accessMode, attachments };
     const routine = EVERY.exec(text.trim());
+    if (queue && running && !routine && !restored) {
+      const sent = text;
+      const files = attachments;
+      setQueueing(true);
+      setError(null);
+      try {
+        await sync.call('queue_message', { id: session.id, text: sent, options });
+        setText((value) => value === sent ? '' : value);
+        setAttachments((value) => value.filter((file) => !files.includes(file)));
+        sync.messageQueueChanged(session.id);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setQueueing(false);
+      }
+      return;
+    }
+    if (running) return;
     if (routine) {
       if (!routine[1] || !routine[3]) return setError(t.routines.usage);
       setError(null);
@@ -131,7 +162,9 @@ ${text}` : text));
     setText('');
     setAttachments([]);
     try {
-      await sync.send(session.id, sent, options);
+      await sync.send(session.id, sent, options, restored);
+      setRestored(undefined);
+      if (restored) sync.messageQueueChanged(session.id);
     } catch (e) {
       // The message stays in the transcript with its error; give the text back to edit.
       // Stopped before the turn started: nothing was recorded, so the text simply returns.
@@ -176,6 +209,11 @@ ${current}` : sent));
   const hasFiles = (e: DragEvent) => [...e.dataTransfer.types].includes('Files');
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (!e.repeat) void send(true);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && commands.length === 1 && commands[0].prompt !== text) {
       e.preventDefault();
       return setText(commands[0].prompt);
@@ -210,6 +248,20 @@ ${current}` : sent));
       }}
     >
       {blocked && <p className={s.notice}>{t.banner.unconfirmed}</p>}
+      {queued.some((item) => item.id !== restored) && <ul className={`${s.attachments} ${s.queue}`} aria-label={t.composer.queued}>
+        {queued.filter((item) => item.id !== restored).map((item) => <li key={item.id}>
+          <span>{visibleText(item.text)}</span>
+          <button type="button" disabled={!!restored || running || item.starting || blocked || !connected} aria-label={t.composer.removeQueued} onClick={() => {
+            sync.call<{ text: string; attachments: string[] }>('take_queued_message', { id: session.id, message: item.id }).then((draft) => {
+              setText((value) => value.trim() ? `${draft.text}\n\n${value}` : draft.text);
+              setAttachments((value) => [...new Set([...draft.attachments, ...value])]);
+              setRestored(item.id);
+              sync.messageQueueChanged(session.id);
+              input.current?.focus();
+            }, (e) => setError(String(e)));
+          }}>×</button>
+        </li>)}
+      </ul>}
       <div
         className={s.box}
         data-dragging={dragging ? '' : undefined}
@@ -327,9 +379,9 @@ ${current}` : sent));
           {notice}
         </p>
       )}
-      {error && (
+      {(error || queueState?.error) && (
         <p className={s.error} role="alert">
-          {error}
+          {error || queueState?.error}
         </p>
       )}
     </form>
